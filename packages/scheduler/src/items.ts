@@ -59,8 +59,9 @@ export function scheduleHabit(free: Interval[], habit: Habit): ScheduleItemResul
       : undefined;
 
     for (let k = 0; k < habit.perPeriod; k++) {
-      let res = placeItem(remainingFree, [habit.chunkMs], period.end, preferred ?? periodWindow);
-      if (res.placements.length === 0 && preferred && preferred.length > 0) {
+      const primaryWindow = preferred && preferred.length > 0 ? preferred : periodWindow;
+      let res = placeItem(remainingFree, [habit.chunkMs], period.end, primaryWindow);
+      if (res.placements.length === 0 && primaryWindow !== periodWindow) {
         res = placeItem(remainingFree, [habit.chunkMs], period.end, periodWindow);
       }
 

@@ -3,8 +3,10 @@ import { intersectIntervals, subtractIntervals, mergeIntervals } from './interva
 
 /**
  * Split `durationMs` into chunk sizes summing exactly to it, using the fewest
- * chunks such that each is <= maxChunkMs, while avoiding chunks below minChunkMs
- * when the total allows. Distribution is even and deterministic.
+ * chunks such that none exceeds `maxChunkMs` (a hard upper bound), distributed
+ * as evenly as possible. `minChunkMs` is best-effort: minimizing the chunk count
+ * already maximizes chunk size, so chunks stay at or above `minChunkMs` whenever
+ * that is feasible given the hard `maxChunkMs` cap.
  */
 export function splitDuration(
   durationMs: number,
@@ -14,10 +16,7 @@ export function splitDuration(
   if (durationMs <= 0) return [];
   if (durationMs <= maxChunkMs) return [durationMs];
 
-  let n = Math.ceil(durationMs / maxChunkMs);
-  const maxChunks = Math.max(1, Math.floor(durationMs / minChunkMs));
-  if (n > maxChunks) n = maxChunks;
-
+  const n = Math.ceil(durationMs / maxChunkMs);
   const base = Math.floor(durationMs / n);
   const remainder = durationMs - base * n;
   const chunks: number[] = [];

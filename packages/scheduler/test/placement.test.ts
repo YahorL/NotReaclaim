@@ -21,6 +21,12 @@ describe('splitDuration', () => {
   it('returns empty for non-positive duration', () => {
     expect(splitDuration(0, 15, 30)).toEqual([]);
   });
+
+  it('never exceeds maxChunkMs even when min and max conflict', () => {
+    const chunks = splitDuration(35, 30, 30);
+    expect(chunks.every((c) => c <= 30)).toBe(true);
+    expect(chunks.reduce((a, b) => a + b, 0)).toBe(35);
+  });
 });
 
 describe('placeItem', () => {

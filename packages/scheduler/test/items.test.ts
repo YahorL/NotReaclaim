@@ -75,6 +75,18 @@ describe('scheduleHabit', () => {
     ]);
   });
 
+  it('falls back to free time in the period when preferred windows lie outside it', () => {
+    const free = [{ start: 0, end: 1000 }];
+    const result = scheduleHabit(
+      free,
+      habit({ perPeriod: 1, periods: [{ start: 0, end: 100 }], preferredWindows: [{ start: 500, end: 600 }] }),
+    );
+    expect(result.blocks).toEqual([
+      { id: 'habit:h1:0', sourceType: 'habit', sourceId: 'h1', title: 'Exercise', start: 0, end: 30 },
+    ]);
+    expect(result.unscheduled).toEqual([]);
+  });
+
   it('reports missed occurrences when free time is exhausted', () => {
     const free = [{ start: 0, end: 30 }];
     const result = scheduleHabit(free, habit({ perPeriod: 2 }));
