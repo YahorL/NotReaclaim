@@ -44,3 +44,57 @@ export function scheduleTask(free: Interval[], task: FlexibleTask): ScheduleItem
 
   return { blocks, free: result.free, unscheduled };
 }
+
+/** Place up to perPeriod occurrences of the habit within each period. */
+export function scheduleHabit(free: Interval[], habit: Habit): ScheduleItemResult {
+  let remainingFree = free;
+  const blocks: ScheduledBlock[] = [];
+  let missed = 0;
+  let index = 0;
+
+  for (const period of habit.periods) {
+    const periodWindow: Interval[] = [period];
+    const preferred = habit.preferredWindows
+      ? intersectIntervals(habit.preferredWindows, periodWindow)
+      : undefined;
+
+    for (let k = 0; k < habit.perPeriod; k++) {
+      let res = placeItem(remainingFree, [habit.chunkMs], period.end, preferred ?? periodWindow);
+      if (res.placements.length === 0 && preferred && preferred.length > 0) {
+        res = placeItem(remainingFree, [habit.chunkMs], period.end, periodWindow);
+      }
+
+      if (res.placements.length === 0) {
+        missed++;
+        continue;
+      }
+
+      remainingFree = res.free;
+      const p = res.placements[0]!;
+      blocks.push({
+        id: `habit:${habit.id}:${index}`,
+        sourceType: 'habit',
+        sourceId: habit.id,
+        title: habit.title,
+        start: p.start,
+        end: p.end,
+      });
+      index++;
+    }
+  }
+
+  const unscheduled: UnscheduledItem[] =
+    missed > 0
+      ? [
+          {
+            sourceType: 'habit',
+            sourceId: habit.id,
+            title: habit.title,
+            reason: 'could not place all habit occurrences in free time',
+            remainingMs: missed * habit.chunkMs,
+          },
+        ]
+      : [];
+
+  return { blocks, free: remainingFree, unscheduled };
+}
