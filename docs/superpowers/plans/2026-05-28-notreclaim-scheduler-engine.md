@@ -495,8 +495,10 @@ import { intersectIntervals, subtractIntervals, mergeIntervals } from './interva
 
 /**
  * Split `durationMs` into chunk sizes summing exactly to it, using the fewest
- * chunks such that each is <= maxChunkMs, while avoiding chunks below minChunkMs
- * when the total allows. Distribution is even and deterministic.
+ * chunks such that none exceeds `maxChunkMs` (a hard upper bound), distributed
+ * as evenly as possible. `minChunkMs` is best-effort: minimizing the chunk count
+ * already maximizes chunk size, so chunks stay at or above `minChunkMs` whenever
+ * that is feasible given the hard `maxChunkMs` cap.
  */
 export function splitDuration(
   durationMs: number,
@@ -506,10 +508,7 @@ export function splitDuration(
   if (durationMs <= 0) return [];
   if (durationMs <= maxChunkMs) return [durationMs];
 
-  let n = Math.ceil(durationMs / maxChunkMs);
-  const maxChunks = Math.max(1, Math.floor(durationMs / minChunkMs));
-  if (n > maxChunks) n = maxChunks;
-
+  const n = Math.ceil(durationMs / maxChunkMs);
   const base = Math.floor(durationMs / n);
   const remainder = durationMs - base * n;
   const chunks: number[] = [];
@@ -519,6 +518,8 @@ export function splitDuration(
   return chunks;
 }
 ```
+
+> The `minChunkMs` parameter is intentionally retained (callers pass it positionally and it documents intent). `maxChunkMs` is a hard cap — earlier drafts wrongly capped the chunk count at `floor(duration/min)`, which could emit a chunk larger than `maxChunkMs` when min and max conflict (e.g. `splitDuration(35, 30, 30)` → `[35]`). A regression test (`never exceeds maxChunkMs even when min and max conflict`) locks this.
 
 > Note: the `mergeIntervals` import is unused until Task 4. TypeScript with the base config does not error on unused imports, but if a linter is added later, this is resolved when `placeItem` is implemented in Task 4. Leaving it here keeps the import block stable across tasks.
 
@@ -882,8 +883,9 @@ export function scheduleHabit(free: Interval[], habit: Habit): ScheduleItemResul
       : undefined;
 
     for (let k = 0; k < habit.perPeriod; k++) {
-      let res = placeItem(remainingFree, [habit.chunkMs], period.end, preferred ?? periodWindow);
-      if (res.placements.length === 0 && preferred && preferred.length > 0) {
+      const primaryWindow = preferred && preferred.length > 0 ? preferred : periodWindow;
+      let res = placeItem(remainingFree, [habit.chunkMs], period.end, primaryWindow);
+      if (res.placements.length === 0 && primaryWindow !== periodWindow) {
         res = placeItem(remainingFree, [habit.chunkMs], period.end, periodWindow);
       }
 
@@ -1146,3 +1148,12 @@ git commit -m "feat(scheduler): add public exports"
 - **Type consistency:** `ScheduleItemResult` (Task 5) is reused by `scheduleHabit` (Task 6) and `schedule` (Task 7). Block id format `task:<id>:<index>` / `habit:<id>:<index>` is consistent across Tasks 5–7. `placeItem` signature `(free, chunkSizes, deadline, candidateWindows?)` is identical in Tasks 4–6.
 - **Determinism:** no `Date.now`, `Math.random`, or I/O anywhere; all sorts have explicit `id` tiebreakers.
 - **Forward-reference imports:** Tasks 3 and 5 deliberately import symbols used by later tasks in the same file; notes flag this so an out-of-order reader is not confused.
+
+## Post-Execution Notes (review findings)
+
+Final code review caught two correctness bugs that the original task tests missed; both were fixed via TDD (regression test first) before completion, and the task snippets above were updated to match:
+
+1. **`splitDuration` max-cap violation** — the `floor(duration/min)` chunk-count cap could emit a chunk larger than `maxChunkMs` when min and max conflict. Fixed: `maxChunkMs` is a hard cap (`n = ceil(duration/max)`, no min-cap). Regression: `never exceeds maxChunkMs even when min and max conflict`.
+2. **Habit fallback gap** — when `preferredWindows` did not intersect the period, the empty intersection both blocked placement and skipped the fallback. Fixed via the `primaryWindow` computation. Regression: `falls back to free time in the period when preferred windows lie outside it`.
+
+Final state: 23 tests passing, clean `tsc` build.
