@@ -1160,4 +1160,11 @@ git commit -m "feat(server): production entrypoint and public exports"
 - **Auth in tests:** `app.jwt.sign({ sub })` after `await app.ready()` mints test tokens without extra libs; the `now` injection keeps `/schedule/preview` deterministic.
 - **Cross-package build order:** Task 1 rebuilds db then google; Task 2 builds all four libraries so the server resolves their types; route tests need no DB (injected fakes). `server.ts` real wiring is typecheck/build-only.
 - **Known acceptable nuance:** importing the domain error classes pulls `@notreclaim/db`'s index, which constructs a (lazy, unconnected) `PrismaClient`; harmless in tests since fakes are used and no query runs.
+
+## Post-Execution Notes
+
+- **Task 4 type fix:** the PATCH handler's `{ ...body, ...(body.dueBy ? { dueBy: new Date(body.dueBy) } : {}) }` spread left `dueBy: string | Date | undefined`, which didn't satisfy `UpdateTaskInput.dueBy?: Date`. Implemented by destructuring `dueBy` out first (`const { dueBy, ...rest } = body; ... dueBy ? { dueBy: new Date(dueBy) } : {}`), semantically identical.
+- **Skew test hardened:** the token-cache skew test was strengthened to use `now` inside the 60s window (`3_570_000` vs `expiresAt 3_600_000`) so it genuinely fails without the skew (proven red→green).
+- **Final review (APPROVED_WITH_NITS):** auth and cross-user isolation verified sound. Closed the worthwhile coverage nits and added a defensive guard: `authenticate` now rejects a JWT with an empty/missing `sub` (401); added tests for a malformed/empty-`sub` token, habit cross-user scoping + habit delete-404, task delete-404, and `GET /schedule/preview` → 409 when settings are absent.
+- **Final counts:** scheduler 31, db 34, core 27, google 33, server 21 — all green.
 ```
