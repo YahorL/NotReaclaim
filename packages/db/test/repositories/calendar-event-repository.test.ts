@@ -47,4 +47,19 @@ describe('CalendarEventRepository', () => {
     const remaining = await repo.listByUserInRange(user.id, new Date('2026-01-01T00:00:00.000Z'), new Date('2026-01-02T00:00:00.000Z'));
     expect(remaining.map((e) => e.googleEventId)).toEqual(['g2']);
   });
+
+  it('deleteByCalendar removes all events for one calendar, scoped by calendar id', async () => {
+    const user = await users.create({ email: 'cbycal@example.com' });
+    await repo.upsertMany(user.id, [
+      event({ googleCalendarId: 'primary', googleEventId: 'p1' }),
+      event({ googleCalendarId: 'other', googleEventId: 'o1' }),
+    ]);
+    await repo.deleteByCalendar(user.id, 'primary');
+    const remaining = await repo.listByUserInRange(
+      user.id,
+      new Date('2026-01-01T00:00:00.000Z'),
+      new Date('2026-01-02T00:00:00.000Z'),
+    );
+    expect(remaining.map((e) => e.googleCalendarId)).toEqual(['other']);
+  });
 });

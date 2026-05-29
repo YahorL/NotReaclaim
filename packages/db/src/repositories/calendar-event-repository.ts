@@ -42,6 +42,10 @@ export function createCalendarEventRepository(prisma: PrismaClient) {
       });
     },
 
+    async deleteByCalendar(userId: string, googleCalendarId: string): Promise<void> {
+      await prisma.calendarEvent.deleteMany({ where: { userId, googleCalendarId } });
+    },
+
     async deleteByUser(userId: string): Promise<void> {
       await prisma.calendarEvent.deleteMany({ where: { userId } });
     },

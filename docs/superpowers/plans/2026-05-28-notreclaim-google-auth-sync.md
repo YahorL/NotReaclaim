@@ -964,7 +964,7 @@ export interface SyncDeps {
   client: GoogleClient;
   tokens: AccessTokenProvider;
   syncState: Pick<CalendarSyncStateRepository, 'getByCalendar' | 'upsert'>;
-  events: Pick<CalendarEventRepository, 'upsertMany' | 'deleteByGoogleEventIds'>;
+  events: Pick<CalendarEventRepository, 'upsertMany' | 'deleteByGoogleEventIds' | 'deleteByCalendar'>;
 }
 
 export interface SyncResult {
@@ -1036,6 +1036,11 @@ export async function syncPrimaryCalendar(deps: SyncDeps, userId: string, now: n
     });
   }
 
+  if (fullResync) {
+    // A full resync returns the current set only; deleted-while-stale events
+    // never appear, so replace the calendar's rows wholesale to avoid orphans.
+    await deps.events.deleteByCalendar(userId, PRIMARY);
+  }
   if (toUpsert.length > 0) await deps.events.upsertMany(userId, toUpsert);
   if (toDelete.length > 0) await deps.events.deleteByGoogleEventIds(userId, toDelete);
 
@@ -1151,9 +1156,9 @@ export function createGoogleClient(config: GoogleClientConfig): GoogleClient {
     async listEvents({ accessToken, calendarId, syncToken, pageToken, timeMin }: ListEventsArgs): Promise<ListEventsResult> {
       const url = new URL(`${CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events`);
       url.searchParams.set('singleEvents', 'true');
-      url.searchParams.set('showDeleted', 'true');
       if (syncToken) {
         url.searchParams.set('syncToken', syncToken);
+        url.searchParams.set('showDeleted', 'true'); // tombstones only matter for incremental
       } else if (timeMin) {
         url.searchParams.set('timeMin', timeMin);
       }
@@ -1324,4 +1329,15 @@ git commit -m "feat(google): add public exports"
 - **No placeholders:** every code/test step is complete.
 - **Determinism / safety:** `now` injected into `getAccessToken` and `syncPrimaryCalendar`; the only randomness is the AES IV (`crypto.randomBytes`, correct). `startOfTodayUtcIso` uses `new Date(now)` (explicit arg), not `Date.now`.
 - **Cross-package build order:** Task 1 rebuilds `@notreclaim/db` so `@notreclaim/google` resolves the new `CalendarSyncState`/repo types; the whole-suite run (Task 9) expects db at 31 tests (27 prior + 4 new).
+
+## Post-Execution Notes (review fixes)
+
+Final review (APPROVED_WITH_NITS) surfaced two correctness gaps, both fixed via TDD; the Task 6/7 snippets above are updated to match:
+
+1. **Full-resync staleness:** a full resync (initial or 410 recovery) returns only the current set via `timeMin`, so events deleted while the token was stale never appear and were never removed. Fix: added `CalendarEventRepository.deleteByCalendar(userId, googleCalendarId)` and, on `fullResync`, the engine deletes the calendar's rows wholesale before upserting the fresh set. Regression tests: db `deleteByCalendar`, and sync "full resync clears the calendar wholesale" / "incremental does NOT clear".
+2. **`showDeleted` on full syncs:** the adapter sent `showDeleted=true` unconditionally; now sent only with a `syncToken`.
+
+**Deferred to milestone 4** (noted by review, not fixed here): a small token-expiry skew margin in `TokenService.getAccessToken`; and scoping `CalendarEventRepository.deleteByGoogleEventIds` by `googleCalendarId` once multi-calendar sync lands (harmless while primary-only).
+
+**Final counts:** scheduler 28, db 32, core 22, google 17 — 99 tests, all green.
 ```

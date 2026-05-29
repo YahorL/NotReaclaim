@@ -31,11 +31,12 @@ model User {
   createdAt          DateTime @default(now()) @db.Timestamptz
   updatedAt          DateTime @updatedAt @db.Timestamptz
 
-  settings        Settings?
-  calendarEvents  CalendarEvent[]
-  tasks           Task[]
-  habits          Habit[]
-  scheduledBlocks ScheduledBlock[]
+  settings            Settings?
+  calendarEvents      CalendarEvent[]
+  tasks               Task[]
+  habits              Habit[]
+  scheduledBlocks     ScheduledBlock[]
+  calendarSyncStates  CalendarSyncState[]
 }
 
 model Settings {
@@ -123,4 +124,18 @@ model ScheduledBlock {
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   task  Task?  @relation(fields: [taskId], references: [id], onDelete: Cascade)
   habit Habit? @relation(fields: [habitId], references: [id], onDelete: Cascade)
+}
+
+model CalendarSyncState {
+  id               String    @id @default(uuid())
+  userId           String
+  googleCalendarId String
+  syncToken        String?
+  lastSyncedAt     DateTime? @db.Timestamptz
+  createdAt        DateTime  @default(now()) @db.Timestamptz
+  updatedAt        DateTime  @updatedAt @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, googleCalendarId])
 }
