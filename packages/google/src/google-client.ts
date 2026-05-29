@@ -75,7 +75,7 @@ export function createGoogleClient(config: GoogleClientConfig): GoogleClient {
       }
     },
 
-    async listEvents({ accessToken, calendarId, syncToken, pageToken, timeMin }: ListEventsArgs): Promise<ListEventsResult> {
+    async listEvents({ accessToken, calendarId, syncToken, pageToken, timeMin, timeMax }: ListEventsArgs): Promise<ListEventsResult> {
       const url = new URL(`${CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events`);
       url.searchParams.set('singleEvents', 'true');
       if (syncToken) {
@@ -84,6 +84,7 @@ export function createGoogleClient(config: GoogleClientConfig): GoogleClient {
       } else if (timeMin) {
         url.searchParams.set('timeMin', timeMin);
       }
+      if (timeMax && !syncToken) url.searchParams.set('timeMax', timeMax);
       if (pageToken) url.searchParams.set('pageToken', pageToken);
 
       const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
@@ -148,7 +149,8 @@ export function createGoogleClient(config: GoogleClientConfig): GoogleClient {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${accessToken}` },
       });
-      if (!res.ok && res.status !== 404) throw new GoogleApiError(res.status, await res.text());
+      if (res.status === 404 || res.status === 410) return;
+      if (!res.ok) throw new GoogleApiError(res.status, await res.text());
     },
   };
 }
