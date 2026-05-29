@@ -50,6 +50,12 @@ export interface Habit {
    * unscheduled. Omit for unrestricted placement (previous behavior).
    */
   allowedWindows?: Interval[];
+  /**
+   * Optional per-period occurrence targets, parallel to `periods`. When present,
+   * periodTargets[i] is the number of occurrences to place in periods[i]
+   * (0 places none). When absent, every period uses `perPeriod` (previous behavior).
+   */
+  periodTargets?: number[];
 }
 
 /** Engine output: a concrete placement bound to a task or habit. */

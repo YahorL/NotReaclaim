@@ -155,3 +155,33 @@ describe('scheduleHabit with allowedWindows (hard restriction)', () => {
     expect(result.unscheduled[0]).toMatchObject({ sourceId: 'h1', remainingMs: 30 });
   });
 });
+
+describe('scheduleHabit with periodTargets (per-period counts)', () => {
+  it("uses periodTargets[i] as each period's occurrence count", () => {
+    const free = [{ start: 0, end: 1000 }];
+    const result = scheduleHabit(free, habit({
+      perPeriod: 3,
+      periods: [{ start: 0, end: 500 }, { start: 500, end: 1000 }],
+      periodTargets: [1, 2],
+    }));
+    expect(result.blocks.filter((b) => b.start < 500)).toHaveLength(1);
+    expect(result.blocks.filter((b) => b.start >= 500)).toHaveLength(2);
+  });
+
+  it('places nothing in a period whose target is 0', () => {
+    const free = [{ start: 0, end: 1000 }];
+    const result = scheduleHabit(free, habit({
+      perPeriod: 2,
+      periods: [{ start: 0, end: 500 }, { start: 500, end: 1000 }],
+      periodTargets: [0, 2],
+    }));
+    expect(result.blocks.filter((b) => b.start < 500)).toHaveLength(0);
+    expect(result.blocks.filter((b) => b.start >= 500)).toHaveLength(2);
+  });
+
+  it('falls back to perPeriod when periodTargets is absent (unchanged behavior)', () => {
+    const free = [{ start: 0, end: 1000 }];
+    const result = scheduleHabit(free, habit({ perPeriod: 2, periods: [{ start: 0, end: 1000 }] }));
+    expect(result.blocks).toHaveLength(2);
+  });
+});

@@ -51,7 +51,9 @@ export function scheduleHabit(free: Interval[], habit: Habit): ScheduleItemResul
   let missed = 0;
   let index = 0;
 
-  for (const period of habit.periods) {
+  for (let i = 0; i < habit.periods.length; i++) {
+    const period = habit.periods[i]!;
+    const target = habit.periodTargets?.[i] ?? habit.perPeriod;
     const periodWindow: Interval[] = [period];
     const bound = habit.allowedWindows
       ? intersectIntervals(habit.allowedWindows, periodWindow)
@@ -60,7 +62,7 @@ export function scheduleHabit(free: Interval[], habit: Habit): ScheduleItemResul
       ? intersectIntervals(habit.preferredWindows, bound)
       : undefined;
 
-    for (let k = 0; k < habit.perPeriod; k++) {
+    for (let k = 0; k < target; k++) {
       const primaryWindow = preferred && preferred.length > 0 ? preferred : bound;
       let res = placeItem(remainingFree, [habit.chunkMs], period.end, primaryWindow);
       if (res.placements.length === 0 && primaryWindow !== bound) {
