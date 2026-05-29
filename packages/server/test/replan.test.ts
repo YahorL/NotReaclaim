@@ -35,6 +35,7 @@ describe('replanAfterMutation', () => {
 
     expect(events).toEqual([]);
     expect(log).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledWith(expect.any(Error));
   });
 });
 
@@ -52,5 +53,18 @@ describe('pollAndReplan', () => {
       { type: 'sync.completed', userId: 'u1', sync: SYNC, counts: COUNTS },
       { type: 'schedule.updated', userId: 'u1', counts: COUNTS },
     ]);
+  });
+
+  it('propagates a sync failure and emits nothing', async () => {
+    const { bus, events } = capture();
+    const sync = vi.fn(async () => {
+      throw new Error('sync failed');
+    });
+    const reconcile = vi.fn(async () => COUNTS);
+
+    await expect(pollAndReplan({ sync, reconcile, bus, now: () => NOW }, 'u1')).rejects.toThrow('sync failed');
+
+    expect(reconcile).not.toHaveBeenCalled();
+    expect(events).toEqual([]);
   });
 });
