@@ -1,4 +1,4 @@
-import type { User } from '@notreclaim/db';
+import type { User, ScheduledBlock, CreateScheduledBlockInput, UpdateScheduledBlockInput } from '@notreclaim/db';
 import type {
   GoogleClient,
   GoogleEventWrite,
@@ -167,4 +167,64 @@ export function fakeEventsRepo() {
 /** Minimal access-token provider for sync tests. */
 export function fakeTokenProvider(token = 'access-token') {
   return { async getAccessToken(): Promise<string> { return token; } };
+}
+
+export function makeScheduledBlock(over: Partial<ScheduledBlock> = {}): ScheduledBlock {
+  return {
+    id: 'blk1',
+    userId: 'u1',
+    taskId: 't1',
+    habitId: null,
+    title: 'Focus',
+    startsAt: new Date('2026-01-05T09:00:00.000Z'),
+    endsAt: new Date('2026-01-05T09:30:00.000Z'),
+    pinned: false,
+    googleEventId: null,
+    googleCalendarId: null,
+    engineKey: null,
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+    ...over,
+  };
+}
+
+/** Stateful in-memory ScheduledBlock repository (reflects mutations). */
+export function fakeScheduledBlockStore(seed: ScheduledBlock[] = []) {
+  let blocks = [...seed];
+  let counter = seed.length;
+  return {
+    async listByUserInRange(): Promise<ScheduledBlock[]> {
+      return [...blocks];
+    },
+    async create(userId: string, data: CreateScheduledBlockInput): Promise<ScheduledBlock> {
+      counter += 1;
+      const block = makeScheduledBlock({
+        id: `blk-${counter}`,
+        userId,
+        taskId: data.taskId ?? null,
+        habitId: data.habitId ?? null,
+        title: data.title,
+        startsAt: data.startsAt,
+        endsAt: data.endsAt,
+        pinned: data.pinned ?? false,
+        googleEventId: data.googleEventId ?? null,
+        googleCalendarId: data.googleCalendarId ?? null,
+        engineKey: data.engineKey ?? null,
+      });
+      blocks.push(block);
+      return block;
+    },
+    async update(_userId: string, id: string, data: UpdateScheduledBlockInput): Promise<ScheduledBlock> {
+      const block = blocks.find((b) => b.id === id);
+      if (!block) throw new Error(`block ${id} not found`);
+      Object.assign(block, data);
+      return block;
+    },
+    async delete(_userId: string, id: string): Promise<void> {
+      blocks = blocks.filter((b) => b.id !== id);
+    },
+    all(): ScheduledBlock[] {
+      return [...blocks];
+    },
+  };
 }
