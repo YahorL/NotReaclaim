@@ -89,4 +89,20 @@ describe('syncPrimaryCalendar', () => {
     expect(client.listCalls[1]!.timeMin).toBeTruthy();
     expect(d.syncState.upserts[0]).toMatchObject({ syncToken: 'tok-fresh' });
   });
+
+  it('full resync clears the calendar wholesale before upserting', async () => {
+    const client = new FakeGoogleClient();
+    client.listQueue = [{ events: [timed('e1', '2026-01-05T09:00:00Z', '2026-01-05T10:00:00Z')], nextSyncToken: 'tok' }];
+    const d = deps(client); // no prior syncToken -> full sync
+    await syncPrimaryCalendar(d, 'u1', 1000);
+    expect(d.events.clearedCalendars).toEqual(['primary']);
+  });
+
+  it('incremental sync does NOT clear the calendar', async () => {
+    const client = new FakeGoogleClient();
+    client.listQueue = [{ events: [timed('e1', '2026-01-05T09:00:00Z', '2026-01-05T10:00:00Z')], nextSyncToken: 'tok2' }];
+    const d = deps(client, makeSyncState({ syncToken: 'tok1' }));
+    await syncPrimaryCalendar(d, 'u1', 2000);
+    expect(d.events.clearedCalendars).toEqual([]);
+  });
 });

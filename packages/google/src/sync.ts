@@ -17,7 +17,7 @@ export interface SyncDeps {
   client: GoogleClient;
   tokens: AccessTokenProvider;
   syncState: Pick<CalendarSyncStateRepository, 'getByCalendar' | 'upsert'>;
-  events: Pick<CalendarEventRepository, 'upsertMany' | 'deleteByGoogleEventIds'>;
+  events: Pick<CalendarEventRepository, 'upsertMany' | 'deleteByGoogleEventIds' | 'deleteByCalendar'>;
 }
 
 export interface SyncResult {
@@ -89,6 +89,9 @@ export async function syncPrimaryCalendar(deps: SyncDeps, userId: string, now: n
     });
   }
 
+  if (fullResync) {
+    await deps.events.deleteByCalendar(userId, PRIMARY);
+  }
   if (toUpsert.length > 0) await deps.events.upsertMany(userId, toUpsert);
   if (toDelete.length > 0) await deps.events.deleteByGoogleEventIds(userId, toDelete);
 

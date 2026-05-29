@@ -78,9 +78,9 @@ export function createGoogleClient(config: GoogleClientConfig): GoogleClient {
     async listEvents({ accessToken, calendarId, syncToken, pageToken, timeMin }: ListEventsArgs): Promise<ListEventsResult> {
       const url = new URL(`${CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events`);
       url.searchParams.set('singleEvents', 'true');
-      url.searchParams.set('showDeleted', 'true');
       if (syncToken) {
         url.searchParams.set('syncToken', syncToken);
+        url.searchParams.set('showDeleted', 'true');
       } else if (timeMin) {
         url.searchParams.set('timeMin', timeMin);
       }

@@ -119,6 +119,7 @@ export function fakeSyncStateRepo(initial: CalendarSyncState | null = null) {
 export function fakeEventsRepo() {
   const upserted: UpsertCalendarEventInput[][] = [];
   const deleted: string[][] = [];
+  const clearedCalendars: string[] = [];
   return {
     async upsertMany(_userId: string, events: UpsertCalendarEventInput[]): Promise<void> {
       upserted.push(events);
@@ -126,8 +127,12 @@ export function fakeEventsRepo() {
     async deleteByGoogleEventIds(_userId: string, ids: string[]): Promise<void> {
       deleted.push(ids);
     },
+    async deleteByCalendar(_userId: string, googleCalendarId: string): Promise<void> {
+      clearedCalendars.push(googleCalendarId);
+    },
     upserted,
     deleted,
+    clearedCalendars,
   };
 }
 
