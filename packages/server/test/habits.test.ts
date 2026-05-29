@@ -1,0 +1,23 @@
+import { describe, it, expect } from 'vitest';
+import { buildTestApp, tokenFor } from './fakes.js';
+
+const habitBody = { title: 'Exercise', priority: 2, chunkMs: 1800000, perPeriod: 3, eligibleDays: [1, 3, 5] };
+
+describe('habit routes', () => {
+  it('creates and lists habits', async () => {
+    const { app } = buildTestApp();
+    const token = await tokenFor(app);
+    const auth = { authorization: `Bearer ${token}` };
+    const created = await app.inject({ method: 'POST', url: '/habits', headers: auth, payload: habitBody });
+    expect(created.statusCode).toBe(201);
+    const list = await app.inject({ method: 'GET', url: '/habits', headers: auth });
+    expect(list.json()).toHaveLength(1);
+  });
+
+  it('404 for a missing habit and 401 without a token', async () => {
+    const { app } = buildTestApp();
+    const token = await tokenFor(app);
+    expect((await app.inject({ method: 'GET', url: '/habits/nope', headers: { authorization: `Bearer ${token}` } })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/habits' })).statusCode).toBe(401);
+  });
+});
