@@ -1,5 +1,5 @@
 import type { PrismaClient, Habit, HabitStatus, HabitPeriod } from '@prisma/client';
-import { NotFoundError } from '../errors.js';
+import { NotFoundError, translatePrismaError } from '../errors.js';
 
 export interface CreateHabitInput {
   title: string;
@@ -39,11 +39,16 @@ export function createHabitRepository(prisma: PrismaClient) {
     },
 
     async update(userId: string, id: string, data: UpdateHabitInput): Promise<Habit> {
-      const result = await prisma.habit.updateMany({ where: { id, userId }, data });
-      if (result.count === 0) {
-        throw new NotFoundError(`Habit ${id} not found for user`);
+      try {
+        const result = await prisma.habit.updateMany({ where: { id, userId }, data });
+        if (result.count === 0) {
+          throw new NotFoundError(`Habit ${id} not found for user`);
+        }
+        return await prisma.habit.findUniqueOrThrow({ where: { id } });
+      } catch (error) {
+        if (error instanceof NotFoundError) throw error;
+        translatePrismaError(error);
       }
-      return prisma.habit.findUniqueOrThrow({ where: { id } });
     },
 
     async delete(userId: string, id: string): Promise<void> {

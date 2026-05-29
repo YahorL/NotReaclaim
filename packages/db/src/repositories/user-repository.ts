@@ -35,11 +35,16 @@ export function createUserRepository(prisma: PrismaClient) {
     },
 
     async update(id: string, data: UpdateUserInput): Promise<User> {
-      const result = await prisma.user.updateMany({ where: { id }, data });
-      if (result.count === 0) {
-        throw new NotFoundError(`User ${id} not found`);
+      try {
+        const result = await prisma.user.updateMany({ where: { id }, data });
+        if (result.count === 0) {
+          throw new NotFoundError(`User ${id} not found`);
+        }
+        return await prisma.user.findUniqueOrThrow({ where: { id } });
+      } catch (error) {
+        if (error instanceof NotFoundError) throw error;
+        translatePrismaError(error);
       }
-      return prisma.user.findUniqueOrThrow({ where: { id } });
     },
   };
 }

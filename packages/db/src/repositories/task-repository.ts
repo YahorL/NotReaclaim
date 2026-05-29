@@ -1,5 +1,5 @@
 import type { PrismaClient, Task, TaskStatus } from '@prisma/client';
-import { NotFoundError } from '../errors.js';
+import { NotFoundError, translatePrismaError } from '../errors.js';
 
 export interface CreateTaskInput {
   title: string;
@@ -41,11 +41,16 @@ export function createTaskRepository(prisma: PrismaClient) {
     },
 
     async update(userId: string, id: string, data: UpdateTaskInput): Promise<Task> {
-      const result = await prisma.task.updateMany({ where: { id, userId }, data });
-      if (result.count === 0) {
-        throw new NotFoundError(`Task ${id} not found for user`);
+      try {
+        const result = await prisma.task.updateMany({ where: { id, userId }, data });
+        if (result.count === 0) {
+          throw new NotFoundError(`Task ${id} not found for user`);
+        }
+        return await prisma.task.findUniqueOrThrow({ where: { id } });
+      } catch (error) {
+        if (error instanceof NotFoundError) throw error;
+        translatePrismaError(error);
       }
-      return prisma.task.findUniqueOrThrow({ where: { id } });
     },
 
     async delete(userId: string, id: string): Promise<void> {

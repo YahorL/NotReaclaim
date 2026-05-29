@@ -31,11 +31,16 @@ export function createScheduledBlockRepository(prisma: PrismaClient) {
     },
 
     async setPinned(userId: string, id: string, pinned: boolean): Promise<ScheduledBlock> {
-      const result = await prisma.scheduledBlock.updateMany({ where: { id, userId }, data: { pinned } });
-      if (result.count === 0) {
-        throw new NotFoundError(`ScheduledBlock ${id} not found for user`);
+      try {
+        const result = await prisma.scheduledBlock.updateMany({ where: { id, userId }, data: { pinned } });
+        if (result.count === 0) {
+          throw new NotFoundError(`ScheduledBlock ${id} not found for user`);
+        }
+        return await prisma.scheduledBlock.findUniqueOrThrow({ where: { id } });
+      } catch (error) {
+        if (error instanceof NotFoundError) throw error;
+        translatePrismaError(error);
       }
-      return prisma.scheduledBlock.findUniqueOrThrow({ where: { id } });
     },
 
     async delete(userId: string, id: string): Promise<void> {

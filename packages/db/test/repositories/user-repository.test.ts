@@ -36,4 +36,39 @@ describe('UserRepository', () => {
       repo.update('00000000-0000-0000-0000-000000000000', { googleRefreshToken: 'x' }),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
+
+  it('throws ConflictError when updating email to an existing one', async () => {
+    await repo.create({ email: 'taken@example.com' });
+    const other = await repo.create({ email: 'other@example.com' });
+    await expect(
+      repo.update(other.id, { email: 'taken@example.com' }),
+    ).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it('cascade-deletes child rows when the user is deleted', async () => {
+    const user = await repo.create({ email: 'cascade@example.com' });
+    const task = await prisma.task.create({
+      data: {
+        userId: user.id,
+        title: 'T',
+        priority: 1,
+        durationMs: 3600000,
+        dueBy: new Date('2026-01-02T17:00:00.000Z'),
+        minChunkMs: 900000,
+        maxChunkMs: 1800000,
+      },
+    });
+    await prisma.scheduledBlock.create({
+      data: {
+        userId: user.id,
+        taskId: task.id,
+        title: 'Focus',
+        startsAt: new Date('2026-01-01T10:00:00.000Z'),
+        endsAt: new Date('2026-01-01T10:30:00.000Z'),
+      },
+    });
+    await prisma.user.delete({ where: { id: user.id } });
+    expect(await prisma.task.count({ where: { userId: user.id } })).toBe(0);
+    expect(await prisma.scheduledBlock.count({ where: { userId: user.id } })).toBe(0);
+  });
 });
