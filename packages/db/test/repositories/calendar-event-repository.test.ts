@@ -40,12 +40,19 @@ describe('CalendarEventRepository', () => {
     expect(all[0]?.title).toBe('Renamed');
   });
 
-  it('deletes events by googleEventId and scopes to the user', async () => {
+  it('deletes events by googleEventId scoped to user and calendar', async () => {
     const user = await users.create({ email: 'c3@example.com' });
-    await repo.upsertMany(user.id, [event(), event({ googleEventId: 'g2' })]);
-    await repo.deleteByGoogleEventIds(user.id, ['g1']);
-    const remaining = await repo.listByUserInRange(user.id, new Date('2026-01-01T00:00:00.000Z'), new Date('2026-01-02T00:00:00.000Z'));
-    expect(remaining.map((e) => e.googleEventId)).toEqual(['g2']);
+    await repo.upsertMany(user.id, [
+      event({ googleCalendarId: 'primary', googleEventId: 'g1' }),
+      event({ googleCalendarId: 'primary', googleEventId: 'g2' }),
+      event({ googleCalendarId: 'other', googleEventId: 'g1' }),
+    ]);
+    await repo.deleteByGoogleEventIds(user.id, 'primary', ['g1']);
+    const all = await repo.listByUserInRange(
+      user.id, new Date('2026-01-01T00:00:00.000Z'), new Date('2026-01-02T00:00:00.000Z'),
+    );
+    expect(all.map((e) => `${e.googleCalendarId}:${e.googleEventId}`).sort())
+      .toEqual(['other:g1', 'primary:g2']);
   });
 
   it('deleteByCalendar removes all events for one calendar, scoped by calendar id', async () => {

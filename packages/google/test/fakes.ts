@@ -153,7 +153,7 @@ export function fakeEventsRepo() {
     async upsertMany(_userId: string, events: UpsertCalendarEventInput[]): Promise<void> {
       upserted.push(events);
     },
-    async deleteByGoogleEventIds(_userId: string, ids: string[]): Promise<void> {
+    async deleteByGoogleEventIds(_userId: string, _googleCalendarId: string, ids: string[]): Promise<void> {
       deleted.push(ids);
     },
     async deleteByCalendar(_userId: string, googleCalendarId: string): Promise<void> {
