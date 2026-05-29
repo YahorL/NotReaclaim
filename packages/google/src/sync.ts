@@ -93,7 +93,7 @@ export async function syncPrimaryCalendar(deps: SyncDeps, userId: string, now: n
     await deps.events.deleteByCalendar(userId, PRIMARY);
   }
   if (toUpsert.length > 0) await deps.events.upsertMany(userId, toUpsert);
-  if (toDelete.length > 0) await deps.events.deleteByGoogleEventIds(userId, toDelete);
+  if (toDelete.length > 0) await deps.events.deleteByGoogleEventIds(userId, PRIMARY, toDelete);
 
   await deps.syncState.upsert(userId, PRIMARY, {
     syncToken: collected.nextSyncToken ?? null,
