@@ -106,4 +106,32 @@ describe('reconcile', () => {
     expect(client.deletedEvents).toHaveLength(0);
     expect(store.all().some((b) => b.id === 'b1')).toBe(true);
   });
+
+  it('updates the Google event and DB block when an engine placement moved', async () => {
+    // Seed a NON-pinned block for task t1 at the WRONG time (14:00); the engine
+    // will recompute task:t1:0 at 09:00 (working-hours start), so reconcile must
+    // UPDATE in place (not create/delete).
+    const store = fakeScheduledBlockStore([
+      makeScheduledBlock({
+        id: 'b1', engineKey: 'task:t1:0', googleEventId: 'g1', googleCalendarId: 'cal-auto',
+        pinned: false,
+        startsAt: new Date('2026-01-05T14:00:00.000Z'),
+        endsAt: new Date('2026-01-05T14:30:00.000Z'),
+      }),
+    ]);
+    const client = new FakeGoogleClient();
+    // drift sees the event unchanged at 14:00 (so it is neither pinned nor removed)
+    client.listQueue = [{ events: googleEventsFromStore(store) }];
+    const deps = buildDeps({ store, tasks: [makeTask({ id: 't1' })], client });
+
+    const result = await reconcile(deps, 'u1', NOW);
+
+    expect(result).toMatchObject({ created: 0, updated: 1, deleted: 0 });
+    expect(client.updatedEvents).toHaveLength(1);
+    expect(client.updatedEvents[0]).toMatchObject({ calendarId: 'cal-auto', googleEventId: 'g1' });
+    expect(client.insertedEvents).toHaveLength(0);
+    expect(client.deletedEvents).toHaveLength(0);
+    const block = store.all().find((b) => b.id === 'b1')!;
+    expect(block.startsAt.toISOString()).toBe('2026-01-05T09:00:00.000Z');
+  });
 });
