@@ -1,0 +1,126 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TaskStatus {
+  pending
+  scheduled
+  completed
+  archived
+}
+
+enum HabitPeriod {
+  week
+}
+
+enum HabitStatus {
+  active
+  paused
+}
+
+model User {
+  id                 String   @id @default(uuid())
+  email              String   @unique
+  googleId           String?  @unique
+  googleRefreshToken String?
+  createdAt          DateTime @default(now()) @db.Timestamptz
+  updatedAt          DateTime @updatedAt @db.Timestamptz
+
+  settings        Settings?
+  calendarEvents  CalendarEvent[]
+  tasks           Task[]
+  habits          Habit[]
+  scheduledBlocks ScheduledBlock[]
+}
+
+model Settings {
+  id                String   @id @default(uuid())
+  userId            String   @unique
+  timezone          String
+  workingHours      Json
+  horizonDays       Int      @default(14)
+  defaultMinChunkMs Int
+  defaultMaxChunkMs Int
+  createdAt         DateTime @default(now()) @db.Timestamptz
+  updatedAt         DateTime @updatedAt @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CalendarEvent {
+  id               String   @id @default(uuid())
+  userId           String
+  googleCalendarId String
+  googleEventId    String
+  title            String
+  startsAt         DateTime @db.Timestamptz
+  endsAt           DateTime @db.Timestamptz
+  createdAt        DateTime @default(now()) @db.Timestamptz
+  updatedAt        DateTime @updatedAt @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, googleCalendarId, googleEventId])
+}
+
+model Task {
+  id           String     @id @default(uuid())
+  userId       String
+  title        String
+  priority     Int
+  durationMs   Int
+  dueBy        DateTime   @db.Timestamptz
+  minChunkMs   Int
+  maxChunkMs   Int
+  category     String?
+  status       TaskStatus @default(pending)
+  timeLoggedMs Int        @default(0)
+  createdAt    DateTime   @default(now()) @db.Timestamptz
+  updatedAt    DateTime   @updatedAt @db.Timestamptz
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scheduledBlocks ScheduledBlock[]
+}
+
+model Habit {
+  id                   String      @id @default(uuid())
+  userId               String
+  title                String
+  priority             Int
+  chunkMs              Int
+  perPeriod            Int
+  periodType           HabitPeriod @default(week)
+  preferredStartMinute Int?
+  preferredEndMinute   Int?
+  eligibleDays         Int[]
+  status               HabitStatus @default(active)
+  createdAt            DateTime    @default(now()) @db.Timestamptz
+  updatedAt            DateTime    @updatedAt @db.Timestamptz
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scheduledBlocks ScheduledBlock[]
+}
+
+model ScheduledBlock {
+  id               String   @id @default(uuid())
+  userId           String
+  taskId           String?
+  habitId          String?
+  title            String
+  startsAt         DateTime @db.Timestamptz
+  endsAt           DateTime @db.Timestamptz
+  pinned           Boolean  @default(false)
+  googleEventId    String?
+  googleCalendarId String?
+  createdAt        DateTime @default(now()) @db.Timestamptz
+  updatedAt        DateTime @updatedAt @db.Timestamptz
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task  Task?  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  habit Habit? @relation(fields: [habitId], references: [id], onDelete: Cascade)
+}
