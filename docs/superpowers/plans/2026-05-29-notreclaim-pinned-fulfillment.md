@@ -394,4 +394,10 @@ git commit -m "fix(google): clear engineKey on pin; regression test for pinned-t
 - **Backward compatibility:** `periodTargets` absent ⇒ `target === perPeriod`, so existing scheduler/3a tests are unchanged (Task 1 Step 5 verifies). Core reduction only triggers on pinned coverage, so existing core tests with no pinned blocks are unaffected.
 - **No placeholders; determinism:** complete code throughout; `now` injected; no new randomness.
 - **Build order:** Task 1 rebuilds scheduler; Task 2 rebuilds core; both precede the google work in Task 3 (whose regression test depends on Task 2's task reduction).
+
+## Post-Execution Notes
+
+- Implemented as planned; the only conditional step that fired was adding `engineKey: null` to `@notreclaim/core`'s `makeBlock` test fake (a latent type gap from 3b-ii's `ScheduledBlock.engineKey` addition).
+- Final review: APPROVED_WITH_NITS — no behavioral defects; the original `ConflictError`/duplicate bug is fixed (verified by trace: fully-covered tasks are dropped, and pinned blocks carry a null `engineKey`). The nits were test self-containment; a partial-coverage reconcile test was added in response (a 60-min task + 30-min pin → one fresh 30-min placement coexisting with the pinned block).
+- **Final counts:** scheduler 31, db 34, core 27, google 33 — all green.
 ```
