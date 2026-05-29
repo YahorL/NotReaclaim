@@ -34,7 +34,7 @@ describe('TokenService', () => {
     expect(client.refreshCalls).toBe(1);
     expect(await svc.getAccessToken('u1', 2000)).toBe('a1'); // cached (well before expiry - skew)
     expect(client.refreshCalls).toBe(1);
-    expect(await svc.getAccessToken('u1', 3_600_000)).toBe('a2'); // within 60s skew of expiry -> refresh
+    expect(await svc.getAccessToken('u1', 3_570_000)).toBe('a2'); // within 60s skew of expiry -> refresh
     expect(client.refreshCalls).toBe(2);
   });
 
