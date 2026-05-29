@@ -45,7 +45,6 @@ export function scheduleTask(free: Interval[], task: FlexibleTask): ScheduleItem
   return { blocks, free: result.free, unscheduled };
 }
 
-/** Place up to perPeriod occurrences of the habit within each period. */
 export function scheduleHabit(free: Interval[], habit: Habit): ScheduleItemResult {
   let remainingFree = free;
   const blocks: ScheduledBlock[] = [];
@@ -54,15 +53,18 @@ export function scheduleHabit(free: Interval[], habit: Habit): ScheduleItemResul
 
   for (const period of habit.periods) {
     const periodWindow: Interval[] = [period];
+    const bound = habit.allowedWindows
+      ? intersectIntervals(habit.allowedWindows, periodWindow)
+      : periodWindow;
     const preferred = habit.preferredWindows
-      ? intersectIntervals(habit.preferredWindows, periodWindow)
+      ? intersectIntervals(habit.preferredWindows, bound)
       : undefined;
 
     for (let k = 0; k < habit.perPeriod; k++) {
-      const primaryWindow = preferred && preferred.length > 0 ? preferred : periodWindow;
+      const primaryWindow = preferred && preferred.length > 0 ? preferred : bound;
       let res = placeItem(remainingFree, [habit.chunkMs], period.end, primaryWindow);
-      if (res.placements.length === 0 && primaryWindow !== periodWindow) {
-        res = placeItem(remainingFree, [habit.chunkMs], period.end, periodWindow);
+      if (res.placements.length === 0 && primaryWindow !== bound) {
+        res = placeItem(remainingFree, [habit.chunkMs], period.end, bound);
       }
 
       if (res.placements.length === 0) {

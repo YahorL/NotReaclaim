@@ -4,6 +4,10 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./mappers": { "types": "./dist/mappers.d.ts", "default": "./dist/mappers.js" }
+  },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
