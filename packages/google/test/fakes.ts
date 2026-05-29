@@ -1,6 +1,7 @@
 import type { User } from '@notreclaim/db';
 import type {
   GoogleClient,
+  GoogleEventWrite,
   GoogleTokens,
   ListEventsArgs,
   ListEventsResult,
@@ -13,6 +14,7 @@ export function makeUser(over: Partial<User> = {}): User {
     email: 'a@example.com',
     googleId: null,
     googleRefreshToken: null,
+    autoScheduledCalendarId: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
     ...over,
@@ -55,6 +57,32 @@ export class FakeGoogleClient implements GoogleClient {
     if (next === undefined) return { events: [] };
     if (next === 'GONE') throw new SyncTokenExpiredError();
     return next;
+  }
+
+  createdCalendars: string[] = [];
+  createCalendarResult = { calendarId: 'cal-auto' };
+  insertedEvents: Array<{ calendarId: string; event: GoogleEventWrite }> = [];
+  updatedEvents: Array<{ calendarId: string; googleEventId: string; event: GoogleEventWrite }> = [];
+  deletedEvents: Array<{ calendarId: string; googleEventId: string }> = [];
+  private insertCount = 0;
+
+  async createCalendar(_accessToken: string, summary: string): Promise<{ calendarId: string }> {
+    this.createdCalendars.push(summary);
+    return this.createCalendarResult;
+  }
+
+  async insertEvent(_accessToken: string, calendarId: string, event: GoogleEventWrite): Promise<{ googleEventId: string }> {
+    this.insertCount += 1;
+    this.insertedEvents.push({ calendarId, event });
+    return { googleEventId: `g-evt-${this.insertCount}` };
+  }
+
+  async updateEvent(_accessToken: string, calendarId: string, googleEventId: string, event: GoogleEventWrite): Promise<void> {
+    this.updatedEvents.push({ calendarId, googleEventId, event });
+  }
+
+  async deleteEvent(_accessToken: string, calendarId: string, googleEventId: string): Promise<void> {
+    this.deletedEvents.push({ calendarId, googleEventId });
   }
 }
 

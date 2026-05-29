@@ -12,6 +12,7 @@
     "connect": "node --experimental-strip-types scripts/connect.ts"
   },
   "dependencies": {
+    "@notreclaim/core": "*",
     "@notreclaim/db": "*",
     "google-auth-library": "^9.14.0"
   },
