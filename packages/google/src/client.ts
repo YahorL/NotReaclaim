@@ -26,6 +26,7 @@ export interface ListEventsArgs {
   syncToken?: string;
   pageToken?: string;
   timeMin?: string; // RFC3339, used only on the initial full sync
+  timeMax?: string;
 }
 
 export interface ListEventsResult {
@@ -34,10 +35,20 @@ export interface ListEventsResult {
   nextSyncToken?: string;
 }
 
+export interface GoogleEventWrite {
+  summary: string;
+  startDateTime: string; // RFC3339
+  endDateTime: string;   // RFC3339
+}
+
 /** The seam everything mocks. */
 export interface GoogleClient {
   getConsentUrl(redirectUri: string, state?: string): string;
   exchangeCode(code: string, redirectUri: string): Promise<GoogleTokens>;
   refreshAccessToken(refreshToken: string): Promise<{ accessToken: string; expiresAt: number }>;
   listEvents(args: ListEventsArgs): Promise<ListEventsResult>;
+  createCalendar(accessToken: string, summary: string): Promise<{ calendarId: string }>;
+  insertEvent(accessToken: string, calendarId: string, event: GoogleEventWrite): Promise<{ googleEventId: string }>;
+  updateEvent(accessToken: string, calendarId: string, googleEventId: string, event: GoogleEventWrite): Promise<void>;
+  deleteEvent(accessToken: string, calendarId: string, googleEventId: string): Promise<void>;
 }

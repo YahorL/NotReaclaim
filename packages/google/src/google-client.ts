@@ -1,5 +1,5 @@
 import { OAuth2Client } from 'google-auth-library';
-import type { GoogleClient, GoogleEvent, GoogleTokens, ListEventsArgs, ListEventsResult } from './client.js';
+import type { GoogleClient, GoogleEvent, GoogleEventWrite, GoogleTokens, ListEventsArgs, ListEventsResult } from './client.js';
 import { GoogleApiError, GoogleAuthError, SyncTokenExpiredError } from './errors.js';
 
 const SCOPES = ['openid', 'email', 'https://www.googleapis.com/auth/calendar'];
@@ -75,7 +75,7 @@ export function createGoogleClient(config: GoogleClientConfig): GoogleClient {
       }
     },
 
-    async listEvents({ accessToken, calendarId, syncToken, pageToken, timeMin }: ListEventsArgs): Promise<ListEventsResult> {
+    async listEvents({ accessToken, calendarId, syncToken, pageToken, timeMin, timeMax }: ListEventsArgs): Promise<ListEventsResult> {
       const url = new URL(`${CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events`);
       url.searchParams.set('singleEvents', 'true');
       if (syncToken) {
@@ -84,6 +84,7 @@ export function createGoogleClient(config: GoogleClientConfig): GoogleClient {
       } else if (timeMin) {
         url.searchParams.set('timeMin', timeMin);
       }
+      if (timeMax && !syncToken) url.searchParams.set('timeMax', timeMax);
       if (pageToken) url.searchParams.set('pageToken', pageToken);
 
       const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
@@ -100,6 +101,56 @@ export function createGoogleClient(config: GoogleClientConfig): GoogleClient {
         nextPageToken: data.nextPageToken,
         nextSyncToken: data.nextSyncToken,
       };
+    },
+
+    async createCalendar(accessToken, summary) {
+      const res = await fetch(`${CALENDAR_API}/calendars`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ summary }),
+      });
+      if (!res.ok) throw new GoogleApiError(res.status, await res.text());
+      const data = (await res.json()) as { id: string };
+      return { calendarId: data.id };
+    },
+
+    async insertEvent(accessToken, calendarId, event: GoogleEventWrite) {
+      const body = {
+        summary: event.summary,
+        start: { dateTime: event.startDateTime },
+        end: { dateTime: event.endDateTime },
+      };
+      const res = await fetch(`${CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new GoogleApiError(res.status, await res.text());
+      const data = (await res.json()) as { id: string };
+      return { googleEventId: data.id };
+    },
+
+    async updateEvent(accessToken, calendarId, googleEventId, event: GoogleEventWrite) {
+      const body = {
+        summary: event.summary,
+        start: { dateTime: event.startDateTime },
+        end: { dateTime: event.endDateTime },
+      };
+      const res = await fetch(`${CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(googleEventId)}`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new GoogleApiError(res.status, await res.text());
+    },
+
+    async deleteEvent(accessToken, calendarId, googleEventId) {
+      const res = await fetch(`${CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(googleEventId)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (res.status === 404 || res.status === 410) return;
+      if (!res.ok) throw new GoogleApiError(res.status, await res.text());
     },
   };
 }

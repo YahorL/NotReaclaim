@@ -1,6 +1,8 @@
-import type { User } from '@notreclaim/db';
+import type { User, ScheduledBlock, CreateScheduledBlockInput, UpdateScheduledBlockInput, Settings, Task } from '@notreclaim/db';
+import type { SchedulingRepositories } from '@notreclaim/core';
 import type {
   GoogleClient,
+  GoogleEventWrite,
   GoogleTokens,
   ListEventsArgs,
   ListEventsResult,
@@ -13,6 +15,7 @@ export function makeUser(over: Partial<User> = {}): User {
     email: 'a@example.com',
     googleId: null,
     googleRefreshToken: null,
+    autoScheduledCalendarId: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
     ...over,
@@ -55,6 +58,32 @@ export class FakeGoogleClient implements GoogleClient {
     if (next === undefined) return { events: [] };
     if (next === 'GONE') throw new SyncTokenExpiredError();
     return next;
+  }
+
+  createdCalendars: string[] = [];
+  createCalendarResult = { calendarId: 'cal-auto' };
+  insertedEvents: Array<{ calendarId: string; event: GoogleEventWrite }> = [];
+  updatedEvents: Array<{ calendarId: string; googleEventId: string; event: GoogleEventWrite }> = [];
+  deletedEvents: Array<{ calendarId: string; googleEventId: string }> = [];
+  private insertCount = 0;
+
+  async createCalendar(_accessToken: string, summary: string): Promise<{ calendarId: string }> {
+    this.createdCalendars.push(summary);
+    return this.createCalendarResult;
+  }
+
+  async insertEvent(_accessToken: string, calendarId: string, event: GoogleEventWrite): Promise<{ googleEventId: string }> {
+    this.insertCount += 1;
+    this.insertedEvents.push({ calendarId, event });
+    return { googleEventId: `g-evt-${this.insertCount}` };
+  }
+
+  async updateEvent(_accessToken: string, calendarId: string, googleEventId: string, event: GoogleEventWrite): Promise<void> {
+    this.updatedEvents.push({ calendarId, googleEventId, event });
+  }
+
+  async deleteEvent(_accessToken: string, calendarId: string, googleEventId: string): Promise<void> {
+    this.deletedEvents.push({ calendarId, googleEventId });
   }
 }
 
@@ -139,4 +168,113 @@ export function fakeEventsRepo() {
 /** Minimal access-token provider for sync tests. */
 export function fakeTokenProvider(token = 'access-token') {
   return { async getAccessToken(): Promise<string> { return token; } };
+}
+
+export function makeScheduledBlock(over: Partial<ScheduledBlock> = {}): ScheduledBlock {
+  return {
+    id: 'blk1',
+    userId: 'u1',
+    taskId: 't1',
+    habitId: null,
+    title: 'Focus',
+    startsAt: new Date('2026-01-05T09:00:00.000Z'),
+    endsAt: new Date('2026-01-05T09:30:00.000Z'),
+    pinned: false,
+    googleEventId: null,
+    googleCalendarId: null,
+    engineKey: null,
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+    ...over,
+  };
+}
+
+/** Stateful in-memory ScheduledBlock repository (reflects mutations). */
+export function fakeScheduledBlockStore(seed: ScheduledBlock[] = []) {
+  let blocks = [...seed];
+  let counter = seed.length;
+  return {
+    async listByUserInRange(): Promise<ScheduledBlock[]> {
+      return [...blocks];
+    },
+    async create(userId: string, data: CreateScheduledBlockInput): Promise<ScheduledBlock> {
+      counter += 1;
+      const block = makeScheduledBlock({
+        id: `blk-${counter}`,
+        userId,
+        taskId: data.taskId ?? null,
+        habitId: data.habitId ?? null,
+        title: data.title,
+        startsAt: data.startsAt,
+        endsAt: data.endsAt,
+        pinned: data.pinned ?? false,
+        googleEventId: data.googleEventId ?? null,
+        googleCalendarId: data.googleCalendarId ?? null,
+        engineKey: data.engineKey ?? null,
+      });
+      blocks.push(block);
+      return block;
+    },
+    async update(_userId: string, id: string, data: UpdateScheduledBlockInput): Promise<ScheduledBlock> {
+      const block = blocks.find((b) => b.id === id);
+      if (!block) throw new Error(`block ${id} not found`);
+      Object.assign(block, data);
+      return block;
+    },
+    async delete(_userId: string, id: string): Promise<void> {
+      blocks = blocks.filter((b) => b.id !== id);
+    },
+    all(): ScheduledBlock[] {
+      return [...blocks];
+    },
+  };
+}
+
+export function makeSettings(over: Partial<Settings> = {}): Settings {
+  return {
+    id: 's1',
+    userId: 'u1',
+    timezone: 'utc',
+    workingHours: [{ weekday: 1, startMinute: 540, endMinute: 1020 }] as unknown as Settings['workingHours'],
+    horizonDays: 1,
+    defaultMinChunkMs: 1800000,
+    defaultMaxChunkMs: 1800000,
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+    ...over,
+  };
+}
+
+export function makeTask(over: Partial<Task> = {}): Task {
+  return {
+    id: 't1',
+    userId: 'u1',
+    title: 'Focus',
+    priority: 1,
+    durationMs: 1800000,
+    dueBy: new Date('2026-01-05T17:00:00.000Z'),
+    minChunkMs: 1800000,
+    maxChunkMs: 1800000,
+    category: null,
+    status: 'pending',
+    timeLoggedMs: 0,
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+    ...over,
+  };
+}
+
+/** Build SchedulingRepositories for reconcile tests, sharing one block store. */
+export function fakeSchedulingRepos(opts: {
+  settings: Settings | null;
+  tasks?: Task[];
+  blockStore: ReturnType<typeof fakeScheduledBlockStore>;
+}): SchedulingRepositories {
+  return {
+    settings: { getByUserId: async () => opts.settings },
+    calendarEvents: { listByUserInRange: async () => [] },
+    tasks: { listByUser: async () => opts.tasks ?? [] },
+    habits: { listByUser: async () => [] },
+    scheduledBlocks: { listByUserInRange: async () => opts.blockStore.all() },
+  };
 }

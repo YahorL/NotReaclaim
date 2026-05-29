@@ -15,7 +15,7 @@ export type { TaskRepository, CreateTaskInput, UpdateTaskInput } from './reposit
 export { createHabitRepository } from './repositories/habit-repository.js';
 export type { HabitRepository, CreateHabitInput, UpdateHabitInput } from './repositories/habit-repository.js';
 export { createScheduledBlockRepository } from './repositories/scheduled-block-repository.js';
-export type { ScheduledBlockRepository, CreateScheduledBlockInput } from './repositories/scheduled-block-repository.js';
+export type { ScheduledBlockRepository, CreateScheduledBlockInput, UpdateScheduledBlockInput } from './repositories/scheduled-block-repository.js';
 export { createCalendarSyncStateRepository } from './repositories/calendar-sync-state-repository.js';
 export type { CalendarSyncStateRepository, UpsertSyncStateInput } from './repositories/calendar-sync-state-repository.js';
 
