@@ -1,4 +1,5 @@
-import type { User, ScheduledBlock, CreateScheduledBlockInput, UpdateScheduledBlockInput } from '@notreclaim/db';
+import type { User, ScheduledBlock, CreateScheduledBlockInput, UpdateScheduledBlockInput, Settings, Task } from '@notreclaim/db';
+import type { SchedulingRepositories } from '@notreclaim/core';
 import type {
   GoogleClient,
   GoogleEventWrite,
@@ -226,5 +227,54 @@ export function fakeScheduledBlockStore(seed: ScheduledBlock[] = []) {
     all(): ScheduledBlock[] {
       return [...blocks];
     },
+  };
+}
+
+export function makeSettings(over: Partial<Settings> = {}): Settings {
+  return {
+    id: 's1',
+    userId: 'u1',
+    timezone: 'utc',
+    workingHours: [{ weekday: 1, startMinute: 540, endMinute: 1020 }] as unknown as Settings['workingHours'],
+    horizonDays: 1,
+    defaultMinChunkMs: 1800000,
+    defaultMaxChunkMs: 1800000,
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+    ...over,
+  };
+}
+
+export function makeTask(over: Partial<Task> = {}): Task {
+  return {
+    id: 't1',
+    userId: 'u1',
+    title: 'Focus',
+    priority: 1,
+    durationMs: 1800000,
+    dueBy: new Date('2026-01-05T17:00:00.000Z'),
+    minChunkMs: 1800000,
+    maxChunkMs: 1800000,
+    category: null,
+    status: 'pending',
+    timeLoggedMs: 0,
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+    ...over,
+  };
+}
+
+/** Build SchedulingRepositories for reconcile tests, sharing one block store. */
+export function fakeSchedulingRepos(opts: {
+  settings: Settings | null;
+  tasks?: Task[];
+  blockStore: ReturnType<typeof fakeScheduledBlockStore>;
+}): SchedulingRepositories {
+  return {
+    settings: { getByUserId: async () => opts.settings },
+    calendarEvents: { listByUserInRange: async () => [] },
+    tasks: { listByUser: async () => opts.tasks ?? [] },
+    habits: { listByUser: async () => [] },
+    scheduledBlocks: { listByUserInRange: async () => opts.blockStore.all() },
   };
 }
