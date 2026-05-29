@@ -29,8 +29,8 @@ export function registerTaskRoutes(app: FastifyInstance, deps: AppDeps): void {
 
   app.patch('/tasks/:id', guard, async (request) => {
     const { id } = idParamSchema.parse(request.params);
-    const body = updateTaskSchema.parse(request.body);
-    const data = { ...body, ...(body.dueBy ? { dueBy: new Date(body.dueBy) } : {}) };
+    const { dueBy: dueByStr, ...rest } = updateTaskSchema.parse(request.body);
+    const data = { ...rest, ...(dueByStr ? { dueBy: new Date(dueByStr) } : {}) };
     return deps.repos.tasks.update(request.userId, id, data);
   });
 
