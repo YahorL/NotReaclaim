@@ -43,6 +43,13 @@ export interface Habit {
    * any free time within the period.
    */
   preferredWindows?: Interval[];
+  /**
+   * Optional HARD restriction: placement is confined to these windows
+   * (intersected with each period). Unlike preferredWindows, the engine never
+   * places outside allowedWindows — an occurrence that cannot fit there is left
+   * unscheduled. Omit for unrestricted placement (previous behavior).
+   */
+  allowedWindows?: Interval[];
 }
 
 /** Engine output: a concrete placement bound to a task or habit. */

@@ -102,3 +102,49 @@ describe('scheduleHabit', () => {
     ]);
   });
 });
+
+describe('scheduleHabit with allowedWindows (hard restriction)', () => {
+  it('places within preferred ∩ allowed', () => {
+    const free = [{ start: 0, end: 1000 }];
+    const result = scheduleHabit(free, habit({
+      perPeriod: 1,
+      allowedWindows: [{ start: 100, end: 200 }],
+      preferredWindows: [{ start: 150, end: 300 }],
+    }));
+    expect(result.blocks).toEqual([
+      { id: 'habit:h1:0', sourceType: 'habit', sourceId: 'h1', title: 'Exercise', start: 150, end: 180 },
+    ]);
+  });
+
+  it('falls back to allowed (not outside) when preferred does not fit', () => {
+    const free = [{ start: 0, end: 1000 }];
+    const result = scheduleHabit(free, habit({
+      perPeriod: 1,
+      allowedWindows: [{ start: 0, end: 200 }],
+      preferredWindows: [{ start: 0, end: 20 }],
+    }));
+    expect(result.blocks[0]).toMatchObject({ start: 0, end: 30 });
+  });
+
+  it('leaves an occurrence unscheduled rather than placing outside allowedWindows', () => {
+    const free = [{ start: 0, end: 1000 }];
+    const result = scheduleHabit(free, habit({
+      perPeriod: 1,
+      allowedWindows: [{ start: 500, end: 520 }],
+    }));
+    expect(result.blocks).toHaveLength(0);
+    expect(result.unscheduled).toHaveLength(1);
+    expect(result.unscheduled[0]).toMatchObject({ sourceId: 'h1', remainingMs: 30 });
+  });
+
+  it('does not place a second occurrence outside the allowed window', () => {
+    const free = [{ start: 0, end: 1000 }];
+    const result = scheduleHabit(free, habit({
+      perPeriod: 2,
+      allowedWindows: [{ start: 0, end: 40 }],
+    }));
+    expect(result.blocks).toHaveLength(1);
+    expect(result.blocks[0]).toMatchObject({ start: 0, end: 30 });
+    expect(result.unscheduled[0]).toMatchObject({ remainingMs: 30 });
+  });
+});
