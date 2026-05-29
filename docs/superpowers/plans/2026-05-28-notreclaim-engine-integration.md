@@ -474,8 +474,15 @@ export function expandWorkingWindows(
     const weekday = day.weekday % 7; // luxon Mon=1..Sun=7 -> Sun=0..Sat=6
     for (const wh of workingHours) {
       if (wh.weekday !== weekday) continue;
-      const start = Math.max(day.plus({ minutes: wh.startMinute }).toMillis(), now);
-      const end = Math.min(day.plus({ minutes: wh.endMinute }).toMillis(), horizonEnd);
+      // Use wall-clock set (not plus minutes) so DST transitions don't shift the hour.
+      const start = Math.max(
+        day.set({ hour: Math.floor(wh.startMinute / 60), minute: wh.startMinute % 60, second: 0, millisecond: 0 }).toMillis(),
+        now,
+      );
+      const end = Math.min(
+        day.set({ hour: Math.floor(wh.endMinute / 60), minute: wh.endMinute % 60, second: 0, millisecond: 0 }).toMillis(),
+        horizonEnd,
+      );
       if (end > start) windows.push({ start, end });
     }
     day = day.plus({ days: 1 });
@@ -637,8 +644,15 @@ export function expandHabit(
       if (dayEnd > dayStart) allowedWindows.push({ start: dayStart, end: dayEnd });
 
       if (hasPreferred) {
-        const ps = Math.max(day.plus({ minutes: habit.preferredStartMinute! }).toMillis(), now);
-        const pe = Math.min(day.plus({ minutes: habit.preferredEndMinute! }).toMillis(), horizonEnd);
+        // Use wall-clock set (not plus minutes) so DST transitions don't shift the hour.
+        const ps = Math.max(
+          day.set({ hour: Math.floor(habit.preferredStartMinute! / 60), minute: habit.preferredStartMinute! % 60, second: 0, millisecond: 0 }).toMillis(),
+          now,
+        );
+        const pe = Math.min(
+          day.set({ hour: Math.floor(habit.preferredEndMinute! / 60), minute: habit.preferredEndMinute! % 60, second: 0, millisecond: 0 }).toMillis(),
+          horizonEnd,
+        );
         if (pe > ps) preferredWindows.push({ start: ps, end: pe });
       }
     }
@@ -1162,4 +1176,10 @@ git commit -m "feat(core): add public exports"
 - **No placeholders:** every code/test step is complete; no "similar to" references.
 - **Determinism:** `now` is injected everywhere; timezone validity uses `DateTime.fromMillis(0, …)` not the clock; no `Math.random`.
 - **Cross-package build order:** Task 1 rebuilds `@notreclaim/scheduler`; Tasks 2–3 rebuild `@notreclaim/db`; both must precede core typechecking (covered by Task 3 Step 5).
+
+## Post-Execution Notes
+
+- **DST fix:** during execution the DST test caught that `day.plus({ minutes })` shifts the wall-clock hour across a spring-forward day. The implementation (and the Task 4/5 snippets above) use luxon `day.set({ hour, minute, … })` instead, which pins wall-clock time correctly. Day/week boundaries still use `plus({ days })`/`plus({ weeks })`/`startOf`, which are DST-correct.
+- **Added coverage** (from final review): empty `allowedWindows` schedules nothing (scheduler), empty `eligibleDays` and final-period clipping (`expandHabit`), and a habit end-to-end through `computeDesiredSchedule` (lands only on eligible days / reported unscheduled when none).
+- **Final counts:** scheduler 28, db 27, core 22 — all green.
 ```
