@@ -45,6 +45,7 @@ export async function detectDrift(
         startsAt: new Date(eventStart),
         endsAt: new Date(eventEnd),
         pinned: true,
+        engineKey: null,
       });
       pinned += 1;
     }

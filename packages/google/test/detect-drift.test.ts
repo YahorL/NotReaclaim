@@ -24,6 +24,7 @@ describe('detectDrift', () => {
     const b = store.all()[0]!;
     expect(b.pinned).toBe(true);
     expect(b.startsAt.toISOString()).toBe('2026-01-05T11:00:00.000Z');
+    expect(b.engineKey).toBeNull();
   });
 
   it('removes a block when its Google event is gone', async () => {
