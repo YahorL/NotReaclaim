@@ -67,4 +67,17 @@ describe('expandHabit', () => {
     expect(() => expandHabit(dbHabit(), 'Not/AZone', utc('2026-01-05T00:00:00'), 7))
       .toThrow(InvalidTimezoneError);
   });
+
+  it('produces empty allowedWindows when eligibleDays is empty', () => {
+    const now = utc('2026-01-05T00:00:00');
+    const h = expandHabit(dbHabit({ eligibleDays: [] }), 'utc', now, 7);
+    expect(h.allowedWindows).toEqual([]);
+  });
+
+  it('clips the final period to the horizon end', () => {
+    const now = utc('2026-01-05T00:00:00'); // Monday (ISO week start)
+    const h = expandHabit(dbHabit(), 'utc', now, 10); // horizon end = Jan 15
+    expect(h.periods).toHaveLength(2);
+    expect(h.periods[h.periods.length - 1]!.end).toBe(utc('2026-01-15T00:00:00'));
+  });
 });

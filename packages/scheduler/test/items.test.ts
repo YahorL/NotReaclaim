@@ -147,4 +147,11 @@ describe('scheduleHabit with allowedWindows (hard restriction)', () => {
     expect(result.blocks[0]).toMatchObject({ start: 0, end: 30 });
     expect(result.unscheduled[0]).toMatchObject({ remainingMs: 30 });
   });
+
+  it('schedules nothing when allowedWindows is empty', () => {
+    const free = [{ start: 0, end: 1000 }];
+    const result = scheduleHabit(free, habit({ perPeriod: 1, allowedWindows: [] }));
+    expect(result.blocks).toHaveLength(0);
+    expect(result.unscheduled[0]).toMatchObject({ sourceId: 'h1', remainingMs: 30 });
+  });
 });
