@@ -49,7 +49,11 @@ export function buildApp(input: Omit<AppDeps, 'now'> & { now?: () => number }): 
   app.decorateRequest('userId', '');
   app.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const payload = await request.jwtVerify<{ sub: string }>();
+      const payload = await request.jwtVerify<{ sub?: string }>();
+      if (!payload.sub) {
+        reply.code(401).send({ code: 'unauthorized', message: 'Invalid or missing token' });
+        return;
+      }
       request.userId = payload.sub;
     } catch {
       reply.code(401).send({ code: 'unauthorized', message: 'Invalid or missing token' });

@@ -53,4 +53,11 @@ describe('task routes', () => {
     const res = await app.inject({ method: 'GET', url: `/tasks/${id}`, headers: { authorization: `Bearer ${tokenB}` } });
     expect(res.statusCode).toBe(404);
   });
+
+  it('returns 404 when deleting a missing task', async () => {
+    const { app } = buildTestApp();
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'DELETE', url: '/tasks/nope', headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(404);
+  });
 });

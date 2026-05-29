@@ -54,4 +54,11 @@ describe('schedule routes', () => {
     expect(reconcileCalls).toHaveLength(1);
     expect(reconcileCalls[0]!.userId).toBe('u1');
   });
+
+  it('GET /schedule/preview returns 409 when settings are not configured', async () => {
+    const { app } = buildTestApp({ settings: null });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'GET', url: '/schedule/preview', headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(409);
+  });
 });

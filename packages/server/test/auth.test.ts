@@ -35,4 +35,14 @@ describe('auth', () => {
     const res = await app.inject({ method: 'GET', url: '/tasks', headers: { authorization: `Bearer ${token}` } });
     expect(res.statusCode).toBe(200);
   });
+
+  it('rejects a malformed token and a token without a sub with 401', async () => {
+    const { app } = buildTestApp();
+    await app.ready();
+    const garbage = await app.inject({ method: 'GET', url: '/tasks', headers: { authorization: 'Bearer not-a-jwt' } });
+    expect(garbage.statusCode).toBe(401);
+    const noSub = app.jwt.sign({});
+    const res = await app.inject({ method: 'GET', url: '/tasks', headers: { authorization: `Bearer ${noSub}` } });
+    expect(res.statusCode).toBe(401);
+  });
 });
