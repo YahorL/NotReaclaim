@@ -153,4 +153,32 @@ describe('reconcile', () => {
     const block = store.all().find((b) => b.id === 'b1')!;
     expect(block.startsAt.toISOString()).toBe('2026-01-05T09:00:00.000Z');
   });
+
+  it('places only the remaining chunk when a pinned block partially covers a task', async () => {
+    // 60-min task, 30 min already covered by a pinned block -> engine places ONE fresh 30-min chunk
+    // that coexists with the pinned block (no collision, no duplicate of the covered time).
+    const store = fakeScheduledBlockStore([
+      makeScheduledBlock({
+        id: 'b1', taskId: 't1', habitId: null, engineKey: null, pinned: true,
+        googleEventId: 'g1', googleCalendarId: 'cal-auto',
+        startsAt: new Date('2026-01-05T11:00:00.000Z'), endsAt: new Date('2026-01-05T11:30:00.000Z'),
+      }),
+    ]);
+    const client = new FakeGoogleClient();
+    client.listQueue = [{ events: googleEventsFromStore(store) }]; // drift: pinned event unchanged
+    const deps = buildDeps({
+      store,
+      tasks: [makeTask({ id: 't1', durationMs: 3600000, minChunkMs: 1800000, maxChunkMs: 1800000 })],
+      client,
+    });
+
+    const result = await reconcile(deps, 'u1', NOW);
+
+    expect(result.created).toBe(1); // only the remaining 30 min
+    expect(result.deleted).toBe(0);
+    expect(client.insertedEvents).toHaveLength(1);
+    // the pinned block survives AND a fresh keyed block now exists for the remainder
+    expect(store.all().some((b) => b.id === 'b1' && b.pinned)).toBe(true);
+    expect(store.all().some((b) => b.engineKey === 'task:t1:0' && !b.pinned)).toBe(true);
+  });
 });
