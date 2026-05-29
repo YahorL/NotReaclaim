@@ -16,6 +16,8 @@ export { createHabitRepository } from './repositories/habit-repository.js';
 export type { HabitRepository, CreateHabitInput, UpdateHabitInput } from './repositories/habit-repository.js';
 export { createScheduledBlockRepository } from './repositories/scheduled-block-repository.js';
 export type { ScheduledBlockRepository, CreateScheduledBlockInput } from './repositories/scheduled-block-repository.js';
+export { createCalendarSyncStateRepository } from './repositories/calendar-sync-state-repository.js';
+export type { CalendarSyncStateRepository, UpsertSyncStateInput } from './repositories/calendar-sync-state-repository.js';
 
 // Re-export Prisma model types and enums so consumers can type rows without
 // importing the Prisma client runtime.
@@ -26,6 +28,7 @@ export type {
   Task,
   Habit,
   ScheduledBlock,
+  CalendarSyncState,
   TaskStatus,
   HabitStatus,
   HabitPeriod,
