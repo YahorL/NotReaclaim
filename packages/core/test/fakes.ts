@@ -101,6 +101,7 @@ export function makeBlock(over: Partial<ScheduledBlock> = {}): ScheduledBlock {
     pinned: false,
     googleEventId: null,
     googleCalendarId: null,
+    engineKey: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
     ...over,

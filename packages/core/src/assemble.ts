@@ -58,15 +58,40 @@ export async function assembleScheduleInput(
     .filter((b) => b.pinned)
     .map(toScheduledBlock);
 
+  // Pinned-block coverage reduces the work the engine must (re)place.
+  const taskCoverageMs = new Map<string, number>();
+  for (const b of pinnedBlocks) {
+    if (b.sourceType === 'task') {
+      taskCoverageMs.set(b.sourceId, (taskCoverageMs.get(b.sourceId) ?? 0) + (b.end - b.start));
+    }
+  }
+
   const allTasks = await repos.tasks.listByUser(userId);
-  const tasks: FlexibleTask[] = allTasks
-    .filter((t) => SCHEDULABLE_TASK_STATUSES.includes(t.status))
-    .map(toFlexibleTask);
+  const tasks: FlexibleTask[] = [];
+  for (const t of allTasks) {
+    if (!SCHEDULABLE_TASK_STATUSES.includes(t.status)) continue;
+    const flexible = toFlexibleTask(t);
+    const remaining = flexible.durationMs - (taskCoverageMs.get(t.id) ?? 0);
+    if (remaining <= 0) continue;
+    tasks.push({ ...flexible, durationMs: remaining });
+  }
 
   const allHabits = await repos.habits.listByUser(userId);
-  const habits: EngineHabit[] = allHabits
-    .filter((h) => h.status === 'active')
-    .map((h) => expandHabit(h, settings.timezone, now, horizonDays));
+  const habits: EngineHabit[] = [];
+  for (const h of allHabits) {
+    if (h.status !== 'active') continue;
+    const engineHabit = expandHabit(h, settings.timezone, now, horizonDays);
+    const occurrences = engineHabit.periods.map(
+      (p) =>
+        pinnedBlocks.filter(
+          (b) => b.sourceType === 'habit' && b.sourceId === h.id && b.start >= p.start && b.start < p.end,
+        ).length,
+    );
+    if (occurrences.some((count) => count > 0)) {
+      engineHabit.periodTargets = engineHabit.periods.map((_p, i) => Math.max(0, h.perPeriod - occurrences[i]!));
+    }
+    habits.push(engineHabit);
+  }
 
   return { workingWindows, fixedEvents, pinnedBlocks, tasks, habits };
 }
