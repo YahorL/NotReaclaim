@@ -3,7 +3,7 @@ import { prisma } from '../../src/client.js';
 import { createUserRepository } from '../../src/repositories/user-repository.js';
 import { createTaskRepository } from '../../src/repositories/task-repository.js';
 import { createScheduledBlockRepository } from '../../src/repositories/scheduled-block-repository.js';
-import { NotFoundError } from '../../src/errors.js';
+import { NotFoundError, ConflictError } from '../../src/errors.js';
 
 const users = createUserRepository(prisma);
 const tasks = createTaskRepository(prisma);
@@ -71,5 +71,34 @@ describe('ScheduledBlockRepository', () => {
     await expect(repo.setPinned(b.id, block.id, true)).rejects.toBeInstanceOf(NotFoundError);
     await expect(repo.delete(b.id, block.id)).rejects.toBeInstanceOf(NotFoundError);
     await repo.delete(a.id, block.id);
+  });
+
+  it('update mutates fields and is user-scoped', async () => {
+    const user = await users.create({ email: 'upd@example.com' });
+    const task = await tasks.create(user.id, taskInput());
+    const block = await repo.create(user.id, blockInput(task.id, { engineKey: 'task:k:0' }));
+    const updated = await repo.update(user.id, block.id, {
+      startsAt: new Date('2026-02-01T08:00:00.000Z'),
+      endsAt: new Date('2026-02-01T08:30:00.000Z'),
+      pinned: true,
+      googleEventId: 'gev-1',
+    });
+    expect(updated.pinned).toBe(true);
+    expect(updated.googleEventId).toBe('gev-1');
+    expect(updated.startsAt.toISOString()).toBe('2026-02-01T08:00:00.000Z');
+
+    const other = await users.create({ email: 'upd2@example.com' });
+    await expect(repo.update(other.id, block.id, { pinned: false })).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it('enforces unique (userId, engineKey) but allows multiple nulls', async () => {
+    const user = await users.create({ email: 'key@example.com' });
+    const task = await tasks.create(user.id, taskInput());
+    await repo.create(user.id, blockInput(task.id, { engineKey: 'task:k:0' }));
+    await expect(
+      repo.create(user.id, blockInput(task.id, { engineKey: 'task:k:0' })),
+    ).rejects.toBeInstanceOf(ConflictError);
+    await repo.create(user.id, blockInput(task.id));
+    await repo.create(user.id, blockInput(task.id));
   });
 });

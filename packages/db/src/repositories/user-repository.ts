@@ -10,6 +10,7 @@ export interface UpdateUserInput {
   email?: string;
   googleId?: string | null;
   googleRefreshToken?: string | null;
+  autoScheduledCalendarId?: string | null;
 }
 
 export function createUserRepository(prisma: PrismaClient) {

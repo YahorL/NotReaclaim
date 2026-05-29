@@ -10,6 +10,16 @@ export interface CreateScheduledBlockInput {
   pinned?: boolean;
   googleEventId?: string | null;
   googleCalendarId?: string | null;
+  engineKey?: string | null;
+}
+
+export interface UpdateScheduledBlockInput {
+  startsAt?: Date;
+  endsAt?: Date;
+  pinned?: boolean;
+  googleEventId?: string | null;
+  googleCalendarId?: string | null;
+  engineKey?: string | null;
 }
 
 export function createScheduledBlockRepository(prisma: PrismaClient) {
@@ -33,6 +43,19 @@ export function createScheduledBlockRepository(prisma: PrismaClient) {
     async setPinned(userId: string, id: string, pinned: boolean): Promise<ScheduledBlock> {
       try {
         const result = await prisma.scheduledBlock.updateMany({ where: { id, userId }, data: { pinned } });
+        if (result.count === 0) {
+          throw new NotFoundError(`ScheduledBlock ${id} not found for user`);
+        }
+        return await prisma.scheduledBlock.findUniqueOrThrow({ where: { id } });
+      } catch (error) {
+        if (error instanceof NotFoundError) throw error;
+        translatePrismaError(error);
+      }
+    },
+
+    async update(userId: string, id: string, data: UpdateScheduledBlockInput): Promise<ScheduledBlock> {
+      try {
+        const result = await prisma.scheduledBlock.updateMany({ where: { id, userId }, data });
         if (result.count === 0) {
           throw new NotFoundError(`ScheduledBlock ${id} not found for user`);
         }
