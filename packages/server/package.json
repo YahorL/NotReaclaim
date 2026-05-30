@@ -10,11 +10,12 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
-    "@notreclaim/db": "*",
+    "@fastify/jwt": "^8.0.0",
+    "@fastify/websocket": "8.3.1",
     "@notreclaim/core": "*",
+    "@notreclaim/db": "*",
     "@notreclaim/google": "*",
     "fastify": "^4.28.0",
-    "@fastify/jwt": "^8.0.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
