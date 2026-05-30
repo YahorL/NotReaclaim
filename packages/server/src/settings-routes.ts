@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import type { Prisma } from '@notreclaim/db';
-import type { AppDeps } from './app.js';
+import type { AppDeps, AfterMutation } from './app.js';
 import { settingsSchema } from './schemas.js';
 
-export function registerSettingsRoutes(app: FastifyInstance, deps: AppDeps): void {
+export function registerSettingsRoutes(app: FastifyInstance, deps: AppDeps, afterMutation: AfterMutation): void {
   const guard = { onRequest: [app.authenticate] };
 
   app.get('/settings', guard, async (request, reply) => {
@@ -17,9 +17,11 @@ export function registerSettingsRoutes(app: FastifyInstance, deps: AppDeps): voi
 
   app.put('/settings', guard, async (request) => {
     const body = settingsSchema.parse(request.body);
-    return deps.repos.settings.upsert(request.userId, {
+    const settings = await deps.repos.settings.upsert(request.userId, {
       ...body,
       workingHours: body.workingHours as unknown as Prisma.InputJsonValue,
     });
+    afterMutation(request.userId);
+    return settings;
   });
 }

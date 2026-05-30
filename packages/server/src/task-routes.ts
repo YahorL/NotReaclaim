@@ -1,13 +1,14 @@
 import type { FastifyInstance } from 'fastify';
-import type { AppDeps } from './app.js';
+import type { AppDeps, AfterMutation } from './app.js';
 import { createTaskSchema, updateTaskSchema, listTasksQuerySchema, idParamSchema } from './schemas.js';
 
-export function registerTaskRoutes(app: FastifyInstance, deps: AppDeps): void {
+export function registerTaskRoutes(app: FastifyInstance, deps: AppDeps, afterMutation: AfterMutation): void {
   const guard = { onRequest: [app.authenticate] };
 
   app.post('/tasks', guard, async (request, reply) => {
     const body = createTaskSchema.parse(request.body);
     const task = await deps.repos.tasks.create(request.userId, { ...body, dueBy: new Date(body.dueBy) });
+    afterMutation(request.userId, { taskId: task.id, action: 'created' });
     reply.code(201);
     return task;
   });
@@ -31,12 +32,15 @@ export function registerTaskRoutes(app: FastifyInstance, deps: AppDeps): void {
     const { id } = idParamSchema.parse(request.params);
     const { dueBy: dueByStr, ...rest } = updateTaskSchema.parse(request.body);
     const data = { ...rest, ...(dueByStr ? { dueBy: new Date(dueByStr) } : {}) };
-    return deps.repos.tasks.update(request.userId, id, data);
+    const task = await deps.repos.tasks.update(request.userId, id, data);
+    afterMutation(request.userId, { taskId: id, action: 'updated' });
+    return task;
   });
 
   app.delete('/tasks/:id', guard, async (request, reply) => {
     const { id } = idParamSchema.parse(request.params);
     await deps.repos.tasks.delete(request.userId, id);
+    afterMutation(request.userId, { taskId: id, action: 'deleted' });
     reply.code(204).send();
   });
 }
