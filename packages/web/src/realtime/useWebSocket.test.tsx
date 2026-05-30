@@ -69,4 +69,18 @@ describe('useWebSocket', () => {
     vi.advanceTimersByTime(5000);
     expect(makeSocket).toHaveBeenCalledTimes(1);
   });
+
+  it('uses a stable default socket factory (no reconnect on re-render)', () => {
+    const qc = new QueryClient();
+    const ctor = vi.fn(() => ({ addEventListener() {}, close() {} }));
+    vi.stubGlobal('WebSocket', ctor);
+    try {
+      const { rerender } = renderHook(() => useWebSocket({ token: 'jwt' }), { wrapper: wrapper(qc) });
+      rerender();
+      rerender();
+      expect(ctor).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

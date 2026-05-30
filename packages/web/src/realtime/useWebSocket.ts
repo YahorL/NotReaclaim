@@ -21,7 +21,9 @@ function defaultUrl(baseUrl: string): string {
   return `${proto}//${window.location.host}/ws`;
 }
 
-export function useWebSocket({ token, baseUrl = '', makeSocket = (url) => new WebSocket(url) }: UseWebSocketOptions): void {
+const defaultMakeSocket = (url: string): SocketLike => new WebSocket(url);
+
+export function useWebSocket({ token, baseUrl = '', makeSocket = defaultMakeSocket }: UseWebSocketOptions): void {
   const qc = useQueryClient();
 
   useEffect(() => {
