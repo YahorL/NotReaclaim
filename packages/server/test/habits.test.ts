@@ -40,4 +40,16 @@ describe('habit routes', () => {
     const res = await app.inject({ method: 'DELETE', url: '/habits/nope', headers: { authorization: `Bearer ${token}` } });
     expect(res.statusCode).toBe(404);
   });
+
+  it('triggers a re-plan but emits no task.changed on create', async () => {
+    const { app, emitted, reconcileCalls } = buildTestApp();
+    const token = await tokenFor(app);
+    const created = await app.inject({
+      method: 'POST', url: '/habits', headers: { authorization: `Bearer ${token}` }, payload: habitBody,
+    });
+    expect(created.statusCode).toBe(201);
+
+    expect(reconcileCalls).toContainEqual({ userId: 'u1', now: expect.any(Number) });
+    expect(emitted.some((e) => e.type === 'task.changed')).toBe(false);
+  });
 });
