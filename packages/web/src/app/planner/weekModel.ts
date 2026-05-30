@@ -61,7 +61,7 @@ export function placeInDay(startMs: number, endMs: number, dayStartMs: number): 
 /** Vertical position (%) of the "now" line within this day's window, or null if not today/in-window. */
 export function nowLine(now: number, dayStartMs: number): number | null {
   const min = (now - dayStartMs) / MS_PER_MIN;
-  if (min < WINDOW_START_MIN || min > WINDOW_END_MIN) return null;
+  if (min < WINDOW_START_MIN || min >= WINDOW_END_MIN) return null;
   const span = WINDOW_END_MIN - WINDOW_START_MIN;
   return ((min - WINDOW_START_MIN) / span) * 100;
 }

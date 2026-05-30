@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { ScheduledBlock } from '../../api/types';
 import {
-  startOfWeek, dayColumns, classifyBlock, placeInDay, nowLine, humanizeMs,
+  startOfWeek, dayColumns, classifyBlock, placeInDay, nowLine, humanizeMs, isToday,
   WINDOW_START_MIN, WINDOW_END_MIN,
 } from './weekModel';
 
@@ -68,6 +68,16 @@ describe('nowLine', () => {
     const pos = nowLine(WED_NOON, Date.parse('2026-01-07T00:00:00.000Z'));
     expect(pos).toBeCloseTo(((720 - WINDOW_START_MIN) / (WINDOW_END_MIN - WINDOW_START_MIN)) * 100, 5);
     expect(nowLine(WED_NOON, MON)).toBeNull();
+  });
+});
+
+describe('isToday', () => {
+  it('is true within the day and false otherwise', () => {
+    const day = Date.parse('2026-01-07T00:00:00.000Z');
+    expect(isToday(Date.parse('2026-01-07T12:00:00.000Z'), day)).toBe(true);
+    expect(isToday(Date.parse('2026-01-07T00:00:00.000Z'), day)).toBe(true);   // inclusive start
+    expect(isToday(Date.parse('2026-01-08T00:00:00.000Z'), day)).toBe(false);  // exclusive end
+    expect(isToday(Date.parse('2026-01-06T23:59:59.000Z'), day)).toBe(false);
   });
 });
 
