@@ -89,8 +89,8 @@ export function fakeSettingsRepo(seed: Settings | null = null) {
 
 export function fakeScheduledBlockRepo(seed: ScheduledBlock[] = []) {
   return {
-    async listByUserInRange(userId: string): Promise<ScheduledBlock[]> {
-      return seed.filter((b) => b.userId === userId);
+    async listByUserInRange(userId: string, start: Date, end: Date): Promise<ScheduledBlock[]> {
+      return seed.filter((b) => b.userId === userId && b.startsAt < end && b.endsAt > start);
     },
   };
 }

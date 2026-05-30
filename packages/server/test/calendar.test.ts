@@ -43,6 +43,14 @@ describe('calendar routes', () => {
     expect(body[0]!.title).toBe('Standup');
   });
 
+  it('uses the 14-day default horizon when the user has no settings', async () => {
+    const { app } = buildTestApp({ settings: null, calendarEvents: [event()] });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'GET', url: '/calendar/events', headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as CalendarEvent[])).toHaveLength(1);
+  });
+
   it('honors explicit from/to', async () => {
     const { app } = buildTestApp({
       settings: settings(),
