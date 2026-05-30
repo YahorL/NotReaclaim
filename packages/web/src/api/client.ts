@@ -64,7 +64,7 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
 
   return {
     getConsentUrl: () => request('GET', '/auth/google'),
-    listTasks: (status) => request('GET', `/tasks${status ? `?status=${status}` : ''}`),
+    listTasks: (status) => request('GET', `/tasks${status ? `?${new URLSearchParams({ status }).toString()}` : ''}`),
     createTask: (body) => request('POST', '/tasks', body),
     updateTask: (id, patch) => request('PATCH', `/tasks/${id}`, patch),
     deleteTask: (id) => request('DELETE', `/tasks/${id}`),
