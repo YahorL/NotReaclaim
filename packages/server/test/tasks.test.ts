@@ -75,7 +75,7 @@ describe('task routes', () => {
   });
 
   it('emits task.changed (updated) on patch and (deleted) on delete', async () => {
-    const { app, emitted } = buildTestApp();
+    const { app, emitted, reconcileCalls } = buildTestApp();
     const token = await tokenFor(app);
     const auth = { authorization: `Bearer ${token}` };
     const id = (await app.inject({ method: 'POST', url: '/tasks', headers: auth, payload: taskBody })).json().id;
@@ -85,6 +85,7 @@ describe('task routes', () => {
 
     expect(emitted).toContainEqual({ type: 'task.changed', userId: 'u1', taskId: id, action: 'updated' });
     expect(emitted).toContainEqual({ type: 'task.changed', userId: 'u1', taskId: id, action: 'deleted' });
+    expect(reconcileCalls).toHaveLength(3); // create + patch + delete
   });
 
   it('does not emit or re-plan on GET', async () => {
