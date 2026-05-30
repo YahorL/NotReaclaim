@@ -36,6 +36,19 @@ describe('auth', () => {
     expect(res.statusCode).toBe(200);
   });
 
+  it('callback redirects to the web client with token in the fragment when WEB_CLIENT_URL is set', async () => {
+    const { app } = buildTestApp({ webClientUrl: 'http://localhost:5173' });
+    const res = await app.inject({ method: 'GET', url: '/auth/google/callback?code=abc' });
+    expect(res.statusCode).toBe(302);
+    const loc = res.headers.location as string;
+    expect(loc.startsWith('http://localhost:5173/auth/callback#')).toBe(true);
+    expect(loc).toContain('userId=u1');
+    expect(loc).toContain('token=');
+    const params = new URLSearchParams(new URL(loc).hash.slice(1));
+    const decoded = app.jwt.verify<{ sub?: string }>(params.get('token') as string);
+    expect(decoded.sub).toBe('u1');
+  });
+
   it('rejects a malformed token and a token without a sub with 401', async () => {
     const { app } = buildTestApp();
     await app.ready();

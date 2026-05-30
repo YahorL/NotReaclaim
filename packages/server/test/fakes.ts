@@ -103,6 +103,7 @@ export interface TestAppOptions {
   connectUser?: User;
   reconcileResult?: AppDeps['reconcile'] extends (...a: never[]) => Promise<infer R> ? R : never;
   schedulingReposOverride?: SchedulingRepositories;
+  webClientUrl?: string;
 }
 
 export function buildTestApp(opts: TestAppOptions = {}) {
@@ -142,7 +143,7 @@ export function buildTestApp(opts: TestAppOptions = {}) {
       return opts.reconcileResult ?? { created: 0, updated: 0, deleted: 0, pinned: 0, removed: 0 };
     },
     events,
-    config: { jwtSecret: 'test-secret', googleRedirectUri: 'http://localhost:3000/auth/google/callback' },
+    config: { jwtSecret: 'test-secret', googleRedirectUri: 'http://localhost:3000/auth/google/callback', webClientUrl: opts.webClientUrl },
     now: () => FIXED_NOW,
   });
 

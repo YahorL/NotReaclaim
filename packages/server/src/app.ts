@@ -33,7 +33,7 @@ export interface AppDeps {
   schedulingRepos: SchedulingRepositories;
   reconcile: (userId: string, now: number) => Promise<ReconcileResult>;
   events: EventBus;
-  config: { jwtSecret: string; googleRedirectUri: string };
+  config: { jwtSecret: string; googleRedirectUri: string; webClientUrl?: string };
   now: () => number;
 }
 

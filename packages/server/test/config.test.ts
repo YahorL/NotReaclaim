@@ -20,4 +20,14 @@ describe('loadServerConfig', () => {
   it('rejects a non-numeric POLL_INTERVAL_MS', () => {
     expect(() => loadServerConfig({ JWT_SECRET: 's', POLL_INTERVAL_MS: 'abc' } as NodeJS.ProcessEnv)).toThrow();
   });
+
+  it('reads WEB_CLIENT_URL when set and defaults it to undefined', () => {
+    expect(loadServerConfig({ JWT_SECRET: 's' } as NodeJS.ProcessEnv).webClientUrl).toBeUndefined();
+    const cfg = loadServerConfig({ JWT_SECRET: 's', WEB_CLIENT_URL: 'http://localhost:5173' } as NodeJS.ProcessEnv);
+    expect(cfg.webClientUrl).toBe('http://localhost:5173');
+  });
+
+  it('strips a trailing slash from WEB_CLIENT_URL', () => {
+    expect(loadServerConfig({ JWT_SECRET: 's', WEB_CLIENT_URL: 'http://localhost:5173/' } as NodeJS.ProcessEnv).webClientUrl).toBe('http://localhost:5173');
+  });
 });

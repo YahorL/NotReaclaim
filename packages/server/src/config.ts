@@ -2,6 +2,7 @@ export interface ServerConfig {
   port: number;
   jwtSecret: string;
   pollIntervalMs: number;
+  webClientUrl?: string;
 }
 
 /** Read and validate server-specific env (Google/encryption come from loadGoogleConfig). */
@@ -14,5 +15,6 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerCo
   if (!Number.isFinite(pollIntervalMs) || pollIntervalMs <= 0) {
     throw new Error(`Invalid POLL_INTERVAL_MS: ${env.POLL_INTERVAL_MS}`);
   }
-  return { port, jwtSecret, pollIntervalMs };
+  const webClientUrl = env.WEB_CLIENT_URL ? env.WEB_CLIENT_URL.replace(/\/$/, '') : undefined;
+  return { port, jwtSecret, pollIntervalMs, webClientUrl };
 }
