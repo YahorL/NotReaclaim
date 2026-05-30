@@ -24,7 +24,7 @@ describe('App routing', () => {
   it('navigates to the Habits page via the sidebar', () => {
     tokenStore.set({ token: 'jwt', userId: 'u1' });
     renderWithProviders(<App />, { initialEntries: ['/'] });
-    fireEvent.click(screen.getByText('Habits'));
+    fireEvent.click(screen.getByRole('link', { name: 'Habits' }));
     expect(screen.getByText(/arrives in 5c/i)).toBeInTheDocument();
   });
 
