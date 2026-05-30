@@ -3,7 +3,7 @@ import type { ScheduledBlock } from '../../api/types';
 export const WINDOW_START_MIN = 6 * 60;   // 06:00
 export const WINDOW_END_MIN = 22 * 60;    // 22:00
 const MS_PER_MIN = 60_000;
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
+export const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /** Monday 00:00 (local) of the week containing `now`. */
 export function startOfWeek(now: number): number {

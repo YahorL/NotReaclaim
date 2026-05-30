@@ -1,8 +1,6 @@
 import type { ScheduledBlock, CalendarEvent } from '../../api/types';
 import { EventBlock, type BlockKind } from './EventBlock';
-import { placeInDay, nowLine, isToday, classifyBlock } from './weekModel';
-
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
+import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY } from './weekModel';
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const HOUR_TICKS = [6, 8, 10, 12, 14, 16, 18, 20, 22];
 
@@ -71,18 +69,21 @@ export function WeekGrid(props: WeekGridProps) {
 
       <div className="grid grid-cols-[34px_repeat(7,1fr)] overflow-hidden rounded-lg border border-gray-200">
         <div className="border-b border-gray-200 bg-gray-50" />
-        {days.map((d, i) => (
-          <div
-            key={d}
-            data-testid={`day-header-${i}`}
-            data-today={isToday(nowMs, d)}
-            className={`border-b border-l border-gray-100 bg-gray-50 py-1 text-center text-xs font-semibold ${
-              isToday(nowMs, d) ? 'text-blue-600' : ''
-            }`}
-          >
-            {DAY_LABELS[i]} {new Date(d).getDate()}
-          </div>
-        ))}
+        {days.map((d, i) => {
+          const today = isToday(nowMs, d);
+          return (
+            <div
+              key={d}
+              data-testid={`day-header-${i}`}
+              data-today={today}
+              className={`border-b border-l border-gray-100 bg-gray-50 py-1 text-center text-xs font-semibold ${
+                today ? 'text-blue-600' : ''
+              }`}
+            >
+              {DAY_LABELS[i]} {new Date(d).getDate()}
+            </div>
+          );
+        })}
 
         <div className="bg-gray-50">
           {HOUR_TICKS.map((h) => (
@@ -90,6 +91,8 @@ export function WeekGrid(props: WeekGridProps) {
           ))}
         </div>
         {days.map((d, i) => {
+          // Assign each item to the column whose [midnight, +24h) contains its start.
+          // Items outside the 06:00–22:00 window are dropped by placeInDay below.
           const dayItems = items.filter((it) => it.startMs >= d && it.startMs < d + MS_PER_DAY);
           const line = nowLine(nowMs, d);
           return (
