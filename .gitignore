@@ -1,6 +1,7 @@
 node_modules/
 dist/
 *.log
+.superpowers/
 .env
 .env.*
 !.env.test.example
