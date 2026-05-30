@@ -67,7 +67,10 @@ async function main(): Promise<void> {
     log: (err) => app.log.error(err),
   });
 
+  let shuttingDown = false;
   const shutdown = async (): Promise<void> => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     scheduler.stop();
     await app.close();
     process.exit(0);

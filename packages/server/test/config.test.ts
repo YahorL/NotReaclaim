@@ -16,4 +16,8 @@ describe('loadServerConfig', () => {
   it('rejects a non-positive POLL_INTERVAL_MS', () => {
     expect(() => loadServerConfig({ JWT_SECRET: 's', POLL_INTERVAL_MS: '0' } as NodeJS.ProcessEnv)).toThrow();
   });
+
+  it('rejects a non-numeric POLL_INTERVAL_MS', () => {
+    expect(() => loadServerConfig({ JWT_SECRET: 's', POLL_INTERVAL_MS: 'abc' } as NodeJS.ProcessEnv)).toThrow();
+  });
 });
