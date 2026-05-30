@@ -15,6 +15,6 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerCo
   if (!Number.isFinite(pollIntervalMs) || pollIntervalMs <= 0) {
     throw new Error(`Invalid POLL_INTERVAL_MS: ${env.POLL_INTERVAL_MS}`);
   }
-  const webClientUrl = env.WEB_CLIENT_URL || undefined;
+  const webClientUrl = env.WEB_CLIENT_URL ? env.WEB_CLIENT_URL.replace(/\/$/, '') : undefined;
   return { port, jwtSecret, pollIntervalMs, webClientUrl };
 }

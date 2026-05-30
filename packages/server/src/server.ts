@@ -50,7 +50,11 @@ async function main(): Promise<void> {
     schedulingRepos,
     reconcile: reconcileBound,
     events: bus,
-    config: { jwtSecret: serverConfig.jwtSecret, googleRedirectUri: googleConfig.redirectUri },
+    config: {
+      jwtSecret: serverConfig.jwtSecret,
+      googleRedirectUri: googleConfig.redirectUri,
+      webClientUrl: serverConfig.webClientUrl,
+    },
   });
 
   await app.listen({ port: serverConfig.port, host: '0.0.0.0' });

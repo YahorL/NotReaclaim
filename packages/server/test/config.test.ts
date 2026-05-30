@@ -26,4 +26,8 @@ describe('loadServerConfig', () => {
     const cfg = loadServerConfig({ JWT_SECRET: 's', WEB_CLIENT_URL: 'http://localhost:5173' } as NodeJS.ProcessEnv);
     expect(cfg.webClientUrl).toBe('http://localhost:5173');
   });
+
+  it('strips a trailing slash from WEB_CLIENT_URL', () => {
+    expect(loadServerConfig({ JWT_SECRET: 's', WEB_CLIENT_URL: 'http://localhost:5173/' } as NodeJS.ProcessEnv).webClientUrl).toBe('http://localhost:5173');
+  });
 });

@@ -13,6 +13,7 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
     const token = app.jwt.sign({ sub: user.id });
     if (deps.config.webClientUrl) {
       const fragment = `token=${encodeURIComponent(token)}&userId=${encodeURIComponent(user.id)}`;
+      // NOTE: Fastify v4 arg order is redirect(code, url); flip to redirect(url, code) on the v5 upgrade.
       return reply.redirect(302, `${deps.config.webClientUrl}/auth/callback#${fragment}`);
     }
     return { token, userId: user.id };

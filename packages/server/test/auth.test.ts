@@ -44,6 +44,9 @@ describe('auth', () => {
     expect(loc.startsWith('http://localhost:5173/auth/callback#')).toBe(true);
     expect(loc).toContain('userId=u1');
     expect(loc).toContain('token=');
+    const params = new URLSearchParams(new URL(loc).hash.slice(1));
+    const decoded = app.jwt.verify<{ sub?: string }>(params.get('token') as string);
+    expect(decoded.sub).toBe('u1');
   });
 
   it('rejects a malformed token and a token without a sub with 401', async () => {
