@@ -63,16 +63,36 @@ export interface ScheduledBlock {
   engineKey: string | null;
 }
 
+export interface PreviewBlock {
+  id: string;                 // e.g. "task:<id>:0"
+  sourceType: 'task' | 'habit';
+  sourceId: string;
+  title: string;
+  start: number;              // epoch ms
+  end: number;                // epoch ms
+}
+
 export interface UnscheduledItem {
   sourceType: 'task' | 'habit';
   sourceId: string;
   title: string;
   reason: string;
+  remainingMs: number;        // work time that could not be placed
 }
 
 export interface SchedulePreview {
-  blocks: ScheduledBlock[];
+  blocks: PreviewBlock[];
   unscheduled: UnscheduledItem[];
+}
+
+export interface CalendarEvent {
+  id: string;
+  userId: string;
+  title: string;
+  startsAt: string;           // ISO
+  endsAt: string;             // ISO
+  googleCalendarId: string;
+  googleEventId: string;
 }
 
 export interface ReconcileResult {

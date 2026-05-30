@@ -1,4 +1,4 @@
-import type { Settings, Task, Habit, ScheduledBlock, User } from '@notreclaim/db';
+import type { Settings, Task, Habit, ScheduledBlock, CalendarEvent, User } from '@notreclaim/db';
 import type { SchedulingRepositories } from '@notreclaim/core';
 import { buildApp, type AppDeps } from '../src/app.js';
 import { createEventBus } from '../src/events.js';
@@ -89,8 +89,18 @@ export function fakeSettingsRepo(seed: Settings | null = null) {
 
 export function fakeScheduledBlockRepo(seed: ScheduledBlock[] = []) {
   return {
-    async listByUserInRange(userId: string): Promise<ScheduledBlock[]> {
-      return seed.filter((b) => b.userId === userId);
+    async listByUserInRange(userId: string, start: Date, end: Date): Promise<ScheduledBlock[]> {
+      return seed.filter((b) => b.userId === userId && b.startsAt < end && b.endsAt > start);
+    },
+  };
+}
+
+export function fakeCalendarEventRepo(seed: CalendarEvent[] = []) {
+  return {
+    async listByUserInRange(userId: string, start: Date, end: Date): Promise<CalendarEvent[]> {
+      return seed.filter(
+        (e) => e.userId === userId && e.startsAt < end && e.endsAt > start,
+      );
     },
   };
 }
@@ -100,6 +110,7 @@ export interface TestAppOptions {
   habits?: Habit[];
   settings?: Settings | null;
   blocks?: ScheduledBlock[];
+  calendarEvents?: CalendarEvent[];
   connectUser?: User;
   reconcileResult?: AppDeps['reconcile'] extends (...a: never[]) => Promise<infer R> ? R : never;
   schedulingReposOverride?: SchedulingRepositories;
@@ -111,6 +122,7 @@ export function buildTestApp(opts: TestAppOptions = {}) {
   const habits = fakeHabitRepo(opts.habits ?? []);
   const settings = fakeSettingsRepo(opts.settings ?? null);
   const scheduledBlocks = fakeScheduledBlockRepo(opts.blocks ?? []);
+  const calendarEvents = fakeCalendarEventRepo(opts.calendarEvents ?? []);
   const reconcileCalls: Array<{ userId: string; now: number }> = [];
 
   const events = createEventBus();
@@ -119,14 +131,14 @@ export function buildTestApp(opts: TestAppOptions = {}) {
 
   const schedulingRepos: SchedulingRepositories = opts.schedulingReposOverride ?? {
     settings,
-    calendarEvents: { listByUserInRange: async () => [] },
+    calendarEvents,
     tasks,
     habits,
     scheduledBlocks,
   };
 
   const app = buildApp({
-    repos: { settings, tasks, habits, scheduledBlocks },
+    repos: { settings, tasks, habits, scheduledBlocks, calendarEvents },
     google: {
       client: { getConsentUrl: () => 'https://consent.example/auth' },
       tokens: {

@@ -15,10 +15,11 @@ describe('invalidateForEvent', () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: ['schedule'] });
   });
 
-  it('sync.completed invalidates the schedule queries', () => {
+  it('sync.completed invalidates schedule and calendar-event queries', () => {
     const { qc, spy } = spyClient();
     invalidateForEvent(qc, { type: 'sync.completed', userId: 'u1', sync: {}, counts: {} });
     expect(spy).toHaveBeenCalledWith({ queryKey: ['schedule'] });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['calendarEvents'] });
   });
 
   it('task.changed invalidates both tasks and schedule', () => {

@@ -45,7 +45,7 @@ async function main(): Promise<void> {
     syncPrimaryCalendar({ client, tokens, syncState: calendarSyncState, events: calendarEvents }, userId, now);
 
   const app = buildApp({
-    repos: { settings, tasks, habits, scheduledBlocks },
+    repos: { settings, tasks, habits, scheduledBlocks, calendarEvents },
     google: { client, tokens },
     schedulingRepos,
     reconcile: reconcileBound,

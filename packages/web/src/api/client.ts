@@ -1,5 +1,5 @@
 import type {
-  Task, Habit, Settings, ScheduledBlock, SchedulePreview, ReconcileResult,
+  Task, Habit, Settings, ScheduledBlock, SchedulePreview, ReconcileResult, CalendarEvent,
   TaskStatus, CreateTaskInput, UpdateTaskInput, CreateHabitInput, UpdateHabitInput, SettingsInput,
 } from './types';
 
@@ -28,6 +28,7 @@ export interface ApiClient {
   getSettings(): Promise<Settings>;
   putSettings(body: SettingsInput): Promise<Settings>;
   getSchedule(from?: string, to?: string): Promise<ScheduledBlock[]>;
+  getCalendarEvents(from?: string, to?: string): Promise<CalendarEvent[]>;
   getSchedulePreview(): Promise<SchedulePreview>;
   replan(): Promise<ReconcileResult>;
 }
@@ -80,6 +81,13 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
       if (to) q.set('to', to);
       const qs = q.toString();
       return request('GET', `/schedule${qs ? `?${qs}` : ''}`);
+    },
+    getCalendarEvents: (from, to) => {
+      const q = new URLSearchParams();
+      if (from) q.set('from', from);
+      if (to) q.set('to', to);
+      const qs = q.toString();
+      return request('GET', `/calendar/events${qs ? `?${qs}` : ''}`);
     },
     getSchedulePreview: () => request('GET', '/schedule/preview'),
     replan: () => request('POST', '/schedule/replan'),
