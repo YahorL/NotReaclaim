@@ -13,6 +13,7 @@ export default defineConfig({
       '/habits': API,
       '/settings': API,
       '/schedule': API,
+      '/calendar': API,
       '/ws': { target: 'ws://localhost:3000', ws: true },
     },
   },
