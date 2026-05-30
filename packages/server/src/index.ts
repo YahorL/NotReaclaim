@@ -1,5 +1,14 @@
 export { buildApp } from './app.js';
-export type { AppDeps } from './app.js';
+export type { AppDeps, AfterMutation } from './app.js';
+export { createEventBus } from './events.js';
+export type { EventBus, ServerEvent } from './events.js';
+export { createConnectionRegistry } from './connection-registry.js';
+export type { ConnectionRegistry, Client } from './connection-registry.js';
+export { replanAfterMutation, pollAndReplan } from './replan.js';
+export type { ReplanDeps, PollDeps } from './replan.js';
+export { runPollCycle, startScheduler } from './scheduler.js';
+export type { PollCycleDeps, SchedulerDeps } from './scheduler.js';
+export { parseWsAuth, registerWebSocket } from './ws.js';
 export { loadServerConfig } from './config.js';
 export type { ServerConfig } from './config.js';
 export { mapDomainError } from './errors.js';

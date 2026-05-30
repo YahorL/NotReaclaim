@@ -40,4 +40,29 @@ describe('habit routes', () => {
     const res = await app.inject({ method: 'DELETE', url: '/habits/nope', headers: { authorization: `Bearer ${token}` } });
     expect(res.statusCode).toBe(404);
   });
+
+  it('triggers a re-plan but emits no task.changed on create', async () => {
+    const { app, emitted, reconcileCalls } = buildTestApp();
+    const token = await tokenFor(app);
+    const created = await app.inject({
+      method: 'POST', url: '/habits', headers: { authorization: `Bearer ${token}` }, payload: habitBody,
+    });
+    expect(created.statusCode).toBe(201);
+
+    expect(reconcileCalls).toContainEqual({ userId: 'u1', now: expect.any(Number) });
+    expect(emitted.some((e) => e.type === 'task.changed')).toBe(false);
+  });
+
+  it('triggers a re-plan on habit update and delete, never emitting task.changed', async () => {
+    const { app, emitted, reconcileCalls } = buildTestApp();
+    const token = await tokenFor(app);
+    const auth = { authorization: `Bearer ${token}` };
+    const id = (await app.inject({ method: 'POST', url: '/habits', headers: auth, payload: habitBody })).json().id;
+
+    await app.inject({ method: 'PATCH', url: `/habits/${id}`, headers: auth, payload: { priority: 5 } });
+    await app.inject({ method: 'DELETE', url: `/habits/${id}`, headers: auth });
+
+    expect(reconcileCalls).toHaveLength(3); // create + patch + delete
+    expect(emitted.some((e) => e.type === 'task.changed')).toBe(false);
+  });
 });

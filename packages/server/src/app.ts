@@ -14,6 +14,10 @@ import { registerTaskRoutes } from './task-routes.js';
 import { registerHabitRoutes } from './habit-routes.js';
 import { registerSettingsRoutes } from './settings-routes.js';
 import { registerScheduleRoutes } from './schedule-routes.js';
+import type { EventBus } from './events.js';
+import { createConnectionRegistry } from './connection-registry.js';
+import { registerWebSocket } from './ws.js';
+import { replanAfterMutation } from './replan.js';
 
 export interface AppDeps {
   repos: {
@@ -28,9 +32,15 @@ export interface AppDeps {
   };
   schedulingRepos: SchedulingRepositories;
   reconcile: (userId: string, now: number) => Promise<ReconcileResult>;
+  events: EventBus;
   config: { jwtSecret: string; googleRedirectUri: string };
   now: () => number;
 }
+
+export type AfterMutation = (
+  userId: string,
+  change?: { taskId: string; action: 'created' | 'updated' | 'deleted' },
+) => void;
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -66,10 +76,22 @@ export function buildApp(input: Omit<AppDeps, 'now'> & { now?: () => number }): 
     reply.code(mapped.status).send({ code: mapped.code, message: mapped.message });
   });
 
+  const registry = createConnectionRegistry();
+  deps.events.subscribe((event) => registry.forward(event));
+  registerWebSocket(app, registry);
+
+  const afterMutation: AfterMutation = (userId, change) => {
+    if (change) deps.events.emit({ type: 'task.changed', userId, ...change });
+    void replanAfterMutation(
+      { reconcile: deps.reconcile, bus: deps.events, now: deps.now, log: (err) => app.log.error(err) },
+      userId,
+    );
+  };
+
   registerAuthRoutes(app, deps);
-  registerTaskRoutes(app, deps);
-  registerHabitRoutes(app, deps);
-  registerSettingsRoutes(app, deps);
+  registerTaskRoutes(app, deps, afterMutation);
+  registerHabitRoutes(app, deps, afterMutation);
+  registerSettingsRoutes(app, deps, afterMutation);
   registerScheduleRoutes(app, deps);
 
   return app;

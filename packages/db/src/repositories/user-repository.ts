@@ -35,6 +35,14 @@ export function createUserRepository(prisma: PrismaClient) {
       return prisma.user.findUnique({ where: { googleId } });
     },
 
+    async listConnectedIds(): Promise<string[]> {
+      const rows = await prisma.user.findMany({
+        where: { googleRefreshToken: { not: null } },
+        select: { id: true },
+      });
+      return rows.map((r) => r.id);
+    },
+
     async update(id: string, data: UpdateUserInput): Promise<User> {
       try {
         const result = await prisma.user.updateMany({ where: { id }, data });

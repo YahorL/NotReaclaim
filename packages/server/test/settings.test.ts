@@ -19,4 +19,15 @@ describe('settings routes', () => {
     const got = await app.inject({ method: 'GET', url: '/settings', headers: auth });
     expect(got.statusCode).toBe(200);
   });
+
+  it('triggers a re-plan on settings upsert', async () => {
+    const { app, reconcileCalls, emitted } = buildTestApp();
+    const token = await tokenFor(app);
+    await app.inject({
+      method: 'PUT', url: '/settings', headers: { authorization: `Bearer ${token}` }, payload: settingsBody,
+    });
+
+    expect(reconcileCalls).toContainEqual({ userId: 'u1', now: expect.any(Number) });
+    expect(emitted.some((e) => e.type === 'task.changed')).toBe(false);
+  });
 });

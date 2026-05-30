@@ -45,6 +45,17 @@ describe('UserRepository', () => {
     ).rejects.toBeInstanceOf(ConflictError);
   });
 
+  it('listConnectedIds returns only users with a googleRefreshToken', async () => {
+    const connected = await repo.create({ email: 'conn@example.com' });
+    await repo.update(connected.id, { googleRefreshToken: 'enc-token' });
+    await repo.create({ email: 'unconnected@example.com' });
+
+    const ids = await repo.listConnectedIds();
+
+    expect(ids).toContain(connected.id);
+    expect(ids).toHaveLength(1);
+  });
+
   it('cascade-deletes child rows when the user is deleted', async () => {
     const user = await repo.create({ email: 'cascade@example.com' });
     const task = await prisma.task.create({

@@ -1,6 +1,8 @@
 import type { Settings, Task, Habit, ScheduledBlock, User } from '@notreclaim/db';
 import type { SchedulingRepositories } from '@notreclaim/core';
 import { buildApp, type AppDeps } from '../src/app.js';
+import { createEventBus } from '../src/events.js';
+import type { ServerEvent } from '../src/events.js';
 
 const FIXED_NOW = Date.parse('2026-01-05T00:00:00.000Z'); // Monday
 
@@ -110,6 +112,10 @@ export function buildTestApp(opts: TestAppOptions = {}) {
   const scheduledBlocks = fakeScheduledBlockRepo(opts.blocks ?? []);
   const reconcileCalls: Array<{ userId: string; now: number }> = [];
 
+  const events = createEventBus();
+  const emitted: ServerEvent[] = [];
+  events.subscribe((e) => emitted.push(e));
+
   const schedulingRepos: SchedulingRepositories = opts.schedulingReposOverride ?? {
     settings,
     calendarEvents: { listByUserInRange: async () => [] },
@@ -135,11 +141,12 @@ export function buildTestApp(opts: TestAppOptions = {}) {
       reconcileCalls.push({ userId, now });
       return opts.reconcileResult ?? { created: 0, updated: 0, deleted: 0, pinned: 0, removed: 0 };
     },
+    events,
     config: { jwtSecret: 'test-secret', googleRedirectUri: 'http://localhost:3000/auth/google/callback' },
     now: () => FIXED_NOW,
   });
 
-  return { app, tasks, habits, settings, reconcileCalls, FIXED_NOW };
+  return { app, tasks, habits, settings, reconcileCalls, emitted, events, FIXED_NOW };
 }
 
 export async function tokenFor(app: Awaited<ReturnType<typeof buildTestApp>>['app'], userId = 'u1'): Promise<string> {
