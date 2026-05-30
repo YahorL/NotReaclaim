@@ -14,8 +14,9 @@ describe('AtRiskPanel', () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveTextContent('Tax filing');
     expect(rows[0]).toHaveTextContent('no free time before due');
-    expect(rows[0]).toHaveTextContent('1h 30m');
-    expect(rows[1]).toHaveTextContent('2h');
+    expect(rows[0]).toHaveTextContent('1h 30m unplaced');
+    expect(rows[1]).toHaveTextContent('Read paper');
+    expect(rows[1]).toHaveTextContent('2h unplaced');
   });
 
   it('shows an empty state when nothing is at risk', () => {
