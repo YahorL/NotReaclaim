@@ -55,4 +55,15 @@ describe('createApiClient', () => {
     expect((init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
     expect(JSON.parse(init.body as string)).toMatchObject({ title: 'A' });
   });
+
+  it('getCalendarEvents builds the range query string', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse([{ id: 'e1', title: 'Standup' }]));
+    vi.stubGlobal('fetch', fetchMock);
+    const api = createApiClient({ baseUrl: '', getToken: () => 't' });
+
+    await api.getCalendarEvents('2026-01-05T00:00:00.000Z', '2026-01-12T00:00:00.000Z');
+
+    const calls = fetchMock.mock.calls as unknown as [[string, RequestInit]];
+    expect(calls[0][0]).toBe('/calendar/events?from=2026-01-05T00%3A00%3A00.000Z&to=2026-01-12T00%3A00%3A00.000Z');
+  });
 });
