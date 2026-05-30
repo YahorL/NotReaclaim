@@ -26,6 +26,14 @@ export function dayColumns(weekStartMs: number): number[] {
   return out;
 }
 
+/** The Monday-midnight `weeks` weeks from `weekStartMs` (DST-safe local arithmetic). */
+export function addWeeks(weekStartMs: number, weeks: number): number {
+  const d = new Date(weekStartMs);
+  d.setDate(d.getDate() + weeks * 7);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
 export interface BlockClass {
   kind: 'task' | 'habit';
   pinned: boolean;

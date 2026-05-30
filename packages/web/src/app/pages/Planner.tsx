@@ -1,10 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation } from '../../api/queries';
-import { startOfWeek, dayColumns } from '../planner/weekModel';
+import { startOfWeek, dayColumns, addWeeks } from '../planner/weekModel';
 import { WeekGrid } from '../planner/WeekGrid';
 import { AtRiskPanel } from '../planner/AtRiskPanel';
-
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 function weekLabel(days: number[]): string {
   const fmt = (ms: number) => new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric' });
@@ -16,7 +14,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const [weekStartMs, setWeekStartMs] = useState(() => startOfWeek(nowMs));
   const days = useMemo(() => dayColumns(weekStartMs), [weekStartMs]);
   const fromIso = new Date(weekStartMs).toISOString();
-  const toIso = new Date(weekStartMs + 7 * MS_PER_DAY).toISOString();
+  const toIso = new Date(addWeeks(weekStartMs, 1)).toISOString();
 
   const schedule = useScheduleQuery(fromIso, toIso);
   const calendar = useCalendarEventsQuery(fromIso, toIso);
@@ -51,8 +49,8 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           blocks={schedule.data ?? []}
           events={calendar.data ?? []}
           replanPending={replan.isPending}
-          onPrev={() => setWeekStartMs(weekStartMs - 7 * MS_PER_DAY)}
-          onNext={() => setWeekStartMs(weekStartMs + 7 * MS_PER_DAY)}
+          onPrev={() => setWeekStartMs((ms) => addWeeks(ms, -1))}
+          onNext={() => setWeekStartMs((ms) => addWeeks(ms, 1))}
           onToday={() => setWeekStartMs(startOfWeek(now()))}
           onReplan={() => replan.mutate()}
         />

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { ScheduledBlock } from '../../api/types';
 import {
-  startOfWeek, dayColumns, classifyBlock, placeInDay, nowLine, humanizeMs, isToday,
+  startOfWeek, dayColumns, addWeeks, classifyBlock, placeInDay, nowLine, humanizeMs, isToday,
   WINDOW_START_MIN, WINDOW_END_MIN,
 } from './weekModel';
 
@@ -26,6 +26,15 @@ describe('startOfWeek / dayColumns', () => {
     expect(cols).toHaveLength(7);
     expect(cols[0]).toBe(MON);
     expect(cols[6]).toBe(Date.parse('2026-01-11T00:00:00.000Z'));
+  });
+});
+
+describe('addWeeks', () => {
+  it('moves forward and backward by whole weeks to Monday midnight', () => {
+    const MON2 = Date.parse('2026-01-12T00:00:00.000Z');
+    expect(addWeeks(MON, 1)).toBe(MON2);
+    expect(addWeeks(MON2, -1)).toBe(MON);
+    expect(addWeeks(MON, 0)).toBe(MON);
   });
 });
 
