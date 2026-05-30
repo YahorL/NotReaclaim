@@ -22,5 +22,6 @@ describe('runPollCycle', () => {
 
     expect(seen).toEqual(['u1', 'u2']);
     expect(log).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledWith(new Error('boom'));
   });
 });

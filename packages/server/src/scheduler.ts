@@ -26,9 +26,11 @@ export function startScheduler(deps: SchedulerDeps): { stop: () => void } {
   const timer = setInterval(() => {
     if (running) return;
     running = true;
-    void runPollCycle(deps).finally(() => {
-      running = false;
-    });
+    void runPollCycle(deps)
+      .catch((err) => deps.log?.(err))
+      .finally(() => {
+        running = false;
+      });
   }, deps.intervalMs);
   timer.unref?.();
   return { stop: () => clearInterval(timer) };
