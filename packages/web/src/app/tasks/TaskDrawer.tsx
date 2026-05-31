@@ -52,6 +52,7 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
       <div className="mb-2">
         <label className={labelCls}>Min chunk</label>
         <DurationField valueMs={form.minChunkMs} onChange={(ms) => set('minChunkMs', ms)} testid="minchunk" />
+        {errors.minChunkMs && <p data-testid="err-minChunkMs" className={errCls}>{errors.minChunkMs}</p>}
       </div>
       <div className="mb-2">
         <label className={labelCls}>Max chunk</label>

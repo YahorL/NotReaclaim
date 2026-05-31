@@ -18,7 +18,10 @@ describe('TaskDrawer', () => {
     expect((screen.getByTestId('duration-h') as HTMLInputElement).value).toBe('1');
     expect((screen.getByTestId('duration-m') as HTMLInputElement).value).toBe('30');
     fireEvent.click(screen.getByTestId('save'));
-    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ title: 'Write spec', durationMs: 5_400_000, dueBy: '2026-06-01T17:00:00.000Z', category: 'work', status: 'pending' }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Write spec', priority: 2, durationMs: 5_400_000, dueBy: '2026-06-01T17:00:00.000Z',
+      minChunkMs: 1_800_000, maxChunkMs: 7_200_000, category: 'work', status: 'pending',
+    }));
   });
 
   it('blocks save and shows an error when min chunk > max chunk', () => {
