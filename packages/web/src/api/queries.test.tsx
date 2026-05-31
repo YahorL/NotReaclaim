@@ -134,7 +134,7 @@ describe('useUpdateSettingsMutation', () => {
     const { Wrapper, qc } = wrap(api);
     const spy = vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
     const { result } = renderHook(() => useUpdateSettingsMutation(), { wrapper: Wrapper });
-    result.current.mutate({ timezone: 'UTC', workingHours: [], defaultMinChunkMs: 1, maxChunkMs: 1 } as never);
+    result.current.mutate({ timezone: 'UTC', workingHours: [], defaultMinChunkMs: 1, defaultMaxChunkMs: 1 });
     await waitFor(() => expect(putSettings).toHaveBeenCalled());
     await waitFor(() => expect(spy).toHaveBeenCalledWith({ queryKey: ['settings'] }));
     expect(spy).toHaveBeenCalledWith({ queryKey: ['schedule'] });
