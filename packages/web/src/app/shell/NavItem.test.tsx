@@ -22,6 +22,13 @@ describe('NavItem', () => {
     expect(screen.getByText(/soon/i)).toBeInTheDocument();
   });
 
+  it('NavSection exposes aria-expanded reflecting open state', () => {
+    const { rerender } = render(<NavSection label="Time blocking" open onToggle={() => {}} />);
+    expect(screen.getByRole('button', { name: /time blocking/i })).toHaveAttribute('aria-expanded', 'true');
+    rerender(<NavSection label="Time blocking" open={false} onToggle={() => {}} />);
+    expect(screen.getByRole('button', { name: /time blocking/i })).toHaveAttribute('aria-expanded', 'false');
+  });
+
   it('NavSection toggles via onToggle and reflects open state', () => {
     const onToggle = vi.fn();
     render(<NavSection label="Time blocking" open onToggle={onToggle} />);

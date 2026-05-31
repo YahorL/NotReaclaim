@@ -48,7 +48,7 @@ export function NavSection({
 }: { label: string; icon?: ReactNode; open: boolean; onToggle: () => void }) {
   return (
     <button
-      type="button" onClick={onToggle}
+      type="button" onClick={onToggle} aria-expanded={open}
       className={[ROW_BASE, PAD(false), 'font-medium text-sidebarText hover:bg-white/5'].join(' ')}
     >
       {icon && <span className="shrink-0 opacity-90">{icon}</span>}
