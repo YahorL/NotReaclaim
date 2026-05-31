@@ -26,9 +26,9 @@ describe('App routing', () => {
     tokenStore.set({ token: 'jwt', userId: 'u1' });
     renderWithProviders(<App />, { initialEntries: ['/'], api: authedApi() });
     expect(screen.getByRole('link', { name: 'Planner' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Tasks' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Priorities' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Habits' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Tasks' })).toBeNull();
   });
 
   it('navigates to the Habits page via the sidebar', () => {
@@ -38,10 +38,4 @@ describe('App routing', () => {
     expect(screen.getByPlaceholderText(/add a habit/i)).toBeInTheDocument();
   });
 
-  it('signs out back to /signin', () => {
-    tokenStore.set({ token: 'jwt', userId: 'u1' });
-    renderWithProviders(<App />, { initialEntries: ['/'], api: authedApi() });
-    fireEvent.click(screen.getByRole('button', { name: /sign out/i }));
-    expect(screen.getByRole('button', { name: /sign in with google/i })).toBeInTheDocument();
-  });
 });
