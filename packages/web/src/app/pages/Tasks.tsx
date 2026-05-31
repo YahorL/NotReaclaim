@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Task, TaskStatus } from '../../api/types';
 import { ApiError } from '../../api/client';
-import { useTasksQuery, useCreateTaskMutation, useUpdateTaskMutation, useDeleteTaskMutation } from '../../api/queries';
+import { useTasksQuery, useCreateTaskMutation, useUpdateTaskMutation, useDeleteTaskMutation, useSettingsQuery } from '../../api/queries';
 import { QuickAdd } from '../components/QuickAdd';
 import { TaskRow } from '../tasks/TaskRow';
 import { TaskDrawer } from '../tasks/TaskDrawer';
@@ -25,6 +25,10 @@ export function Tasks({ now = () => Date.now() }: { now?: () => number }) {
   const createM = useCreateTaskMutation();
   const updateM = useUpdateTaskMutation();
   const deleteM = useDeleteTaskMutation();
+  const settingsQ = useSettingsQuery();
+  const chunkDefaults = settingsQ.data
+    ? { minChunkMs: settingsQ.data.defaultMinChunkMs, maxChunkMs: settingsQ.data.defaultMaxChunkMs }
+    : undefined;
   const [tab, setTab] = useState<Tab>('active');
   const [editing, setEditing] = useState<Task | null>(null);
 
@@ -37,7 +41,7 @@ export function Tasks({ now = () => Date.now() }: { now?: () => number }) {
     <div className="flex gap-3 p-4">
       <div className="flex-1">
         <h2 className="mb-3 text-lg font-semibold">Tasks</h2>
-        <QuickAdd placeholder="+ Add a task…" onAdd={(title) => createM.mutate(defaultQuickAddInput(title, now()))} />
+        <QuickAdd placeholder="+ Add a task…" onAdd={(title) => createM.mutate(defaultQuickAddInput(title, now(), chunkDefaults))} />
         <div className="mb-2 flex gap-1 text-xs">
           {TABS.map((t) => (
             <button key={t.key} data-testid={`tab-${t.key}`} onClick={() => setTab(t.key)}

@@ -4,7 +4,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiProvider } from './ApiProvider';
 import { fakeApiClient } from '../test/fakes';
-import { queryKeys, useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useHabitsQuery, useCreateTaskMutation, useDeleteHabitMutation } from './queries';
+import { queryKeys, useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useHabitsQuery, useCreateTaskMutation, useDeleteHabitMutation, useSettingsQuery, useUpdateSettingsMutation } from './queries';
 
 function wrap(api = fakeApiClient(), qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   const Wrapper = ({ children }: { children: ReactNode }) => (
@@ -111,6 +111,32 @@ describe('useDeleteHabitMutation', () => {
     result.current.mutate('h1');
     await waitFor(() => expect(deleteHabit).toHaveBeenCalledWith('h1'));
     await waitFor(() => expect(spy).toHaveBeenCalledWith({ queryKey: ['habits'] }));
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['schedule'] });
+  });
+});
+
+describe('useSettingsQuery', () => {
+  it('calls getSettings and returns data', async () => {
+    const getSettings = vi.fn(async () => ({ id: 's1' }));
+    const api = fakeApiClient({ getSettings } as never);
+    const { Wrapper } = wrap(api);
+    const { result } = renderHook(() => useSettingsQuery(), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(getSettings).toHaveBeenCalled();
+    expect(result.current.data).toEqual({ id: 's1' });
+  });
+});
+
+describe('useUpdateSettingsMutation', () => {
+  it('calls putSettings and invalidates settings + schedule', async () => {
+    const putSettings = vi.fn(async () => ({ id: 's1' }));
+    const api = fakeApiClient({ putSettings } as never);
+    const { Wrapper, qc } = wrap(api);
+    const spy = vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    const { result } = renderHook(() => useUpdateSettingsMutation(), { wrapper: Wrapper });
+    result.current.mutate({ timezone: 'UTC', workingHours: [], defaultMinChunkMs: 1, defaultMaxChunkMs: 1 });
+    await waitFor(() => expect(putSettings).toHaveBeenCalled());
+    await waitFor(() => expect(spy).toHaveBeenCalledWith({ queryKey: ['settings'] }));
     expect(spy).toHaveBeenCalledWith({ queryKey: ['schedule'] });
   });
 });

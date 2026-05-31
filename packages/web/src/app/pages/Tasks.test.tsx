@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
 import type { Task } from '../../api/types';
+import { ApiError } from '../../api/client';
+import type { Settings } from '../../api/types';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 import { Tasks } from './Tasks';
 
@@ -13,12 +15,19 @@ const task = (over: Partial<Task> = {}): Task => ({
   createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', ...over,
 });
 
+const settings = (over: Partial<Settings> = {}): Settings => ({
+  id: 's1', userId: 'u1', timezone: 'UTC', workingHours: [],
+  horizonDays: 14, defaultMinChunkMs: 15 * 60_000, defaultMaxChunkMs: 90 * 60_000,
+  createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', ...over,
+});
+
 function makeApi(over = {}) {
   return fakeApiClient({
     listTasks: vi.fn(async () => [task(), task({ id: 't2', title: 'Done thing', status: 'completed' })]),
     createTask: vi.fn(async () => task({ id: 't9' })),
     updateTask: vi.fn(async () => task()),
     deleteTask: vi.fn(async () => undefined),
+    getSettings: vi.fn(async () => settings()),
     ...over,
   } as never);
 }
@@ -58,5 +67,24 @@ describe('Tasks page', () => {
     expect(screen.getByTestId('task-drawer')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('save'));
     await waitFor(() => expect(updateTask).toHaveBeenCalled());
+  });
+
+  it('quick-add uses chunk defaults from loaded settings', async () => {
+    const createTask = vi.fn(async () => task({ id: 't9' }));
+    renderWithProviders(<Tasks now={() => NOW} />, { api: makeApi({ createTask }) });
+    await waitFor(() => expect(screen.getByText('Write spec')).toBeInTheDocument());
+    fireEvent.change(screen.getByPlaceholderText(/add a task/i), { target: { value: 'New thing' } });
+    fireEvent.keyDown(screen.getByPlaceholderText(/add a task/i), { key: 'Enter' });
+    await waitFor(() => expect(createTask).toHaveBeenCalledWith(expect.objectContaining({ minChunkMs: 900_000, maxChunkMs: 5_400_000 })));
+  });
+
+  it('quick-add falls back to 30m/120m when settings are unavailable (404)', async () => {
+    const createTask = vi.fn(async () => task({ id: 't9' }));
+    const api = makeApi({ createTask, getSettings: vi.fn(() => Promise.reject(new ApiError(404, 'not_found', 'x'))) });
+    renderWithProviders(<Tasks now={() => NOW} />, { api });
+    await waitFor(() => expect(screen.getByText('Write spec')).toBeInTheDocument());
+    fireEvent.change(screen.getByPlaceholderText(/add a task/i), { target: { value: 'New thing' } });
+    fireEvent.keyDown(screen.getByPlaceholderText(/add a task/i), { key: 'Enter' });
+    await waitFor(() => expect(createTask).toHaveBeenCalledWith(expect.objectContaining({ minChunkMs: 1_800_000, maxChunkMs: 7_200_000 })));
   });
 });

@@ -14,14 +14,18 @@ export interface TaskFormState {
   status: TaskStatus;
 }
 
-export function defaultQuickAddInput(title: string, now: number): CreateTaskInput {
+export function defaultQuickAddInput(
+  title: string,
+  now: number,
+  defaults?: { minChunkMs: number; maxChunkMs: number },
+): CreateTaskInput {
   return {
     title: title.trim(),
     priority: 3,
     durationMs: 60 * 60_000,
     dueBy: new Date(now + 7 * DAY_MS).toISOString(),
-    minChunkMs: 30 * 60_000,
-    maxChunkMs: 120 * 60_000,
+    minChunkMs: defaults?.minChunkMs ?? 30 * 60_000,
+    maxChunkMs: defaults?.maxChunkMs ?? 120 * 60_000,
     category: null,
   };
 }

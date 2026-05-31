@@ -25,6 +25,13 @@ describe('taskForm', () => {
     });
   });
 
+  it('defaultQuickAddInput uses provided chunk defaults when given', () => {
+    const input = defaultQuickAddInput('Task', NOW, { minChunkMs: 900_000, maxChunkMs: 5_400_000 });
+    expect(input.minChunkMs).toBe(900_000);
+    expect(input.maxChunkMs).toBe(5_400_000);
+    expect(input.durationMs).toBe(3_600_000); // unchanged
+  });
+
   it('toFormState maps a Task (ISO due → local; category null → "")', () => {
     expect(toFormState(task())).toEqual({
       title: 'Write spec', durationMs: 5_400_000, priority: 2, dueByLocal: '2026-06-01T17:00',

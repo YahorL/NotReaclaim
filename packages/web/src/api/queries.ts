@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useApi } from './ApiProvider';
-import type { CreateTaskInput, UpdateTaskInput, CreateHabitInput, UpdateHabitInput } from './types';
+import type { CreateTaskInput, UpdateTaskInput, CreateHabitInput, UpdateHabitInput, SettingsInput } from './types';
 
 export const queryKeys = {
   scheduleRoot: ['schedule'] as const,
@@ -12,6 +12,8 @@ export const queryKeys = {
   tasks: (status?: string) => ['tasks', { status }] as const,
   habitsRoot: ['habits'] as const,
   habits: () => ['habits'] as const,
+  settingsRoot: ['settings'] as const,
+  settings: () => ['settings'] as const,
 };
 
 export function useScheduleQuery(from?: string, to?: string) {
@@ -89,4 +91,21 @@ export function useDeleteHabitMutation() {
   const api = useApi();
   const qc = useQueryClient();
   return useMutation({ mutationFn: (id: string) => api.deleteHabit(id), onSuccess: () => invalidateHabits(qc) });
+}
+
+export function useSettingsQuery() {
+  const api = useApi();
+  return useQuery({ queryKey: queryKeys.settings(), queryFn: () => api.getSettings() });
+}
+
+export function useUpdateSettingsMutation() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SettingsInput) => api.putSettings(body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.settingsRoot });
+      void qc.invalidateQueries({ queryKey: queryKeys.scheduleRoot });
+    },
+  });
 }
