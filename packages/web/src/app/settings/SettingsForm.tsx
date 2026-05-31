@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { SettingsInput } from '../../api/types';
 import type { ApiError } from '../../api/client';
 import { DurationField } from '../components/DurationField';
@@ -21,7 +21,7 @@ export interface SettingsFormProps {
 export function SettingsForm({ initial, onSave, saving = false, error = null, justSaved = false, timezones }: SettingsFormProps) {
   const [form, setForm] = useState<SettingsFormState>(() => initial);
   const { ok, errors } = validateSettingsForm(form);
-  const zones = timezones ?? supportedTimezones();
+  const zones = useMemo(() => timezones ?? supportedTimezones(), [timezones]);
   const zoneOptions = zones.includes(form.timezone) ? zones : [form.timezone, ...zones];
 
   const setDay = (weekday: number, patch: Partial<DayState>) =>
