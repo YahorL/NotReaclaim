@@ -46,4 +46,22 @@ describe('App routing', () => {
     expect(screen.getByRole('button', { name: /sign in with google/i })).toBeInTheDocument();
   });
 
+  it('renders the Priorities board at /priorities', async () => {
+    tokenStore.set({ token: 'jwt', userId: 'u1' });
+    renderWithProviders(<App />, { initialEntries: ['/priorities'], api: authedApi() });
+    expect(await screen.findByPlaceholderText(/search for something/i)).toBeInTheDocument();
+  });
+
+  it('redirects /tasks to /priorities', async () => {
+    tokenStore.set({ token: 'jwt', userId: 'u1' });
+    renderWithProviders(<App />, { initialEntries: ['/tasks'], api: authedApi() });
+    expect(await screen.findByPlaceholderText(/search for something/i)).toBeInTheDocument();
+  });
+
+  it('shows the Stats placeholder at /stats', () => {
+    tokenStore.set({ token: 'jwt', userId: 'u1' });
+    renderWithProviders(<App />, { initialEntries: ['/stats'], api: authedApi() });
+    expect(screen.getByText(/coming soon/i)).toBeInTheDocument();
+  });
+
 });
