@@ -34,7 +34,7 @@ export function validateNewTaskForm(s: NewTaskFormState): { ok: boolean; errors:
   if (!(s.durationMs > 0)) errors.durationMs = 'Duration must be positive';
   if (!(s.minChunkMs > 0)) errors.minChunkMs = 'Min must be positive';
   if (!(s.maxChunkMs > 0)) errors.maxChunkMs = 'Max must be positive';
-  else if (s.minChunkMs > s.maxChunkMs) errors.maxChunkMs = 'Max must be ≥ min';
+  else if (s.split && s.minChunkMs > s.maxChunkMs) errors.maxChunkMs = 'Max must be ≥ min';
   if (!s.dueByLocal || Number.isNaN(Date.parse(s.dueByLocal))) errors.dueByLocal = 'A valid due date is required';
   return { ok: Object.keys(errors).length === 0, errors };
 }

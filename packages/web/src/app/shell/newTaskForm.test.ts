@@ -27,6 +27,13 @@ describe('newTaskForm', () => {
     expect(validateNewTaskForm({ ...base, title: 'Write spec' }).ok).toBe(true);
   });
 
+  it('ignores min > max when split is off (chunks collapse to duration)', () => {
+    const base = defaultNewTaskForm(Date.parse('2026-01-05T00:00:00.000Z'));
+    expect(validateNewTaskForm({ ...base, title: 'x', split: false, minChunkMs: 9_000_000, maxChunkMs: 1_000_000 }).ok).toBe(true);
+    // still invalid when split is on
+    expect(validateNewTaskForm({ ...base, title: 'x', split: true, minChunkMs: 9_000_000, maxChunkMs: 1_000_000 }).ok).toBe(false);
+  });
+
   it('toCreateTaskInput uses priority 4 and split-off collapses min=max=duration', () => {
     const s = { ...defaultNewTaskForm(NOW), title: 'Write spec', durationMs: 3_600_000, split: false, minChunkMs: 1_800_000, maxChunkMs: 7_200_000 };
     const input = toCreateTaskInput(s);
