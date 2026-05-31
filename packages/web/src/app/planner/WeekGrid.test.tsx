@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import type { ScheduledBlock, CalendarEvent } from '../../api/types';
+import type { ScheduledBlock, CalendarEvent, PreviewBlock } from '../../api/types';
 import { startOfWeek, dayColumns } from './weekModel';
 import { WeekGrid, type WeekGridProps } from './WeekGrid';
 
@@ -72,5 +72,22 @@ describe('WeekGrid', () => {
     expect(onPrev).toHaveBeenCalledTimes(1);
     expect(onNext).toHaveBeenCalledTimes(1);
     expect(onToday).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders proposed blocks as ghosts by default and the toggle hides them', () => {
+    const proposed: PreviewBlock[] = [
+      { id: 'p1', sourceType: 'task', sourceId: 't1', title: 'Proposed focus',
+        start: Date.parse('2026-01-07T13:00:00.000Z'), end: Date.parse('2026-01-07T14:00:00.000Z') },
+    ];
+    renderGrid({ proposed });
+    const ghosts = () => screen.getAllByTestId('event-block').filter((b) => b.getAttribute('data-proposed') === 'true');
+    expect(ghosts().some((b) => b.textContent?.includes('Proposed focus'))).toBe(true);
+
+    fireEvent.click(screen.getByTestId('toggle-proposed'));
+    expect(screen.queryByText('Proposed focus')).toBeNull();
+    expect(screen.getAllByTestId('event-block').some((b) => b.getAttribute('data-proposed') === 'false')).toBe(true);
+
+    fireEvent.click(screen.getByTestId('toggle-proposed'));
+    expect(screen.getByText('Proposed focus')).toBeInTheDocument();
   });
 });

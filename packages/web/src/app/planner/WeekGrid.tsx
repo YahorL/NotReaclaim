@@ -1,4 +1,5 @@
-import type { ScheduledBlock, CalendarEvent } from '../../api/types';
+import { useState } from 'react';
+import type { ScheduledBlock, CalendarEvent, PreviewBlock } from '../../api/types';
 import { EventBlock, type BlockKind } from './EventBlock';
 import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY } from './weekModel';
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -10,6 +11,7 @@ export interface WeekGridProps {
   weekLabel: string;
   blocks: ScheduledBlock[];
   events: CalendarEvent[];
+  proposed?: PreviewBlock[];
   replanPending: boolean;
   onPrev: () => void;
   onToday: () => void;
@@ -22,6 +24,7 @@ interface Item {
   title: string;
   kind: BlockKind;
   pinned: boolean;
+  proposed: boolean;
   startMs: number;
   endMs: number;
   startLabel: string;
@@ -31,24 +34,29 @@ function timeLabel(ms: number): string {
   return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-function toItems(blocks: ScheduledBlock[], events: CalendarEvent[]): Item[] {
+function toItems(blocks: ScheduledBlock[], events: CalendarEvent[], proposed: PreviewBlock[]): Item[] {
   const fromBlocks = blocks.map((b): Item => {
     const cls = classifyBlock(b);
     const startMs = Date.parse(b.startsAt);
-    return { key: `b:${b.id}`, title: b.title, kind: cls.kind, pinned: cls.pinned,
+    return { key: `b:${b.id}`, title: b.title, kind: cls.kind, pinned: cls.pinned, proposed: false,
       startMs, endMs: Date.parse(b.endsAt), startLabel: timeLabel(startMs) };
   });
   const fromEvents = events.map((e): Item => {
     const startMs = Date.parse(e.startsAt);
-    return { key: `e:${e.id}`, title: e.title, kind: 'meeting', pinned: false,
+    return { key: `e:${e.id}`, title: e.title, kind: 'meeting', pinned: false, proposed: false,
       startMs, endMs: Date.parse(e.endsAt), startLabel: timeLabel(startMs) };
   });
-  return [...fromEvents, ...fromBlocks];
+  const fromProposed = proposed.map((b): Item => ({
+    key: `p:${b.id}`, title: b.title, kind: b.sourceType, pinned: false, proposed: true,
+    startMs: b.start, endMs: b.end, startLabel: timeLabel(b.start),
+  }));
+  return [...fromEvents, ...fromBlocks, ...fromProposed];
 }
 
 export function WeekGrid(props: WeekGridProps) {
-  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan } = props;
-  const items = toItems(blocks, events);
+  const { days, nowMs, weekLabel, blocks, events, proposed = [], replanPending, onPrev, onToday, onNext, onReplan } = props;
+  const [showProposed, setShowProposed] = useState(true);
+  const items = toItems(blocks, events, showProposed ? proposed : []);
 
   return (
     <div className="flex flex-col">
@@ -58,6 +66,14 @@ export function WeekGrid(props: WeekGridProps) {
         <button onClick={onNext} className="rounded border border-gray-300 px-2 py-0.5">▶</button>
         <span className="font-semibold">{weekLabel}</span>
         <span className="flex-1" />
+        <button
+          data-testid="toggle-proposed"
+          aria-pressed={showProposed}
+          onClick={() => setShowProposed((v) => !v)}
+          className={`rounded border px-2 py-0.5 text-sm ${showProposed ? 'border-blue-200 bg-blue-100 text-blue-700' : 'border-gray-300 text-gray-600'}`}
+        >
+          Proposed
+        </button>
         <button
           onClick={onReplan}
           disabled={replanPending}
@@ -106,6 +122,7 @@ export function WeekGrid(props: WeekGridProps) {
                     title={it.title}
                     kind={it.kind}
                     pinned={it.pinned}
+                    proposed={it.proposed}
                     topPct={pos.topPct}
                     heightPct={pos.heightPct}
                     startLabel={it.startLabel}
