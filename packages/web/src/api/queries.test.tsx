@@ -4,7 +4,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiProvider } from './ApiProvider';
 import { fakeApiClient } from '../test/fakes';
-import { queryKeys, useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation } from './queries';
+import { queryKeys, useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useHabitsQuery, useCreateTaskMutation, useDeleteHabitMutation } from './queries';
 
 function wrap(api = fakeApiClient(), qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   const Wrapper = ({ children }: { children: ReactNode }) => (
@@ -72,5 +72,45 @@ describe('useReplanMutation', () => {
     result.current.mutate();
     await waitFor(() => expect(replan).toHaveBeenCalled());
     await waitFor(() => expect(spy).toHaveBeenCalledWith({ queryKey: ['schedule'] }));
+  });
+});
+
+describe('useHabitsQuery', () => {
+  it('calls listHabits and returns data', async () => {
+    const listHabits = vi.fn(async () => [{ id: 'h1' }]);
+    const api = fakeApiClient({ listHabits } as never);
+    const { Wrapper } = wrap(api);
+    const { result } = renderHook(() => useHabitsQuery(), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(listHabits).toHaveBeenCalled();
+    expect(result.current.data).toEqual([{ id: 'h1' }]);
+  });
+});
+
+describe('useCreateTaskMutation', () => {
+  it('calls createTask and invalidates tasks + schedule', async () => {
+    const createTask = vi.fn(async () => ({ id: 't1' }));
+    const api = fakeApiClient({ createTask } as never);
+    const { Wrapper, qc } = wrap(api);
+    const spy = vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    const { result } = renderHook(() => useCreateTaskMutation(), { wrapper: Wrapper });
+    result.current.mutate({ title: 'A', priority: 3, durationMs: 1, dueBy: '2026-01-01T00:00:00.000Z', minChunkMs: 1, maxChunkMs: 1, category: null });
+    await waitFor(() => expect(createTask).toHaveBeenCalled());
+    await waitFor(() => expect(spy).toHaveBeenCalledWith({ queryKey: ['tasks'] }));
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['schedule'] });
+  });
+});
+
+describe('useDeleteHabitMutation', () => {
+  it('calls deleteHabit and invalidates habits + schedule', async () => {
+    const deleteHabit = vi.fn(async () => undefined);
+    const api = fakeApiClient({ deleteHabit } as never);
+    const { Wrapper, qc } = wrap(api);
+    const spy = vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    const { result } = renderHook(() => useDeleteHabitMutation(), { wrapper: Wrapper });
+    result.current.mutate('h1');
+    await waitFor(() => expect(deleteHabit).toHaveBeenCalledWith('h1'));
+    await waitFor(() => expect(spy).toHaveBeenCalledWith({ queryKey: ['habits'] }));
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['schedule'] });
   });
 });

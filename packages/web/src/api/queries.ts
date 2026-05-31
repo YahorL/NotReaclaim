@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useApi } from './ApiProvider';
+import type { CreateTaskInput, UpdateTaskInput, CreateHabitInput, UpdateHabitInput } from './types';
 
 export const queryKeys = {
   scheduleRoot: ['schedule'] as const,
@@ -9,6 +10,8 @@ export const queryKeys = {
   calendarEvents: (from?: string, to?: string) => ['calendarEvents', { from, to }] as const,
   tasksRoot: ['tasks'] as const,
   tasks: (status?: string) => ['tasks', { status }] as const,
+  habitsRoot: ['habits'] as const,
+  habits: () => ['habits'] as const,
 };
 
 export function useScheduleQuery(from?: string, to?: string) {
@@ -35,4 +38,55 @@ export function useReplanMutation() {
       void qc.invalidateQueries({ queryKey: queryKeys.scheduleRoot });
     },
   });
+}
+
+export function useTasksQuery() {
+  const api = useApi();
+  return useQuery({ queryKey: queryKeys.tasks(), queryFn: () => api.listTasks() });
+}
+
+export function useHabitsQuery() {
+  const api = useApi();
+  return useQuery({ queryKey: queryKeys.habits(), queryFn: () => api.listHabits() });
+}
+
+function invalidateTasks(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: queryKeys.tasksRoot });
+  void qc.invalidateQueries({ queryKey: queryKeys.scheduleRoot });
+}
+function invalidateHabits(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: queryKeys.habitsRoot });
+  void qc.invalidateQueries({ queryKey: queryKeys.scheduleRoot });
+}
+
+export function useCreateTaskMutation() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (body: CreateTaskInput) => api.createTask(body), onSuccess: () => invalidateTasks(qc) });
+}
+export function useUpdateTaskMutation() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: ({ id, patch }: { id: string; patch: UpdateTaskInput }) => api.updateTask(id, patch), onSuccess: () => invalidateTasks(qc) });
+}
+export function useDeleteTaskMutation() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (id: string) => api.deleteTask(id), onSuccess: () => invalidateTasks(qc) });
+}
+
+export function useCreateHabitMutation() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (body: CreateHabitInput) => api.createHabit(body), onSuccess: () => invalidateHabits(qc) });
+}
+export function useUpdateHabitMutation() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: ({ id, patch }: { id: string; patch: UpdateHabitInput }) => api.updateHabit(id, patch), onSuccess: () => invalidateHabits(qc) });
+}
+export function useDeleteHabitMutation() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (id: string) => api.deleteHabit(id), onSuccess: () => invalidateHabits(qc) });
 }
