@@ -9,6 +9,8 @@ function authedApi() {
     getSchedule: async () => [],
     getCalendarEvents: async () => [],
     getSchedulePreview: async () => ({ blocks: [], unscheduled: [] }),
+    listTasks: async () => [],
+    listHabits: async () => [],
   } as never);
 }
 
@@ -33,7 +35,7 @@ describe('App routing', () => {
     tokenStore.set({ token: 'jwt', userId: 'u1' });
     renderWithProviders(<App />, { initialEntries: ['/'], api: authedApi() });
     fireEvent.click(screen.getByRole('link', { name: 'Habits' }));
-    expect(screen.getByText(/arrives in 5c/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/add a habit/i)).toBeInTheDocument();
   });
 
   it('signs out back to /signin', () => {
