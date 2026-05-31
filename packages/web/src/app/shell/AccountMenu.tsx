@@ -19,7 +19,8 @@ export function AccountMenu() {
   return (
     <div ref={ref} className="relative">
       <button
-        type="button" aria-label="Account menu" onClick={() => setOpen((v) => !v)}
+        type="button" aria-label="Account menu" aria-haspopup="true" aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-1.5 rounded-[30px] py-1 pl-1 pr-1.5"
       >
         <span className="h-[38px] w-[38px] rounded-full" style={{ background: 'conic-gradient(from 140deg, #7c87ff, #6ee0c8, #ffd166, #f4b8c2, #7c87ff)' }} />
