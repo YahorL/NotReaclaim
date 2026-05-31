@@ -33,7 +33,7 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
 
   const nextMsFor = (taskId: string) => nextBlockMsForTask(taskId, previewQ.data);
   const onComplete = (t: Task) => updateM.mutate({ id: t.id, patch: { status: t.status === 'completed' ? 'pending' : 'completed' } });
-  const onDelete = (t: Task) => deleteM.mutate(t.id);
+  const onDelete = (t: Task) => deleteM.mutate(t.id, { onSuccess: () => { if (editing?.id === t.id) setEditing(null); } });
   const onMove = (taskId: string, to: BucketKey) => {
     const t = (tasksQ.data ?? []).find((x) => x.id === taskId);
     if (!t || priorityToBucket(t.priority) === to) return;
@@ -52,7 +52,7 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
         {tasksQ.isError && (
           <p className="text-sm">
             <span className="text-crit">Couldn't load tasks.</span>{' '}
-            <button onClick={() => void tasksQ.refetch()} className="rounded border border-line px-2">Retry</button>
+            <button type="button" onClick={() => void tasksQ.refetch()} className="rounded border border-line px-2">Retry</button>
           </p>
         )}
         {!tasksQ.isLoading && !tasksQ.isError && (

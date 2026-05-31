@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Task } from '../../api/types';
 import { Icons } from '../shell/icons';
 import { type BucketKey, BUCKET_META, relativeDayTimeLabel } from './priorityBucket';
@@ -22,6 +22,13 @@ export interface TaskRowProps {
 
 export function TaskRow({ task, bucket, nextMs, now, dragging, onComplete, onEdit, onDelete, onDragStart, onDragEnd }: TaskRowProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [menuOpen]);
   const done = task.status === 'completed';
   const meta = `Due ${dueShort(task.dueBy)}${nextMs !== null ? ` · Next: ${relativeDayTimeLabel(nextMs, now)}` : ''}`;
 
@@ -32,7 +39,7 @@ export function TaskRow({ task, bucket, nextMs, now, dragging, onComplete, onEdi
       onDragStart={(e) => { if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'; onDragStart(task.id); }}
       onDragEnd={onDragEnd}
       onClick={() => onEdit(task)}
-      className={`flex cursor-grab items-start gap-3 border-t border-l-4 border-t-line ${BUCKET_META[bucket].leftBorder} bg-card py-3.5 pl-4 pr-3.5 transition-colors hover:bg-[#fafbfc] ${dragging ? 'opacity-40' : done ? 'opacity-45' : ''}`}
+      className={`flex cursor-grab items-start gap-3 border-t border-l-4 border-t-line ${BUCKET_META[bucket].leftBorder} bg-card last:rounded-b-xl py-3.5 pl-4 pr-3.5 transition-colors hover:bg-[#fafbfc] ${dragging ? 'opacity-40' : done ? 'opacity-45' : ''}`}
     >
       <button
         type="button" aria-label="complete"
@@ -47,7 +54,7 @@ export function TaskRow({ task, bucket, nextMs, now, dragging, onComplete, onEdi
           <Icons.calendar size={15} /><span>{meta}</span>
         </div>
       </div>
-      <div className="relative" onClick={(e) => e.stopPropagation()}>
+      <div ref={menuRef} className="relative" onClick={(e) => e.stopPropagation()}>
         <button type="button" aria-label="task menu" onClick={() => setMenuOpen((v) => !v)} className="rounded-md p-1 text-inkSoft hover:bg-[#eef0f4]">
           <Icons.dots size={18} />
         </button>
