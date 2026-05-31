@@ -38,4 +38,12 @@ describe('App routing', () => {
     expect(screen.getByPlaceholderText(/add a habit/i)).toBeInTheDocument();
   });
 
+  it('signs out via the account menu', () => {
+    tokenStore.set({ token: 'jwt', userId: 'u1' });
+    renderWithProviders(<App />, { initialEntries: ['/'], api: authedApi() });
+    fireEvent.click(screen.getByRole('button', { name: /account menu/i }));
+    fireEvent.click(screen.getByRole('button', { name: /sign out/i }));
+    expect(screen.getByRole('button', { name: /sign in with google/i })).toBeInTheDocument();
+  });
+
 });
