@@ -42,6 +42,15 @@ describe('TaskRow', () => {
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
 
+  it('cancel closes the confirm without deleting', () => {
+    const { onDelete } = setup();
+    fireEvent.click(screen.getByRole('button', { name: 'delete' }));
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(screen.queryByText('Delete?')).toBeNull();
+    expect(screen.getByRole('button', { name: 'delete' })).toBeInTheDocument();
+  });
+
   it('completed task is struck through and has no complete button', () => {
     setup({ status: 'completed' });
     expect(screen.queryByRole('button', { name: 'complete' })).toBeNull();

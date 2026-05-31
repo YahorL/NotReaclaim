@@ -21,7 +21,7 @@ export function TaskRow({ task, onEdit, onComplete, onDelete }: TaskRowProps) {
       {confirming ? (
         <span className="flex items-center gap-1 text-xs">
           <span className="text-gray-500">Delete?</span>
-          <button onClick={() => onDelete(task)} className="text-red-600">Yes</button>
+          <button onClick={() => { onDelete(task); setConfirming(false); }} className="text-red-600">Yes</button>
           <button onClick={() => setConfirming(false)} className="text-gray-600">Cancel</button>
         </span>
       ) : (
