@@ -48,6 +48,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           weekLabel={weekLabel(days)}
           blocks={schedule.data ?? []}
           events={calendar.data ?? []}
+          proposed={preview.data?.blocks ?? []}
           replanPending={replan.isPending}
           onPrev={() => setWeekStartMs((ms) => addWeeks(ms, -1))}
           onNext={() => setWeekStartMs((ms) => addWeeks(ms, 1))}
