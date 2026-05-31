@@ -38,6 +38,7 @@ describe('habitForm', () => {
     expect(validateHabitForm(validState({ perPeriod: 0 })).errors.perPeriod).toBeTruthy();
     expect(validateHabitForm(validState({ eligibleDays: [] })).errors.eligibleDays).toBeTruthy();
     expect(validateHabitForm(validState({ preferredStart: '10:00', preferredEnd: '09:00' })).errors.preferredEnd).toBeTruthy();
+    expect(validateHabitForm(validState({ preferredStart: '09:00', preferredEnd: '09:00' })).errors.preferredEnd).toBeTruthy();
   });
 
   it('toUpdateInput converts "HH:MM" → minutes (or null) and includes status', () => {

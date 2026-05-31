@@ -57,7 +57,7 @@ export function toUpdateInput(s: HabitFormState): UpdateHabitInput {
     priority: s.priority,
     chunkMs: s.chunkMs,
     perPeriod: s.perPeriod,
-    eligibleDays: s.eligibleDays,
+    eligibleDays: [...s.eligibleDays],
     preferredStartMinute: s.preferredStart ? hhmmToMinutes(s.preferredStart) : null,
     preferredEndMinute: s.preferredEnd ? hhmmToMinutes(s.preferredEnd) : null,
     status: s.status,
