@@ -8,7 +8,9 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/auth': API,
+      // Only the server's auth endpoints live under /auth/google; /auth/callback is a
+      // client-side route (the redirect-with-token landing) and must NOT be proxied.
+      '/auth/google': API,
       '/tasks': API,
       '/habits': API,
       '/settings': API,
