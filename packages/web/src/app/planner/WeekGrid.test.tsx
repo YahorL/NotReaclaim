@@ -32,6 +32,7 @@ function renderGrid(props: Partial<WeekGridProps> = {}) {
       onToday={vi.fn()}
       onNext={vi.fn()}
       onReplan={vi.fn()}
+      onCommit={vi.fn()}
       {...props}
     />,
   );

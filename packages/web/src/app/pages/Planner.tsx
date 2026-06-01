@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation } from '../../api/queries';
+import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation } from '../../api/queries';
 import { startOfWeek, dayColumns, addWeeks } from '../planner/weekModel';
 import { WeekGrid } from '../planner/WeekGrid';
 import { AtRiskPanel } from '../planner/AtRiskPanel';
@@ -20,6 +20,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const calendar = useCalendarEventsQuery(fromIso, toIso);
   const preview = useSchedulePreviewQuery();
   const replan = useReplanMutation();
+  const updateBlock = useUpdateScheduledBlockMutation();
 
   const isLoading = schedule.isLoading || calendar.isLoading || preview.isLoading;
   const isError = schedule.isError || calendar.isError || preview.isError;
@@ -53,6 +54,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           onNext={() => setWeekStartMs((ms) => addWeeks(ms, 1))}
           onToday={() => setWeekStartMs(startOfWeek(now()))}
           onReplan={() => replan.mutate()}
+          onCommit={(id, patch) => updateBlock.mutate({ id, patch })}
         />
         {replan.isError && <p className="mt-2 text-sm text-red-600">Re-plan failed. Try again.</p>}
       </div>

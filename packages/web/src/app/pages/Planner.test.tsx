@@ -27,6 +27,7 @@ function makeApi(over = {}) {
     getCalendarEvents: vi.fn(async () => events),
     getSchedulePreview: vi.fn(async () => preview),
     replan: vi.fn(async () => ({ created: 1, updated: 0, deleted: 0, pinned: 0, removed: 0 })),
+    updateScheduledBlock: vi.fn(async () => blocks[0]!),
     ...over,
   } as never);
 }
