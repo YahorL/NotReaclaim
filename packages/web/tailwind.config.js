@@ -20,6 +20,7 @@ export default {
         high: '#f2700f',
         med: '#f5b014',
         low: '#2fa45f',
+        event: '#4285f4',
         // Kind palettes — forward-defined for the Milestone 2 Planner re-skin.
         kind: {
           focusBg: '#eaf2ff', focusBar: '#5b62e3', focusText: '#2f3aa8',
