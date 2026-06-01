@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { ScheduledBlock as DbScheduledBlock } from '@notreclaim/db';
 import type { ScheduleResult } from '@notreclaim/scheduler';
-import { applyDesiredSchedule, type ScheduleMirror } from './apply.js';
+import { applyDesiredSchedule, type ScheduleMirror } from '../src/apply.js';
 
 const NOW = Date.parse('2026-01-05T00:00:00.000Z');
 const HORIZON = NOW + 24 * 60 * 60 * 1000;
@@ -101,7 +101,7 @@ describe('planLocally', () => {
   }
 
   it('persists the computed schedule with no mirror and returns the {…,pinned:0,removed:0} shape', async () => {
-    const { planLocally } = await import('./apply.js');
+    const { planLocally } = await import('../src/apply.js');
     const blocks = fakeRepo([]);
     const res = await planLocally(repos(), blocks, 'u1', NOW);
     expect(res.pinned).toBe(0);
@@ -111,8 +111,8 @@ describe('planLocally', () => {
   });
 
   it('throws SettingsRequiredError when settings are missing', async () => {
-    const { planLocally } = await import('./apply.js');
-    const { SettingsRequiredError } = await import('./errors.js');
+    const { planLocally } = await import('../src/apply.js');
+    const { SettingsRequiredError } = await import('../src/errors.js');
     const blocks = fakeRepo([]);
     await expect(planLocally(repos({ settings: { getByUserId: async () => null } }), blocks, 'u1', NOW))
       .rejects.toBeInstanceOf(SettingsRequiredError);
