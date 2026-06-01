@@ -6,3 +6,5 @@ export { toScheduledBlockInput } from './bridge.js';
 export { assembleScheduleInput } from './assemble.js';
 export type { SchedulingRepositories } from './assemble.js';
 export { computeDesiredSchedule } from './compute.js';
+export { applyDesiredSchedule, planLocally } from './apply.js';
+export type { ScheduleMirror, ApplyScheduleOptions, ApplyCounts, LocalPlanResult } from './apply.js';

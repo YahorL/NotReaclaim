@@ -1,8 +1,9 @@
 import type { ScheduledBlockRepository, UserRepository } from '@notreclaim/db';
 import {
   computeDesiredSchedule,
-  toScheduledBlockInput,
+  applyDesiredSchedule,
   SettingsRequiredError,
+  type ScheduleMirror,
   type SchedulingRepositories,
 } from '@notreclaim/core';
 import type { GoogleClient } from './client.js';
@@ -29,7 +30,7 @@ export interface ReconcileResult {
   removed: number;
 }
 
-/** Detect drift, recompute the desired schedule, and apply a keyed in-place diff to Google + DB. */
+/** Detect drift, recompute the desired schedule, and apply a keyed diff to Google + DB. */
 export async function reconcile(deps: ReconcileDeps, userId: string, now: number): Promise<ReconcileResult> {
   const accessToken = await deps.tokens.getAccessToken(userId, now);
   const calendarId = await ensureAutoScheduledCalendar(
@@ -53,51 +54,22 @@ export async function reconcile(deps: ReconcileDeps, userId: string, now: number
 
   const desired = await computeDesiredSchedule(deps.schedulingRepos, userId, now);
 
-  const existing = await deps.scheduledBlocks.listByUserInRange(userId, new Date(now), new Date(horizonEnd));
-  const pinnedIds = new Set(existing.filter((b) => b.pinned).map((b) => b.id));
-  const existingByKey = new Map(
-    existing.filter((b) => !b.pinned && b.engineKey).map((b) => [b.engineKey as string, b]),
+  const mirror: ScheduleMirror = {
+    create: async (block) => {
+      const { googleEventId } = await deps.client.insertEvent(accessToken, calendarId, toGoogleEventWrite(block));
+      return { googleEventId, googleCalendarId: calendarId };
+    },
+    update: async (block, existing) => {
+      await deps.client.updateEvent(accessToken, calendarId, existing.googleEventId as string, toGoogleEventWrite(block));
+    },
+    delete: async (existing) => {
+      if (existing.googleEventId) await deps.client.deleteEvent(accessToken, calendarId, existing.googleEventId);
+    },
+  };
+
+  const { created, updated, deleted } = await applyDesiredSchedule(
+    deps.scheduledBlocks, userId, desired, { now, horizonEnd, mirror },
   );
-
-  const desiredNew = desired.blocks.filter((b) => !pinnedIds.has(b.id));
-
-  let created = 0;
-  let updated = 0;
-  let deleted = 0;
-  const seenKeys = new Set<string>();
-
-  for (const block of desiredNew) {
-    seenKeys.add(block.id);
-    const match = existingByKey.get(block.id);
-    if (match) {
-      if (match.startsAt.getTime() !== block.start || match.endsAt.getTime() !== block.end) {
-        await deps.client.updateEvent(accessToken, calendarId, match.googleEventId as string, toGoogleEventWrite(block));
-        await deps.scheduledBlocks.update(userId, match.id, {
-          startsAt: new Date(block.start),
-          endsAt: new Date(block.end),
-        });
-        updated += 1;
-      }
-      continue;
-    }
-    const { googleEventId } = await deps.client.insertEvent(accessToken, calendarId, toGoogleEventWrite(block));
-    await deps.scheduledBlocks.create(userId, {
-      ...toScheduledBlockInput(block),
-      engineKey: block.id,
-      googleEventId,
-      googleCalendarId: calendarId,
-    });
-    created += 1;
-  }
-
-  for (const [key, block] of existingByKey) {
-    if (seenKeys.has(key)) continue;
-    if (block.googleEventId) {
-      await deps.client.deleteEvent(accessToken, calendarId, block.googleEventId);
-    }
-    await deps.scheduledBlocks.delete(userId, block.id);
-    deleted += 1;
-  }
 
   return { created, updated, deleted, pinned, removed };
 }

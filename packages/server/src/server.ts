@@ -15,8 +15,10 @@ import {
   syncPrimaryCalendar,
   loadGoogleConfig,
 } from '@notreclaim/google';
+import { planLocally } from '@notreclaim/core';
 import { buildApp } from './app.js';
 import { createEventBus } from './events.js';
+import { makeReplan } from './replan-router.js';
 import { pollAndReplan } from './replan.js';
 import { startScheduler } from './scheduler.js';
 import { loadServerConfig } from './config.js';
@@ -44,11 +46,18 @@ async function main(): Promise<void> {
   const syncBound = (userId: string, now: number) =>
     syncPrimaryCalendar({ client, tokens, syncState: calendarSyncState, events: calendarEvents }, userId, now);
 
+  const planLocallyBound = (userId: string, now: number) => planLocally(schedulingRepos, scheduledBlocks, userId, now);
+  const isConnected = async (userId: string): Promise<boolean> => {
+    const user = await users.findById(userId);
+    return user?.googleRefreshToken != null;
+  };
+  const replan = makeReplan({ reconcile: reconcileBound, planLocally: planLocallyBound, isConnected });
+
   const app = buildApp({
     repos: { settings, tasks, habits, scheduledBlocks, calendarEvents },
     google: { client, tokens },
     schedulingRepos,
-    reconcile: reconcileBound,
+    reconcile: replan,
     events: bus,
     config: {
       jwtSecret: serverConfig.jwtSecret,
