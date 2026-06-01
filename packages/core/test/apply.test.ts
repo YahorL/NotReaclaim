@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { ScheduledBlock as DbScheduledBlock } from '@notreclaim/db';
 import type { ScheduleResult } from '@notreclaim/scheduler';
-import { applyDesiredSchedule, type ScheduleMirror } from '../src/apply.js';
+import { applyDesiredSchedule, planLocally, type ScheduleMirror } from '../src/apply.js';
+import { SettingsRequiredError } from '../src/errors.js';
 
 const NOW = Date.parse('2026-01-05T00:00:00.000Z');
 const HORIZON = NOW + 24 * 60 * 60 * 1000;
@@ -75,6 +76,20 @@ describe('applyDesiredSchedule (with mirror)', () => {
     expect(mirror.create).toHaveBeenCalledTimes(1);
     expect(repo.create).toHaveBeenCalledWith('u1', expect.objectContaining({ googleEventId: 'g1', googleCalendarId: 'cal1' }));
   });
+
+  it('calls mirror.update when times changed and mirror.delete for removed blocks', async () => {
+    const repo = fakeRepo([dbBlock(), dbBlock({ id: 'b2', engineKey: 'task:t9:0' })]);
+    const mirror: ScheduleMirror = {
+      create: vi.fn(async () => ({ googleEventId: 'g1', googleCalendarId: 'cal1' })),
+      update: vi.fn(async () => undefined),
+      delete: vi.fn(async () => undefined),
+    };
+    const moved = eBlock({ start: Date.parse('2026-01-05T11:00:00.000Z'), end: Date.parse('2026-01-05T12:00:00.000Z') });
+    await applyDesiredSchedule(repo, 'u1', desired([moved]), { now: NOW, horizonEnd: HORIZON, mirror });
+    expect(mirror.update).toHaveBeenCalledTimes(1);
+    expect(mirror.delete).toHaveBeenCalledTimes(1);
+    expect(mirror.create).not.toHaveBeenCalled();
+  });
 });
 
 describe('planLocally', () => {
@@ -101,7 +116,6 @@ describe('planLocally', () => {
   }
 
   it('persists the computed schedule with no mirror and returns the {…,pinned:0,removed:0} shape', async () => {
-    const { planLocally } = await import('../src/apply.js');
     const blocks = fakeRepo([]);
     const res = await planLocally(repos(), blocks, 'u1', NOW);
     expect(res.pinned).toBe(0);
@@ -111,8 +125,6 @@ describe('planLocally', () => {
   });
 
   it('throws SettingsRequiredError when settings are missing', async () => {
-    const { planLocally } = await import('../src/apply.js');
-    const { SettingsRequiredError } = await import('../src/errors.js');
     const blocks = fakeRepo([]);
     await expect(planLocally(repos({ settings: { getByUserId: async () => null } }), blocks, 'u1', NOW))
       .rejects.toBeInstanceOf(SettingsRequiredError);
