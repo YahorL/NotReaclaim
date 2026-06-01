@@ -21,6 +21,9 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const preview = useSchedulePreviewQuery();
   const replan = useReplanMutation();
 
+  // schedule.data is week-scoped while preview covers the full horizon; a committed
+  // block from a future week is absent here, but its ghost also falls outside this
+  // week's render window, so dropping only same-week duplicates is sufficient.
   const committedKeys = useMemo(
     () => new Set((schedule.data ?? []).map((b) => b.engineKey).filter((k): k is string => k != null)),
     [schedule.data],

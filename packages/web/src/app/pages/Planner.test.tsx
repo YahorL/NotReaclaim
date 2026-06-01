@@ -80,7 +80,10 @@ describe('Planner', () => {
       getSchedulePreview: vi.fn(async () => ({ blocks: proposed, unscheduled: [] })),
     });
     renderWithProviders(<Planner now={() => NOW} />, { api });
-    await waitFor(() => expect(screen.getByText('Committed task')).toBeInTheDocument());
+    await waitFor(() => {
+      expect(screen.getByText('Committed task')).toBeInTheDocument();
+      expect(screen.getByText('Only proposed')).toBeInTheDocument();
+    });
     // committed block renders solid; no proposed ghost duplicates it
     expect(screen.getAllByText('Committed task')).toHaveLength(1);
     // a not-yet-committed proposed block still renders as a ghost
