@@ -66,8 +66,8 @@ describe('WeekGrid', () => {
   it('fires nav callbacks', () => {
     const onPrev = vi.fn(); const onNext = vi.fn(); const onToday = vi.fn();
     renderGrid({ onPrev, onNext, onToday });
-    fireEvent.click(screen.getByRole('button', { name: '◀' }));
-    fireEvent.click(screen.getByRole('button', { name: '▶' }));
+    fireEvent.click(screen.getByRole('button', { name: /previous week/i }));
+    fireEvent.click(screen.getByRole('button', { name: /next week/i }));
     fireEvent.click(screen.getByRole('button', { name: /today/i }));
     expect(onPrev).toHaveBeenCalledTimes(1);
     expect(onNext).toHaveBeenCalledTimes(1);

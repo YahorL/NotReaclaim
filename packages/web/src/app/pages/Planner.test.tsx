@@ -69,7 +69,7 @@ describe('Planner', () => {
     renderWithProviders(<Planner now={() => NOW} />, { api });
     await waitFor(() => expect(getSchedule).toHaveBeenCalledTimes(1));
     const firstFrom = (getSchedule.mock.calls[0]! as unknown[])[0];
-    fireEvent.click(screen.getByRole('button', { name: '▶' }));
+    fireEvent.click(screen.getByRole('button', { name: /next week/i }));
     await waitFor(() => expect(getSchedule).toHaveBeenCalledTimes(2));
     const secondFrom = (getSchedule.mock.calls[1]! as unknown[])[0];
     expect(secondFrom).not.toBe(firstFrom);
