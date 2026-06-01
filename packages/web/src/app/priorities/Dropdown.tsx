@@ -11,7 +11,7 @@ export function Dropdown({ icon, label, width = 240, children }: { icon: ReactNo
   }, []);
   return (
     <div ref={ref} className="relative">
-      <button type="button" onClick={() => setOpen((v) => !v)} className={`flex items-center gap-1.5 rounded-[9px] px-3.5 py-2 text-[15.5px] font-bold text-indigo ${open ? 'bg-indigoSoft' : 'hover:bg-indigoSoft'}`}>
+      <button type="button" aria-haspopup="true" aria-expanded={open} onClick={() => setOpen((v) => !v)} className={`flex items-center gap-1.5 rounded-[9px] px-3.5 py-2 text-[15.5px] font-bold text-indigo ${open ? 'bg-indigoSoft' : 'hover:bg-indigoSoft'}`}>
         {icon} {label} {open ? <Icons.chevUp size={16} /> : <Icons.chevDown size={16} />}
       </button>
       {open && (

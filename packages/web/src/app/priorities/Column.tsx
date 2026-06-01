@@ -37,7 +37,7 @@ export function Column({ bucket, tasks, now, nextMsFor, dnd, onComplete, onEdit,
     >
       <div className="mb-3 flex items-center pr-1">
         <span className="flex-1 text-[16.5px] font-bold text-inkSoft">{BUCKET_META[bucket].label}</span>
-        <button type="button" onClick={() => setCollapsed((v) => !v)} className="text-[15.5px] font-bold text-indigo">
+        <button type="button" aria-expanded={!collapsed} onClick={() => setCollapsed((v) => !v)} className="text-[15.5px] font-bold text-indigo">
           {collapsed ? 'Expand' : 'Collapse'}
         </button>
       </div>
