@@ -26,7 +26,7 @@ export interface AppDeps {
     settings: SettingsRepository;
     tasks: TaskRepository;
     habits: HabitRepository;
-    scheduledBlocks: Pick<ScheduledBlockRepository, 'listByUserInRange'>;
+    scheduledBlocks: Pick<ScheduledBlockRepository, 'listByUserInRange' | 'update'>;
     calendarEvents: Pick<CalendarEventRepository, 'listByUserInRange'>;
   };
   google: {
@@ -95,7 +95,7 @@ export function buildApp(input: Omit<AppDeps, 'now'> & { now?: () => number }): 
   registerTaskRoutes(app, deps, afterMutation);
   registerHabitRoutes(app, deps, afterMutation);
   registerSettingsRoutes(app, deps, afterMutation);
-  registerScheduleRoutes(app, deps);
+  registerScheduleRoutes(app, deps, afterMutation);
   registerCalendarRoutes(app, deps);
 
   return app;

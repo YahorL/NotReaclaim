@@ -1,9 +1,9 @@
 export type BlockKind = 'meeting' | 'task' | 'habit';
 
-const BASE = 'absolute left-0.5 right-0.5 overflow-hidden rounded-[6px] px-[7px] py-1 text-[12.5px] font-bold leading-tight';
+export const BASE = 'absolute left-0.5 right-0.5 overflow-hidden rounded-[6px] px-[7px] py-1 text-[12.5px] font-bold leading-tight';
 
 /** Color by state, Google-Calendar-style: meeting=blue, locked task/habit=green+lock, movable=transparent dashed green. */
-function variantClass(kind: BlockKind, pinned: boolean): string {
+export function variantClass(kind: BlockKind, pinned: boolean): string {
   if (kind === 'meeting') return 'bg-event text-white';
   if (pinned) return 'bg-low text-white';
   // movable: text-kind-habitText (#1c7a43) is an accessible dark green on the transparent bg (used for task & habit alike)

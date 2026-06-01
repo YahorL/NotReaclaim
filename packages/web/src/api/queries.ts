@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useApi } from './ApiProvider';
-import type { CreateTaskInput, UpdateTaskInput, CreateHabitInput, UpdateHabitInput, SettingsInput } from './types';
+import type { CreateTaskInput, UpdateTaskInput, CreateHabitInput, UpdateHabitInput, SettingsInput, UpdateScheduledBlockInput } from './types';
 
 export const queryKeys = {
   scheduleRoot: ['schedule'] as const,
@@ -36,6 +36,17 @@ export function useReplanMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => api.replan(),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.scheduleRoot });
+    },
+  });
+}
+
+export function useUpdateScheduledBlockMutation() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: UpdateScheduledBlockInput }) => api.updateScheduledBlock(id, patch),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.scheduleRoot });
     },

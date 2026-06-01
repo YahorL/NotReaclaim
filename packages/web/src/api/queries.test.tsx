@@ -4,7 +4,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiProvider } from './ApiProvider';
 import { fakeApiClient } from '../test/fakes';
-import { queryKeys, useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useHabitsQuery, useCreateTaskMutation, useDeleteHabitMutation, useSettingsQuery, useUpdateSettingsMutation } from './queries';
+import { queryKeys, useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useHabitsQuery, useCreateTaskMutation, useDeleteHabitMutation, useSettingsQuery, useUpdateSettingsMutation } from './queries';
 
 function wrap(api = fakeApiClient(), qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   const Wrapper = ({ children }: { children: ReactNode }) => (
@@ -71,6 +71,19 @@ describe('useReplanMutation', () => {
     const { result } = renderHook(() => useReplanMutation(), { wrapper: Wrapper });
     result.current.mutate();
     await waitFor(() => expect(replan).toHaveBeenCalled());
+    await waitFor(() => expect(spy).toHaveBeenCalledWith({ queryKey: ['schedule'] }));
+  });
+});
+
+describe('useUpdateScheduledBlockMutation', () => {
+  it('calls updateScheduledBlock and invalidates the schedule prefix on success', async () => {
+    const updateScheduledBlock = vi.fn(async () => ({ id: 'b1' }));
+    const api = fakeApiClient({ updateScheduledBlock } as never);
+    const { Wrapper, qc } = wrap(api);
+    const spy = vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    const { result } = renderHook(() => useUpdateScheduledBlockMutation(), { wrapper: Wrapper });
+    result.current.mutate({ id: 'b1', patch: { pinned: true } });
+    await waitFor(() => expect(updateScheduledBlock).toHaveBeenCalledWith('b1', { pinned: true }));
     await waitFor(() => expect(spy).toHaveBeenCalledWith({ queryKey: ['schedule'] }));
   });
 });

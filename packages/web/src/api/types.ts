@@ -133,3 +133,9 @@ export interface SettingsInput {
   defaultMinChunkMs: number;
   defaultMaxChunkMs: number;
 }
+
+export interface UpdateScheduledBlockInput {
+  startsAt?: string;
+  endsAt?: string;
+  pinned?: boolean;
+}

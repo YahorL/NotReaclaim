@@ -1,5 +1,6 @@
 import type { ScheduledBlock, CalendarEvent } from '../../api/types';
 import { EventBlock, type BlockKind } from './EventBlock';
+import { InteractiveBlock } from './InteractiveBlock';
 import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY } from './weekModel';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -28,6 +29,7 @@ export interface WeekGridProps {
   onToday: () => void;
   onNext: () => void;
   onReplan: () => void;
+  onCommit: (id: string, patch: { startsAt: string; endsAt: string; pinned: boolean }) => void;
 }
 
 interface Item {
@@ -38,6 +40,7 @@ interface Item {
   startMs: number;
   endMs: number;
   startLabel: string;
+  blockId: string | null;
 }
 
 function timeLabel(ms: number): string {
@@ -49,18 +52,18 @@ function toItems(blocks: ScheduledBlock[], events: CalendarEvent[]): Item[] {
     const cls = classifyBlock(b);
     const startMs = Date.parse(b.startsAt);
     return { key: `b:${b.id}`, title: b.title, kind: cls.kind, pinned: cls.pinned,
-      startMs, endMs: Date.parse(b.endsAt), startLabel: timeLabel(startMs) };
+      startMs, endMs: Date.parse(b.endsAt), startLabel: timeLabel(startMs), blockId: b.id };
   });
   const fromEvents = events.map((e): Item => {
     const startMs = Date.parse(e.startsAt);
     return { key: `e:${e.id}`, title: e.title, kind: 'meeting', pinned: false,
-      startMs, endMs: Date.parse(e.endsAt), startLabel: timeLabel(startMs) };
+      startMs, endMs: Date.parse(e.endsAt), startLabel: timeLabel(startMs), blockId: null };
   });
   return [...fromEvents, ...fromBlocks];
 }
 
 export function WeekGrid(props: WeekGridProps) {
-  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan } = props;
+  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit } = props;
   const items = toItems(blocks, events);
 
   return (
@@ -133,6 +136,18 @@ export function WeekGrid(props: WeekGridProps) {
                   {dayItems.map((it) => {
                     const pos = placeInDay(it.startMs, it.endMs, d);
                     if (!pos) return null;
+                    const blockId = it.blockId;
+                    if (it.kind !== 'meeting' && blockId) {
+                      return (
+                        <InteractiveBlock
+                          key={it.key} id={blockId} dayStartMs={d}
+                          startMs={it.startMs} endMs={it.endMs}
+                          topPct={pos.topPct} heightPct={pos.heightPct}
+                          startLabel={it.startLabel} title={it.title} kind={it.kind} pinned={it.pinned}
+                          onCommit={(patch) => onCommit(blockId, patch)}
+                        />
+                      );
+                    }
                     return (
                       <EventBlock
                         key={it.key}

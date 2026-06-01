@@ -61,4 +61,40 @@ describe('schedule routes', () => {
     const res = await app.inject({ method: 'GET', url: '/schedule/preview', headers: { authorization: `Bearer ${token}` } });
     expect(res.statusCode).toBe(409);
   });
+
+  it('PATCH /schedule/:id updates times+pinned, returns the block, and triggers a re-plan', async () => {
+    const { app, emitted } = buildTestApp({ blocks: [block()], settings: settings() });
+    const token = await tokenFor(app);
+    const res = await app.inject({
+      method: 'PATCH', url: '/schedule/b1',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { startsAt: '2026-01-05T11:00:00.000Z', endsAt: '2026-01-05T12:00:00.000Z', pinned: true },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().pinned).toBe(true);
+    expect(res.json().startsAt).toBe('2026-01-05T11:00:00.000Z');
+    expect(emitted.some((e) => e.type === 'schedule.updated')).toBe(true);
+  });
+
+  it('PATCH /schedule/:id returns 404 for a block the user does not own', async () => {
+    const { app } = buildTestApp({ blocks: [block()], settings: settings() });
+    const token = await tokenFor(app);
+    const res = await app.inject({
+      method: 'PATCH', url: '/schedule/does-not-exist',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { pinned: true },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('PATCH /schedule/:id rejects startsAt >= endsAt with 400', async () => {
+    const { app } = buildTestApp({ blocks: [block()], settings: settings() });
+    const token = await tokenFor(app);
+    const res = await app.inject({
+      method: 'PATCH', url: '/schedule/b1',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { startsAt: '2026-01-05T12:00:00.000Z', endsAt: '2026-01-05T11:00:00.000Z' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
 });

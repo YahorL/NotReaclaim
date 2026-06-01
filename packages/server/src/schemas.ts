@@ -53,3 +53,13 @@ export const rangeQuerySchema = z.object({
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
 });
+
+export const updateScheduledBlockSchema = z
+  .object({
+    startsAt: z.string().datetime().optional(),
+    endsAt: z.string().datetime().optional(),
+    pinned: z.boolean().optional(),
+  })
+  .refine((b) => !(b.startsAt && b.endsAt) || Date.parse(b.startsAt) < Date.parse(b.endsAt), {
+    message: 'startsAt must be before endsAt',
+  });
