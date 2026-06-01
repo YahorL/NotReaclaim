@@ -47,8 +47,14 @@ the proposed overlay against now-populated committed blocks.
   side-effect adapter (vs. a Google-optional `reconcile` conditional, or a duplicated local path).
 - **Two-way Google sync kept identical** when connected (default; the user declined to narrow it,
   so we preserve current behavior — no regression).
-- **Back-fill on connect:** existing local blocks (null `googleEventId`) are inserted into the
-  Google calendar by the next reconcile's diff — falls out of the shared diff naturally.
+- **Back-fill on connect — DEFERRED (corrected during planning):** the keyed diff only writes to
+  Google on *create* (new key) or *update* (changed times), so an existing local block whose key
+  and times are unchanged is **not** auto-pushed to Google when you connect. It syncs the next time
+  a re-plan creates or moves it. A one-time back-fill of untouched local blocks (treat a keyed
+  match with a null `googleEventId` as needs-create when a mirror is present) is a clean future
+  enhancement, intentionally out of scope here to keep `applyDesiredSchedule` a verbatim lift of
+  today's diff (so Google-connected behavior stays provably identical). This does not affect the
+  no-Google goal at all.
 - **Connection check** = `user.googleRefreshToken != null` (the same predicate `listConnectedIds`
   uses).
 - **Counts shape preserved:** local re-plan returns `{ created, updated, deleted, pinned: 0,
@@ -119,7 +125,8 @@ Mutation (task/habit/settings) → `replanAfterMutation` → `replan` → (local
 persists the keyed diff → `schedule.updated` WS → web invalidates `schedule` → `GET /schedule`
 returns committed blocks → Planner draws solid blocks; the proposed overlay shows only
 not-yet-committed ghosts (typically none right after a re-plan). When Google connects, `replan`
-routes to `reconcile`, whose diff mirrors the existing local blocks up to the calendar (back-fill).
+routes to `reconcile`; newly created and time-changed blocks sync to the calendar (auto-back-fill
+of already-existing unchanged local blocks is deferred — see Decisions).
 
 ## Error handling
 
