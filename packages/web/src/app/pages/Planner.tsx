@@ -21,6 +21,15 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const preview = useSchedulePreviewQuery();
   const replan = useReplanMutation();
 
+  const committedKeys = useMemo(
+    () => new Set((schedule.data ?? []).map((b) => b.engineKey).filter((k): k is string => k != null)),
+    [schedule.data],
+  );
+  const proposedGhosts = useMemo(
+    () => (preview.data?.blocks ?? []).filter((b) => !committedKeys.has(b.id)),
+    [preview.data, committedKeys],
+  );
+
   const isLoading = schedule.isLoading || calendar.isLoading || preview.isLoading;
   const isError = schedule.isError || calendar.isError || preview.isError;
 
@@ -48,7 +57,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           weekLabel={weekLabel(days)}
           blocks={schedule.data ?? []}
           events={calendar.data ?? []}
-          proposed={preview.data?.blocks ?? []}
+          proposed={proposedGhosts}
           replanPending={replan.isPending}
           onPrev={() => setWeekStartMs((ms) => addWeeks(ms, -1))}
           onNext={() => setWeekStartMs((ms) => addWeeks(ms, 1))}

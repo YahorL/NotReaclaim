@@ -63,6 +63,31 @@ describe('Planner', () => {
     expect(screen.queryByText('Proposed focus')).toBeNull();
   });
 
+  it('does not draw a proposed ghost for a block already committed (same engineKey)', async () => {
+    const committed: ScheduledBlock[] = [{
+      id: 'b1', userId: 'u1', title: 'Committed task',
+      startsAt: '2026-01-07T13:00:00.000Z', endsAt: '2026-01-07T14:00:00.000Z',
+      taskId: 't1', habitId: null, pinned: false, engineKey: 'task:t1:0',
+    }];
+    const proposed: PreviewBlock[] = [
+      { id: 'task:t1:0', sourceType: 'task', sourceId: 't1', title: 'Committed task',
+        start: Date.parse('2026-01-07T13:00:00.000Z'), end: Date.parse('2026-01-07T14:00:00.000Z') },
+      { id: 'task:t2:0', sourceType: 'task', sourceId: 't2', title: 'Only proposed',
+        start: Date.parse('2026-01-07T15:00:00.000Z'), end: Date.parse('2026-01-07T16:00:00.000Z') },
+    ];
+    const api = makeApi({
+      getSchedule: vi.fn(async () => committed),
+      getSchedulePreview: vi.fn(async () => ({ blocks: proposed, unscheduled: [] })),
+    });
+    renderWithProviders(<Planner now={() => NOW} />, { api });
+    await waitFor(() => expect(screen.getByText('Committed task')).toBeInTheDocument());
+    // committed block renders solid; no proposed ghost duplicates it
+    expect(screen.getAllByText('Committed task')).toHaveLength(1);
+    // a not-yet-committed proposed block still renders as a ghost
+    const ghost = screen.getByText('Only proposed').closest('[data-testid="event-block"]');
+    expect(ghost).toHaveAttribute('data-proposed', 'true');
+  });
+
   it('navigating to the next week refetches with a new range', async () => {
     const getSchedule = vi.fn(async () => blocks);
     const api = makeApi({ getSchedule });
