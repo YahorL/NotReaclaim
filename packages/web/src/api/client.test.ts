@@ -66,4 +66,20 @@ describe('createApiClient', () => {
     const calls = fetchMock.mock.calls as unknown as [[string, RequestInit]];
     expect(calls[0][0]).toBe('/calendar/events?from=2026-01-05T00%3A00%3A00.000Z&to=2026-01-12T00%3A00%3A00.000Z');
   });
+
+  it('updateScheduledBlock sends a PATCH to /schedule/:id with the patch body', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ id: 'b1', pinned: true }));
+    vi.stubGlobal('fetch', fetchMock);
+    const api = createApiClient({ baseUrl: '', getToken: () => 't' });
+
+    await api.updateScheduledBlock('b1', { pinned: true });
+
+    const calls = fetchMock.mock.calls as unknown as [[string, RequestInit]];
+    const [url, init] = calls[0];
+    expect(url).toBe('/schedule/b1');
+    expect(init.method).toBe('PATCH');
+    expect((init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+    expect(JSON.parse(init.body as string)).toMatchObject({ pinned: true });
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer t');
+  });
 });

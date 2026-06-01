@@ -21,6 +21,7 @@ export function fakeApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getSettings: notImplemented('getSettings'),
     putSettings: notImplemented('putSettings'),
     getSchedule: notImplemented('getSchedule'),
+    updateScheduledBlock: notImplemented('updateScheduledBlock'),
     getCalendarEvents: notImplemented('getCalendarEvents'),
     getSchedulePreview: notImplemented('getSchedulePreview'),
     replan: notImplemented('replan'),

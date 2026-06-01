@@ -1,6 +1,7 @@
 import type {
   Task, Habit, Settings, ScheduledBlock, SchedulePreview, ReconcileResult, CalendarEvent,
   TaskStatus, CreateTaskInput, UpdateTaskInput, CreateHabitInput, UpdateHabitInput, SettingsInput,
+  UpdateScheduledBlockInput,
 } from './types';
 
 export class ApiError extends Error {
@@ -28,6 +29,7 @@ export interface ApiClient {
   getSettings(): Promise<Settings>;
   putSettings(body: SettingsInput): Promise<Settings>;
   getSchedule(from?: string, to?: string): Promise<ScheduledBlock[]>;
+  updateScheduledBlock(id: string, patch: UpdateScheduledBlockInput): Promise<ScheduledBlock>;
   getCalendarEvents(from?: string, to?: string): Promise<CalendarEvent[]>;
   getSchedulePreview(): Promise<SchedulePreview>;
   replan(): Promise<ReconcileResult>;
@@ -82,6 +84,7 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
       const qs = q.toString();
       return request('GET', `/schedule${qs ? `?${qs}` : ''}`);
     },
+    updateScheduledBlock: (id, patch) => request('PATCH', `/schedule/${id}`, patch),
     getCalendarEvents: (from, to) => {
       const q = new URLSearchParams();
       if (from) q.set('from', from);
