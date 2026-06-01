@@ -1,23 +1,14 @@
 export type BlockKind = 'meeting' | 'task' | 'habit';
 
-// Literal class strings so Tailwind's content scanner emits them.
-const KIND_SOLID: Record<BlockKind, string> = {
-  meeting: 'bg-kind-meetingBg text-kind-meetingText',
-  task: 'bg-kind-taskBg text-kind-taskText',
-  habit: 'bg-kind-habitBg text-kind-habitText',
-};
+const BASE = 'absolute left-0.5 right-0.5 overflow-hidden rounded-[6px] px-[7px] py-1 text-[12.5px] font-bold leading-tight';
 
-const KIND_BAR: Record<BlockKind, string> = {
-  meeting: 'border-l-kind-meetingBar',
-  task: 'border-l-kind-taskBar',
-  habit: 'border-l-kind-habitBar',
-};
-
-const KIND_PROPOSED: Record<BlockKind, string> = {
-  meeting: 'border border-dashed border-kind-meetingBar bg-kind-meetingBg/60 text-kind-meetingText',
-  task: 'border border-dashed border-kind-taskBar bg-kind-taskBg/60 text-kind-taskText',
-  habit: 'border border-dashed border-kind-habitBar bg-kind-habitBg/60 text-kind-habitText',
-};
+/** Color by state, Google-Calendar-style: meeting=blue, locked task/habit=green+lock, movable=transparent dashed green. */
+function variantClass(kind: BlockKind, pinned: boolean): string {
+  if (kind === 'meeting') return 'bg-event text-white';
+  if (pinned) return 'bg-low text-white';
+  // movable: text-kind-habitText (#1c7a43) is an accessible dark green on the transparent bg (used for task & habit alike)
+  return 'border border-dashed border-low bg-transparent text-kind-habitText';
+}
 
 export interface EventBlockProps {
   title: string;
@@ -26,24 +17,20 @@ export interface EventBlockProps {
   heightPct: number;
   startLabel: string;
   pinned?: boolean;
-  proposed?: boolean;
 }
 
-export function EventBlock({ title, kind, topPct, heightPct, startLabel, pinned = false, proposed = false }: EventBlockProps) {
-  const base = 'absolute left-0.5 right-0.5 overflow-hidden rounded-[6px] px-[7px] py-1 text-[12.5px] font-bold leading-tight';
-  const variant = proposed
-    ? KIND_PROPOSED[kind]
-    : `border-l-[3px] ${KIND_SOLID[kind]} ${pinned ? 'border-l-[#f59e0b]' : KIND_BAR[kind]}`;
+export function EventBlock({ title, kind, topPct, heightPct, startLabel, pinned = false }: EventBlockProps) {
+  const locked = kind !== 'meeting' && pinned;
   return (
     <div
       data-testid="event-block"
       data-kind={kind}
       data-pinned={pinned}
-      data-proposed={proposed}
       title={`${startLabel} ${title}`}
-      className={`${base} ${variant}`}
+      className={`${BASE} ${variantClass(kind, pinned)}`}
       style={{ top: `${topPct}%`, height: `${heightPct}%` }}
     >
+      {locked && <span aria-hidden="true">🔒 </span>}
       <span className="font-medium">{startLabel}</span> {title}
     </div>
   );

@@ -13,29 +13,47 @@ describe('EventBlock', () => {
     expect(el.style.height).toBe('5%');
   });
 
-  it('marks pinned blocks with an amber left bar', () => {
+  it('renders a meeting as a solid blue block', () => {
+    render(<EventBlock title="Standup" kind="meeting" topPct={0} heightPct={5} startLabel="10:00" />);
+    const el = screen.getByTestId('event-block');
+    expect(el.className).toContain('bg-event');
+    expect(el.className).toContain('text-white');
+    expect(el).not.toHaveTextContent('🔒');
+  });
+
+  it('renders a locked (pinned) task as solid green with a lock', () => {
     render(<EventBlock title="Review" kind="task" pinned topPct={0} heightPct={5} startLabel="13:00" />);
     const el = screen.getByTestId('event-block');
     expect(el).toHaveAttribute('data-pinned', 'true');
-    expect(el.className).toContain('border-l-[#f59e0b]');
+    expect(el.className).toContain('bg-low');
+    expect(el.className).toContain('text-white');
+    expect(el).toHaveTextContent('🔒');
+    expect(el.className).not.toContain('border-dashed');
   });
 
-  it('renders a proposed block as a dashed ghost', () => {
-    render(<EventBlock title="Write spec" kind="task" topPct={10} heightPct={5} startLabel="13:00" proposed />);
-    const el = screen.getByTestId('event-block');
-    expect(el).toHaveAttribute('data-proposed', 'true');
-    expect(el).toHaveAttribute('data-kind', 'task');
-    expect(el.className).toContain('border-dashed');
-  });
-
-  it('a committed task block is solid: kind tint + kind bar, dark text, no dashed border', () => {
+  it('renders a movable (unpinned) task as transparent with a dashed green outline', () => {
     render(<EventBlock title="Write spec" kind="task" topPct={0} heightPct={5} startLabel="13:00" />);
     const el = screen.getByTestId('event-block');
-    expect(el).toHaveAttribute('data-proposed', 'false');
-    expect(el.className).not.toContain('border-dashed');
-    expect(el.className).toContain('text-kind-taskText');
-    expect(el.className).toContain('bg-kind-taskBg');
-    expect(el.className).toContain('border-l-kind-taskBar');
+    expect(el).toHaveAttribute('data-pinned', 'false');
+    expect(el.className).toContain('border-dashed');
+    expect(el.className).toContain('border-low');
     expect(el.className).not.toContain('text-white');
+    expect(el).not.toHaveTextContent('🔒');
+  });
+
+  it('renders a locked (pinned) habit as solid green with a lock', () => {
+    render(<EventBlock title="Morning run" kind="habit" pinned topPct={0} heightPct={5} startLabel="07:00" />);
+    const el = screen.getByTestId('event-block');
+    expect(el.className).toContain('bg-low');
+    expect(el.className).toContain('text-white');
+    expect(el).toHaveTextContent('🔒');
+  });
+
+  it('a movable habit uses the same scheme as a task', () => {
+    render(<EventBlock title="Workout" kind="habit" topPct={0} heightPct={5} startLabel="08:00" />);
+    const el = screen.getByTestId('event-block');
+    expect(el).toHaveAttribute('data-kind', 'habit');
+    expect(el.className).toContain('border-dashed');
+    expect(el.className).toContain('border-low');
   });
 });

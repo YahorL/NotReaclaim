@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import type { ScheduledBlock, CalendarEvent, PreviewBlock } from '../../api/types';
+import type { ScheduledBlock, CalendarEvent } from '../../api/types';
 import { EventBlock, type BlockKind } from './EventBlock';
 import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY } from './weekModel';
 
@@ -7,9 +6,9 @@ const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const HOURS = Array.from({ length: 16 }, (_, i) => 6 + i); // 06:00 → 21:00 row starts (06:00–22:00 window)
 
 const LEGEND: { label: string; swatch: string }[] = [
-  { label: 'Meeting', swatch: 'bg-kind-meetingBar' },
-  { label: 'Habit', swatch: 'bg-kind-habitBar' },
-  { label: 'Task', swatch: 'bg-kind-taskBar' },
+  { label: 'Meeting', swatch: 'bg-event' },
+  { label: 'Locked 🔒', swatch: 'bg-low' },
+  { label: 'Movable', swatch: 'border border-dashed border-low' },
 ];
 
 function hourLabel(h: number): string {
@@ -24,7 +23,6 @@ export interface WeekGridProps {
   weekLabel: string;
   blocks: ScheduledBlock[];
   events: CalendarEvent[];
-  proposed?: PreviewBlock[];
   replanPending: boolean;
   onPrev: () => void;
   onToday: () => void;
@@ -37,7 +35,6 @@ interface Item {
   title: string;
   kind: BlockKind;
   pinned: boolean;
-  proposed: boolean;
   startMs: number;
   endMs: number;
   startLabel: string;
@@ -47,29 +44,24 @@ function timeLabel(ms: number): string {
   return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-function toItems(blocks: ScheduledBlock[], events: CalendarEvent[], proposed: PreviewBlock[]): Item[] {
+function toItems(blocks: ScheduledBlock[], events: CalendarEvent[]): Item[] {
   const fromBlocks = blocks.map((b): Item => {
     const cls = classifyBlock(b);
     const startMs = Date.parse(b.startsAt);
-    return { key: `b:${b.id}`, title: b.title, kind: cls.kind, pinned: cls.pinned, proposed: false,
+    return { key: `b:${b.id}`, title: b.title, kind: cls.kind, pinned: cls.pinned,
       startMs, endMs: Date.parse(b.endsAt), startLabel: timeLabel(startMs) };
   });
   const fromEvents = events.map((e): Item => {
     const startMs = Date.parse(e.startsAt);
-    return { key: `e:${e.id}`, title: e.title, kind: 'meeting', pinned: false, proposed: false,
+    return { key: `e:${e.id}`, title: e.title, kind: 'meeting', pinned: false,
       startMs, endMs: Date.parse(e.endsAt), startLabel: timeLabel(startMs) };
   });
-  const fromProposed = proposed.map((b): Item => ({
-    key: `p:${b.id}`, title: b.title, kind: b.sourceType, pinned: false, proposed: true,
-    startMs: b.start, endMs: b.end, startLabel: timeLabel(b.start),
-  }));
-  return [...fromEvents, ...fromBlocks, ...fromProposed];
+  return [...fromEvents, ...fromBlocks];
 }
 
 export function WeekGrid(props: WeekGridProps) {
-  const { days, nowMs, weekLabel, blocks, events, proposed = [], replanPending, onPrev, onToday, onNext, onReplan } = props;
-  const [showProposed, setShowProposed] = useState(true);
-  const items = toItems(blocks, events, showProposed ? proposed : []);
+  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan } = props;
+  const items = toItems(blocks, events);
 
   return (
     <div className="flex flex-col">
@@ -81,14 +73,6 @@ export function WeekGrid(props: WeekGridProps) {
         <span className="text-[18px] font-bold text-ink">{weekLabel}</span>
         <button onClick={onToday} className="rounded-[9px] px-4 py-2 text-[14.5px] font-bold text-indigo hover:bg-indigoSoft">Today</button>
         <span className="flex-1" />
-        <button
-          data-testid="toggle-proposed"
-          aria-pressed={showProposed}
-          onClick={() => setShowProposed((v) => !v)}
-          className={`rounded-[9px] px-3 py-2 text-[14px] font-bold ${showProposed ? 'bg-indigoSoft text-indigo' : 'text-inkSoft hover:bg-bg'}`}
-        >
-          Proposed
-        </button>
         <button
           onClick={onReplan}
           disabled={replanPending}
@@ -155,7 +139,6 @@ export function WeekGrid(props: WeekGridProps) {
                         title={it.title}
                         kind={it.kind}
                         pinned={it.pinned}
-                        proposed={it.proposed}
                         topPct={pos.topPct}
                         heightPct={pos.heightPct}
                         startLabel={it.startLabel}
