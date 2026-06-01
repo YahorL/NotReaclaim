@@ -58,10 +58,22 @@ describe('App routing', () => {
     expect(await screen.findByPlaceholderText(/search for something/i)).toBeInTheDocument();
   });
 
-  it('shows the Stats placeholder at /stats', () => {
+  it('renders the Stats dashboard at /stats', async () => {
     tokenStore.set({ token: 'jwt', userId: 'u1' });
-    renderWithProviders(<App />, { initialEntries: ['/stats'], api: authedApi() });
-    expect(screen.getByText(/coming soon/i)).toBeInTheDocument();
+    const api = fakeApiClient({
+      getSchedule: async () => [],
+      getCalendarEvents: async () => [],
+      getSchedulePreview: async () => ({ blocks: [], unscheduled: [] }),
+      listTasks: async () => [{
+        id: 't1', userId: 'u1', title: 'x', priority: 2, durationMs: 3_600_000,
+        dueBy: '2026-06-01T17:00:00.000Z', minChunkMs: 1_800_000, maxChunkMs: 7_200_000,
+        category: null, status: 'pending', timeLoggedMs: 0,
+        createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+      }],
+      listHabits: async () => [],
+    } as never);
+    renderWithProviders(<App />, { initialEntries: ['/stats'], api });
+    expect(await screen.findByText(/total scheduled/i)).toBeInTheDocument();
   });
 
 });

@@ -7,7 +7,7 @@ import { Planner } from './pages/Planner';
 import { Priorities } from './pages/Priorities';
 import { Habits } from './pages/Habits';
 import { Settings } from './pages/Settings';
-import { StatsPlaceholder } from './pages/StatsPlaceholder';
+import { Stats } from './pages/Stats';
 
 export function App() {
   return (
@@ -18,7 +18,7 @@ export function App() {
         <Route element={<AppShell />}>
           <Route path="/" element={<Planner />} />
           <Route path="/priorities" element={<Priorities />} />
-          <Route path="/stats" element={<StatsPlaceholder />} />
+          <Route path="/stats" element={<Stats />} />
           <Route path="/habits" element={<Habits />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/tasks" element={<Navigate to="/priorities" replace />} />
