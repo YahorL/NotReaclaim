@@ -136,14 +136,15 @@ export function WeekGrid(props: WeekGridProps) {
                   {dayItems.map((it) => {
                     const pos = placeInDay(it.startMs, it.endMs, d);
                     if (!pos) return null;
-                    if (it.kind !== 'meeting' && it.blockId) {
+                    const blockId = it.blockId;
+                    if (it.kind !== 'meeting' && blockId) {
                       return (
                         <InteractiveBlock
-                          key={it.key} id={it.blockId} dayStartMs={d}
+                          key={it.key} id={blockId} dayStartMs={d}
                           startMs={it.startMs} endMs={it.endMs}
                           topPct={pos.topPct} heightPct={pos.heightPct}
                           startLabel={it.startLabel} title={it.title} kind={it.kind} pinned={it.pinned}
-                          onCommit={(patch) => onCommit(it.blockId as string, patch)}
+                          onCommit={(patch) => onCommit(blockId, patch)}
                         />
                       );
                     }

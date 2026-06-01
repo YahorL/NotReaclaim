@@ -28,11 +28,9 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
   // see the latest values regardless of React's batching/commit schedule.
   const modeRef = useRef<DragMode | null>(null);
   const startYRef = useRef<number>(0);
-  const offsetPxRef = useRef<number>(0);
   // State is used only to trigger re-renders for the CSS preview.
   const [movePx, setMovePx] = useState(0);
   const [growPx, setGrowPx] = useState(0);
-  const locked = pinned;
 
   const begin = (mode: DragMode) => (e: ReactPointerEvent<HTMLElement>) => {
     e.stopPropagation();
@@ -42,26 +40,26 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
     }
     modeRef.current = mode;
     startYRef.current = e.clientY;
-    offsetPxRef.current = 0;
   };
 
   const onPointerMove = (e: ReactPointerEvent<HTMLElement>) => {
     if (!modeRef.current) return;
     const px = e.clientY - startYRef.current;
-    offsetPxRef.current = px;
     if (modeRef.current === 'move') { setMovePx(px); setGrowPx(0); }
     else { setGrowPx(px); setMovePx(0); }
   };
 
-  const onPointerUp = (e: ReactPointerEvent<HTMLElement>) => {
-    const mode = modeRef.current;
-    // Compute offset from the up-event directly in case onPointerMove was not dispatched.
-    const offsetPx = startYRef.current !== 0 ? e.clientY - startYRef.current : offsetPxRef.current;
+  const reset = () => {
     modeRef.current = null;
     startYRef.current = 0;
-    offsetPxRef.current = 0;
     setMovePx(0);
     setGrowPx(0);
+  };
+
+  const onPointerUp = (e: ReactPointerEvent<HTMLElement>) => {
+    const offsetPx = e.clientY - startYRef.current;
+    const mode = modeRef.current;
+    reset();
     if (!mode) return;
     const deltaMin = snapMinutes(pxToMinutes(offsetPx));
     if (deltaMin === 0) return;
@@ -77,6 +75,10 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
     }
   };
 
+  const onPointerCancel = () => { reset(); };
+
+  const dragging = movePx !== 0 || growPx !== 0;
+
   return (
     <div
       data-testid="event-block"
@@ -86,10 +88,11 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
       onPointerDown={begin('move')}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      className={`${BASE} cursor-grab select-none ${variantClass(kind, pinned)}`}
-      style={{ top: `${topPct}%`, height: `${heightPct}%`, transform: `translateY(${movePx}px)`, marginBottom: `${-growPx}px` }}
+      onPointerCancel={onPointerCancel}
+      className={`${BASE} ${dragging ? 'cursor-grabbing' : 'cursor-grab'} select-none ${variantClass(kind, pinned)}`}
+      style={{ top: `${topPct}%`, height: `calc(${heightPct}% + ${growPx}px)`, transform: `translateY(${movePx}px)` }}
     >
-      {locked && <span aria-hidden="true">🔒 </span>}
+      {pinned && <span aria-hidden="true">🔒 </span>}
       <span className="font-medium">{startLabel}</span> {title}
       <span
         data-testid="resize-handle"
