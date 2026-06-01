@@ -1,3 +1,14 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html, body, #root { height: 100%; }
+  body { @apply bg-bg font-sans text-ink antialiased; }
+}
+
+@layer components {
+  .dark-scroll::-webkit-scrollbar { width: 8px; }
+  .dark-scroll::-webkit-scrollbar-thumb { background: #2c3046; border-radius: 8px; }
+  .dark-scroll::-webkit-scrollbar-track { background: transparent; }
+}

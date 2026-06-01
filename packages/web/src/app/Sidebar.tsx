@@ -1,32 +1,59 @@
-import { NavLink } from 'react-router-dom';
-import { useAuth } from '../auth/AuthContext';
-
-const links = [
-  { to: '/', label: 'Planner', end: true },
-  { to: '/tasks', label: 'Tasks', end: false },
-  { to: '/habits', label: 'Habits', end: false },
-  { to: '/settings', label: 'Settings', end: false },
-];
+import { useState } from 'react';
+import { Logo } from './shell/Logo';
+import { NavLinkItem, NavDisabledItem, NavSection } from './shell/NavItem';
+import { Icons } from './shell/icons';
 
 export function Sidebar() {
-  const { signOut } = useAuth();
+  const [tbOpen, setTbOpen] = useState(true);
+  const [mtOpen, setMtOpen] = useState(true);
+  const [helpOpen, setHelpOpen] = useState(false);
+
   return (
-    <nav className="flex w-48 flex-col gap-1 border-r border-gray-200 p-3">
-      <div className="mb-3 font-semibold">NotReclaim</div>
-      {links.map((l) => (
-        <NavLink
-          key={l.to}
-          to={l.to}
-          end={l.end}
-          className={({ isActive }) => `rounded px-2 py-1 ${isActive ? 'bg-blue-100 font-medium' : 'text-gray-700'}`}
-        >
-          {l.label}
-        </NavLink>
-      ))}
-      <div className="mt-auto flex flex-col gap-2 pt-3 text-sm text-gray-500">
-        <span>◉ Connected</span>
-        <button onClick={signOut} className="text-left text-gray-700 hover:underline">Sign out</button>
+    <aside className="dark-scroll flex h-screen w-[280px] shrink-0 flex-col overflow-y-auto bg-sidebar">
+      <div className="flex items-center justify-between px-[18px] pb-[14px] pt-5">
+        <Logo />
+        <span className="text-sidebarMuted"><Icons.pin size={18} /></span>
       </div>
-    </nav>
+
+      <nav className="flex flex-col gap-0.5 px-[14px] py-1.5">
+        <NavLinkItem to="/" end label="Planner" icon={<Icons.planner size={20} />} />
+        <NavLinkItem to="/priorities" label="Priorities" icon={<Icons.priorities size={20} />} />
+        <NavLinkItem to="/stats" label="Stats" icon={<Icons.stats size={20} />} />
+
+        <NavSection label="Time blocking" icon={<Icons.timeblock size={20} />} open={tbOpen} onToggle={() => setTbOpen((v) => !v)} />
+        {tbOpen && (
+          <>
+            <NavDisabledItem label="Focus" indent />
+            <NavLinkItem to="/habits" label="Habits" indent />
+            <NavDisabledItem label="Buffers" indent />
+            <NavDisabledItem label="Tasks" indent />
+          </>
+        )}
+
+        <NavSection label="Meetings" icon={<Icons.meetings size={20} />} open={mtOpen} onToggle={() => setMtOpen((v) => !v)} />
+        {mtOpen && (
+          <>
+            <NavDisabledItem label="Smart Meetings" indent />
+            <NavDisabledItem label="Scheduling Links" indent />
+          </>
+        )}
+
+        <NavLinkItem to="/settings" label="Calendar Sync" icon={<Icons.sync size={20} />} />
+      </nav>
+
+      <div className="flex-1" />
+
+      <div className="flex flex-col gap-0.5 px-[14px] pb-[18px] pt-2.5">
+        <NavSection label="Help" icon={<Icons.help size={20} />} open={helpOpen} onToggle={() => setHelpOpen((v) => !v)} />
+        {helpOpen && (
+          <>
+            <NavDisabledItem label="Documentation" indent />
+            <NavDisabledItem label="Contact support" indent />
+            <NavDisabledItem label="What's new" indent />
+          </>
+        )}
+        <NavDisabledItem label="Invite teammates" icon={<Icons.invite size={20} />} />
+      </div>
+    </aside>
   );
 }
