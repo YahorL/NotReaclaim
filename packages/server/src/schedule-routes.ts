@@ -1,11 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { computeDesiredSchedule } from '@notreclaim/core';
-import type { AppDeps } from './app.js';
-import { rangeQuerySchema } from './schemas.js';
+import type { AppDeps, AfterMutation } from './app.js';
+import { rangeQuerySchema, idParamSchema, updateScheduledBlockSchema } from './schemas.js';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps): void {
+export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afterMutation: AfterMutation): void {
   const guard = { onRequest: [app.authenticate] };
 
   app.get('/schedule', guard, async (request) => {
@@ -28,5 +28,18 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps): voi
 
   app.post('/schedule/replan', guard, async (request) => {
     return deps.reconcile(request.userId, deps.now());
+  });
+
+  app.patch('/schedule/:id', guard, async (request) => {
+    const { id } = idParamSchema.parse(request.params);
+    const body = updateScheduledBlockSchema.parse(request.body);
+    const data = {
+      ...(body.startsAt ? { startsAt: new Date(body.startsAt) } : {}),
+      ...(body.endsAt ? { endsAt: new Date(body.endsAt) } : {}),
+      ...(body.pinned !== undefined ? { pinned: body.pinned } : {}),
+    };
+    const block = await deps.repos.scheduledBlocks.update(request.userId, id, data);
+    afterMutation(request.userId);
+    return block;
   });
 }
