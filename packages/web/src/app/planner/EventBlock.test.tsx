@@ -41,6 +41,14 @@ describe('EventBlock', () => {
     expect(el).not.toHaveTextContent('🔒');
   });
 
+  it('renders a locked (pinned) habit as solid green with a lock', () => {
+    render(<EventBlock title="Morning run" kind="habit" pinned topPct={0} heightPct={5} startLabel="07:00" />);
+    const el = screen.getByTestId('event-block');
+    expect(el.className).toContain('bg-low');
+    expect(el.className).toContain('text-white');
+    expect(el).toHaveTextContent('🔒');
+  });
+
   it('a movable habit uses the same scheme as a task', () => {
     render(<EventBlock title="Workout" kind="habit" topPct={0} heightPct={5} startLabel="08:00" />);
     const el = screen.getByTestId('event-block');

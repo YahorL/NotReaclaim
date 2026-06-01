@@ -6,6 +6,7 @@ const BASE = 'absolute left-0.5 right-0.5 overflow-hidden rounded-[6px] px-[7px]
 function variantClass(kind: BlockKind, pinned: boolean): string {
   if (kind === 'meeting') return 'bg-event text-white';
   if (pinned) return 'bg-low text-white';
+  // movable: text-kind-habitText (#1c7a43) is an accessible dark green on the transparent bg (used for task & habit alike)
   return 'border border-dashed border-low bg-transparent text-kind-habitText';
 }
 
