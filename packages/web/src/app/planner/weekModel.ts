@@ -87,3 +87,26 @@ export function humanizeMs(ms: number): string {
   if (h) return `${h}h`;
   return `${m}m`;
 }
+
+/** One hour = 58px tall in the grid body (must match WeekGrid's h-[58px] rows). */
+export const HOUR_ROW_PX = 58;
+/** Fixed day-column pixel height: one 58px row per hour of the window (16 * 58 = 928). */
+export const GRID_COLUMN_PX = ((WINDOW_END_MIN - WINDOW_START_MIN) / 60) * HOUR_ROW_PX;
+
+/** Round a minute value to the nearest `step` (default 15). */
+export function snapMinutes(min: number, step = 15): number {
+  return Math.round(min / step) * step;
+}
+
+/** Convert a signed pixel delta within a day column to a signed minute delta. */
+export function pxToMinutes(px: number): number {
+  return (px / GRID_COLUMN_PX) * (WINDOW_END_MIN - WINDOW_START_MIN);
+}
+
+/** Keep [startMin, startMin+durationMin] inside the [WINDOW_START_MIN, WINDOW_END_MIN] window. */
+export function clampToWindow(startMin: number, durationMin: number): { startMin: number; endMin: number } {
+  let s = Math.max(WINDOW_START_MIN, startMin);
+  if (s + durationMin > WINDOW_END_MIN) s = WINDOW_END_MIN - durationMin;
+  s = Math.max(WINDOW_START_MIN, s);
+  return { startMin: s, endMin: s + durationMin };
+}

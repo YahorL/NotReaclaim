@@ -3,6 +3,7 @@ import type { ScheduledBlock } from '../../api/types';
 import {
   startOfWeek, dayColumns, addWeeks, classifyBlock, placeInDay, nowLine, humanizeMs, isToday,
   WINDOW_START_MIN, WINDOW_END_MIN,
+  HOUR_ROW_PX, GRID_COLUMN_PX, snapMinutes, pxToMinutes, clampToWindow,
 } from './weekModel';
 
 const MON = Date.parse('2026-01-05T00:00:00.000Z'); // Monday 00:00 UTC
@@ -95,5 +96,33 @@ describe('humanizeMs', () => {
     expect(humanizeMs(90 * 60000)).toBe('1h 30m');
     expect(humanizeMs(30 * 60000)).toBe('30m');
     expect(humanizeMs(2 * 3600000)).toBe('2h');
+  });
+});
+
+describe('grid geometry', () => {
+  it('exports the fixed column geometry constants', () => {
+    expect(HOUR_ROW_PX).toBe(58);
+    expect(GRID_COLUMN_PX).toBe(((WINDOW_END_MIN - WINDOW_START_MIN) / 60) * 58); // 16 * 58 = 928
+  });
+
+  it('snapMinutes rounds to the nearest step (default 15)', () => {
+    expect(snapMinutes(0)).toBe(0);
+    expect(snapMinutes(7)).toBe(0);
+    expect(snapMinutes(8)).toBe(15);
+    expect(snapMinutes(-8)).toBe(-15);
+    expect(snapMinutes(52, 30)).toBe(60);
+  });
+
+  it('pxToMinutes maps the column height to the full window span', () => {
+    expect(pxToMinutes(GRID_COLUMN_PX)).toBe(WINDOW_END_MIN - WINDOW_START_MIN); // 928px -> 960 min
+    expect(Math.round(pxToMinutes(HOUR_ROW_PX))).toBe(60); // one row -> 60 min
+    expect(pxToMinutes(0)).toBe(0);
+    expect(pxToMinutes(-GRID_COLUMN_PX)).toBe(-(WINDOW_END_MIN - WINDOW_START_MIN));
+  });
+
+  it('clampToWindow floors start at the window start and shifts back on overflow', () => {
+    expect(clampToWindow(540, 60)).toEqual({ startMin: 540, endMin: 600 });
+    expect(clampToWindow(300, 60)).toEqual({ startMin: WINDOW_START_MIN, endMin: WINDOW_START_MIN + 60 });
+    expect(clampToWindow(1290, 60)).toEqual({ startMin: WINDOW_END_MIN - 60, endMin: WINDOW_END_MIN });
   });
 });
