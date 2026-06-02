@@ -5,9 +5,7 @@ import { DurationField } from '../components/DurationField';
 import {
   type SettingsFormState, type DayState, validateSettingsForm, toSettingsInput, supportedTimezones,
 } from './settingsForm';
-
-const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MON_FIRST = [1, 2, 3, 4, 5, 6, 0];
+import { WeeklyHoursEditor } from './WeeklyHoursEditor';
 
 export interface SettingsFormProps {
   initial: SettingsFormState;
@@ -37,20 +35,7 @@ export function SettingsForm({ initial, onSave, saving = false, error = null, ju
 
       <section className="mb-4 rounded-lg border border-gray-200 p-3">
         <h3 className="mb-2 text-sm font-semibold">Working hours</h3>
-        {MON_FIRST.map((wd) => {
-          const day = form.days.find((d) => d.weekday === wd)!;
-          const dayErr = errors.days?.[wd];
-          return (
-            <div key={wd} className="flex items-center gap-2 py-1 text-sm">
-              <span className={`w-10 ${day.enabled ? 'font-medium' : 'text-gray-400'}`}>{DAY_LABELS[wd]}</span>
-              <input type="checkbox" data-testid={`day-${wd}-toggle`} checked={day.enabled} onChange={(e) => setDay(wd, { enabled: e.target.checked })} />
-              <input type="time" data-testid={`day-${wd}-start`} className={ctlCls} disabled={!day.enabled} value={day.start} onChange={(e) => setDay(wd, { start: e.target.value })} />
-              <span>–</span>
-              <input type="time" data-testid={`day-${wd}-end`} className={ctlCls} disabled={!day.enabled} value={day.end} onChange={(e) => setDay(wd, { end: e.target.value })} />
-              {dayErr && <span data-testid={`err-day-${wd}`} className={errCls}>{dayErr}</span>}
-            </div>
-          );
-        })}
+        <WeeklyHoursEditor days={form.days} onChange={setDay} errors={errors.days} />
       </section>
 
       <section className="mb-4 rounded-lg border border-gray-200 p-3">
