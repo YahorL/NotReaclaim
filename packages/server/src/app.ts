@@ -7,6 +7,7 @@ import type {
   ScheduledBlockRepository,
   CalendarEventRepository,
   CategoryRepository,
+  SubtaskRepository,
 } from '@notreclaim/db';
 import type { SchedulingRepositories } from '@notreclaim/core';
 import type { GoogleClient, TokenService, ReconcileResult } from '@notreclaim/google';
@@ -18,6 +19,7 @@ import { registerSettingsRoutes } from './settings-routes.js';
 import { registerScheduleRoutes } from './schedule-routes.js';
 import { registerCalendarRoutes } from './calendar-routes.js';
 import { registerCategoryRoutes } from './category-routes.js';
+import { registerSubtaskRoutes } from './subtask-routes.js';
 import type { EventBus } from './events.js';
 import { createConnectionRegistry } from './connection-registry.js';
 import { registerWebSocket } from './ws.js';
@@ -31,6 +33,7 @@ export interface AppDeps {
     scheduledBlocks: Pick<ScheduledBlockRepository, 'listByUserInRange' | 'update'>;
     calendarEvents: Pick<CalendarEventRepository, 'listByUserInRange'>;
     categories: CategoryRepository;
+    subtasks: SubtaskRepository;
   };
   google: {
     client: Pick<GoogleClient, 'getConsentUrl'>;
@@ -101,6 +104,7 @@ export function buildApp(input: Omit<AppDeps, 'now'> & { now?: () => number }): 
   registerScheduleRoutes(app, deps, afterMutation);
   registerCalendarRoutes(app, deps);
   registerCategoryRoutes(app, deps, afterMutation);
+  registerSubtaskRoutes(app, deps);
 
   return app;
 }

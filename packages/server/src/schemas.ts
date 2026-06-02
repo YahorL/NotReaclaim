@@ -68,6 +68,15 @@ export const updateCategorySchema = z.object({
   windows: z.array(workingHourEntrySchema).min(1).optional(),
 }).refine((b) => b.name !== undefined || b.windows !== undefined, { message: 'name or windows is required' });
 
+export const createSubtaskSchema = z.object({
+  taskId: z.string().min(1),
+  title: z.string().min(1),
+});
+export const updateSubtaskSchema = z.object({
+  title: z.string().min(1).optional(),
+  done: z.boolean().optional(),
+}).refine((b) => b.title !== undefined || b.done !== undefined, { message: 'title or done is required' });
+
 export const rangeQuerySchema = z.object({
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
