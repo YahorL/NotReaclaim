@@ -8,6 +8,7 @@ export interface CreateCategoryInput {
 
 export interface UpdateCategoryInput {
   name?: string;
+  // Non-null windows only; clearing to SQL NULL (inherit) is reserved for the default category, which is never updated this way.
   windows?: Prisma.InputJsonValue;
 }
 

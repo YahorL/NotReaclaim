@@ -37,7 +37,7 @@ model User {
   calendarEvents      CalendarEvent[]
   tasks               Task[]
   habits              Habit[]
-  categories Category[]
+  categories          Category[]
   scheduledBlocks     ScheduledBlock[]
   calendarSyncStates  CalendarSyncState[]
 }
