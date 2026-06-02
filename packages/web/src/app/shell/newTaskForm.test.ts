@@ -41,6 +41,12 @@ describe('newTaskForm', () => {
     expect(input.minChunkMs).toBe(3_600_000);
     expect(input.maxChunkMs).toBe(3_600_000);
     expect(input.title).toBe('Write spec');
-    expect(input.category).toBeNull();
+    expect(input.categoryId).toBeNull();
+  });
+
+  it('carries categoryId through to the create input', () => {
+    const base = defaultNewTaskForm(Date.parse('2026-01-05T00:00:00.000Z'));
+    const out = toCreateTaskInput({ ...base, title: 'X', categoryId: 'cat-9' });
+    expect(out.categoryId).toBe('cat-9');
   });
 });

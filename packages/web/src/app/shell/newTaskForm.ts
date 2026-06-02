@@ -10,6 +10,7 @@ export interface NewTaskFormState {
   minChunkMs: number;
   maxChunkMs: number;
   dueByLocal: string; // "YYYY-MM-DDTHH:MM"
+  categoryId: string | null;
 }
 
 export function defaultNewTaskForm(
@@ -23,6 +24,7 @@ export function defaultNewTaskForm(
     minChunkMs: settings?.defaultMinChunkMs ?? 30 * 60_000,
     maxChunkMs: settings?.defaultMaxChunkMs ?? 120 * 60_000,
     dueByLocal: isoToLocalInput(new Date(now + 7 * DAY_MS).toISOString()),
+    categoryId: null,
   };
 }
 
@@ -49,6 +51,6 @@ export function toCreateTaskInput(s: NewTaskFormState): CreateTaskInput {
     dueBy: localInputToIso(s.dueByLocal),
     minChunkMs,
     maxChunkMs,
-    category: null,
+    categoryId: s.categoryId,
   };
 }
