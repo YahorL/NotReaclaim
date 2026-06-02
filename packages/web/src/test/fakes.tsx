@@ -25,6 +25,10 @@ export function fakeApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getCalendarEvents: notImplemented('getCalendarEvents'),
     getSchedulePreview: notImplemented('getSchedulePreview'),
     replan: notImplemented('replan'),
+    listCategories: notImplemented('listCategories'),
+    createCategory: notImplemented('createCategory'),
+    updateCategory: notImplemented('updateCategory'),
+    deleteCategory: notImplemented('deleteCategory'),
   } as unknown as ApiClient;
   return { ...base, ...overrides };
 }

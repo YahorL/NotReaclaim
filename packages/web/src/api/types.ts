@@ -10,7 +10,7 @@ export interface Task {
   dueBy: string;
   minChunkMs: number;
   maxChunkMs: number;
-  category: string | null;
+  categoryId: string | null;
   status: TaskStatus;
   timeLoggedMs: number;
   createdAt: string;
@@ -37,6 +37,23 @@ export interface WorkingHour {
   weekday: number;
   startMinute: number;
   endMinute: number;
+}
+
+export interface Category {
+  id: string;
+  userId: string;
+  name: string;
+  windows: WorkingHour[] | null;
+  isDefault: boolean;
+}
+
+export interface CreateCategoryInput {
+  name: string;
+  windows: WorkingHour[];
+}
+export interface UpdateCategoryInput {
+  name?: string;
+  windows?: WorkingHour[];
 }
 
 export interface Settings {
@@ -110,7 +127,7 @@ export interface CreateTaskInput {
   dueBy: string;
   minChunkMs: number;
   maxChunkMs: number;
-  category?: string | null;
+  categoryId?: string | null;
 }
 export type UpdateTaskInput = Partial<CreateTaskInput> & { status?: TaskStatus; timeLoggedMs?: number };
 

@@ -1,7 +1,7 @@
 import type {
   Task, Habit, Settings, ScheduledBlock, SchedulePreview, ReconcileResult, CalendarEvent,
   TaskStatus, CreateTaskInput, UpdateTaskInput, CreateHabitInput, UpdateHabitInput, SettingsInput,
-  UpdateScheduledBlockInput,
+  UpdateScheduledBlockInput, Category, CreateCategoryInput, UpdateCategoryInput,
 } from './types';
 
 export class ApiError extends Error {
@@ -33,6 +33,10 @@ export interface ApiClient {
   getCalendarEvents(from?: string, to?: string): Promise<CalendarEvent[]>;
   getSchedulePreview(): Promise<SchedulePreview>;
   replan(): Promise<ReconcileResult>;
+  listCategories(): Promise<Category[]>;
+  createCategory(body: CreateCategoryInput): Promise<Category>;
+  updateCategory(id: string, patch: UpdateCategoryInput): Promise<Category>;
+  deleteCategory(id: string): Promise<void>;
 }
 
 export function createApiClient(config: ApiClientConfig): ApiClient {
@@ -94,5 +98,9 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
     },
     getSchedulePreview: () => request('GET', '/schedule/preview'),
     replan: () => request('POST', '/schedule/replan'),
+    listCategories: () => request('GET', '/categories'),
+    createCategory: (body) => request('POST', '/categories', body),
+    updateCategory: (id, patch) => request('PATCH', `/categories/${id}`, patch),
+    deleteCategory: (id) => request('DELETE', `/categories/${id}`),
   };
 }
