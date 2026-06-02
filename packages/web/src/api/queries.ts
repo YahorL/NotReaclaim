@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useApi } from './ApiProvider';
-import type { CreateTaskInput, UpdateTaskInput, CreateHabitInput, UpdateHabitInput, SettingsInput, UpdateScheduledBlockInput } from './types';
+import type { CreateTaskInput, UpdateTaskInput, CreateHabitInput, UpdateHabitInput, SettingsInput, UpdateScheduledBlockInput, CreateCategoryInput, UpdateCategoryInput } from './types';
 
 export const queryKeys = {
   scheduleRoot: ['schedule'] as const,
@@ -14,6 +14,8 @@ export const queryKeys = {
   habits: () => ['habits'] as const,
   settingsRoot: ['settings'] as const,
   settings: () => ['settings'] as const,
+  categoriesRoot: ['categories'] as const,
+  categories: () => ['categories'] as const,
 };
 
 export function useScheduleQuery(from?: string, to?: string) {
@@ -119,4 +121,30 @@ export function useUpdateSettingsMutation() {
       void qc.invalidateQueries({ queryKey: queryKeys.scheduleRoot });
     },
   });
+}
+
+export function useCategoriesQuery() {
+  const api = useApi();
+  return useQuery({ queryKey: queryKeys.categories(), queryFn: () => api.listCategories() });
+}
+
+function invalidateCategories(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: queryKeys.categoriesRoot });
+  void qc.invalidateQueries({ queryKey: queryKeys.scheduleRoot });
+}
+
+export function useCreateCategoryMutation() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (body: CreateCategoryInput) => api.createCategory(body), onSuccess: () => invalidateCategories(qc) });
+}
+export function useUpdateCategoryMutation() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: ({ id, patch }: { id: string; patch: UpdateCategoryInput }) => api.updateCategory(id, patch), onSuccess: () => invalidateCategories(qc) });
+}
+export function useDeleteCategoryMutation() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (id: string) => api.deleteCategory(id), onSuccess: () => invalidateCategories(qc) });
 }

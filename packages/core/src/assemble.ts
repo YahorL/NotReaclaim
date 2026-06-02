@@ -4,13 +4,16 @@ import type {
   FlexibleTask,
   Habit as EngineHabit,
   ScheduledBlock as EngineScheduledBlock,
+  Interval,
 } from '@notreclaim/scheduler';
+import { mergeIntervals } from '@notreclaim/scheduler';
 import type {
   SettingsRepository,
   CalendarEventRepository,
   TaskRepository,
   HabitRepository,
   ScheduledBlockRepository,
+  CategoryRepository,
   TaskStatus,
 } from '@notreclaim/db';
 import { toFixedEvent, toFlexibleTask, toScheduledBlock } from '@notreclaim/db/mappers';
@@ -25,6 +28,7 @@ export interface SchedulingRepositories {
   tasks: Pick<TaskRepository, 'listByUser'>;
   habits: Pick<HabitRepository, 'listByUser'>;
   scheduledBlocks: Pick<ScheduledBlockRepository, 'listByUserInRange'>;
+  categories: Pick<CategoryRepository, 'listByUser'>;
 }
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -50,6 +54,23 @@ export async function assembleScheduleInput(
     horizonDays,
   );
 
+  const categories = await repos.categories.listByUser(userId);
+  const expandedByCategoryId = new Map<string, Interval[]>();
+  for (const c of categories) {
+    const expanded =
+      c.windows === null
+        ? workingWindows
+        : expandWorkingWindows(c.windows as unknown as WorkingHourEntry[], settings.timezone, now, horizonDays);
+    expandedByCategoryId.set(c.id, expanded);
+  }
+  const defaultCategoryId = categories.find((c) => c.isDefault)?.id ?? null;
+
+  // Schedulable envelope = union of working hours and every category's windows.
+  const envelope = mergeIntervals([
+    ...workingWindows,
+    ...categories.flatMap((c) => expandedByCategoryId.get(c.id) ?? []),
+  ]);
+
   const events = await repos.calendarEvents.listByUserInRange(userId, horizonStart, horizonEnd);
   const fixedEvents: FixedEvent[] = events.map(toFixedEvent);
 
@@ -73,7 +94,10 @@ export async function assembleScheduleInput(
     const flexible = toFlexibleTask(t);
     const remaining = flexible.durationMs - (taskCoverageMs.get(t.id) ?? 0);
     if (remaining <= 0) continue;
-    tasks.push({ ...flexible, durationMs: remaining });
+    const resolvedId =
+      t.categoryId && expandedByCategoryId.has(t.categoryId) ? t.categoryId : defaultCategoryId;
+    const allowedWindows = resolvedId ? expandedByCategoryId.get(resolvedId)! : workingWindows;
+    tasks.push({ ...flexible, durationMs: remaining, allowedWindows });
   }
 
   const allHabits = await repos.habits.listByUser(userId);
@@ -93,5 +117,5 @@ export async function assembleScheduleInput(
     habits.push(engineHabit);
   }
 
-  return { workingWindows, fixedEvents, pinnedBlocks, tasks, habits };
+  return { workingWindows: envelope, fixedEvents, pinnedBlocks, tasks, habits };
 }

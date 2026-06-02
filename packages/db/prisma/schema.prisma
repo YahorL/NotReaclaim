@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 enum TaskStatus {
@@ -36,6 +37,7 @@ model User {
   calendarEvents      CalendarEvent[]
   tasks               Task[]
   habits              Habit[]
+  categories          Category[]
   scheduledBlocks     ScheduledBlock[]
   calendarSyncStates  CalendarSyncState[]
 }
@@ -79,14 +81,30 @@ model Task {
   dueBy        DateTime   @db.Timestamptz
   minChunkMs   Int
   maxChunkMs   Int
-  category     String?
+  categoryId   String?
   status       TaskStatus @default(pending)
   timeLoggedMs Int        @default(0)
   createdAt    DateTime   @default(now()) @db.Timestamptz
   updatedAt    DateTime   @updatedAt @db.Timestamptz
 
   user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category        Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   scheduledBlocks ScheduledBlock[]
+}
+
+model Category {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String
+  windows   Json?
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks Task[]
+
+  @@unique([userId, name])
 }
 
 model Habit {

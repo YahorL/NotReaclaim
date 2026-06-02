@@ -2,6 +2,7 @@ import { ApiError } from '../../api/client';
 import { useSettingsQuery, useUpdateSettingsMutation } from '../../api/queries';
 import { SettingsForm } from '../settings/SettingsForm';
 import { toFormState, defaultFormState } from '../settings/settingsForm';
+import { CategoriesSection } from '../settings/CategoriesSection';
 
 export function Settings() {
   const settingsQ = useSettingsQuery();
@@ -25,12 +26,15 @@ export function Settings() {
   const initial = settingsQ.data ? toFormState(settingsQ.data) : defaultFormState(browserTz);
 
   return (
-    <SettingsForm
-      initial={initial}
-      saving={updateM.isPending}
-      justSaved={updateM.isSuccess}
-      error={updateM.error instanceof ApiError ? updateM.error : null}
-      onSave={(input) => updateM.mutate(input)}
-    />
+    <>
+      <SettingsForm
+        initial={initial}
+        saving={updateM.isPending}
+        justSaved={updateM.isSuccess}
+        error={updateM.error instanceof ApiError ? updateM.error : null}
+        onSave={(input) => updateM.mutate(input)}
+      />
+      <CategoriesSection />
+    </>
   );
 }

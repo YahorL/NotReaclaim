@@ -1,5 +1,5 @@
 import type {
-  Settings, CalendarEvent, Task, Habit, ScheduledBlock,
+  Settings, CalendarEvent, Task, Habit, ScheduledBlock, Category,
 } from '@notreclaim/db';
 import type { SchedulingRepositories } from '../src/assemble.js';
 
@@ -9,6 +9,7 @@ export interface FakeData {
   blocks?: ScheduledBlock[];
   tasks?: Task[];
   habits?: Habit[];
+  categories?: Category[];
 }
 
 export function fakeRepos(data: FakeData): SchedulingRepositories {
@@ -18,6 +19,7 @@ export function fakeRepos(data: FakeData): SchedulingRepositories {
     tasks: { listByUser: async () => data.tasks ?? [] },
     habits: { listByUser: async () => data.habits ?? [] },
     scheduledBlocks: { listByUserInRange: async () => data.blocks ?? [] },
+    categories: { listByUser: async () => data.categories ?? [] },
   };
 }
 
@@ -46,7 +48,7 @@ export function makeTask(over: Partial<Task> = {}): Task {
     dueBy: new Date('2026-01-09T17:00:00.000Z'),
     minChunkMs: 900000,
     maxChunkMs: 1800000,
-    category: null,
+    categoryId: null,
     status: 'pending',
     timeLoggedMs: 0,
     createdAt: new Date(0),
@@ -83,6 +85,19 @@ export function makeEvent(over: Partial<CalendarEvent> = {}): CalendarEvent {
     title: 'Meeting',
     startsAt: new Date('2026-01-05T10:00:00.000Z'),
     endsAt: new Date('2026-01-05T11:00:00.000Z'),
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+    ...over,
+  };
+}
+
+export function makeCategory(over: Partial<Category> = {}): Category {
+  return {
+    id: 'cat-default',
+    userId: 'u1',
+    name: 'Working Hours',
+    windows: null,
+    isDefault: true,
     createdAt: new Date(0),
     updatedAt: new Date(0),
     ...over,

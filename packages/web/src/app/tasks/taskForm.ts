@@ -10,7 +10,7 @@ export interface TaskFormState {
   dueByLocal: string;   // "YYYY-MM-DDTHH:MM"
   minChunkMs: number;
   maxChunkMs: number;
-  category: string;     // '' => null
+  categoryId: string | null;
   status: TaskStatus;
 }
 
@@ -26,7 +26,7 @@ export function defaultQuickAddInput(
     dueBy: new Date(now + 7 * DAY_MS).toISOString(),
     minChunkMs: defaults?.minChunkMs ?? 30 * 60_000,
     maxChunkMs: defaults?.maxChunkMs ?? 120 * 60_000,
-    category: null,
+    categoryId: null,
   };
 }
 
@@ -38,7 +38,7 @@ export function toFormState(t: Task): TaskFormState {
     dueByLocal: isoToLocalInput(t.dueBy),
     minChunkMs: t.minChunkMs,
     maxChunkMs: t.maxChunkMs,
-    category: t.category ?? '',
+    categoryId: t.categoryId,
     status: t.status,
   };
 }
@@ -64,7 +64,7 @@ export function toUpdateInput(s: TaskFormState): UpdateTaskInput {
     dueBy: localInputToIso(s.dueByLocal),
     minChunkMs: s.minChunkMs,
     maxChunkMs: s.maxChunkMs,
-    category: s.category.trim() || null,
+    categoryId: s.categoryId,
     status: s.status,
   };
 }

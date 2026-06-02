@@ -102,7 +102,7 @@ describe('planLocally', () => {
   const task = {
     id: 't1', userId: 'u1', title: 'T', priority: 1, durationMs: 1_800_000,
     dueBy: new Date('2026-01-05T17:00:00.000Z'), minChunkMs: 1_800_000, maxChunkMs: 1_800_000,
-    category: null, status: 'pending', timeLoggedMs: 0, createdAt: new Date(0), updatedAt: new Date(0),
+    categoryId: null, status: 'pending', timeLoggedMs: 0, createdAt: new Date(0), updatedAt: new Date(0),
   };
   function repos(over: Record<string, unknown> = {}) {
     return {
@@ -111,6 +111,7 @@ describe('planLocally', () => {
       tasks: { listByUser: async () => [task] },
       habits: { listByUser: async () => [] },
       scheduledBlocks: { listByUserInRange: async () => [] },
+      categories: { listByUser: async () => [] },
       ...over,
     } as never;
   }

@@ -107,7 +107,7 @@ describe('useCreateTaskMutation', () => {
     const { Wrapper, qc } = wrap(api);
     const spy = vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
     const { result } = renderHook(() => useCreateTaskMutation(), { wrapper: Wrapper });
-    result.current.mutate({ title: 'A', priority: 3, durationMs: 1, dueBy: '2026-01-01T00:00:00.000Z', minChunkMs: 1, maxChunkMs: 1, category: null });
+    result.current.mutate({ title: 'A', priority: 3, durationMs: 1, dueBy: '2026-01-01T00:00:00.000Z', minChunkMs: 1, maxChunkMs: 1, categoryId: null });
     await waitFor(() => expect(createTask).toHaveBeenCalled());
     await waitFor(() => expect(spy).toHaveBeenCalledWith({ queryKey: ['tasks'] }));
     expect(spy).toHaveBeenCalledWith({ queryKey: ['schedule'] });

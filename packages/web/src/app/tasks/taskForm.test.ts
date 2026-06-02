@@ -7,13 +7,13 @@ const NOW = Date.parse('2026-01-05T00:00:00.000Z');
 const task = (over: Partial<Task> = {}): Task => ({
   id: 't1', userId: 'u1', title: 'Write spec', priority: 2, durationMs: 5_400_000,
   dueBy: '2026-06-01T17:00:00.000Z', minChunkMs: 1_800_000, maxChunkMs: 7_200_000,
-  category: 'work', status: 'pending', timeLoggedMs: 0,
+  categoryId: 'cat-work', status: 'pending', timeLoggedMs: 0,
   createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', ...over,
 });
 
 const validState = (over: Partial<TaskFormState> = {}): TaskFormState => ({
   title: 'X', durationMs: 3_600_000, priority: 3, dueByLocal: '2026-06-01T17:00',
-  minChunkMs: 1_800_000, maxChunkMs: 7_200_000, category: '', status: 'pending', ...over,
+  minChunkMs: 1_800_000, maxChunkMs: 7_200_000, categoryId: null, status: 'pending', ...over,
 });
 
 describe('taskForm', () => {
@@ -21,7 +21,7 @@ describe('taskForm', () => {
     const input = defaultQuickAddInput('  New task  ', NOW);
     expect(input).toEqual({
       title: 'New task', priority: 3, durationMs: 3_600_000,
-      dueBy: '2026-01-12T00:00:00.000Z', minChunkMs: 1_800_000, maxChunkMs: 7_200_000, category: null,
+      dueBy: '2026-01-12T00:00:00.000Z', minChunkMs: 1_800_000, maxChunkMs: 7_200_000, categoryId: null,
     });
   });
 
@@ -32,12 +32,12 @@ describe('taskForm', () => {
     expect(input.durationMs).toBe(3_600_000); // unchanged
   });
 
-  it('toFormState maps a Task (ISO due → local; category null → "")', () => {
+  it('toFormState maps a Task (ISO due → local; categoryId passthrough)', () => {
     expect(toFormState(task())).toEqual({
       title: 'Write spec', durationMs: 5_400_000, priority: 2, dueByLocal: '2026-06-01T17:00',
-      minChunkMs: 1_800_000, maxChunkMs: 7_200_000, category: 'work', status: 'pending',
+      minChunkMs: 1_800_000, maxChunkMs: 7_200_000, categoryId: 'cat-work', status: 'pending',
     });
-    expect(toFormState(task({ category: null })).category).toBe('');
+    expect(toFormState(task({ categoryId: null })).categoryId).toBeNull();
   });
 
   it('validateTaskForm flags empty title, non-positive durations, min>max, bad due', () => {
@@ -48,10 +48,16 @@ describe('taskForm', () => {
     expect(validateTaskForm(validState({ dueByLocal: '' })).errors.dueByLocal).toBeTruthy();
   });
 
-  it('toUpdateInput converts local due → ISO and "" category → null, includes status', () => {
-    expect(toUpdateInput(validState({ category: '', status: 'scheduled' }))).toEqual({
+  it('toUpdateInput converts local due → ISO and passes categoryId, includes status', () => {
+    expect(toUpdateInput(validState({ categoryId: null, status: 'scheduled' }))).toEqual({
       title: 'X', priority: 3, durationMs: 3_600_000, dueBy: '2026-06-01T17:00:00.000Z',
-      minChunkMs: 1_800_000, maxChunkMs: 7_200_000, category: null, status: 'scheduled',
+      minChunkMs: 1_800_000, maxChunkMs: 7_200_000, categoryId: null, status: 'scheduled',
     });
+  });
+
+  it('round-trips categoryId through the edit form', () => {
+    const state = toFormState(task({ categoryId: 'cat-7' }));
+    expect(state.categoryId).toBe('cat-7');
+    expect(toUpdateInput(state).categoryId).toBe('cat-7');
   });
 });

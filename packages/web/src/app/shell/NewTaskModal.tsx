@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { ApiError } from '../../api/client';
-import { useCreateTaskMutation, useSettingsQuery } from '../../api/queries';
+import { useCreateTaskMutation, useSettingsQuery, useCategoriesQuery, useCreateCategoryMutation } from '../../api/queries';
 import { msToHM } from '../lib/duration';
 import { Icons } from './icons';
 import {
@@ -14,6 +14,7 @@ function durationLabel(ms: number): string {
   return `${minutes} mins`;
 }
 const STEP = 15 * 60_000;
+const FALLBACK_WORKING_HOURS = [{ weekday: 1, startMinute: 540, endMinute: 1020 }];
 
 function Stepper({ valueMs, onChange, disabled = false, label }: { valueMs: number; onChange: (ms: number) => void; disabled?: boolean; label: string }) {
   return (
@@ -44,6 +45,20 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
     : undefined;
   const [form, setForm] = useState<NewTaskFormState>(() => defaultNewTaskForm(now(), chunkDefaults));
   const set = <K extends keyof NewTaskFormState>(k: K, v: NewTaskFormState[K]) => setForm((f) => ({ ...f, [k]: v }));
+
+  const categoriesQ = useCategoriesQuery();
+  const createCategoryM = useCreateCategoryMutation();
+  const [creatingCat, setCreatingCat] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
+  const categories = categoriesQ.data ?? [];
+
+  useEffect(() => {
+    if (form.categoryId === null && categories.length > 0) {
+      const def = categories.find((c) => c.isDefault) ?? categories[0]!;
+      set('categoryId', def.id);
+    }
+  }, [categories, form.categoryId]);
+
   const { ok } = validateNewTaskForm(form);
   const error = createM.error instanceof ApiError ? createM.error : null;
 
@@ -83,11 +98,35 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
 
         <div className="mb-2 rounded-[11px] border-[1.5px] border-line px-3.5 py-2.5">
           <span className="text-[13px] font-semibold text-inkSoft">Hours</span>
-          <div className="flex items-center">
-            <Icons.info size={19} className="mr-2.5 text-indigo" />
-            <span className="flex-1 text-[18px] font-bold">Working Hours</span>
-            <Icons.chevDown size={20} className="text-inkSoft" />
+          <div className="flex items-center gap-2">
+            <Icons.info size={19} className="text-indigo" />
+            <select
+              data-testid="category-select"
+              value={form.categoryId ?? ''}
+              onChange={(e) => set('categoryId', e.target.value || null)}
+              className="flex-1 bg-transparent text-[18px] font-bold text-ink outline-none"
+            >
+              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <button type="button" aria-label="Add new category" data-testid="new-category-btn" onClick={() => setCreatingCat(true)} className="text-[13px] font-bold text-indigo">+ New</button>
           </div>
+          {creatingCat && (
+            <div className="mt-2 flex items-center gap-2">
+              <input data-testid="new-category-name" autoFocus value={newCatName} onChange={(e) => setNewCatName(e.target.value)} placeholder="Category name…" className="flex-1 rounded border border-line px-2 py-1 text-[14px] outline-none" />
+              <button
+                type="button"
+                data-testid="new-category-confirm"
+                disabled={!newCatName.trim() || createCategoryM.isPending}
+                onClick={() => {
+                  const windows = settingsQ.data?.workingHours ?? FALLBACK_WORKING_HOURS;
+                  createCategoryM.mutate({ name: newCatName.trim(), windows }, {
+                    onSuccess: (cat) => { set('categoryId', cat.id); setCreatingCat(false); setNewCatName(''); },
+                  });
+                }}
+                className="rounded bg-indigo px-2.5 py-1 text-[13px] font-bold text-white disabled:opacity-50"
+              >Add</button>
+            </div>
+          )}
         </div>
 
         <div className="mb-4 flex gap-4">

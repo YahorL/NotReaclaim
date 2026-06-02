@@ -24,6 +24,12 @@ export interface FlexibleTask {
   minChunkMs: number;
   /** Largest acceptable single block, in ms. */
   maxChunkMs: number;
+  /**
+   * Optional HARD restriction: placement is confined to these windows
+   * (intersected with free time before the due date). A chunk that cannot fit
+   * is left unscheduled. Omit for unrestricted placement (previous behavior).
+   */
+  allowedWindows?: Interval[];
 }
 
 /** A recurring flexible block. `perPeriod` occurrences of `chunkMs` within each period. */

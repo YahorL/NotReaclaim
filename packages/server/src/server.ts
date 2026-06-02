@@ -7,6 +7,7 @@ import {
   createScheduledBlockRepository,
   createCalendarEventRepository,
   createCalendarSyncStateRepository,
+  createCategoryRepository,
 } from '@notreclaim/db';
 import {
   createGoogleClient,
@@ -37,8 +38,9 @@ async function main(): Promise<void> {
   const scheduledBlocks = createScheduledBlockRepository(prisma);
   const calendarEvents = createCalendarEventRepository(prisma);
   const calendarSyncState = createCalendarSyncStateRepository(prisma);
+  const categories = createCategoryRepository(prisma);
 
-  const schedulingRepos = { settings, calendarEvents, tasks, habits, scheduledBlocks };
+  const schedulingRepos = { settings, calendarEvents, tasks, habits, scheduledBlocks, categories };
   const bus = createEventBus();
 
   const reconcileBound = (userId: string, now: number) =>
@@ -54,7 +56,7 @@ async function main(): Promise<void> {
   const replan = makeReplan({ reconcile: reconcileBound, planLocally: planLocallyBound, isConnected });
 
   const app = buildApp({
-    repos: { settings, tasks, habits, scheduledBlocks, calendarEvents },
+    repos: { settings, tasks, habits, scheduledBlocks, calendarEvents, categories },
     google: { client, tokens },
     schedulingRepos,
     reconcile: replan,

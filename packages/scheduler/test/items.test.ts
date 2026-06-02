@@ -185,3 +185,26 @@ describe('scheduleHabit with periodTargets (per-period counts)', () => {
     expect(result.blocks).toHaveLength(2);
   });
 });
+
+describe('scheduleTask allowedWindows', () => {
+  const H = 3_600_000;
+  const baseTask = { id: 't1', title: 'T', priority: 1, durationMs: H, dueBy: 10 * H, minChunkMs: H, maxChunkMs: H };
+
+  it('confines placement to the allowed windows', () => {
+    const res = scheduleTask([{ start: 0, end: 10 * H }], { ...baseTask, allowedWindows: [{ start: 3 * H, end: 5 * H }] });
+    expect(res.blocks).toHaveLength(1);
+    expect(res.blocks[0]).toMatchObject({ start: 3 * H, end: 4 * H });
+    expect(res.unscheduled).toHaveLength(0);
+  });
+
+  it('leaves the chunk unscheduled when it cannot fit the allowed windows', () => {
+    const res = scheduleTask([{ start: 0, end: 10 * H }], { ...baseTask, allowedWindows: [{ start: 3 * H, end: 3 * H + 30 * 60_000 }] });
+    expect(res.blocks).toHaveLength(0);
+    expect(res.unscheduled[0]).toMatchObject({ sourceId: 't1', remainingMs: H });
+  });
+
+  it('places at the earliest free slot when allowedWindows is omitted (regression)', () => {
+    const res = scheduleTask([{ start: 0, end: 10 * H }], baseTask);
+    expect(res.blocks[0]).toMatchObject({ start: 0, end: H });
+  });
+});
