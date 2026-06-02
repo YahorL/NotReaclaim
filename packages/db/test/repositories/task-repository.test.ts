@@ -53,4 +53,15 @@ describe('TaskRepository', () => {
     await repo.delete(a.id, task.id);
     expect(await repo.findById(a.id, task.id)).toBeNull();
   });
+
+  it('round-trips notBefore (set and clear)', async () => {
+    const user = await users.create({ email: 'nb@example.com' });
+    const created = await repo.create(user.id, {
+      title: 'T', priority: 1, durationMs: 1, dueBy: new Date('2026-01-09T00:00:00.000Z'),
+      minChunkMs: 1, maxChunkMs: 1, notBefore: new Date('2026-01-06T13:00:00.000Z'),
+    });
+    expect(created.notBefore?.toISOString()).toBe('2026-01-06T13:00:00.000Z');
+    const cleared = await repo.update(user.id, created.id, { notBefore: null });
+    expect(cleared.notBefore).toBeNull();
+  });
 });
