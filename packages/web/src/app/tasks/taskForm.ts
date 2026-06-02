@@ -8,7 +8,7 @@ export interface TaskFormState {
   durationMs: number;
   priority: number;
   dueByLocal: string;   // "YYYY-MM-DDTHH:MM"
-  notBeforeLocal: string;
+  notBeforeLocal: string;   // "YYYY-MM-DDTHH:MM"
   minChunkMs: number;
   maxChunkMs: number;
   categoryId: string | null;
