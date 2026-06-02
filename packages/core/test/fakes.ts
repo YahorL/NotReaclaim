@@ -32,6 +32,8 @@ export function makeSettings(over: Partial<Settings> = {}): Settings {
     horizonDays: 7,
     defaultMinChunkMs: 900000,
     defaultMaxChunkMs: 1800000,
+    meetingBufferMs: 0,
+    taskBufferMs: 0,
     createdAt: new Date(0),
     updatedAt: new Date(0),
     ...over,

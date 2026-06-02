@@ -72,7 +72,11 @@ export async function assembleScheduleInput(
   ]);
 
   const events = await repos.calendarEvents.listByUserInRange(userId, horizonStart, horizonEnd);
-  const fixedEvents: FixedEvent[] = events.map(toFixedEvent);
+  const meetingBufferMs = settings.meetingBufferMs ?? 0;
+  const fixedEvents: FixedEvent[] = events.map((e) => {
+    const fe = toFixedEvent(e);
+    return meetingBufferMs > 0 ? { id: fe.id, start: fe.start - meetingBufferMs, end: fe.end + meetingBufferMs } : fe;
+  });
 
   const blocks = await repos.scheduledBlocks.listByUserInRange(userId, horizonStart, horizonEnd);
   const pinnedBlocks: EngineScheduledBlock[] = blocks
@@ -122,5 +126,5 @@ export async function assembleScheduleInput(
     habits.push(engineHabit);
   }
 
-  return { workingWindows: envelope, fixedEvents, pinnedBlocks, tasks, habits };
+  return { workingWindows: envelope, fixedEvents, pinnedBlocks, tasks, habits, blockBufferMs: settings.taskBufferMs ?? 0 };
 }
