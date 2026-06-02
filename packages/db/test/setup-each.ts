@@ -5,6 +5,7 @@ const TABLES = [
   'ScheduledBlock',
   'CalendarEvent',
   'Task',
+  'Category',
   'Habit',
   'Settings',
   'User',

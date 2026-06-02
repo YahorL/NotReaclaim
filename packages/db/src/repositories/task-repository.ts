@@ -8,7 +8,7 @@ export interface CreateTaskInput {
   dueBy: Date;
   minChunkMs: number;
   maxChunkMs: number;
-  category?: string | null;
+  categoryId?: string | null;
 }
 
 export interface UpdateTaskInput {
@@ -18,7 +18,7 @@ export interface UpdateTaskInput {
   dueBy?: Date;
   minChunkMs?: number;
   maxChunkMs?: number;
-  category?: string | null;
+  categoryId?: string | null;
   status?: TaskStatus;
   timeLoggedMs?: number;
 }

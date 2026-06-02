@@ -12,6 +12,8 @@ export { createCalendarEventRepository } from './repositories/calendar-event-rep
 export type { CalendarEventRepository, UpsertCalendarEventInput } from './repositories/calendar-event-repository.js';
 export { createTaskRepository } from './repositories/task-repository.js';
 export type { TaskRepository, CreateTaskInput, UpdateTaskInput } from './repositories/task-repository.js';
+export { createCategoryRepository } from './repositories/category-repository.js';
+export type { CategoryRepository, CreateCategoryInput, UpdateCategoryInput } from './repositories/category-repository.js';
 export { createHabitRepository } from './repositories/habit-repository.js';
 export type { HabitRepository, CreateHabitInput, UpdateHabitInput } from './repositories/habit-repository.js';
 export { createScheduledBlockRepository } from './repositories/scheduled-block-repository.js';
@@ -26,6 +28,7 @@ export type {
   Settings,
   CalendarEvent,
   Task,
+  Category,
   Habit,
   ScheduledBlock,
   CalendarSyncState,
