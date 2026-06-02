@@ -48,6 +48,7 @@ export function makeTask(over: Partial<Task> = {}): Task {
     dueBy: new Date('2026-01-09T17:00:00.000Z'),
     minChunkMs: 900000,
     maxChunkMs: 1800000,
+    notBefore: null,
     categoryId: null,
     status: 'pending',
     timeLoggedMs: 0,

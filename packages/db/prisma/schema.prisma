@@ -79,6 +79,7 @@ model Task {
   priority     Int
   durationMs   Int
   dueBy        DateTime   @db.Timestamptz
+  notBefore    DateTime?  @db.Timestamptz
   minChunkMs   Int
   maxChunkMs   Int
   categoryId   String?

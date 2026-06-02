@@ -8,6 +8,7 @@ export interface Task {
   priority: number;
   durationMs: number;
   dueBy: string;
+  notBefore?: string | null;
   minChunkMs: number;
   maxChunkMs: number;
   categoryId: string | null;
@@ -125,6 +126,7 @@ export interface CreateTaskInput {
   priority: number;
   durationMs: number;
   dueBy: string;
+  notBefore?: string | null;
   minChunkMs: number;
   maxChunkMs: number;
   categoryId?: string | null;

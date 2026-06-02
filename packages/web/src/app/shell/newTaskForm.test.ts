@@ -49,4 +49,11 @@ describe('newTaskForm', () => {
     const out = toCreateTaskInput({ ...base, title: 'X', categoryId: 'cat-9' });
     expect(out.categoryId).toBe('cat-9');
   });
+
+  it('round-trips notBeforeLocal to notBefore (set and empty→null)', () => {
+    const base = defaultNewTaskForm(Date.parse('2026-01-05T00:00:00.000Z'));
+    expect(toCreateTaskInput({ ...base, title: 'X' }).notBefore).toBeNull();
+    const out = toCreateTaskInput({ ...base, title: 'X', notBeforeLocal: '2026-01-06T13:00' });
+    expect(out.notBefore).toBe(new Date('2026-01-06T13:00').toISOString());
+  });
 });

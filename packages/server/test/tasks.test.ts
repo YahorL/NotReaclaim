@@ -109,4 +109,29 @@ describe('task routes', () => {
     expect(patchRes.statusCode).toBe(200);
     expect(patchRes.json()).toMatchObject({ categoryId: 'cat-2' });
   });
+
+  it('persists notBefore on create and clears it on update', async () => {
+    const { app } = buildTestApp();
+    const token = await tokenFor(app);
+    const auth = { authorization: `Bearer ${token}` };
+    const payload = { title: 'T', priority: 1, durationMs: 3600000, dueBy: '2026-01-09T17:00:00.000Z', minChunkMs: 900000, maxChunkMs: 1800000, notBefore: '2026-01-06T13:00:00.000Z' };
+    const res = await app.inject({ method: 'POST', url: '/tasks', headers: auth, payload });
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toMatchObject({ notBefore: '2026-01-06T13:00:00.000Z' });
+    const id = (res.json() as { id: string }).id;
+    const patch = await app.inject({ method: 'PATCH', url: `/tasks/${id}`, headers: auth, payload: { notBefore: null } });
+    expect(patch.statusCode).toBe(200);
+    expect(patch.json()).toMatchObject({ notBefore: null });
+  });
+
+  it('rejects a non-datetime notBefore with 400', async () => {
+    const { app } = buildTestApp();
+    const token = await tokenFor(app);
+    const res = await app.inject({
+      method: 'POST', url: '/tasks',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { title: 'T', priority: 1, durationMs: 3600000, dueBy: '2026-01-09T17:00:00.000Z', minChunkMs: 900000, maxChunkMs: 1800000, notBefore: 'not-a-date' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
 });

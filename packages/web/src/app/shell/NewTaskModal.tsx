@@ -130,9 +130,11 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
         </div>
 
         <div className="mb-4 flex gap-4">
-          <Field label="Schedule after"><span className="text-[18px] font-bold text-[#aeb2c0]">Now</span></Field>
+          <Field label="Schedule after">
+            <input type="datetime-local" data-testid="schedule-after" value={form.notBeforeLocal} onChange={(e) => set('notBeforeLocal', e.target.value)} className="text-[16px] font-bold text-ink outline-none" />
+          </Field>
           <Field label="Due date">
-            <input type="datetime-local" value={form.dueByLocal} onChange={(e) => set('dueByLocal', e.target.value)} className="text-[16px] font-bold text-ink outline-none" />
+            <input type="datetime-local" data-testid="due-date" value={form.dueByLocal} onChange={(e) => set('dueByLocal', e.target.value)} className="text-[16px] font-bold text-ink outline-none" />
           </Field>
         </div>
 

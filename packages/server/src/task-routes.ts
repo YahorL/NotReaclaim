@@ -7,7 +7,11 @@ export function registerTaskRoutes(app: FastifyInstance, deps: AppDeps, afterMut
 
   app.post('/tasks', guard, async (request, reply) => {
     const body = createTaskSchema.parse(request.body);
-    const task = await deps.repos.tasks.create(request.userId, { ...body, dueBy: new Date(body.dueBy) });
+    const task = await deps.repos.tasks.create(request.userId, {
+      ...body,
+      dueBy: new Date(body.dueBy),
+      notBefore: body.notBefore ? new Date(body.notBefore) : null,
+    });
     afterMutation(request.userId, { taskId: task.id, action: 'created' });
     reply.code(201);
     return task;
@@ -30,8 +34,12 @@ export function registerTaskRoutes(app: FastifyInstance, deps: AppDeps, afterMut
 
   app.patch('/tasks/:id', guard, async (request) => {
     const { id } = idParamSchema.parse(request.params);
-    const { dueBy: dueByStr, ...rest } = updateTaskSchema.parse(request.body);
-    const data = { ...rest, ...(dueByStr ? { dueBy: new Date(dueByStr) } : {}) };
+    const { dueBy: dueByStr, notBefore: nbStr, ...rest } = updateTaskSchema.parse(request.body);
+    const data = {
+      ...rest,
+      ...(dueByStr ? { dueBy: new Date(dueByStr) } : {}),
+      ...(nbStr !== undefined ? { notBefore: nbStr === null ? null : new Date(nbStr) } : {}),
+    };
     const task = await deps.repos.tasks.update(request.userId, id, data);
     afterMutation(request.userId, { taskId: id, action: 'updated' });
     return task;
