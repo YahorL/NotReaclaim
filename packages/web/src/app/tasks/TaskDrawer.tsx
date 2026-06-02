@@ -3,7 +3,7 @@ import type { Task, TaskStatus, UpdateTaskInput } from '../../api/types';
 import type { ApiError } from '../../api/client';
 import { DurationField } from '../components/DurationField';
 import { type TaskFormState, toFormState, validateTaskForm, toUpdateInput } from './taskForm';
-import { useCategoriesQuery } from '../../api/queries';
+import { useCategoriesQuery, useCreateSubtaskMutation, useUpdateSubtaskMutation, useDeleteSubtaskMutation } from '../../api/queries';
 
 const STATUSES: TaskStatus[] = ['pending', 'scheduled', 'completed', 'archived'];
 
@@ -20,6 +20,11 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
   const { ok, errors } = validateTaskForm(form);
   const categoriesQ = useCategoriesQuery();
   const categories = categoriesQ.data ?? [];
+  const createSubtaskM = useCreateSubtaskMutation();
+  const updateSubtaskM = useUpdateSubtaskMutation();
+  const deleteSubtaskM = useDeleteSubtaskMutation();
+  const [newSubtask, setNewSubtask] = useState('');
+  const subtasks = task.subtasks ?? [];
   const set = <K extends keyof TaskFormState>(k: K, v: TaskFormState[K]) => setForm((f) => ({ ...f, [k]: v }));
   const labelCls = 'mb-0.5 block text-[10px] uppercase tracking-wide text-gray-400';
   const ctlCls = 'w-full rounded border border-gray-300 px-2 py-0.5 text-sm';
@@ -74,6 +79,25 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
           <option value="">— none —</option>
           {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
+      </div>
+
+      <div className="mb-2">
+        <label className={labelCls}>Subtasks</label>
+        <ul className="mb-1 space-y-1">
+          {subtasks.map((s) => (
+            <li key={s.id} className="flex items-center gap-2 text-sm">
+              <input type="checkbox" data-testid={`subtask-toggle-${s.id}`} checked={s.done} onChange={() => updateSubtaskM.mutate({ id: s.id, patch: { done: !s.done } })} />
+              <span className={`flex-1 ${s.done ? 'text-gray-400 line-through' : ''}`}>{s.title}</span>
+              <button type="button" data-testid={`subtask-delete-${s.id}`} aria-label="delete subtask" onClick={() => deleteSubtaskM.mutate(s.id)} className="text-[12px] text-red-600">×</button>
+            </li>
+          ))}
+        </ul>
+        <div className="flex gap-1">
+          <input data-testid="subtask-input" value={newSubtask} onChange={(e) => setNewSubtask(e.target.value)} placeholder="Add subtask…" className={`${ctlCls} flex-1`} />
+          <button type="button" data-testid="subtask-add" disabled={!newSubtask.trim() || createSubtaskM.isPending}
+            onClick={() => createSubtaskM.mutate({ taskId: task.id, title: newSubtask.trim() }, { onSuccess: () => setNewSubtask('') })}
+            className="rounded bg-blue-600 px-2 text-[12px] text-white disabled:opacity-50">Add</button>
+        </div>
       </div>
 
       <div className="mb-2">

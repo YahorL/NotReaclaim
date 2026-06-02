@@ -16,8 +16,10 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
   const [query, setQuery] = useState('');
   const [hideCompleted, setHideCompleted] = useState(false);
   const [colsVisible, setColsVisible] = useState<Record<BucketKey, boolean>>({ critical: true, high: true, medium: true, low: true });
-  const [editing, setEditing] = useState<Task | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const nowMs = now();
+
+  const editing = (tasksQ.data ?? []).find((t) => t.id === editingId) ?? null;
 
   const columns: BoardColumn[] = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -33,7 +35,7 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
 
   const nextMsFor = (taskId: string) => nextBlockMsForTask(taskId, previewQ.data);
   const onComplete = (t: Task) => updateM.mutate({ id: t.id, patch: { status: t.status === 'completed' ? 'pending' : 'completed' } });
-  const onDelete = (t: Task) => deleteM.mutate(t.id, { onSuccess: () => { if (editing?.id === t.id) setEditing(null); } });
+  const onDelete = (t: Task) => deleteM.mutate(t.id, { onSuccess: () => { if (editingId === t.id) setEditingId(null); } });
   const onMove = (taskId: string, to: BucketKey) => {
     const t = (tasksQ.data ?? []).find((x) => x.id === taskId);
     if (!t || priorityToBucket(t.priority) === to) return;
@@ -58,7 +60,7 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
         {!tasksQ.isLoading && !tasksQ.isError && (
           <Board
             columns={columns} now={nowMs} nextMsFor={nextMsFor}
-            onMove={onMove} onComplete={onComplete} onEdit={setEditing} onDelete={onDelete}
+            onMove={onMove} onComplete={onComplete} onEdit={(t) => setEditingId(t.id)} onDelete={onDelete}
           />
         )}
       </div>
@@ -67,8 +69,8 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
           <TaskDrawer
             task={editing} saving={updateM.isPending}
             error={updateM.error instanceof ApiError ? updateM.error : null}
-            onSave={(patch) => updateM.mutate({ id: editing.id, patch }, { onSuccess: () => setEditing(null) })}
-            onCancel={() => setEditing(null)}
+            onSave={(patch) => updateM.mutate({ id: editing.id, patch }, { onSuccess: () => setEditingId(null) })}
+            onCancel={() => setEditingId(null)}
           />
         </div>
       )}
