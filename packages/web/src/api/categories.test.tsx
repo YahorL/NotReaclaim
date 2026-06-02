@@ -21,11 +21,20 @@ describe('category queries', () => {
     expect(result.current.data![0]!.name).toBe('Working Hours');
   });
 
-  it('useCreateCategoryMutation calls createCategory', async () => {
-    const createCategory = vi.fn().mockResolvedValue({ id: 'c2', userId: 'u', name: 'Personal', windows: [], isDefault: false });
+  it('useCreateCategoryMutation calls createCategory and invalidates categories + schedule', async () => {
+    const createCategory = vi.fn().mockResolvedValue({ id: 'c2', userId: 'u', name: 'Personal', windows: [{ weekday: 1, startMinute: 1080, endMinute: 1320 }], isDefault: false });
     const api = fakeApiClient({ createCategory } as never);
-    const { result } = renderHook(() => useCreateCategoryMutation(), { wrapper: wrap(api) });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const spy = vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}><ApiProvider client={api}>{children}</ApiProvider></QueryClientProvider>
+    );
+    const { result } = renderHook(() => useCreateCategoryMutation(), { wrapper });
     result.current.mutate({ name: 'Personal', windows: [{ weekday: 1, startMinute: 1080, endMinute: 1320 }] });
     await waitFor(() => expect(createCategory).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(spy).toHaveBeenCalledWith({ queryKey: ['categories'] });
+      expect(spy).toHaveBeenCalledWith({ queryKey: ['schedule'] });
+    });
   });
 });
