@@ -10,7 +10,7 @@ export interface NewTaskFormState {
   minChunkMs: number;
   maxChunkMs: number;
   dueByLocal: string; // "YYYY-MM-DDTHH:MM"
-  notBeforeLocal: string;
+  notBeforeLocal: string; // "YYYY-MM-DDTHH:MM"
   categoryId: string | null;
 }
 
