@@ -31,6 +31,8 @@ export function TaskRow({ task, bucket, nextMs, now, dragging, onComplete, onEdi
   }, [menuOpen]);
   const done = task.status === 'completed';
   const meta = `Due ${dueShort(task.dueBy)}${nextMs !== null ? ` · Next: ${relativeDayTimeLabel(nextMs, now)}` : ''}`;
+  const subtasks = task.subtasks ?? [];
+  const subtaskDone = subtasks.filter((s) => s.done).length;
 
   return (
     <div
@@ -52,6 +54,11 @@ export function TaskRow({ task, bucket, nextMs, now, dragging, onComplete, onEdi
         <div className={`text-[16px] font-semibold text-ink ${done ? 'line-through' : ''}`}>{task.title}</div>
         <div className="mt-1 flex items-center gap-1.5 text-[14px] text-inkSoft">
           <Icons.calendar size={15} /><span>{meta}</span>
+          {subtasks.length > 0 && (
+            <span data-testid="subtask-count" className="flex items-center gap-1">
+              <Icons.check size={13} />{subtaskDone}/{subtasks.length}
+            </span>
+          )}
         </div>
       </div>
       <div ref={menuRef} className="relative" onClick={(e) => e.stopPropagation()}>
