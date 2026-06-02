@@ -8,7 +8,7 @@ const NOW = Date.parse('2026-01-05T00:00:00.000Z');
 const task = (over: Partial<Task> = {}): Task => ({
   id: 't9', userId: 'u1', title: 'x', priority: 4, durationMs: 3_600_000,
   dueBy: '2026-01-12T00:00:00.000Z', minChunkMs: 1_800_000, maxChunkMs: 7_200_000,
-  category: null, status: 'pending', timeLoggedMs: 0,
+  categoryId: null, status: 'pending', timeLoggedMs: 0,
   createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', ...over,
 });
 

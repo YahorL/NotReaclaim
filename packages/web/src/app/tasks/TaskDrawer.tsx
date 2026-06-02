@@ -3,6 +3,7 @@ import type { Task, TaskStatus, UpdateTaskInput } from '../../api/types';
 import type { ApiError } from '../../api/client';
 import { DurationField } from '../components/DurationField';
 import { type TaskFormState, toFormState, validateTaskForm, toUpdateInput } from './taskForm';
+import { useCategoriesQuery } from '../../api/queries';
 
 const STATUSES: TaskStatus[] = ['pending', 'scheduled', 'completed', 'archived'];
 
@@ -17,6 +18,8 @@ export interface TaskDrawerProps {
 export function TaskDrawer({ task, onSave, onCancel, saving = false, error = null }: TaskDrawerProps) {
   const [form, setForm] = useState<TaskFormState>(() => toFormState(task));
   const { ok, errors } = validateTaskForm(form);
+  const categoriesQ = useCategoriesQuery();
+  const categories = categoriesQ.data ?? [];
   const set = <K extends keyof TaskFormState>(k: K, v: TaskFormState[K]) => setForm((f) => ({ ...f, [k]: v }));
   const labelCls = 'mb-0.5 block text-[10px] uppercase tracking-wide text-gray-400';
   const ctlCls = 'w-full rounded border border-gray-300 px-2 py-0.5 text-sm';
@@ -62,7 +65,9 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
 
       <div className="mb-2">
         <label className={labelCls}>Category</label>
-        <input className={ctlCls} value={form.category} onChange={(e) => set('category', e.target.value)} />
+        <select data-testid="category-select" className={ctlCls} value={form.categoryId ?? ''} onChange={(e) => set('categoryId', e.target.value || null)}>
+          {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
       </div>
 
       <div className="mb-2">
