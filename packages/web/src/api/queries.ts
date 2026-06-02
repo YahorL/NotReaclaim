@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useApi } from './ApiProvider';
-import type { CreateTaskInput, UpdateTaskInput, CreateHabitInput, UpdateHabitInput, SettingsInput, UpdateScheduledBlockInput, CreateCategoryInput, UpdateCategoryInput } from './types';
+import type { CreateTaskInput, UpdateTaskInput, CreateHabitInput, UpdateHabitInput, SettingsInput, UpdateScheduledBlockInput, CreateCategoryInput, UpdateCategoryInput, CreateSubtaskInput, UpdateSubtaskInput } from './types';
 
 export const queryKeys = {
   scheduleRoot: ['schedule'] as const,
@@ -147,4 +147,24 @@ export function useDeleteCategoryMutation() {
   const api = useApi();
   const qc = useQueryClient();
   return useMutation({ mutationFn: (id: string) => api.deleteCategory(id), onSuccess: () => invalidateCategories(qc) });
+}
+
+function invalidateTasksOnly(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: queryKeys.tasksRoot });
+}
+
+export function useCreateSubtaskMutation() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (body: CreateSubtaskInput) => api.createSubtask(body), onSuccess: () => invalidateTasksOnly(qc) });
+}
+export function useUpdateSubtaskMutation() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: ({ id, patch }: { id: string; patch: UpdateSubtaskInput }) => api.updateSubtask(id, patch), onSuccess: () => invalidateTasksOnly(qc) });
+}
+export function useDeleteSubtaskMutation() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (id: string) => api.deleteSubtask(id), onSuccess: () => invalidateTasksOnly(qc) });
 }

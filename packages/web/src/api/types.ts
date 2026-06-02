@@ -1,6 +1,15 @@
 export type TaskStatus = 'pending' | 'scheduled' | 'completed' | 'archived';
 export type HabitStatus = 'active' | 'paused';
 
+export interface Subtask {
+  id: string;
+  taskId: string;
+  title: string;
+  done: boolean;
+}
+export interface CreateSubtaskInput { taskId: string; title: string }
+export interface UpdateSubtaskInput { title?: string; done?: boolean }
+
 export interface Task {
   id: string;
   userId: string;
@@ -14,6 +23,7 @@ export interface Task {
   categoryId: string | null;
   status: TaskStatus;
   timeLoggedMs: number;
+  subtasks?: Subtask[];
   createdAt: string;
   updatedAt: string;
 }
