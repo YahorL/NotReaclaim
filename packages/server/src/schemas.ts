@@ -11,7 +11,7 @@ export const createTaskSchema = z.object({
   dueBy: z.string().datetime(),
   minChunkMs: z.number().int().positive(),
   maxChunkMs: z.number().int().positive(),
-  category: z.string().nullable().optional(),
+  categoryId: z.string().nullable().optional(),
 });
 export const updateTaskSchema = createTaskSchema.partial().extend({
   status: z.enum(['pending', 'scheduled', 'completed', 'archived']).optional(),
@@ -48,6 +48,22 @@ export const settingsSchema = z.object({
   defaultMinChunkMs: z.number().int().positive(),
   defaultMaxChunkMs: z.number().int().positive(),
 });
+
+export const workingHourEntrySchema = z.object({
+  weekday: z.number().int().min(0).max(6),
+  startMinute: z.number().int().min(0).max(1440),
+  endMinute: z.number().int().min(0).max(1440),
+}).refine((w) => w.startMinute < w.endMinute, { message: 'startMinute must be before endMinute' });
+
+export const createCategorySchema = z.object({
+  name: z.string().min(1),
+  windows: z.array(workingHourEntrySchema).min(1),
+});
+
+export const updateCategorySchema = z.object({
+  name: z.string().min(1).optional(),
+  windows: z.array(workingHourEntrySchema).min(1).optional(),
+}).refine((b) => b.name !== undefined || b.windows !== undefined, { message: 'name or windows is required' });
 
 export const rangeQuerySchema = z.object({
   from: z.string().datetime().optional(),

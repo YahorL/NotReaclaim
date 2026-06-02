@@ -1,4 +1,4 @@
-import type { Settings, Task, Habit, ScheduledBlock, CalendarEvent, User } from '@notreclaim/db';
+import type { Settings, Task, Habit, ScheduledBlock, CalendarEvent, User, Category } from '@notreclaim/db';
 import type { SchedulingRepositories } from '@notreclaim/core';
 import { buildApp, type AppDeps } from '../src/app.js';
 import { createEventBus } from '../src/events.js';
@@ -11,7 +11,7 @@ export function fakeTaskRepo(seed: Task[] = []) {
   let n = seed.length;
   const make = (userId: string, data: Record<string, unknown>): Task => ({
     id: `task-${++n}`, userId, title: '', priority: 1, durationMs: 0,
-    dueBy: new Date(0), minChunkMs: 0, maxChunkMs: 0, category: null,
+    dueBy: new Date(0), minChunkMs: 0, maxChunkMs: 0, categoryId: null,
     status: 'pending', timeLoggedMs: 0, createdAt: new Date(0), updatedAt: new Date(0),
     ...data,
   }) as Task;
@@ -111,12 +111,52 @@ export function fakeCalendarEventRepo(seed: CalendarEvent[] = []) {
   };
 }
 
+export function fakeCategoryRepo(seed: Category[] = []) {
+  let rows = [...seed];
+  let n = seed.length;
+  const make = (userId: string, data: Record<string, unknown>): Category => ({
+    id: `cat-${++n}`, userId, name: '', windows: null, isDefault: false,
+    createdAt: new Date(0), updatedAt: new Date(0), ...data,
+  }) as Category;
+  return {
+    async listByUser(userId: string): Promise<Category[]> {
+      return rows
+        .filter((r) => r.userId === userId)
+        .sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name));
+    },
+    async getDefault(userId: string): Promise<Category | null> {
+      return rows.find((r) => r.userId === userId && r.isDefault) ?? null;
+    },
+    async ensureDefault(userId: string): Promise<Category> {
+      const found = rows.find((r) => r.userId === userId && r.isDefault);
+      if (found) return found;
+      const row = make(userId, { name: 'Working Hours', windows: null, isDefault: true });
+      rows.push(row); return row;
+    },
+    async create(userId: string, data: Record<string, unknown>): Promise<Category> {
+      const row = make(userId, data); rows.push(row); return row;
+    },
+    async update(userId: string, id: string, data: Record<string, unknown>): Promise<Category> {
+      const row = rows.find((r) => r.id === id && r.userId === userId);
+      if (!row) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`Category ${id}`); }
+      Object.assign(row, data); return row;
+    },
+    async delete(userId: string, id: string): Promise<void> {
+      const row = rows.find((r) => r.id === id && r.userId === userId);
+      if (!row) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`Category ${id}`); }
+      if (row.isDefault) { const { ConflictError } = await import('@notreclaim/db'); throw new ConflictError('The default category cannot be deleted'); }
+      rows = rows.filter((r) => r.id !== id);
+    },
+  };
+}
+
 export interface TestAppOptions {
   tasks?: Task[];
   habits?: Habit[];
   settings?: Settings | null;
   blocks?: ScheduledBlock[];
   calendarEvents?: CalendarEvent[];
+  categories?: Category[];
   connectUser?: User;
   reconcileResult?: AppDeps['reconcile'] extends (...a: never[]) => Promise<infer R> ? R : never;
   schedulingReposOverride?: SchedulingRepositories;
@@ -129,6 +169,7 @@ export function buildTestApp(opts: TestAppOptions = {}) {
   const settings = fakeSettingsRepo(opts.settings ?? null);
   const scheduledBlocks = fakeScheduledBlockRepo(opts.blocks ?? []);
   const calendarEvents = fakeCalendarEventRepo(opts.calendarEvents ?? []);
+  const categories = fakeCategoryRepo(opts.categories ?? []);
   const reconcileCalls: Array<{ userId: string; now: number }> = [];
 
   const events = createEventBus();
@@ -141,10 +182,11 @@ export function buildTestApp(opts: TestAppOptions = {}) {
     tasks,
     habits,
     scheduledBlocks,
+    categories,
   };
 
   const app = buildApp({
-    repos: { settings, tasks, habits, scheduledBlocks, calendarEvents },
+    repos: { settings, tasks, habits, scheduledBlocks, calendarEvents, categories },
     google: {
       client: { getConsentUrl: () => 'https://consent.example/auth' },
       tokens: {
@@ -165,7 +207,7 @@ export function buildTestApp(opts: TestAppOptions = {}) {
     now: () => FIXED_NOW,
   });
 
-  return { app, tasks, habits, settings, reconcileCalls, emitted, events, FIXED_NOW };
+  return { app, tasks, habits, settings, categories, reconcileCalls, emitted, events, FIXED_NOW };
 }
 
 export async function tokenFor(app: Awaited<ReturnType<typeof buildTestApp>>['app'], userId = 'u1'): Promise<string> {
