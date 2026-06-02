@@ -2,6 +2,7 @@ import type {
   Task, Habit, Settings, ScheduledBlock, SchedulePreview, ReconcileResult, CalendarEvent,
   TaskStatus, CreateTaskInput, UpdateTaskInput, CreateHabitInput, UpdateHabitInput, SettingsInput,
   UpdateScheduledBlockInput, Category, CreateCategoryInput, UpdateCategoryInput,
+  Subtask, CreateSubtaskInput, UpdateSubtaskInput,
 } from './types';
 
 export class ApiError extends Error {
@@ -37,6 +38,9 @@ export interface ApiClient {
   createCategory(body: CreateCategoryInput): Promise<Category>;
   updateCategory(id: string, patch: UpdateCategoryInput): Promise<Category>;
   deleteCategory(id: string): Promise<void>;
+  createSubtask(body: CreateSubtaskInput): Promise<Subtask>;
+  updateSubtask(id: string, patch: UpdateSubtaskInput): Promise<Subtask>;
+  deleteSubtask(id: string): Promise<void>;
 }
 
 export function createApiClient(config: ApiClientConfig): ApiClient {
@@ -102,5 +106,8 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
     createCategory: (body) => request('POST', '/categories', body),
     updateCategory: (id, patch) => request('PATCH', `/categories/${id}`, patch),
     deleteCategory: (id) => request('DELETE', `/categories/${id}`),
+    createSubtask: (body) => request('POST', '/subtasks', body),
+    updateSubtask: (id, patch) => request('PATCH', `/subtasks/${id}`, patch),
+    deleteSubtask: (id) => request('DELETE', `/subtasks/${id}`),
   };
 }

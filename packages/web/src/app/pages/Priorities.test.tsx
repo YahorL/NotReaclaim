@@ -109,4 +109,18 @@ describe('Priorities board', () => {
     fireEvent.click(screen.getByText('Low thing'));
     expect(screen.getByTestId('task-drawer')).toBeInTheDocument();
   });
+
+  it('keeps the edit drawer open when search filters the task out of its column', async () => {
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
+    await waitFor(() => expect(screen.getByText('Low thing')).toBeInTheDocument());
+    // Open the drawer for "Low thing" by clicking its row title
+    fireEvent.click(screen.getByText('Low thing'));
+    expect(screen.getByTestId('task-drawer')).toBeInTheDocument();
+    // Type a query that matches no task ("Low thing" disappears from columns)
+    fireEvent.change(screen.getByPlaceholderText(/search for something/i), { target: { value: 'zzz' } });
+    // The task is gone from the board but editing derives from the unfiltered query,
+    // so the drawer must still be present
+    expect(screen.queryByText('Low thing')).toBeNull();
+    expect(screen.getByTestId('task-drawer')).toBeInTheDocument();
+  });
 });

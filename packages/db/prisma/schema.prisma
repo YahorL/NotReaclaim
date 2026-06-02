@@ -93,6 +93,18 @@ model Task {
   user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   category        Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   scheduledBlocks ScheduledBlock[]
+  subtasks        Subtask[]
+}
+
+model Subtask {
+  id        String   @id @default(uuid())
+  taskId    String
+  title     String
+  done      Boolean  @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
 }
 
 model Category {

@@ -83,4 +83,22 @@ describe('TaskDrawer', () => {
     fireEvent.click(screen.getByTestId('save'));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ notBefore: new Date('2026-01-06T13:00').toISOString() })));
   });
+
+  it('lists subtasks, adds, toggles, and deletes them', async () => {
+    const createSubtask = vi.fn().mockResolvedValue({ id: 's2', taskId: 't', title: 'new', done: false });
+    const updateSubtask = vi.fn().mockResolvedValue({ id: 's1', taskId: 't', title: 'a', done: true });
+    const deleteSubtask = vi.fn().mockResolvedValue(undefined);
+    const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue([]), createSubtask, updateSubtask, deleteSubtask } as never);
+    const t = task({ id: 't', subtasks: [{ id: 's1', taskId: 't', title: 'a', done: false }] });
+    renderWithProviders(<TaskDrawer task={t as never} onSave={() => {}} onCancel={() => {}} />, { api });
+
+    expect(await screen.findByText('a')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('subtask-toggle-s1'));
+    await waitFor(() => expect(updateSubtask).toHaveBeenCalledWith('s1', { done: true }));
+    fireEvent.click(screen.getByTestId('subtask-delete-s1'));
+    await waitFor(() => expect(deleteSubtask).toHaveBeenCalledWith('s1'));
+    fireEvent.change(screen.getByTestId('subtask-input'), { target: { value: 'new' } });
+    fireEvent.click(screen.getByTestId('subtask-add'));
+    await waitFor(() => expect(createSubtask).toHaveBeenCalledWith({ taskId: 't', title: 'new' }));
+  });
 });

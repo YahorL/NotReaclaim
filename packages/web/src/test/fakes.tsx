@@ -29,6 +29,9 @@ export function fakeApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     createCategory: notImplemented('createCategory'),
     updateCategory: notImplemented('updateCategory'),
     deleteCategory: notImplemented('deleteCategory'),
+    createSubtask: notImplemented('createSubtask'),
+    updateSubtask: notImplemented('updateSubtask'),
+    deleteSubtask: notImplemented('deleteSubtask'),
   } as unknown as ApiClient;
   return { ...base, ...overrides };
 }

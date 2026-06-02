@@ -1,5 +1,7 @@
-import type { PrismaClient, Task, TaskStatus } from '@prisma/client';
+import type { Prisma, PrismaClient, Task, TaskStatus } from '@prisma/client';
 import { NotFoundError, translatePrismaError } from '../errors.js';
+
+export type TaskWithSubtasks = Prisma.TaskGetPayload<{ include: { subtasks: true } }>;
 
 export interface CreateTaskInput {
   title: string;
@@ -31,14 +33,18 @@ export function createTaskRepository(prisma: PrismaClient) {
       return prisma.task.create({ data: { userId, ...data } });
     },
 
-    findById(userId: string, id: string): Promise<Task | null> {
-      return prisma.task.findFirst({ where: { id, userId } });
+    findById(userId: string, id: string): Promise<TaskWithSubtasks | null> {
+      return prisma.task.findFirst({
+        where: { id, userId },
+        include: { subtasks: { orderBy: { createdAt: 'asc' } } },
+      });
     },
 
-    listByUser(userId: string, opts: { status?: TaskStatus } = {}): Promise<Task[]> {
+    listByUser(userId: string, opts: { status?: TaskStatus } = {}): Promise<TaskWithSubtasks[]> {
       return prisma.task.findMany({
         where: { userId, ...(opts.status ? { status: opts.status } : {}) },
         orderBy: [{ priority: 'asc' }, { dueBy: 'asc' }],
+        include: { subtasks: { orderBy: { createdAt: 'asc' } } },
       });
     },
 
