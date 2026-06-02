@@ -8,10 +8,11 @@ import { windowsToDays, daysToWindows, validateCategoryForm } from './categoryFo
 function CategoryRow({ category }: { category: Category }) {
   const updateM = useUpdateCategoryMutation();
   const deleteM = useDeleteCategoryMutation();
+  // Seeded once from props; the row reflects in-place edits. key={id} is stable, so a post-save refetch (which returns the user's own just-saved windows) does not re-seed — acceptable.
   const [days, setDays] = useState<DayState[]>(() => windowsToDays(category.windows));
   const setDay = (weekday: number, patch: Partial<DayState>) =>
     setDays((ds) => ds.map((d) => (d.weekday === weekday ? { ...d, ...patch } : d)));
-  const { ok } = validateCategoryForm(category.name, days);
+  const { ok, error } = validateCategoryForm(category.name, days);
 
   return (
     <div className="mb-2 rounded-lg border border-gray-200 p-3" data-testid={`cat-row-${category.id}`}>
@@ -29,6 +30,7 @@ function CategoryRow({ category }: { category: Category }) {
       ) : (
         <>
           <WeeklyHoursEditor days={days} onChange={setDay} idPrefix={`cat-${category.id}`} />
+          {!ok && <p className="mt-1 text-[11px] text-red-600">{error}</p>}
           <button
             data-testid={`save-${category.id}`}
             disabled={!ok || updateM.isPending}
@@ -49,7 +51,7 @@ export function CategoriesSection() {
   const [days, setDays] = useState<DayState[]>(() => windowsToDays([]));
   const setDay = (weekday: number, patch: Partial<DayState>) =>
     setDays((ds) => ds.map((d) => (d.weekday === weekday ? { ...d, ...patch } : d)));
-  const { ok } = validateCategoryForm(name, days);
+  const { ok, error } = validateCategoryForm(name, days);
 
   const submit = () => {
     const windows: WorkingHour[] = daysToWindows(days);
@@ -67,9 +69,10 @@ export function CategoriesSection() {
         <div className="rounded-lg border border-gray-200 p-3">
           <input data-testid="cat-name-input" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Category name…" className="mb-1 w-full rounded border border-gray-300 px-2 py-0.5 text-sm" />
           <WeeklyHoursEditor days={days} onChange={setDay} idPrefix="newcat" />
+          {!ok && <p className="mb-1 text-[11px] text-red-600">{error}</p>}
           <div className="mt-1 flex gap-2">
             <button data-testid="save-new-category" disabled={!ok || createM.isPending} onClick={submit} className="rounded bg-blue-600 px-3 py-1 text-[12px] text-white disabled:opacity-50">Create</button>
-            <button onClick={() => setAdding(false)} className="rounded border border-gray-300 px-3 py-1 text-[12px]">Cancel</button>
+            <button onClick={() => { setAdding(false); setName(''); setDays(windowsToDays([])); }} className="rounded border border-gray-300 px-3 py-1 text-[12px]">Cancel</button>
           </div>
         </div>
       ) : (
