@@ -6,7 +6,7 @@ import type {
   ScheduledBlock as EngineScheduledBlock,
   Interval,
 } from '@notreclaim/scheduler';
-import { mergeIntervals } from '@notreclaim/scheduler';
+import { mergeIntervals, intersectIntervals } from '@notreclaim/scheduler';
 import type {
   SettingsRepository,
   CalendarEventRepository,
@@ -96,7 +96,10 @@ export async function assembleScheduleInput(
     if (remaining <= 0) continue;
     const resolvedId =
       t.categoryId && expandedByCategoryId.has(t.categoryId) ? t.categoryId : defaultCategoryId;
-    const allowedWindows = resolvedId ? expandedByCategoryId.get(resolvedId)! : workingWindows;
+    let allowedWindows = resolvedId ? expandedByCategoryId.get(resolvedId)! : workingWindows;
+    if (t.notBefore) {
+      allowedWindows = intersectIntervals(allowedWindows, [{ start: t.notBefore.getTime(), end: horizonEnd.getTime() }]);
+    }
     tasks.push({ ...flexible, durationMs: remaining, allowedWindows });
   }
 
