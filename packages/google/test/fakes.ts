@@ -276,5 +276,6 @@ export function fakeSchedulingRepos(opts: {
     tasks: { listByUser: async () => opts.tasks ?? [] },
     habits: { listByUser: async () => [] },
     scheduledBlocks: { listByUserInRange: async () => opts.blockStore.all() },
+    categories: { listByUser: async () => [] },
   };
 }
