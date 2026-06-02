@@ -67,6 +67,6 @@ describe('blockBufferMs', () => {
     const res = schedule({ workingWindows: [{ start: 0, end: 100 }], fixedEvents: [], pinnedBlocks: [], tasks: [mk('a'), mk('b')], habits: [], blockBufferMs: 10 });
     const a = res.blocks.find((b) => b.sourceId === 'a')!;
     const b = res.blocks.find((b) => b.sourceId === 'b')!;
-    expect(b.start - a.end).toBeGreaterThanOrEqual(10);
+    expect(b.start - a.end).toBe(10);
   });
 });

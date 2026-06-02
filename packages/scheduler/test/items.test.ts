@@ -193,6 +193,13 @@ describe('scheduleTask gapMs', () => {
   });
 });
 
+describe('scheduleHabit gapMs', () => {
+  it('spaces two occurrences in the same period by the gap', () => {
+    const res = scheduleHabit([{ start: 0, end: 100 }], { id: 'h', title: 'H', priority: 1, chunkMs: 20, perPeriod: 2, periods: [{ start: 0, end: 100 }] }, 10);
+    expect(res.blocks.map((b) => [b.start, b.end])).toEqual([[0, 20], [30, 50]]);
+  });
+});
+
 describe('scheduleTask allowedWindows', () => {
   const H = 3_600_000;
   const baseTask = { id: 't1', title: 'T', priority: 1, durationMs: H, dueBy: 10 * H, minChunkMs: H, maxChunkMs: H };
