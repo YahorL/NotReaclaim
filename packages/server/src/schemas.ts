@@ -12,6 +12,7 @@ export const createTaskSchema = z.object({
   minChunkMs: z.number().int().positive(),
   maxChunkMs: z.number().int().positive(),
   categoryId: z.string().nullable().optional(),
+  notBefore: z.string().datetime().nullable().optional(),
 });
 export const updateTaskSchema = createTaskSchema.partial().extend({
   status: z.enum(['pending', 'scheduled', 'completed', 'archived']).optional(),

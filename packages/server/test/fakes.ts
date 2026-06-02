@@ -11,7 +11,7 @@ export function fakeTaskRepo(seed: Task[] = []) {
   let n = seed.length;
   const make = (userId: string, data: Record<string, unknown>): Task => ({
     id: `task-${++n}`, userId, title: '', priority: 1, durationMs: 0,
-    dueBy: new Date(0), minChunkMs: 0, maxChunkMs: 0, categoryId: null,
+    dueBy: new Date(0), minChunkMs: 0, maxChunkMs: 0, categoryId: null, notBefore: null,
     status: 'pending', timeLoggedMs: 0, createdAt: new Date(0), updatedAt: new Date(0),
     ...data,
   }) as Task;
