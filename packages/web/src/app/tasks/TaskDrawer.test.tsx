@@ -74,4 +74,13 @@ describe('TaskDrawer', () => {
     await screen.findByRole('option', { name: 'Personal' });
     expect(screen.getByTestId('category-select')).toHaveValue('');
   });
+
+  it('renders Schedule-after and saves notBefore', async () => {
+    const onSave = vi.fn();
+    const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue([]) } as never);
+    renderWithProviders(<TaskDrawer task={task({ notBefore: null }) as never} onSave={onSave} onCancel={() => {}} />, { api });
+    fireEvent.change(await screen.findByTestId('schedule-after'), { target: { value: '2026-01-06T13:00' } });
+    fireEvent.click(screen.getByTestId('save'));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ notBefore: new Date('2026-01-06T13:00').toISOString() })));
+  });
 });

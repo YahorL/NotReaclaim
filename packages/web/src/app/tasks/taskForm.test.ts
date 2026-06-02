@@ -13,6 +13,7 @@ const task = (over: Partial<Task> = {}): Task => ({
 
 const validState = (over: Partial<TaskFormState> = {}): TaskFormState => ({
   title: 'X', durationMs: 3_600_000, priority: 3, dueByLocal: '2026-06-01T17:00',
+  notBeforeLocal: '',
   minChunkMs: 1_800_000, maxChunkMs: 7_200_000, categoryId: null, status: 'pending', ...over,
 });
 
@@ -21,7 +22,7 @@ describe('taskForm', () => {
     const input = defaultQuickAddInput('  New task  ', NOW);
     expect(input).toEqual({
       title: 'New task', priority: 3, durationMs: 3_600_000,
-      dueBy: '2026-01-12T00:00:00.000Z', minChunkMs: 1_800_000, maxChunkMs: 7_200_000, categoryId: null,
+      dueBy: '2026-01-12T00:00:00.000Z', minChunkMs: 1_800_000, maxChunkMs: 7_200_000, categoryId: null, notBefore: null,
     });
   });
 
@@ -35,6 +36,7 @@ describe('taskForm', () => {
   it('toFormState maps a Task (ISO due → local; categoryId passthrough)', () => {
     expect(toFormState(task())).toEqual({
       title: 'Write spec', durationMs: 5_400_000, priority: 2, dueByLocal: '2026-06-01T17:00',
+      notBeforeLocal: '',
       minChunkMs: 1_800_000, maxChunkMs: 7_200_000, categoryId: 'cat-work', status: 'pending',
     });
     expect(toFormState(task({ categoryId: null })).categoryId).toBeNull();
@@ -51,6 +53,7 @@ describe('taskForm', () => {
   it('toUpdateInput converts local due → ISO and passes categoryId, includes status', () => {
     expect(toUpdateInput(validState({ categoryId: null, status: 'scheduled' }))).toEqual({
       title: 'X', priority: 3, durationMs: 3_600_000, dueBy: '2026-06-01T17:00:00.000Z',
+      notBefore: null,
       minChunkMs: 1_800_000, maxChunkMs: 7_200_000, categoryId: null, status: 'scheduled',
     });
   });
@@ -59,5 +62,13 @@ describe('taskForm', () => {
     const state = toFormState(task({ categoryId: 'cat-7' }));
     expect(state.categoryId).toBe('cat-7');
     expect(toUpdateInput(state).categoryId).toBe('cat-7');
+  });
+
+  it('round-trips notBefore through the edit form', () => {
+    const task = { id: 't', userId: 'u', title: 'A', priority: 3, durationMs: 3600000, dueBy: '2026-01-09T17:00:00.000Z', minChunkMs: 1800000, maxChunkMs: 3600000, categoryId: null, notBefore: '2026-01-06T13:00:00.000Z', status: 'pending', timeLoggedMs: 0, createdAt: '', updatedAt: '' };
+    const state = toFormState(task as never);
+    expect(state.notBeforeLocal).not.toBe('');
+    expect(toUpdateInput(state).notBefore).toBe(new Date(state.notBeforeLocal).toISOString());
+    expect(toUpdateInput({ ...state, notBeforeLocal: '' }).notBefore).toBeNull();
   });
 });

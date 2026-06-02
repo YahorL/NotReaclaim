@@ -53,6 +53,11 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
       </div>
 
       <div className="mb-2">
+        <label className={labelCls}>Schedule after</label>
+        <input type="datetime-local" data-testid="schedule-after" className={ctlCls} value={form.notBeforeLocal} onChange={(e) => set('notBeforeLocal', e.target.value)} />
+      </div>
+
+      <div className="mb-2">
         <label className={labelCls}>Min chunk</label>
         <DurationField valueMs={form.minChunkMs} onChange={(ms) => set('minChunkMs', ms)} testid="minchunk" />
         {errors.minChunkMs && <p data-testid="err-minChunkMs" className={errCls}>{errors.minChunkMs}</p>}

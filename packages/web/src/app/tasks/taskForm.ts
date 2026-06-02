@@ -8,6 +8,7 @@ export interface TaskFormState {
   durationMs: number;
   priority: number;
   dueByLocal: string;   // "YYYY-MM-DDTHH:MM"
+  notBeforeLocal: string;
   minChunkMs: number;
   maxChunkMs: number;
   categoryId: string | null;
@@ -27,6 +28,7 @@ export function defaultQuickAddInput(
     minChunkMs: defaults?.minChunkMs ?? 30 * 60_000,
     maxChunkMs: defaults?.maxChunkMs ?? 120 * 60_000,
     categoryId: null,
+    notBefore: null,
   };
 }
 
@@ -36,6 +38,7 @@ export function toFormState(t: Task): TaskFormState {
     durationMs: t.durationMs,
     priority: t.priority,
     dueByLocal: isoToLocalInput(t.dueBy),
+    notBeforeLocal: t.notBefore ? isoToLocalInput(t.notBefore) : '',
     minChunkMs: t.minChunkMs,
     maxChunkMs: t.maxChunkMs,
     categoryId: t.categoryId,
@@ -62,6 +65,7 @@ export function toUpdateInput(s: TaskFormState): UpdateTaskInput {
     priority: s.priority,
     durationMs: s.durationMs,
     dueBy: localInputToIso(s.dueByLocal),
+    notBefore: s.notBeforeLocal ? localInputToIso(s.notBeforeLocal) : null,
     minChunkMs: s.minChunkMs,
     maxChunkMs: s.maxChunkMs,
     categoryId: s.categoryId,
