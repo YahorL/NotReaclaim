@@ -60,6 +60,22 @@ describe('NewTaskModal', () => {
     await waitFor(() => expect(createTask).toHaveBeenCalledWith(expect.objectContaining({ categoryId: 'cat-def' })));
   });
 
+  it('submits notBefore from the Schedule-after field', async () => {
+    const createTask = vi.fn().mockResolvedValue({ id: 't1' });
+    const api = fakeApiClient({
+      getSettings: vi.fn().mockResolvedValue({ id: 's', userId: 'u', timezone: 'UTC', workingHours: [], horizonDays: 14, defaultMinChunkMs: 1800000, defaultMaxChunkMs: 7200000, createdAt: '', updatedAt: '' }),
+      listCategories: vi.fn().mockResolvedValue([{ id: 'cat-def', userId: 'u', name: 'Working Hours', windows: null, isDefault: true }]),
+      createTask,
+    } as never);
+    renderWithProviders(<NewTaskModal onClose={() => {}} now={() => Date.parse('2026-01-05T00:00:00.000Z')} />, { api });
+
+    fireEvent.change(await screen.findByPlaceholderText(/task name/i), { target: { value: 'Write' } });
+    fireEvent.change(screen.getByTestId('schedule-after'), { target: { value: '2026-01-06T13:00' } });
+    await waitFor(() => expect(screen.getByTestId('category-select')).toHaveValue('cat-def'));
+    fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
+    await waitFor(() => expect(createTask).toHaveBeenCalledWith(expect.objectContaining({ notBefore: new Date('2026-01-06T13:00').toISOString() })));
+  });
+
   it('creates a new category and selects it', async () => {
     const createCategory = vi.fn().mockResolvedValue({ id: 'cat-new', userId: 'u', name: 'Deep Work', windows: [], isDefault: false });
     const api = fakeApiClient({

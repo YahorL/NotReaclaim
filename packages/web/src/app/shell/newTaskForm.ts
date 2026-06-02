@@ -10,6 +10,7 @@ export interface NewTaskFormState {
   minChunkMs: number;
   maxChunkMs: number;
   dueByLocal: string; // "YYYY-MM-DDTHH:MM"
+  notBeforeLocal: string;
   categoryId: string | null;
 }
 
@@ -24,6 +25,7 @@ export function defaultNewTaskForm(
     minChunkMs: settings?.defaultMinChunkMs ?? 30 * 60_000,
     maxChunkMs: settings?.defaultMaxChunkMs ?? 120 * 60_000,
     dueByLocal: isoToLocalInput(new Date(now + 7 * DAY_MS).toISOString()),
+    notBeforeLocal: '',
     categoryId: null,
   };
 }
@@ -49,6 +51,7 @@ export function toCreateTaskInput(s: NewTaskFormState): CreateTaskInput {
     priority: 4,
     durationMs: s.durationMs,
     dueBy: localInputToIso(s.dueByLocal),
+    notBefore: s.notBeforeLocal ? localInputToIso(s.notBeforeLocal) : null,
     minChunkMs,
     maxChunkMs,
     categoryId: s.categoryId,
