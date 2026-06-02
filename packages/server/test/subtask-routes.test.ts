@@ -14,7 +14,7 @@ describe('subtask routes', () => {
   });
 
   it('patches and deletes a subtask', async () => {
-    const { app } = buildTestApp({ tasks: [seededTask] });
+    const { app, reconcileCalls } = buildTestApp({ tasks: [seededTask] });
     const token = await tokenFor(app);
     const auth = { authorization: `Bearer ${token}` };
     const created = await app.inject({ method: 'POST', url: '/subtasks', headers: auth, payload: { taskId: 't1', title: 's' } });
@@ -24,6 +24,14 @@ describe('subtask routes', () => {
     expect(patched.json()).toMatchObject({ done: true });
     const del = await app.inject({ method: 'DELETE', url: `/subtasks/${id}`, headers: auth });
     expect(del.statusCode).toBe(204);
+    expect(reconcileCalls).toHaveLength(0);
+  });
+
+  it('requires authentication', async () => {
+    const { app } = buildTestApp();
+    await app.ready();
+    const res = await app.inject({ method: 'POST', url: '/subtasks', payload: { taskId: 't1', title: 'x' } });
+    expect(res.statusCode).toBe(401);
   });
 
   it('rejects a bad body (400) and a subtask under another user\'s task (404)', async () => {
