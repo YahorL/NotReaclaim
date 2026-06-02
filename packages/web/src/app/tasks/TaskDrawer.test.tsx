@@ -53,16 +53,25 @@ describe('TaskDrawer', () => {
 
   it('renders a category dropdown and saves the chosen categoryId', async () => {
     const onSave = vi.fn();
-    const t = { id: 't', userId: 'u', title: 'A', priority: 3, durationMs: 3600000, dueBy: '2026-01-09T17:00:00.000Z', minChunkMs: 1800000, maxChunkMs: 3600000, categoryId: 'cat-def', status: 'pending', timeLoggedMs: 0, createdAt: '', updatedAt: '' };
     const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue([
       { id: 'cat-def', userId: 'u', name: 'Working Hours', windows: null, isDefault: true },
       { id: 'cat-p', userId: 'u', name: 'Personal', windows: [], isDefault: false },
     ]) } as never);
-    renderWithProviders(<TaskDrawer task={t as never} onSave={onSave} onCancel={() => {}} />, { api });
+    renderWithProviders(<TaskDrawer task={task({ categoryId: 'cat-def' })} onSave={onSave} onCancel={() => {}} />, { api });
     // wait for categories to load (options rendered)
     await screen.findByRole('option', { name: 'Personal' });
     fireEvent.change(screen.getByTestId('category-select'), { target: { value: 'cat-p' } });
     fireEvent.click(screen.getByTestId('save'));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ categoryId: 'cat-p' })));
+  });
+
+  it('shows "— none —" selected when the task has no category', async () => {
+    const onSave = vi.fn();
+    const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue([
+      { id: 'cat-p', userId: 'u', name: 'Personal', windows: [], isDefault: false },
+    ]) } as never);
+    renderWithProviders(<TaskDrawer task={task({ categoryId: null }) as never} onSave={onSave} onCancel={() => {}} />, { api });
+    await screen.findByRole('option', { name: 'Personal' });
+    expect(screen.getByTestId('category-select')).toHaveValue('');
   });
 });

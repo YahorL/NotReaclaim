@@ -56,8 +56,7 @@ describe('taskForm', () => {
   });
 
   it('round-trips categoryId through the edit form', () => {
-    const t = { id: 't', userId: 'u', title: 'A', priority: 3, durationMs: 3600000, dueBy: '2026-01-09T17:00:00.000Z', minChunkMs: 1800000, maxChunkMs: 3600000, categoryId: 'cat-7', status: 'pending', timeLoggedMs: 0, createdAt: '', updatedAt: '' } as const;
-    const state = toFormState(t as never);
+    const state = toFormState(task({ categoryId: 'cat-7' }));
     expect(state.categoryId).toBe('cat-7');
     expect(toUpdateInput(state).categoryId).toBe('cat-7');
   });

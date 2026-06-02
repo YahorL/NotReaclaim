@@ -66,6 +66,7 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
       <div className="mb-2">
         <label className={labelCls}>Category</label>
         <select data-testid="category-select" className={ctlCls} value={form.categoryId ?? ''} onChange={(e) => set('categoryId', e.target.value || null)}>
+          <option value="">— none —</option>
           {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       </div>
