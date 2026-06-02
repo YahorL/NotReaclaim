@@ -226,3 +226,37 @@ describe('assembleScheduleInput notBefore', () => {
     expect(input.tasks.find((x) => x.id === 't3')!.allowedWindows).toEqual([]);
   });
 });
+
+describe('assembleScheduleInput buffers', () => {
+  const NOW = Date.parse('2026-01-05T00:00:00.000Z'); // Monday, UTC
+  const settings = (over = {}) => makeSettings({ workingHours: [{ weekday: 1, startMinute: 0, endMinute: 1440 }] as never, ...over });
+  // makeEvent default: 2026-01-05T10:00–11:00Z
+
+  it('pads meeting FixedEvents by meetingBufferMs', async () => {
+    const input = await assembleScheduleInput(
+      fakeRepos({ settings: settings({ meetingBufferMs: 15 * 60_000 }), categories: [makeCategory()], events: [makeEvent()], tasks: [], habits: [] }), 'u1', NOW,
+    );
+    expect(input.fixedEvents[0]).toMatchObject({
+      start: Date.parse('2026-01-05T09:45:00.000Z'),
+      end: Date.parse('2026-01-05T11:15:00.000Z'),
+    });
+  });
+
+  it('sets blockBufferMs from settings.taskBufferMs', async () => {
+    const input = await assembleScheduleInput(
+      fakeRepos({ settings: settings({ taskBufferMs: 10 * 60_000 }), categories: [makeCategory()], tasks: [], habits: [] }), 'u1', NOW,
+    );
+    expect(input.blockBufferMs).toBe(10 * 60_000);
+  });
+
+  it('defaults to no padding / 0 buffer (backward compatible)', async () => {
+    const input = await assembleScheduleInput(
+      fakeRepos({ settings: settings(), categories: [makeCategory()], events: [makeEvent()], tasks: [], habits: [] }), 'u1', NOW,
+    );
+    expect(input.fixedEvents[0]).toMatchObject({
+      start: Date.parse('2026-01-05T10:00:00.000Z'),
+      end: Date.parse('2026-01-05T11:00:00.000Z'),
+    });
+    expect(input.blockBufferMs).toBe(0);
+  });
+});

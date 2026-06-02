@@ -7,6 +7,8 @@ export interface UpsertSettingsInput {
   horizonDays?: number;
   defaultMinChunkMs: number;
   defaultMaxChunkMs: number;
+  meetingBufferMs?: number;
+  taskBufferMs?: number;
 }
 
 export function createSettingsRepository(prisma: PrismaClient) {

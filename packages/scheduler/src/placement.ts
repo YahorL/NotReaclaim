@@ -48,6 +48,7 @@ export function placeItem(
   chunkSizes: number[],
   deadline: number,
   candidateWindows?: Interval[],
+  gapMs = 0,
 ): PlaceItemResult {
   let remainingFree = mergeIntervals(free);
   const placements: Placement[] = [];
@@ -69,7 +70,7 @@ export function placeItem(
 
     const placement: Placement = { start: slot.start, end: slot.start + size };
     placements.push(placement);
-    remainingFree = subtractIntervals(remainingFree, [placement]);
+    remainingFree = subtractIntervals(remainingFree, [{ start: placement.start, end: placement.end + gapMs }]);
   }
 
   return { placements, free: remainingFree, unplaced };

@@ -3,12 +3,13 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import type { SettingsInput } from '../../api/types';
 import { ApiError } from '../../api/client';
 import { SettingsForm } from './SettingsForm';
-import type { SettingsFormState } from './settingsForm';
+import { defaultFormState, type SettingsFormState } from './settingsForm';
 
 const initial = (over: Partial<SettingsFormState> = {}): SettingsFormState => ({
   timezone: 'UTC',
   days: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, enabled: weekday >= 1 && weekday <= 5, start: '09:00', end: '17:00' })),
-  horizonDays: 14, defaultMinChunkMs: 1_800_000, defaultMaxChunkMs: 7_200_000, ...over,
+  horizonDays: 14, defaultMinChunkMs: 1_800_000, defaultMaxChunkMs: 7_200_000,
+  meetingBufferMs: 0, taskBufferMs: 0, ...over,
 });
 
 describe('SettingsForm', () => {
@@ -55,5 +56,14 @@ describe('SettingsForm', () => {
     expect(screen.getByTestId('saved')).toBeInTheDocument();
     rerender(<SettingsForm initial={initial()} onSave={vi.fn()} timezones={['UTC']} error={new ApiError(409, 'conflict', 'Nope')} />);
     expect(screen.getByTestId('form-error')).toHaveTextContent('Nope');
+  });
+
+  it('renders and edits the buffer inputs (minutes ⇄ ms)', () => {
+    const onSave = vi.fn();
+    render(<SettingsForm initial={defaultFormState('UTC')} onSave={onSave} timezones={['UTC']} />);
+    fireEvent.change(screen.getByTestId('meeting-buffer'), { target: { value: '15' } });
+    fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '5' } });
+    fireEvent.click(screen.getByTestId('save'));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ meetingBufferMs: 900000, taskBufferMs: 300000 }));
   });
 });

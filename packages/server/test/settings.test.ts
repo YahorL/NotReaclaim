@@ -30,4 +30,27 @@ describe('settings routes', () => {
     expect(reconcileCalls).toContainEqual({ userId: 'u1', now: expect.any(Number) });
     expect(emitted.some((e) => e.type === 'task.changed')).toBe(false);
   });
+
+  it('persists buffer settings', async () => {
+    const { app } = buildTestApp();
+    const token = await tokenFor(app);
+    const res = await app.inject({
+      method: 'PUT', url: '/settings',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { ...settingsBody, meetingBufferMs: 900000, taskBufferMs: 600000 },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ meetingBufferMs: 900000, taskBufferMs: 600000 });
+  });
+
+  it('rejects a negative buffer with 400', async () => {
+    const { app } = buildTestApp();
+    const token = await tokenFor(app);
+    const res = await app.inject({
+      method: 'PUT', url: '/settings',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { ...settingsBody, meetingBufferMs: -1 },
+    });
+    expect(res.statusCode).toBe(400);
+  });
 });

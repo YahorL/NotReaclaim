@@ -48,6 +48,8 @@ export const settingsSchema = z.object({
   horizonDays: z.number().int().positive().optional(),
   defaultMinChunkMs: z.number().int().positive(),
   defaultMaxChunkMs: z.number().int().positive(),
+  meetingBufferMs: z.number().int().nonnegative().optional(),
+  taskBufferMs: z.number().int().nonnegative().optional(),
 });
 
 export const workingHourEntrySchema = z.object({

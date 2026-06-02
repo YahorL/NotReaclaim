@@ -50,10 +50,11 @@ export function schedule(input: ScheduleInput): ScheduleResult {
   const unscheduled: UnscheduledItem[] = [];
 
   for (const item of work) {
+    const gapMs = input.blockBufferMs ?? 0;
     const res =
       item.kind === 'task'
-        ? scheduleTask(free, item.task)
-        : scheduleHabit(free, item.habit);
+        ? scheduleTask(free, item.task, gapMs)
+        : scheduleHabit(free, item.habit, gapMs);
     blocks.push(...res.blocks);
     unscheduled.push(...res.unscheduled);
     free = res.free;

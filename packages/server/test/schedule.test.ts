@@ -15,6 +15,7 @@ function settings(over: Partial<Settings> = {}): Settings {
     id: 's1', userId: 'u1', timezone: 'utc',
     workingHours: [{ weekday: 1, startMinute: 540, endMinute: 1020 }] as unknown as Settings['workingHours'],
     horizonDays: 1, defaultMinChunkMs: 1800000, defaultMaxChunkMs: 1800000,
+    meetingBufferMs: 0, taskBufferMs: 0,
     createdAt: new Date(0), updatedAt: new Date(0), ...over,
   };
 }

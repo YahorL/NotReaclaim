@@ -65,6 +65,8 @@ export interface Settings {
   horizonDays: number;
   defaultMinChunkMs: number;
   defaultMaxChunkMs: number;
+  meetingBufferMs?: number;
+  taskBufferMs?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -151,6 +153,8 @@ export interface SettingsInput {
   horizonDays?: number;
   defaultMinChunkMs: number;
   defaultMaxChunkMs: number;
+  meetingBufferMs?: number;
+  taskBufferMs?: number;
 }
 
 export interface UpdateScheduledBlockInput {

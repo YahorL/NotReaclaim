@@ -79,7 +79,8 @@ export function fakeSettingsRepo(seed: Settings | null = null) {
     async upsert(userId: string, data: Record<string, unknown>): Promise<Settings> {
       row = {
         id: 'settings-1', userId, timezone: 'utc', workingHours: [], horizonDays: 14,
-        defaultMinChunkMs: 0, defaultMaxChunkMs: 0, createdAt: new Date(0), updatedAt: new Date(0),
+        defaultMinChunkMs: 0, defaultMaxChunkMs: 0, meetingBufferMs: 0, taskBufferMs: 0,
+        createdAt: new Date(0), updatedAt: new Date(0),
         ...data,
       } as Settings;
       return row;
