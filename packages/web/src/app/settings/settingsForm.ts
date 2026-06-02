@@ -68,8 +68,8 @@ export function validateSettingsForm(s: SettingsFormState): { ok: boolean; error
   if (!(s.defaultMaxChunkMs > 0)) errors.defaultMaxChunkMs = 'Max chunk must be positive';
   else if (s.defaultMinChunkMs > s.defaultMaxChunkMs) errors.defaultMaxChunkMs = 'Max chunk must be ≥ min chunk';
 
-  if (!Number.isInteger(s.meetingBufferMs) || s.meetingBufferMs < 0) errors.meetingBufferMs = 'Buffer must be a non-negative number of minutes';
-  if (!Number.isInteger(s.taskBufferMs) || s.taskBufferMs < 0) errors.taskBufferMs = 'Buffer must be a non-negative number of minutes';
+  if (!Number.isInteger(s.meetingBufferMs) || s.meetingBufferMs < 0) errors.meetingBufferMs = 'Buffer must be a whole number of minutes (≥ 0)';
+  if (!Number.isInteger(s.taskBufferMs) || s.taskBufferMs < 0) errors.taskBufferMs = 'Buffer must be a whole number of minutes (≥ 0)';
 
   const days: Partial<Record<number, string>> = {};
   for (const d of s.days) {

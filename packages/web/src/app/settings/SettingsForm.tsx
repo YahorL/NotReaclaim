@@ -65,12 +65,12 @@ export function SettingsForm({ initial, onSave, saving = false, error = null, ju
         </div>
         <div className="mb-2">
           <label className={labelCls}>Buffer around meetings (min)</label>
-          <input type="number" data-testid="meeting-buffer" className={`${ctlCls} w-20`} value={Math.round(form.meetingBufferMs / 60000)} onChange={(e) => setForm((f) => ({ ...f, meetingBufferMs: Number(e.target.value) * 60000 }))} />
+          <input type="number" step="1" min="0" data-testid="meeting-buffer" className={`${ctlCls} w-20`} value={Math.round(form.meetingBufferMs / 60000)} onChange={(e) => setForm((f) => ({ ...f, meetingBufferMs: Math.round(Number(e.target.value)) * 60000 }))} />
           {errors.meetingBufferMs && <p data-testid="err-meetingBufferMs" className={errCls}>{errors.meetingBufferMs}</p>}
         </div>
         <div className="mb-2">
           <label className={labelCls}>Break between tasks (min)</label>
-          <input type="number" data-testid="task-buffer" className={`${ctlCls} w-20`} value={Math.round(form.taskBufferMs / 60000)} onChange={(e) => setForm((f) => ({ ...f, taskBufferMs: Number(e.target.value) * 60000 }))} />
+          <input type="number" step="1" min="0" data-testid="task-buffer" className={`${ctlCls} w-20`} value={Math.round(form.taskBufferMs / 60000)} onChange={(e) => setForm((f) => ({ ...f, taskBufferMs: Math.round(Number(e.target.value)) * 60000 }))} />
           {errors.taskBufferMs && <p data-testid="err-taskBufferMs" className={errCls}>{errors.taskBufferMs}</p>}
         </div>
       </section>
