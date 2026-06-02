@@ -202,7 +202,20 @@ describe('assembleScheduleInput notBefore', () => {
       fakeRepos({ settings, categories: [makeCategory()], tasks: [t], habits: [] }), 'u1', NOW,
     );
     const win = input.tasks.find((x) => x.id === 't2')!.allowedWindows!;
+    expect(win.length).toBeGreaterThan(0);
     expect(win.some((w) => w.start === Date.parse('2026-01-05T09:00:00.000Z'))).toBe(true);
+  });
+
+  it('intersects notBefore with a non-default category window', async () => {
+    const evening = makeCategory({ id: 'cat-eve', name: 'Personal', isDefault: false, windows: [{ weekday: 1, startMinute: 1080, endMinute: 1320 }] as never }); // Mon 18:00–22:00
+    const t = makeTask({ id: 't4', categoryId: 'cat-eve', notBefore: new Date('2026-01-05T20:00:00.000Z') });
+    const input = await assembleScheduleInput(
+      fakeRepos({ settings, categories: [makeCategory(), evening], tasks: [t], habits: [] }), 'u1', NOW,
+    );
+    const win = input.tasks.find((x) => x.id === 't4')!.allowedWindows!;
+    expect(win.length).toBeGreaterThan(0);
+    expect(win.every((w) => w.start >= Date.parse('2026-01-05T20:00:00.000Z') && w.end <= Date.parse('2026-01-05T22:00:00.000Z'))).toBe(true);
+    expect(win.some((w) => w.start === Date.parse('2026-01-05T20:00:00.000Z'))).toBe(true);
   });
 
   it('yields no windows when notBefore is beyond the horizon', async () => {

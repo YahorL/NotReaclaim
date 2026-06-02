@@ -97,6 +97,8 @@ export async function assembleScheduleInput(
     const resolvedId =
       t.categoryId && expandedByCategoryId.has(t.categoryId) ? t.categoryId : defaultCategoryId;
     let allowedWindows = resolvedId ? expandedByCategoryId.get(resolvedId)! : workingWindows;
+    // Clip windows to [notBefore, horizonEnd]: the engine has no notBefore field;
+    // window confinement in assemble is the sole enforcement of "schedule after".
     if (t.notBefore) {
       allowedWindows = intersectIntervals(allowedWindows, [{ start: t.notBefore.getTime(), end: horizonEnd.getTime() }]);
     }
