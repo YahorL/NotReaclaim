@@ -64,3 +64,14 @@ describe('placeItem', () => {
     expect(result.unplaced).toEqual([30]);
   });
 });
+
+describe('placeItem gapMs', () => {
+  it('reserves the gap after each placement so the next chunk starts gap later', () => {
+    const res = placeItem([{ start: 0, end: 100 }], [20, 20], 100, undefined, 10);
+    expect(res.placements).toEqual([{ start: 0, end: 20 }, { start: 30, end: 50 }]);
+  });
+  it('is unchanged when gapMs is 0 / omitted (regression)', () => {
+    const res = placeItem([{ start: 0, end: 100 }], [20, 20], 100);
+    expect(res.placements).toEqual([{ start: 0, end: 20 }, { start: 20, end: 40 }]);
+  });
+});

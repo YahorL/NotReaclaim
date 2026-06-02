@@ -95,6 +95,8 @@ export interface ScheduleInput {
   pinnedBlocks: ScheduledBlock[];
   tasks: FlexibleTask[];
   habits: Habit[];
+  /** Minimum free gap (ms) reserved after each placed task/habit block. Default 0. */
+  blockBufferMs?: number;
 }
 
 /** Result of the scheduling engine. */

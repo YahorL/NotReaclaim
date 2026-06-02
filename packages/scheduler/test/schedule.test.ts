@@ -60,3 +60,13 @@ describe('schedule', () => {
     expect(result.unscheduled[0]!.sourceId).toBe('t');
   });
 });
+
+describe('blockBufferMs', () => {
+  it('spaces two consecutive tasks by the buffer', () => {
+    const mk = (id: string) => ({ id, title: id, priority: 1, durationMs: 20, dueBy: 100, minChunkMs: 20, maxChunkMs: 20 });
+    const res = schedule({ workingWindows: [{ start: 0, end: 100 }], fixedEvents: [], pinnedBlocks: [], tasks: [mk('a'), mk('b')], habits: [], blockBufferMs: 10 });
+    const a = res.blocks.find((b) => b.sourceId === 'a')!;
+    const b = res.blocks.find((b) => b.sourceId === 'b')!;
+    expect(b.start - a.end).toBeGreaterThanOrEqual(10);
+  });
+});

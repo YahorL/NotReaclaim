@@ -186,6 +186,13 @@ describe('scheduleHabit with periodTargets (per-period counts)', () => {
   });
 });
 
+describe('scheduleTask gapMs', () => {
+  it('threads the gap so a task\'s own chunks are spaced', () => {
+    const res = scheduleTask([{ start: 0, end: 100 }], { id: 't', title: 'T', priority: 1, durationMs: 40, dueBy: 100, minChunkMs: 20, maxChunkMs: 20 }, 10);
+    expect(res.blocks.map((b) => [b.start, b.end])).toEqual([[0, 20], [30, 50]]);
+  });
+});
+
 describe('scheduleTask allowedWindows', () => {
   const H = 3_600_000;
   const baseTask = { id: 't1', title: 'T', priority: 1, durationMs: H, dueBy: 10 * H, minChunkMs: H, maxChunkMs: H };

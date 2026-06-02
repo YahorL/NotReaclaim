@@ -15,9 +15,9 @@ export interface ScheduleItemResult {
 }
 
 /** Split a task into chunks and place them before its due date. */
-export function scheduleTask(free: Interval[], task: FlexibleTask): ScheduleItemResult {
+export function scheduleTask(free: Interval[], task: FlexibleTask, gapMs = 0): ScheduleItemResult {
   const chunkSizes = splitDuration(task.durationMs, task.minChunkMs, task.maxChunkMs);
-  const result = placeItem(free, chunkSizes, task.dueBy, task.allowedWindows);
+  const result = placeItem(free, chunkSizes, task.dueBy, task.allowedWindows, gapMs);
 
   const blocks: ScheduledBlock[] = result.placements.map((p, i) => ({
     id: `task:${task.id}:${i}`,
@@ -45,7 +45,7 @@ export function scheduleTask(free: Interval[], task: FlexibleTask): ScheduleItem
   return { blocks, free: result.free, unscheduled };
 }
 
-export function scheduleHabit(free: Interval[], habit: Habit): ScheduleItemResult {
+export function scheduleHabit(free: Interval[], habit: Habit, gapMs = 0): ScheduleItemResult {
   let remainingFree = free;
   const blocks: ScheduledBlock[] = [];
   let missed = 0;
@@ -64,9 +64,9 @@ export function scheduleHabit(free: Interval[], habit: Habit): ScheduleItemResul
 
     for (let k = 0; k < target; k++) {
       const primaryWindow = preferred && preferred.length > 0 ? preferred : bound;
-      let res = placeItem(remainingFree, [habit.chunkMs], period.end, primaryWindow);
+      let res = placeItem(remainingFree, [habit.chunkMs], period.end, primaryWindow, gapMs);
       if (res.placements.length === 0 && primaryWindow !== bound) {
-        res = placeItem(remainingFree, [habit.chunkMs], period.end, bound);
+        res = placeItem(remainingFree, [habit.chunkMs], period.end, bound, gapMs);
       }
 
       if (res.placements.length === 0) {
