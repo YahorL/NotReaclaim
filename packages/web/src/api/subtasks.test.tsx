@@ -11,7 +11,7 @@ describe('subtask queries', () => {
     const createSubtask = vi.fn().mockResolvedValue({ id: 's1', taskId: 't1', title: 'a', done: false });
     const api = fakeApiClient({ createSubtask } as never);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const spy = vi.spyOn(qc, 'invalidateQueries');
+    const spy = vi.spyOn(qc, 'invalidateQueries').mockResolvedValue(undefined);
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={qc}><ApiProvider client={api}>{children}</ApiProvider></QueryClientProvider>
     );

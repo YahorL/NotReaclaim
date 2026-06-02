@@ -7,8 +7,14 @@ export interface Subtask {
   title: string;
   done: boolean;
 }
-export interface CreateSubtaskInput { taskId: string; title: string }
-export interface UpdateSubtaskInput { title?: string; done?: boolean }
+export interface CreateSubtaskInput {
+  taskId: string;
+  title: string;
+}
+export interface UpdateSubtaskInput {
+  title?: string;
+  done?: boolean;
+}
 
 export interface Task {
   id: string;
