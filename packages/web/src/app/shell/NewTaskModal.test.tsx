@@ -73,5 +73,6 @@ describe('NewTaskModal', () => {
     fireEvent.change(screen.getByTestId('new-category-name'), { target: { value: 'Deep Work' } });
     fireEvent.click(screen.getByTestId('new-category-confirm'));
     await waitFor(() => expect(createCategory).toHaveBeenCalledWith({ name: 'Deep Work', windows: [{ weekday: 1, startMinute: 540, endMinute: 1020 }] }));
+    await waitFor(() => expect(screen.queryByTestId('new-category-name')).not.toBeInTheDocument());
   });
 });

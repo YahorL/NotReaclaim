@@ -14,6 +14,7 @@ function durationLabel(ms: number): string {
   return `${minutes} mins`;
 }
 const STEP = 15 * 60_000;
+const FALLBACK_WORKING_HOURS = [{ weekday: 1, startMinute: 540, endMinute: 1020 }];
 
 function Stepper({ valueMs, onChange, disabled = false, label }: { valueMs: number; onChange: (ms: number) => void; disabled?: boolean; label: string }) {
   return (
@@ -98,7 +99,7 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
         <div className="mb-2 rounded-[11px] border-[1.5px] border-line px-3.5 py-2.5">
           <span className="text-[13px] font-semibold text-inkSoft">Hours</span>
           <div className="flex items-center gap-2">
-            <Icons.info size={19} className="mr-1 text-indigo" />
+            <Icons.info size={19} className="text-indigo" />
             <select
               data-testid="category-select"
               value={form.categoryId ?? ''}
@@ -107,7 +108,7 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
             >
               {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-            <button type="button" data-testid="new-category-btn" onClick={() => setCreatingCat(true)} className="text-[13px] font-bold text-indigo">+ New</button>
+            <button type="button" aria-label="Add new category" data-testid="new-category-btn" onClick={() => setCreatingCat(true)} className="text-[13px] font-bold text-indigo">+ New</button>
           </div>
           {creatingCat && (
             <div className="mt-2 flex items-center gap-2">
@@ -117,7 +118,7 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
                 data-testid="new-category-confirm"
                 disabled={!newCatName.trim() || createCategoryM.isPending}
                 onClick={() => {
-                  const windows = settingsQ.data?.workingHours ?? [{ weekday: 1, startMinute: 540, endMinute: 1020 }];
+                  const windows = settingsQ.data?.workingHours ?? FALLBACK_WORKING_HOURS;
                   createCategoryM.mutate({ name: newCatName.trim(), windows }, {
                     onSuccess: (cat) => { set('categoryId', cat.id); setCreatingCat(false); setNewCatName(''); },
                   });
