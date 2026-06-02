@@ -168,4 +168,16 @@ describe('assembleScheduleInput categories', () => {
     expect(a2.some((w) => w.start === workStart)).toBe(true);
     expect(a2.some((w) => w.start === eveStart)).toBe(false);
   });
+
+  it('falls back to the default windows when the task has a stale/deleted categoryId', async () => {
+    const t = makeTask({ id: 't-stale', categoryId: 'deleted-cat' });
+    const input = await assembleScheduleInput(
+      fakeRepos({ settings, categories: [makeCategory()], tasks: [t], habits: [] }),
+      'u1',
+      NOW,
+    );
+    const workStart = Date.parse('2026-01-05T09:00:00.000Z');
+    const a = input.tasks.find((x) => x.id === 't-stale')!.allowedWindows!;
+    expect(a.some((w) => w.start === workStart)).toBe(true);
+  });
 });

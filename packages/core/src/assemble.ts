@@ -55,11 +55,13 @@ export async function assembleScheduleInput(
   );
 
   const categories = await repos.categories.listByUser(userId);
-  const settingsEntries = settings.workingHours as unknown as WorkingHourEntry[];
   const expandedByCategoryId = new Map<string, Interval[]>();
   for (const c of categories) {
-    const entries = (c.windows as unknown as WorkingHourEntry[] | null) ?? settingsEntries;
-    expandedByCategoryId.set(c.id, expandWorkingWindows(entries, settings.timezone, now, horizonDays));
+    const expanded =
+      c.windows === null
+        ? workingWindows
+        : expandWorkingWindows(c.windows as unknown as WorkingHourEntry[], settings.timezone, now, horizonDays);
+    expandedByCategoryId.set(c.id, expanded);
   }
   const defaultCategoryId = categories.find((c) => c.isDefault)?.id ?? null;
 
