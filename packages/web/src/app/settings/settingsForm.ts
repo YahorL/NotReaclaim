@@ -14,6 +14,8 @@ export interface SettingsFormState {
   horizonDays: number;
   defaultMinChunkMs: number;
   defaultMaxChunkMs: number;
+  meetingBufferMs: number;
+  taskBufferMs: number;
 }
 
 const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
@@ -31,6 +33,8 @@ export function toFormState(s: Settings): SettingsFormState {
     horizonDays: s.horizonDays,
     defaultMinChunkMs: s.defaultMinChunkMs,
     defaultMaxChunkMs: s.defaultMaxChunkMs,
+    meetingBufferMs: s.meetingBufferMs ?? 0,
+    taskBufferMs: s.taskBufferMs ?? 0,
   };
 }
 
@@ -41,6 +45,8 @@ export function defaultFormState(timezone: string): SettingsFormState {
     horizonDays: 14,
     defaultMinChunkMs: 30 * 60_000,
     defaultMaxChunkMs: 120 * 60_000,
+    meetingBufferMs: 0,
+    taskBufferMs: 0,
   };
 }
 
@@ -49,6 +55,8 @@ export interface SettingsFormErrors {
   horizonDays?: string;
   defaultMinChunkMs?: string;
   defaultMaxChunkMs?: string;
+  meetingBufferMs?: string;
+  taskBufferMs?: string;
   days?: Partial<Record<number, string>>;
 }
 
@@ -59,6 +67,9 @@ export function validateSettingsForm(s: SettingsFormState): { ok: boolean; error
   if (!(s.defaultMinChunkMs > 0)) errors.defaultMinChunkMs = 'Min chunk must be positive';
   if (!(s.defaultMaxChunkMs > 0)) errors.defaultMaxChunkMs = 'Max chunk must be positive';
   else if (s.defaultMinChunkMs > s.defaultMaxChunkMs) errors.defaultMaxChunkMs = 'Max chunk must be ≥ min chunk';
+
+  if (!Number.isInteger(s.meetingBufferMs) || s.meetingBufferMs < 0) errors.meetingBufferMs = 'Buffer must be a non-negative number of minutes';
+  if (!Number.isInteger(s.taskBufferMs) || s.taskBufferMs < 0) errors.taskBufferMs = 'Buffer must be a non-negative number of minutes';
 
   const days: Partial<Record<number, string>> = {};
   for (const d of s.days) {
@@ -80,6 +91,8 @@ export function toSettingsInput(s: SettingsFormState): SettingsInput {
     horizonDays: s.horizonDays,
     defaultMinChunkMs: s.defaultMinChunkMs,
     defaultMaxChunkMs: s.defaultMaxChunkMs,
+    meetingBufferMs: s.meetingBufferMs,
+    taskBufferMs: s.taskBufferMs,
   };
 }
 
