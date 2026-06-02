@@ -96,4 +96,17 @@ describe('task routes', () => {
     expect(emitted).toEqual([]);
     expect(reconcileCalls).toEqual([]);
   });
+
+  it('round-trips categoryId on task create and update', async () => {
+    const { app } = buildTestApp();
+    const token = await tokenFor(app);
+    const auth = { authorization: `Bearer ${token}` };
+    const createRes = await app.inject({ method: 'POST', url: '/tasks', headers: auth, payload: { ...taskBody, categoryId: 'cat-1' } });
+    expect(createRes.statusCode).toBe(201);
+    expect(createRes.json()).toMatchObject({ categoryId: 'cat-1' });
+    const id = (createRes.json() as { id: string }).id;
+    const patchRes = await app.inject({ method: 'PATCH', url: `/tasks/${id}`, headers: auth, payload: { categoryId: 'cat-2' } });
+    expect(patchRes.statusCode).toBe(200);
+    expect(patchRes.json()).toMatchObject({ categoryId: 'cat-2' });
+  });
 });
