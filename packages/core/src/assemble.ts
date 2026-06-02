@@ -14,6 +14,7 @@ import type {
   HabitRepository,
   ScheduledBlockRepository,
   CategoryRepository,
+  Task,
   TaskStatus,
 } from '@notreclaim/db';
 import { toFixedEvent, toFlexibleTask, toScheduledBlock } from '@notreclaim/db/mappers';
@@ -25,7 +26,7 @@ import { SettingsRequiredError } from './errors.js';
 export interface SchedulingRepositories {
   settings: Pick<SettingsRepository, 'getByUserId'>;
   calendarEvents: Pick<CalendarEventRepository, 'listByUserInRange'>;
-  tasks: Pick<TaskRepository, 'listByUser'>;
+  tasks: { listByUser(userId: string, opts?: { status?: TaskStatus }): Promise<Task[]> };
   habits: Pick<HabitRepository, 'listByUser'>;
   scheduledBlocks: Pick<ScheduledBlockRepository, 'listByUserInRange'>;
   categories: Pick<CategoryRepository, 'listByUser'>;

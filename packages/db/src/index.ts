@@ -20,6 +20,9 @@ export { createScheduledBlockRepository } from './repositories/scheduled-block-r
 export type { ScheduledBlockRepository, CreateScheduledBlockInput, UpdateScheduledBlockInput } from './repositories/scheduled-block-repository.js';
 export { createCalendarSyncStateRepository } from './repositories/calendar-sync-state-repository.js';
 export type { CalendarSyncStateRepository, UpsertSyncStateInput } from './repositories/calendar-sync-state-repository.js';
+export { createSubtaskRepository } from './repositories/subtask-repository.js';
+export type { SubtaskRepository, CreateSubtaskInput, UpdateSubtaskInput } from './repositories/subtask-repository.js';
+export type { TaskWithSubtasks } from './repositories/task-repository.js';
 
 // Re-export Prisma model types and enums so consumers can type rows without
 // importing the Prisma client runtime.
@@ -28,6 +31,7 @@ export type {
   Settings,
   CalendarEvent,
   Task,
+  Subtask,
   Category,
   Habit,
   ScheduledBlock,

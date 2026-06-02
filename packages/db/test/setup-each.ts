@@ -2,6 +2,7 @@ import { beforeEach, afterAll } from 'vitest';
 import { prisma } from '../src/client.js';
 
 const TABLES = [
+  'Subtask',
   'ScheduledBlock',
   'CalendarEvent',
   'Task',
