@@ -9,7 +9,7 @@ export interface BoardProps {
   columns: BoardColumn[];
   now: number;
   nextMsFor: (taskId: string) => number | null;
-  onMove: (taskId: string, to: BucketKey) => void;
+  onMove: (taskId: string, to: BucketKey, index: number) => void;
   onComplete: (task: Task) => void;
   onEdit: (task: Task) => void;
   onDelete: (task: Task) => void;
@@ -17,14 +17,15 @@ export interface BoardProps {
 }
 
 export function Board({ columns, now, nextMsFor, onMove, onComplete, onEdit, onDelete, onToggleSubtask }: BoardProps) {
-  const [drag, setDrag] = useState<{ id: string | null; over: BucketKey | null }>({ id: null, over: null });
+  const [drag, setDrag] = useState<{ id: string | null; over: BucketKey | null; overIndex: number | null }>({ id: null, over: null, overIndex: null });
   const dnd: ColumnDnd = {
     id: drag.id,
     over: drag.over,
-    start: (id) => setDrag({ id, over: null }),
-    end: () => setDrag({ id: null, over: null }),
-    setOver: (k) => setDrag((d) => (d.over === k ? d : { ...d, over: k })),
-    drop: (to) => { if (drag.id !== null) onMove(drag.id, to); setDrag({ id: null, over: null }); },
+    overIndex: drag.overIndex,
+    start: (id) => setDrag({ id, over: null, overIndex: null }),
+    end: () => setDrag({ id: null, over: null, overIndex: null }),
+    setOver: (k, index) => setDrag((d) => (d.over === k && d.overIndex === index ? d : { ...d, over: k, overIndex: index })),
+    drop: (to) => { if (drag.id !== null) onMove(drag.id, to, drag.overIndex ?? Number.MAX_SAFE_INTEGER); setDrag({ id: null, over: null, overIndex: null }); },
   };
   return (
     <div className="flex items-start gap-[26px]" style={{ minWidth: 'min-content' }}>

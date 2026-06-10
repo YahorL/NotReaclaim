@@ -21,6 +21,7 @@ export interface Task {
   userId: string;
   title: string;
   priority: number;
+  sortOrder: number;
   durationMs: number;
   dueBy: string;
   notBefore?: string | null;
@@ -142,6 +143,7 @@ export interface ReconcileResult {
 export interface CreateTaskInput {
   title: string;
   priority: number;
+  sortOrder?: number;
   durationMs: number;
   dueBy: string;
   notBefore?: string | null;

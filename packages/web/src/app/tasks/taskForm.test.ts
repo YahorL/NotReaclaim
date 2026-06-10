@@ -5,14 +5,14 @@ import { defaultQuickAddInput, toFormState, validateTaskForm, toUpdateInput, typ
 const NOW = Date.parse('2026-01-05T00:00:00.000Z');
 
 const task = (over: Partial<Task> = {}): Task => ({
-  id: 't1', userId: 'u1', title: 'Write spec', priority: 2, durationMs: 5_400_000,
+  id: 't1', userId: 'u1', title: 'Write spec', priority: 2, sortOrder: 0, durationMs: 5_400_000,
   dueBy: '2026-06-01T17:00:00.000Z', minChunkMs: 1_800_000, maxChunkMs: 7_200_000,
   categoryId: 'cat-work', status: 'pending', timeLoggedMs: 0,
   createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', ...over,
 });
 
 const validState = (over: Partial<TaskFormState> = {}): TaskFormState => ({
-  title: 'X', durationMs: 3_600_000, priority: 3, dueByLocal: '2026-06-01T17:00',
+  title: 'X', durationMs: 3_600_000, dueByLocal: '2026-06-01T17:00',
   notBeforeLocal: '',
   minChunkMs: 1_800_000, maxChunkMs: 7_200_000, categoryId: null, status: 'pending', ...over,
 });
@@ -35,7 +35,7 @@ describe('taskForm', () => {
 
   it('toFormState maps a Task (ISO due → local; categoryId passthrough)', () => {
     expect(toFormState(task())).toEqual({
-      title: 'Write spec', durationMs: 5_400_000, priority: 2, dueByLocal: '2026-06-01T17:00',
+      title: 'Write spec', durationMs: 5_400_000, dueByLocal: '2026-06-01T17:00',
       notBeforeLocal: '',
       minChunkMs: 1_800_000, maxChunkMs: 7_200_000, categoryId: 'cat-work', status: 'pending',
     });
@@ -52,7 +52,7 @@ describe('taskForm', () => {
 
   it('toUpdateInput converts local due → ISO and passes categoryId, includes status', () => {
     expect(toUpdateInput(validState({ categoryId: null, status: 'scheduled' }))).toEqual({
-      title: 'X', priority: 3, durationMs: 3_600_000, dueBy: '2026-06-01T17:00:00.000Z',
+      title: 'X', durationMs: 3_600_000, dueBy: '2026-06-01T17:00:00.000Z',
       notBefore: null,
       minChunkMs: 1_800_000, maxChunkMs: 7_200_000, categoryId: null, status: 'scheduled',
     });
