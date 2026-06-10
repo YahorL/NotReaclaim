@@ -1,41 +1,14 @@
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect } from 'react';
 import { ApiError } from '../../api/client';
 import { useCreateTaskMutation, useSettingsQuery, useCategoriesQuery, useCreateCategoryMutation } from '../../api/queries';
-import { msToHM } from '../lib/duration';
 import { Icons } from './icons';
 import {
   type NewTaskFormState, defaultNewTaskForm, validateNewTaskForm, toCreateTaskInput,
 } from './newTaskForm';
+import { FieldBox } from '../components/FieldBox';
+import { DurationStepper } from '../components/DurationStepper';
 
-function durationLabel(ms: number): string {
-  const { hours, minutes } = msToHM(ms);
-  if (hours && minutes) return `${hours} hr ${minutes} min`;
-  if (hours) return `${hours} hr${hours > 1 ? 's' : ''}`;
-  return `${minutes} mins`;
-}
-const STEP = 15 * 60_000;
 const FALLBACK_WORKING_HOURS = [{ weekday: 1, startMinute: 540, endMinute: 1020 }];
-
-function Stepper({ valueMs, onChange, disabled = false, label }: { valueMs: number; onChange: (ms: number) => void; disabled?: boolean; label: string }) {
-  return (
-    <div className="flex items-center">
-      <span className="flex-1 text-[18px] font-bold">{durationLabel(valueMs)}</span>
-      <div className="flex gap-2 text-indigo">
-        <button type="button" aria-label={`decrease ${label}`} disabled={disabled} onClick={() => onChange(Math.max(STEP, valueMs - STEP))} className="disabled:opacity-40"><Icons.minusCircle size={26} /></button>
-        <button type="button" aria-label={`increase ${label}`} disabled={disabled} onClick={() => onChange(valueMs + STEP)} className="disabled:opacity-40"><Icons.plusCircle size={26} /></button>
-      </div>
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-1 flex-col gap-0.5 rounded-[11px] border-[1.5px] border-line px-3.5 py-2.5">
-      <span className="text-[13px] font-semibold text-inkSoft">{label}</span>
-      {children}
-    </div>
-  );
-}
 
 export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () => void; now?: () => number }) {
   const settingsQ = useSettingsQuery();
@@ -83,7 +56,7 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
 
         <div className="mb-3.5 flex items-center gap-4">
           <div className="basis-[250px]">
-            <Field label="Duration"><Stepper label="duration" valueMs={form.durationMs} onChange={(ms) => set('durationMs', ms)} /></Field>
+            <FieldBox label="Duration"><DurationStepper label="duration" valueMs={form.durationMs} onChange={(ms) => set('durationMs', ms)} /></FieldBox>
           </div>
           <button type="button" onClick={() => set('split', !form.split)} className="flex items-center gap-2.5">
             <span className={`flex h-6 w-6 items-center justify-center rounded-md ${form.split ? 'bg-indigo text-white' : 'border-2 border-[#c7cad6]'}`}>{form.split && <Icons.check size={17} />}</span>
@@ -92,8 +65,8 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
         </div>
 
         <div className="mb-3.5 flex gap-4">
-          <Field label="Min duration"><Stepper label="min" disabled={!form.split} valueMs={form.minChunkMs} onChange={(ms) => set('minChunkMs', ms)} /></Field>
-          <Field label="Max duration"><Stepper label="max" disabled={!form.split} valueMs={form.maxChunkMs} onChange={(ms) => set('maxChunkMs', ms)} /></Field>
+          <FieldBox label="Min duration"><DurationStepper label="min" disabled={!form.split} valueMs={form.minChunkMs} onChange={(ms) => set('minChunkMs', ms)} /></FieldBox>
+          <FieldBox label="Max duration"><DurationStepper label="max" disabled={!form.split} valueMs={form.maxChunkMs} onChange={(ms) => set('maxChunkMs', ms)} /></FieldBox>
         </div>
 
         <div className="mb-2 rounded-[11px] border-[1.5px] border-line px-3.5 py-2.5">
@@ -130,12 +103,12 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
         </div>
 
         <div className="mb-4 flex gap-4">
-          <Field label="Schedule after">
+          <FieldBox label="Schedule after">
             <input type="datetime-local" data-testid="schedule-after" value={form.notBeforeLocal} onChange={(e) => set('notBeforeLocal', e.target.value)} className="text-[16px] font-bold text-ink outline-none" />
-          </Field>
-          <Field label="Due date">
+          </FieldBox>
+          <FieldBox label="Due date">
             <input type="datetime-local" data-testid="due-date" value={form.dueByLocal} onChange={(e) => set('dueByLocal', e.target.value)} className="text-[16px] font-bold text-ink outline-none" />
-          </Field>
+          </FieldBox>
         </div>
 
         {error && <p data-testid="modal-error" className="mb-2 text-[12px] text-crit">{error.message}</p>}
