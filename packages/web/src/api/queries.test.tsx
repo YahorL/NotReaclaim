@@ -153,3 +153,38 @@ describe('useUpdateSettingsMutation', () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: ['schedule'] });
   });
 });
+
+describe('useUpdateScheduledBlockMutation optimistic update', () => {
+  const block = { id: 'b1', startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T10:00:00.000Z', pinned: false };
+  const patch = { startsAt: '2026-01-06T09:00:00.000Z', endsAt: '2026-01-06T10:00:00.000Z', pinned: true };
+  const preview = { blocks: [], unscheduled: [] };
+
+  it('patches cached schedule lists immediately, leaves the preview entry alone, invalidates on settle', async () => {
+    let resolveReq!: (v: unknown) => void;
+    const updateScheduledBlock = vi.fn(() => new Promise((res) => { resolveReq = res; }));
+    const api = fakeApiClient({ updateScheduledBlock } as never);
+    const { Wrapper, qc } = wrap(api);
+    qc.setQueryData(queryKeys.schedule('a', 'b'), [block]);
+    qc.setQueryData(queryKeys.schedulePreview(), preview);
+    const { result } = renderHook(() => useUpdateScheduledBlockMutation(), { wrapper: Wrapper });
+    result.current.mutate({ id: 'b1', patch });
+    await waitFor(() => {
+      const cached = qc.getQueryData<(typeof block)[]>(queryKeys.schedule('a', 'b'))!;
+      expect(cached[0]).toEqual({ ...block, ...patch });
+    });
+    expect(qc.getQueryData(queryKeys.schedulePreview())).toEqual(preview); // non-array entry untouched
+    resolveReq({ ...block, ...patch });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  });
+
+  it('rolls the cache back when the request fails', async () => {
+    const updateScheduledBlock = vi.fn(async () => { throw new Error('500'); });
+    const api = fakeApiClient({ updateScheduledBlock } as never);
+    const { Wrapper, qc } = wrap(api);
+    qc.setQueryData(queryKeys.schedule('a', 'b'), [block]);
+    const { result } = renderHook(() => useUpdateScheduledBlockMutation(), { wrapper: Wrapper });
+    result.current.mutate({ id: 'b1', patch });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(qc.getQueryData(queryKeys.schedule('a', 'b'))).toEqual([block]);
+  });
+});

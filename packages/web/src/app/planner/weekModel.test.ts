@@ -4,6 +4,7 @@ import {
   startOfWeek, dayColumns, addWeeks, classifyBlock, placeInDay, nowLine, humanizeMs, isToday,
   WINDOW_START_MIN, WINDOW_END_MIN,
   HOUR_ROW_PX, GRID_COLUMN_PX, snapMinutes, pxToMinutes, clampToWindow,
+  minutesToPx, shiftDays, clampDayDelta,
 } from './weekModel';
 
 const MON = Date.parse('2026-01-05T00:00:00.000Z'); // Monday 00:00 UTC
@@ -124,5 +125,40 @@ describe('grid geometry', () => {
     expect(clampToWindow(540, 60)).toEqual({ startMin: 540, endMin: 600 });
     expect(clampToWindow(300, 60)).toEqual({ startMin: WINDOW_START_MIN, endMin: WINDOW_START_MIN + 60 });
     expect(clampToWindow(1290, 60)).toEqual({ startMin: WINDOW_END_MIN - 60, endMin: WINDOW_END_MIN });
+  });
+});
+
+describe('minutesToPx', () => {
+  it('is the inverse of pxToMinutes', () => {
+    expect(minutesToPx(60)).toBeCloseTo(58);
+    expect(minutesToPx(15)).toBeCloseTo(14.5);
+    expect(pxToMinutes(minutesToPx(37))).toBeCloseTo(37);
+    expect(minutesToPx(0)).toBe(0);
+    expect(minutesToPx(-30)).toBeCloseTo(-29);
+  });
+});
+
+describe('shiftDays', () => {
+  const MON = Date.parse('2026-01-05T00:00:00.000Z'); // local midnight under TZ=UTC
+  it('shifts whole days preserving wall-clock time', () => {
+    expect(shiftDays(MON, 1)).toBe(Date.parse('2026-01-06T00:00:00.000Z'));
+    expect(shiftDays(MON, -2)).toBe(Date.parse('2026-01-03T00:00:00.000Z'));
+    const nineFifteen = Date.parse('2026-01-05T09:15:00.000Z');
+    expect(shiftDays(nineFifteen, 3)).toBe(Date.parse('2026-01-08T09:15:00.000Z'));
+  });
+  it('zero days is identity', () => {
+    expect(shiftDays(MON, 0)).toBe(MON);
+  });
+});
+
+describe('clampDayDelta', () => {
+  it('keeps dayIndex+delta within the rendered week [0,6]', () => {
+    expect(clampDayDelta(0, -3)).toBe(0);
+    expect(clampDayDelta(0, 3)).toBe(3);
+    expect(clampDayDelta(6, 3)).toBe(0);
+    expect(clampDayDelta(6, -2)).toBe(-2);
+    expect(clampDayDelta(3, 9)).toBe(3);
+    expect(clampDayDelta(3, -9)).toBe(-3);
+    expect(clampDayDelta(2, 0)).toBe(0);
   });
 });
