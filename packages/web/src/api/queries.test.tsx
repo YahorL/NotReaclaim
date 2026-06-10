@@ -4,7 +4,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiProvider } from './ApiProvider';
 import { fakeApiClient } from '../test/fakes';
-import { queryKeys, useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useHabitsQuery, useCreateTaskMutation, useDeleteHabitMutation, useSettingsQuery, useUpdateSettingsMutation } from './queries';
+import { queryKeys, useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useHabitsQuery, useCreateTaskMutation, useDeleteHabitMutation, useSettingsQuery, useUpdateSettingsMutation, useCreateCalendarEventMutation, useCreateScheduledBlockMutation } from './queries';
 
 function wrap(api = fakeApiClient(), qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   const Wrapper = ({ children }: { children: ReactNode }) => (
@@ -151,6 +151,35 @@ describe('useUpdateSettingsMutation', () => {
     await waitFor(() => expect(putSettings).toHaveBeenCalled());
     await waitFor(() => expect(spy).toHaveBeenCalledWith({ queryKey: ['settings'] }));
     expect(spy).toHaveBeenCalledWith({ queryKey: ['schedule'] });
+  });
+});
+
+describe('useCreateCalendarEventMutation', () => {
+  it('posts the event and invalidates calendar events + schedule', async () => {
+    const createCalendarEvent = vi.fn(async () => ({ id: 'e1' }));
+    const api = fakeApiClient({ createCalendarEvent } as never);
+    const { Wrapper, qc } = wrap(api);
+    const spy = vi.spyOn(qc, 'invalidateQueries');
+    const { result } = renderHook(() => useCreateCalendarEventMutation(), { wrapper: Wrapper });
+    result.current.mutate({ title: 'Standup', startsAt: 'S', endsAt: 'E' });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(createCalendarEvent).toHaveBeenCalledWith({ title: 'Standup', startsAt: 'S', endsAt: 'E' });
+    expect(spy).toHaveBeenCalledWith({ queryKey: queryKeys.calendarEventsRoot });
+    expect(spy).toHaveBeenCalledWith({ queryKey: queryKeys.scheduleRoot });
+  });
+});
+
+describe('useCreateScheduledBlockMutation', () => {
+  it('posts the pinned block and invalidates the schedule', async () => {
+    const createScheduledBlock = vi.fn(async () => ({ id: 'b9' }));
+    const api = fakeApiClient({ createScheduledBlock } as never);
+    const { Wrapper, qc } = wrap(api);
+    const spy = vi.spyOn(qc, 'invalidateQueries');
+    const { result } = renderHook(() => useCreateScheduledBlockMutation(), { wrapper: Wrapper });
+    result.current.mutate({ taskId: 't1', startsAt: 'S', endsAt: 'E' });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(createScheduledBlock).toHaveBeenCalledWith({ taskId: 't1', startsAt: 'S', endsAt: 'E' });
+    expect(spy).toHaveBeenCalledWith({ queryKey: queryKeys.scheduleRoot });
   });
 });
 
