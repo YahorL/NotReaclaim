@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import type { Task, TaskStatus, UpdateTaskInput } from '../../api/types';
 import type { ApiError } from '../../api/client';
-import { DurationField } from '../components/DurationField';
+import { FieldBox } from '../components/FieldBox';
+import { DurationStepper } from '../components/DurationStepper';
 import { type TaskFormState, toFormState, validateTaskForm, toUpdateInput } from './taskForm';
 import { useCategoriesQuery, useCreateSubtaskMutation, useUpdateSubtaskMutation, useDeleteSubtaskMutation } from '../../api/queries';
 
@@ -26,93 +27,93 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
   const [newSubtask, setNewSubtask] = useState('');
   const subtasks = task.subtasks ?? [];
   const set = <K extends keyof TaskFormState>(k: K, v: TaskFormState[K]) => setForm((f) => ({ ...f, [k]: v }));
-  const labelCls = 'mb-0.5 block text-[10px] uppercase tracking-wide text-gray-400';
-  const ctlCls = 'w-full rounded border border-gray-300 px-2 py-0.5 text-sm';
-  const errCls = 'mt-0.5 text-[11px] text-red-600';
+  const ctl = 'w-full bg-transparent text-[16px] font-bold text-ink outline-none';
+  const errCls = 'mt-0.5 text-[11px] text-crit';
 
   return (
-    <aside data-testid="task-drawer" className="w-60 shrink-0 rounded-lg border-l-2 border-blue-500 bg-gray-50 p-3">
-      <h4 className="mb-2 text-sm font-semibold">Edit task</h4>
+    <aside data-testid="task-drawer" className="w-[300px] shrink-0 space-y-2.5 rounded-[14px] border border-line bg-card p-4 shadow-pop">
+      <h4 className="text-[15px] font-bold text-ink">Edit task</h4>
 
-      <div className="mb-2">
-        <label className={labelCls}>Title</label>
-        <input className={ctlCls} value={form.title} onChange={(e) => set('title', e.target.value)} />
+      <div>
+        <FieldBox label="Title">
+          <input className={ctl} value={form.title} onChange={(e) => set('title', e.target.value)} />
+        </FieldBox>
         {errors.title && <p data-testid="err-title" className={errCls}>{errors.title}</p>}
       </div>
 
-      <div className="mb-2">
-        <label className={labelCls}>Duration</label>
-        <DurationField valueMs={form.durationMs} onChange={(ms) => set('durationMs', ms)} testid="duration" />
+      <div>
+        <FieldBox label="Duration">
+          <DurationStepper label="duration" size={22} valueMs={form.durationMs} onChange={(ms) => set('durationMs', ms)} />
+        </FieldBox>
         {errors.durationMs && <p data-testid="err-durationMs" className={errCls}>{errors.durationMs}</p>}
       </div>
 
-      <div className="mb-2">
-        <label className={labelCls}>Priority (lower = scheduled first)</label>
-        <input type="number" className={ctlCls} value={form.priority} onChange={(e) => set('priority', Number(e.target.value))} />
-      </div>
+      <FieldBox label="Priority (lower = scheduled first)">
+        <input type="number" className={ctl} value={form.priority} onChange={(e) => set('priority', Number(e.target.value))} />
+      </FieldBox>
 
-      <div className="mb-2">
-        <label className={labelCls}>Due by</label>
-        <input type="datetime-local" className={ctlCls} value={form.dueByLocal} onChange={(e) => set('dueByLocal', e.target.value)} />
+      <div>
+        <FieldBox label="Due by">
+          <input type="datetime-local" className={ctl} value={form.dueByLocal} onChange={(e) => set('dueByLocal', e.target.value)} />
+        </FieldBox>
         {errors.dueByLocal && <p data-testid="err-dueByLocal" className={errCls}>{errors.dueByLocal}</p>}
       </div>
 
-      <div className="mb-2">
-        <label className={labelCls}>Schedule after</label>
-        <input type="datetime-local" data-testid="schedule-after" className={ctlCls} value={form.notBeforeLocal} onChange={(e) => set('notBeforeLocal', e.target.value)} />
-      </div>
+      <FieldBox label="Schedule after">
+        <input type="datetime-local" data-testid="schedule-after" className={ctl} value={form.notBeforeLocal} onChange={(e) => set('notBeforeLocal', e.target.value)} />
+      </FieldBox>
 
-      <div className="mb-2">
-        <label className={labelCls}>Min chunk</label>
-        <DurationField valueMs={form.minChunkMs} onChange={(ms) => set('minChunkMs', ms)} testid="minchunk" />
+      <div>
+        <FieldBox label="Min chunk">
+          <DurationStepper label="min" size={22} valueMs={form.minChunkMs} onChange={(ms) => set('minChunkMs', ms)} />
+        </FieldBox>
         {errors.minChunkMs && <p data-testid="err-minChunkMs" className={errCls}>{errors.minChunkMs}</p>}
       </div>
-      <div className="mb-2">
-        <label className={labelCls}>Max chunk</label>
-        <DurationField valueMs={form.maxChunkMs} onChange={(ms) => set('maxChunkMs', ms)} testid="maxchunk" />
+      <div>
+        <FieldBox label="Max chunk">
+          <DurationStepper label="max" size={22} valueMs={form.maxChunkMs} onChange={(ms) => set('maxChunkMs', ms)} />
+        </FieldBox>
         {errors.maxChunkMs && <p data-testid="err-maxChunkMs" className={errCls}>{errors.maxChunkMs}</p>}
       </div>
 
-      <div className="mb-2">
-        <label className={labelCls}>Category</label>
-        <select data-testid="category-select" className={ctlCls} value={form.categoryId ?? ''} onChange={(e) => set('categoryId', e.target.value || null)}>
+      <FieldBox label="Hours">
+        <select data-testid="category-select" className={`${ctl} appearance-none`} value={form.categoryId ?? ''} onChange={(e) => set('categoryId', e.target.value || null)}>
           <option value="">— none —</option>
           {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-      </div>
+      </FieldBox>
 
-      <div className="mb-2">
-        <label className={labelCls}>Subtasks</label>
-        <ul className="mb-1 space-y-1">
+      <FieldBox label="Status">
+        <select className={`${ctl} appearance-none capitalize`} value={form.status} onChange={(e) => set('status', e.target.value as TaskStatus)}>
+          {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </FieldBox>
+
+      <div>
+        <span className="mb-1 block text-[13px] font-semibold text-inkSoft">Subtasks</span>
+        <ul className="mb-1.5 space-y-1.5">
           {subtasks.map((s) => (
-            <li key={s.id} className="flex items-center gap-2 text-sm">
-              <input type="checkbox" data-testid={`subtask-toggle-${s.id}`} checked={s.done} onChange={() => updateSubtaskM.mutate({ id: s.id, patch: { done: !s.done } })} />
-              <span className={`flex-1 ${s.done ? 'text-gray-400 line-through' : ''}`}>{s.title}</span>
-              <button type="button" data-testid={`subtask-delete-${s.id}`} aria-label="delete subtask" onClick={() => deleteSubtaskM.mutate(s.id)} className="text-[12px] text-red-600">×</button>
+            <li key={s.id} className="flex items-center gap-2 text-[14px]">
+              <input type="checkbox" data-testid={`subtask-toggle-${s.id}`} checked={s.done} onChange={() => updateSubtaskM.mutate({ id: s.id, patch: { done: !s.done } })} className="h-4 w-4 accent-indigo" />
+              <span className={`flex-1 ${s.done ? 'text-inkSoft line-through' : 'text-ink'}`}>{s.title}</span>
+              <button type="button" data-testid={`subtask-delete-${s.id}`} aria-label="delete subtask" onClick={() => deleteSubtaskM.mutate(s.id)} className="text-[13px] font-bold text-crit">×</button>
             </li>
           ))}
         </ul>
-        <div className="flex gap-1">
-          <input data-testid="subtask-input" value={newSubtask} onChange={(e) => setNewSubtask(e.target.value)} placeholder="Add subtask…" className={`${ctlCls} flex-1`} />
+        <div className="flex gap-1.5">
+          <input data-testid="subtask-input" value={newSubtask} onChange={(e) => setNewSubtask(e.target.value)} placeholder="Add subtask…" className="min-w-0 flex-1 rounded-[9px] border-[1.5px] border-line px-2.5 py-1.5 text-[14px] outline-none focus:border-indigo" />
           <button type="button" data-testid="subtask-add" disabled={!newSubtask.trim() || createSubtaskM.isPending}
             onClick={() => createSubtaskM.mutate({ taskId: task.id, title: newSubtask.trim() }, { onSuccess: () => setNewSubtask('') })}
-            className="rounded bg-blue-600 px-2 text-[12px] text-white disabled:opacity-50">Add</button>
+            className="rounded-[20px] bg-indigo px-3 text-[13px] font-bold text-white disabled:opacity-50">Add</button>
         </div>
-      </div>
-
-      <div className="mb-2">
-        <label className={labelCls}>Status</label>
-        <select className={ctlCls} value={form.status} onChange={(e) => set('status', e.target.value as TaskStatus)}>
-          {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
       </div>
 
       {error && <p data-testid="drawer-error" className={errCls}>{error.message}</p>}
 
-      <div className="mt-2 flex gap-2">
+      <div className="flex gap-2 pt-1">
         <button data-testid="save" disabled={!ok || saving} onClick={() => { if (ok) onSave(toUpdateInput(form)); }}
-          className="rounded bg-blue-600 px-3 py-1 text-sm text-white disabled:opacity-50">Save</button>
-        <button onClick={onCancel} className="rounded border border-gray-300 px-3 py-1 text-sm">Cancel</button>
+          className="rounded-[30px] bg-indigo px-5 py-2 text-[14px] font-bold text-white shadow-[0_4px_12px_rgba(91,98,227,.35)] hover:bg-indigo600 disabled:opacity-50">Save</button>
+        <button onClick={onCancel} className="rounded-[30px] border border-line px-5 py-2 text-[14px] font-bold text-inkSoft hover:bg-bg">Cancel</button>
       </div>
     </aside>
   );

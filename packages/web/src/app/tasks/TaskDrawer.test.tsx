@@ -18,8 +18,7 @@ describe('TaskDrawer', () => {
   it('prefills from the task and saves a converted patch', () => {
     const onSave = vi.fn();
     renderWithProviders(<TaskDrawer task={task()} onSave={onSave} onCancel={vi.fn()} />, { api: emptyCategories() });
-    expect((screen.getByTestId('duration-h') as HTMLInputElement).value).toBe('1');
-    expect((screen.getByTestId('duration-m') as HTMLInputElement).value).toBe('30');
+    expect(screen.getByText('1 hr 30 min')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('save'));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
       title: 'Write spec', priority: 2, durationMs: 5_400_000, dueBy: '2026-06-01T17:00:00.000Z',
@@ -30,7 +29,9 @@ describe('TaskDrawer', () => {
   it('blocks save and shows an error when min chunk > max chunk', () => {
     const onSave = vi.fn();
     renderWithProviders(<TaskDrawer task={task()} onSave={onSave} onCancel={vi.fn()} />, { api: emptyCategories() });
-    fireEvent.change(screen.getByTestId('minchunk-h'), { target: { value: '5' } }); // 5h min > 2h max
+    // min chunk starts at 30m; 7 × +15m = 135m > the 120m max chunk
+    const inc = screen.getByRole('button', { name: 'increase min' });
+    for (let i = 0; i < 7; i++) fireEvent.click(inc);
     fireEvent.click(screen.getByTestId('save'));
     expect(onSave).not.toHaveBeenCalled();
     expect(screen.getByTestId('err-maxChunkMs')).toBeInTheDocument();
