@@ -32,7 +32,11 @@ export async function applyDesiredSchedule(
   opts: ApplyScheduleOptions,
 ): Promise<ApplyCounts> {
   const { now, horizonEnd, mirror } = opts;
-  const existing = await scheduledBlocks.listByUserInRange(userId, new Date(now), new Date(horizonEnd));
+  // The keyed map must span ALL prior placements, not just [now, horizonEnd]: engine keys
+  // (task:<id>:<chunk>, habit:<id>:<occurrence>) are horizon-relative and recur over time,
+  // so a reissued key must MOVE its old (possibly past) row — unique (userId, engineKey) —
+  // instead of colliding on create. History stays intact: the delete sweep skips past rows.
+  const existing = await scheduledBlocks.listByUserInRange(userId, new Date(0), new Date(horizonEnd));
   const pinnedIds = new Set(existing.filter((b) => b.pinned).map((b) => b.id));
   const existingByKey = new Map(
     existing.filter((b) => !b.pinned && b.engineKey).map((b) => [b.engineKey as string, b]),
@@ -68,6 +72,7 @@ export async function applyDesiredSchedule(
 
   for (const [key, block] of existingByKey) {
     if (seenKeys.has(key)) continue;
+    if (block.endsAt.getTime() <= now) continue; // ended in the past: history, not a stale placement
     await mirror?.delete(block);
     await scheduledBlocks.delete(userId, block.id);
     deleted += 1;
