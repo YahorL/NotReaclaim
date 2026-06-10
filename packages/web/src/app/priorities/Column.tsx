@@ -22,9 +22,10 @@ export interface ColumnProps {
   onComplete: (task: Task) => void;
   onEdit: (task: Task) => void;
   onDelete: (task: Task) => void;
+  onToggleSubtask: (subtaskId: string, done: boolean) => void;
 }
 
-export function Column({ bucket, tasks, now, nextMsFor, dnd, onComplete, onEdit, onDelete }: ColumnProps) {
+export function Column({ bucket, tasks, now, nextMsFor, dnd, onComplete, onEdit, onDelete, onToggleSubtask }: ColumnProps) {
   const [collapsed, setCollapsed] = useState(false);
   const isTarget = dnd.over === bucket && dnd.id !== null;
 
@@ -49,7 +50,7 @@ export function Column({ bucket, tasks, now, nextMsFor, dnd, onComplete, onEdit,
                 <TaskRow
                   key={t.id} task={t} bucket={bucket} now={now} nextMs={nextMsFor(t.id)}
                   dragging={dnd.id === t.id}
-                  onComplete={onComplete} onEdit={onEdit} onDelete={onDelete}
+                  onComplete={onComplete} onEdit={onEdit} onDelete={onDelete} onToggleSubtask={onToggleSubtask}
                   onDragStart={dnd.start} onDragEnd={dnd.end}
                 />
               ))}

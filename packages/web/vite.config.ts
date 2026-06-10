@@ -12,10 +12,12 @@ export default defineConfig({
       // client-side route (the redirect-with-token landing) and must NOT be proxied.
       '/auth/google': API,
       '/tasks': API,
+      '/subtasks': API,
       '/habits': API,
       '/settings': API,
       '/schedule': API,
       '/calendar': API,
+      '/categories': API,
       '/ws': { target: 'ws://localhost:3000', ws: true },
     },
   },

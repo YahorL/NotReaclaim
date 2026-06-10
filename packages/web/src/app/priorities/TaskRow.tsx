@@ -18,9 +18,10 @@ export interface TaskRowProps {
   onDelete: (task: Task) => void;
   onDragStart: (taskId: string) => void;
   onDragEnd: () => void;
+  onToggleSubtask: (subtaskId: string, done: boolean) => void;
 }
 
-export function TaskRow({ task, bucket, nextMs, now, dragging, onComplete, onEdit, onDelete, onDragStart, onDragEnd }: TaskRowProps) {
+export function TaskRow({ task, bucket, nextMs, now, dragging, onComplete, onEdit, onDelete, onDragStart, onDragEnd, onToggleSubtask }: TaskRowProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -60,6 +61,22 @@ export function TaskRow({ task, bucket, nextMs, now, dragging, onComplete, onEdi
             </span>
           )}
         </div>
+        {subtasks.length > 0 && (
+          <ul data-testid="card-subtasks" className="mt-1.5 space-y-1" onClick={(e) => e.stopPropagation()}>
+            {subtasks.map((s) => (
+              <li key={s.id} className="flex items-center gap-2 text-[13px]">
+                <input
+                  type="checkbox"
+                  data-testid={`card-subtask-${s.id}`}
+                  checked={s.done}
+                  onChange={() => onToggleSubtask(s.id, !s.done)}
+                  className="h-3.5 w-3.5 accent-indigo"
+                />
+                <span className={s.done ? 'text-inkSoft line-through' : 'text-ink'}>{s.title}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
       <div ref={menuRef} className="relative" onClick={(e) => e.stopPropagation()}>
         <button type="button" aria-label="task menu" onClick={() => setMenuOpen((v) => !v)} className="rounded-md p-1 text-inkSoft hover:bg-[#eef0f4]">

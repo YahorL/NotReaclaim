@@ -123,4 +123,16 @@ describe('Priorities board', () => {
     expect(screen.queryByText('Low thing')).toBeNull();
     expect(screen.getByTestId('task-drawer')).toBeInTheDocument();
   });
+
+  it('toggles a subtask from the board card without opening the drawer', async () => {
+    const updateSubtask = vi.fn(async () => ({ id: 's1', taskId: 'c1', title: 'step', done: true }));
+    const listTasks = vi.fn(async () => [
+      task({ id: 'c1', title: 'Critical thing', priority: 1, subtasks: [{ id: 's1', taskId: 'c1', title: 'step', done: false }] } as Partial<Task>),
+    ]);
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateSubtask }) });
+    await waitFor(() => expect(screen.getByText('Critical thing')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('card-subtask-s1'));
+    await waitFor(() => expect(updateSubtask).toHaveBeenCalledWith('s1', { done: true }));
+    expect(screen.queryByTestId('task-drawer')).not.toBeInTheDocument();
+  });
 });
