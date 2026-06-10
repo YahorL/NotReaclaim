@@ -70,7 +70,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose }: CreateP
       style={{ top: `${Math.min(topPct, 78)}%` }}
     >
       <div className="mb-2 flex gap-1 rounded-[10px] bg-bg p-1">
-        <button type="button" data-testid="mode-event" onClick={() => setMode('event')} className={tabCls(mode === 'event')}>Event</button>
+        <button type="button" data-testid="mode-event" onClick={() => { setMode('event'); setTaskId(''); }} className={tabCls(mode === 'event')}>Event</button>
         <button type="button" data-testid="mode-task" onClick={() => setMode('task')} className={tabCls(mode === 'task')}>Task</button>
       </div>
       {mode === 'task' && (
