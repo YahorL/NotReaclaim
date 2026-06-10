@@ -41,6 +41,11 @@ export async function applyDesiredSchedule(
   const existingByKey = new Map(
     existing.filter((b) => !b.pinned && b.engineKey).map((b) => [b.engineKey as string, b]),
   );
+  // Pinned rows are detached from engine planning but may still hold a unique
+  // (userId, engineKey) — e.g. a drag-pinned chunk, or a pinned row now in the past.
+  const pinnedKeyHolders = new Map(
+    existing.filter((b) => b.pinned && b.engineKey).map((b) => [b.engineKey as string, b]),
+  );
 
   const desiredNew = desired.blocks.filter((b) => !pinnedIds.has(b.id));
 
@@ -59,6 +64,11 @@ export async function applyDesiredSchedule(
         updated += 1;
       }
       continue;
+    }
+    const holder = pinnedKeyHolders.get(block.id);
+    if (holder) {
+      // Release the key from the pinned holder so the reissued placement can be created.
+      await scheduledBlocks.update(userId, holder.id, { engineKey: null });
     }
     const ids = mirror ? await mirror.create(block) : null;
     await scheduledBlocks.create(userId, {
