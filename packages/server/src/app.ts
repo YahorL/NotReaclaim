@@ -31,13 +31,13 @@ export interface AppDeps {
     tasks: TaskRepository;
     habits: HabitRepository;
     scheduledBlocks: Pick<ScheduledBlockRepository, 'listByUserInRange' | 'update'>;
-    calendarEvents: Pick<CalendarEventRepository, 'listByUserInRange'>;
+    calendarEvents: Pick<CalendarEventRepository, 'listByUserInRange' | 'create' | 'setGoogleIds'>;
     categories: CategoryRepository;
     subtasks: SubtaskRepository;
   };
   google: {
-    client: Pick<GoogleClient, 'getConsentUrl'>;
-    tokens: Pick<TokenService, 'connectFromCode'>;
+    client: Pick<GoogleClient, 'getConsentUrl' | 'insertEvent'>;
+    tokens: Pick<TokenService, 'connectFromCode' | 'getAccessToken'>;
   };
   schedulingRepos: SchedulingRepositories;
   reconcile: (userId: string, now: number) => Promise<ReconcileResult>;
@@ -102,7 +102,7 @@ export function buildApp(input: Omit<AppDeps, 'now'> & { now?: () => number }): 
   registerHabitRoutes(app, deps, afterMutation);
   registerSettingsRoutes(app, deps, afterMutation);
   registerScheduleRoutes(app, deps, afterMutation);
-  registerCalendarRoutes(app, deps);
+  registerCalendarRoutes(app, deps, afterMutation);
   registerCategoryRoutes(app, deps, afterMutation);
   registerSubtaskRoutes(app, deps);
 

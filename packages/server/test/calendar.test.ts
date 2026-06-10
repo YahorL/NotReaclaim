@@ -68,3 +68,49 @@ describe('calendar routes', () => {
     expect((outOfRange.json() as CalendarEvent[])).toHaveLength(0);
   });
 });
+
+describe('POST /calendar/events', () => {
+  const body = { title: 'Standup', startsAt: '2026-01-06T09:00:00.000Z', endsAt: '2026-01-06T09:30:00.000Z' };
+
+  it('creates a local event (null google ids), reflows, returns 201', async () => {
+    const { app, reconcileCalls } = buildTestApp();
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'POST', url: '/calendar/events', headers: { authorization: `Bearer ${token}` }, payload: body });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().title).toBe('Standup');
+    expect(res.json().googleEventId).toBeNull();
+    expect(reconcileCalls.length).toBeGreaterThan(0); // afterMutation reflow fired
+  });
+
+  it('writes back to the primary Google calendar when connected', async () => {
+    const inserted: Array<{ calendarId: string; summary: string }> = [];
+    const { app } = buildTestApp({
+      accessToken: 'at-1',
+      insertEvent: async (_t, calendarId, ev) => { inserted.push({ calendarId, summary: ev.summary }); return { googleEventId: 'g-new' }; },
+    });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'POST', url: '/calendar/events', headers: { authorization: `Bearer ${token}` }, payload: body });
+    expect(res.statusCode).toBe(201);
+    expect(inserted).toEqual([{ calendarId: 'primary', summary: 'Standup' }]);
+    expect(res.json().googleEventId).toBe('g-new');
+    expect(res.json().googleCalendarId).toBe('primary');
+  });
+
+  it('stays local when the write-back fails', async () => {
+    const { app } = buildTestApp({
+      accessToken: 'at-1',
+      insertEvent: async () => { throw new Error('google down'); },
+    });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'POST', url: '/calendar/events', headers: { authorization: `Bearer ${token}` }, payload: body });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().googleEventId).toBeNull();
+  });
+
+  it('rejects an inverted range with 400', async () => {
+    const { app } = buildTestApp();
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'POST', url: '/calendar/events', headers: { authorization: `Bearer ${token}` }, payload: { ...body, endsAt: '2026-01-06T08:00:00.000Z' } });
+    expect(res.statusCode).toBe(400);
+  });
+});
