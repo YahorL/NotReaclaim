@@ -49,7 +49,21 @@ export function useUpdateScheduledBlockMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: UpdateScheduledBlockInput }) => api.updateScheduledBlock(id, patch),
-    onSuccess: () => {
+    // Optimistic: patch every cached schedule LIST so the released block renders in place
+    // immediately. The preview entry (['schedule','preview']) shares the root but holds a
+    // non-array SchedulePreview — the Array.isArray guard passes it through untouched.
+    onMutate: async ({ id, patch }) => {
+      await qc.cancelQueries({ queryKey: queryKeys.scheduleRoot });
+      const snapshots = qc.getQueriesData<unknown>({ queryKey: queryKeys.scheduleRoot });
+      qc.setQueriesData<unknown>({ queryKey: queryKeys.scheduleRoot }, (old: unknown) =>
+        Array.isArray(old) ? old.map((b: { id: string }) => (b.id === id ? { ...b, ...patch } : b)) : old,
+      );
+      return { snapshots };
+    },
+    onError: (_err, _vars, ctx) => {
+      ctx?.snapshots.forEach(([key, data]) => qc.setQueryData(key, data));
+    },
+    onSettled: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.scheduleRoot });
     },
   });
