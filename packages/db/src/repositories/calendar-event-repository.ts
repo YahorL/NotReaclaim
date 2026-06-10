@@ -1,5 +1,5 @@
 import type { PrismaClient, CalendarEvent } from '@prisma/client';
-import { NotFoundError } from '../errors.js';
+import { NotFoundError, translatePrismaError } from '../errors.js';
 
 export interface CreateCalendarEventInput {
   title: string;
@@ -24,11 +24,16 @@ export function createCalendarEventRepository(prisma: PrismaClient) {
 
     /** Attach Google ids after a successful write-back. Throws NotFound for other users' events. */
     async setGoogleIds(userId: string, id: string, googleCalendarId: string, googleEventId: string): Promise<CalendarEvent> {
-      const result = await prisma.calendarEvent.updateMany({ where: { id, userId }, data: { googleCalendarId, googleEventId } });
-      if (result.count === 0) {
-        throw new NotFoundError(`CalendarEvent ${id} not found for user`);
+      try {
+        const result = await prisma.calendarEvent.updateMany({ where: { id, userId }, data: { googleCalendarId, googleEventId } });
+        if (result.count === 0) {
+          throw new NotFoundError(`CalendarEvent ${id}`);
+        }
+        return await prisma.calendarEvent.findUniqueOrThrow({ where: { id } });
+      } catch (error) {
+        if (error instanceof NotFoundError) throw error;
+        translatePrismaError(error);
       }
-      return prisma.calendarEvent.findUniqueOrThrow({ where: { id } });
     },
 
     /** Events whose [startsAt, endsAt) overlaps [start, end). */
