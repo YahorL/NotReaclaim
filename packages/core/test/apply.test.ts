@@ -132,3 +132,26 @@ describe('planLocally', () => {
       .rejects.toBeInstanceOf(SettingsRequiredError);
   });
 });
+
+describe('applyDesiredSchedule across time (stale past blocks)', () => {
+  const LATER = Date.parse('2026-01-12T00:00:00.000Z'); // a week after the seeded block
+  const LATER_HORIZON = LATER + 24 * 60 * 60 * 1000;
+
+  it('moves a stale past block forward when the engine reuses its key (no unique collision)', async () => {
+    const repo = fakeRepo([dbBlock()]); // task:t1:0 placed 2026-01-05, entirely in the past
+    const reissued = eBlock({ start: Date.parse('2026-01-12T09:00:00.000Z'), end: Date.parse('2026-01-12T10:00:00.000Z') });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([reissued]), { now: LATER, horizonEnd: LATER_HORIZON });
+    expect(res).toEqual({ created: 0, updated: 1, deleted: 0 });
+    expect(repo.create).not.toHaveBeenCalled();
+    expect(repo.update).toHaveBeenCalledWith('u1', 'b1', {
+      startsAt: new Date('2026-01-12T09:00:00.000Z'), endsAt: new Date('2026-01-12T10:00:00.000Z'),
+    });
+  });
+
+  it('preserves past blocks whose keys are no longer desired (history kept)', async () => {
+    const repo = fakeRepo([dbBlock()]); // key task:t1:0 not desired anymore
+    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: LATER, horizonEnd: LATER_HORIZON });
+    expect(res).toEqual({ created: 0, updated: 0, deleted: 0 });
+    expect(repo.delete).not.toHaveBeenCalled();
+  });
+});
