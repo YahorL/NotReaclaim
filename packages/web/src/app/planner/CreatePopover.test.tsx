@@ -58,4 +58,42 @@ describe('CreatePopover', () => {
     fireEvent.click(screen.getByRole('button', { name: 'increase slot' }));
     expect(screen.getByTestId('slot-label').textContent).toMatch(/09:45 PM.*10:00 PM|21:45.*22:00/); // still capped at 15 min
   });
+
+  it('pins an existing task at the slot instead of creating a new one', async () => {
+    const onClose = vi.fn();
+    const listTasks = vi.fn(async () => [
+      { id: 't1', userId: 'u1', title: 'Existing job', priority: 2, durationMs: 3_600_000, dueBy: '2026-01-09T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1, categoryId: null, status: 'pending', timeLoggedMs: 0, createdAt: '', updatedAt: '' },
+      { id: 't2', userId: 'u1', title: 'Done job', priority: 2, durationMs: 1, dueBy: '2026-01-09T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1, categoryId: null, status: 'completed', timeLoggedMs: 0, createdAt: '', updatedAt: '' },
+    ]);
+    const createTask = vi.fn();
+    const createScheduledBlock = vi.fn(async () => ({ id: 'b-1' }));
+    renderWithProviders(<CreatePopover {...baseProps} onClose={onClose} />, { api: fakeApiClient({ listTasks, createTask, createScheduledBlock } as never) });
+    fireEvent.click(screen.getByTestId('mode-task'));
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Existing job' })).toBeInTheDocument());
+    expect(screen.queryByRole('option', { name: 'Done job' })).not.toBeInTheDocument(); // completed filtered out
+    fireEvent.change(screen.getByTestId('task-select'), { target: { value: 't1' } });
+    expect(screen.queryByTestId('create-title')).not.toBeInTheDocument(); // title hidden for existing
+    const submit = screen.getByTestId('create-submit');
+    expect(submit).not.toBeDisabled();
+    expect(submit).toHaveTextContent(/schedule task/i);
+    fireEvent.click(submit);
+    await waitFor(() => expect(createScheduledBlock).toHaveBeenCalledWith({
+      taskId: 't1', startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T09:30:00.000Z',
+    }));
+    expect(createTask).not.toHaveBeenCalled();
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it('picker defaults to "new task" and keeps the create flow', async () => {
+    const listTasks = vi.fn(async () => []);
+    const createTask = vi.fn(async () => ({ id: 't-9' }));
+    const createScheduledBlock = vi.fn(async () => ({ id: 'b-9' }));
+    renderWithProviders(<CreatePopover {...baseProps} />, { api: fakeApiClient({ listTasks, createTask, createScheduledBlock } as never) });
+    fireEvent.click(screen.getByTestId('mode-task'));
+    expect((screen.getByTestId('task-select') as HTMLSelectElement).value).toBe('');
+    expect(screen.getByTestId('create-title')).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('create-title'), { target: { value: 'Fresh' } });
+    fireEvent.click(screen.getByTestId('create-submit'));
+    await waitFor(() => expect(createTask).toHaveBeenCalled());
+  });
 });

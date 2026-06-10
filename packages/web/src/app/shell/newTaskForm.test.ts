@@ -10,7 +10,7 @@ describe('newTaskForm', () => {
     expect(s.split).toBe(true);
     expect(s.minChunkMs).toBe(900_000);
     expect(s.maxChunkMs).toBe(5_400_000);
-    expect(toCreateTaskInput(s).dueBy).toBe('2026-01-12T00:00:00.000Z');
+    expect(toCreateTaskInput(s).dueBy).toBe('2026-01-12T23:59:00.000Z');
   });
 
   it('falls back to 30m/120m chunk when no settings', () => {
@@ -52,8 +52,20 @@ describe('newTaskForm', () => {
 
   it('round-trips notBeforeLocal to notBefore (set and empty→null)', () => {
     const base = defaultNewTaskForm(Date.parse('2026-01-05T00:00:00.000Z'));
-    expect(toCreateTaskInput({ ...base, title: 'X' }).notBefore).toBeNull();
+    expect(toCreateTaskInput({ ...base, title: 'X', notBeforeLocal: '' }).notBefore).toBeNull();
     const out = toCreateTaskInput({ ...base, title: 'X', notBeforeLocal: '2026-01-06T13:00' });
     expect(out.notBefore).toBe(new Date('2026-01-06T13:00').toISOString());
+  });
+});
+
+describe('defaultNewTaskForm default times', () => {
+  const NOW = Date.parse('2026-01-07T15:30:00.000Z'); // a Wednesday afternoon
+
+  it('defaults Schedule after to today 08:00 local', () => {
+    expect(defaultNewTaskForm(NOW).notBeforeLocal).toBe('2026-01-07T08:00');
+  });
+
+  it('defaults Due date to one week out at 23:59 local', () => {
+    expect(defaultNewTaskForm(NOW).dueByLocal).toBe('2026-01-14T23:59');
   });
 });
