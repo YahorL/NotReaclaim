@@ -90,10 +90,18 @@ export function fakeSettingsRepo(seed: Settings | null = null) {
 }
 
 export function fakeScheduledBlockRepo(seed: ScheduledBlock[] = []) {
-  const rows = [...seed];
+  let rows = [...seed];
   return {
     async listByUserInRange(userId: string, start: Date, end: Date): Promise<ScheduledBlock[]> {
       return rows.filter((b) => b.userId === userId && b.startsAt < end && b.endsAt > start);
+    },
+    async create(userId: string, data: Record<string, unknown>): Promise<ScheduledBlock> {
+      const row = {
+        id: `block-${rows.length + 1}`, userId, taskId: null, habitId: null, title: '',
+        pinned: false, googleEventId: null, googleCalendarId: null, engineKey: null,
+        createdAt: new Date(0), updatedAt: new Date(0), ...data,
+      } as ScheduledBlock;
+      rows.push(row); return row;
     },
     async update(userId: string, id: string, data: Partial<ScheduledBlock>): Promise<ScheduledBlock> {
       const row = rows.find((b) => b.id === id && b.userId === userId);

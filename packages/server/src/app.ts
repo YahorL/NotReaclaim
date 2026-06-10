@@ -30,7 +30,7 @@ export interface AppDeps {
     settings: SettingsRepository;
     tasks: TaskRepository;
     habits: HabitRepository;
-    scheduledBlocks: Pick<ScheduledBlockRepository, 'listByUserInRange' | 'update'>;
+    scheduledBlocks: Pick<ScheduledBlockRepository, 'listByUserInRange' | 'update' | 'create'>;
     calendarEvents: Pick<CalendarEventRepository, 'listByUserInRange' | 'create' | 'setGoogleIds'>;
     categories: CategoryRepository;
     subtasks: SubtaskRepository;

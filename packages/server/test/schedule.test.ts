@@ -99,3 +99,33 @@ describe('schedule routes', () => {
     expect(res.statusCode).toBe(400);
   });
 });
+
+describe('POST /schedule', () => {
+  const seedTask = { id: 'task-1', userId: 'u1', title: 'Deep work', priority: 2, durationMs: 3_600_000,
+    dueBy: new Date('2026-01-09T17:00:00.000Z'), minChunkMs: 3_600_000, maxChunkMs: 3_600_000, categoryId: null,
+    notBefore: null, status: 'pending', timeLoggedMs: 0, createdAt: new Date(0), updatedAt: new Date(0), subtasks: [] };
+  const body = { taskId: 'task-1', startsAt: '2026-01-06T09:00:00.000Z', endsAt: '2026-01-06T10:00:00.000Z' };
+
+  it('creates a pinned block for an owned task, reflows, 201', async () => {
+    const { app, reconcileCalls } = buildTestApp({ tasks: [seedTask as never] });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'POST', url: '/schedule', headers: { authorization: `Bearer ${token}` }, payload: body });
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toMatchObject({ taskId: 'task-1', title: 'Deep work', pinned: true, engineKey: null });
+    expect(reconcileCalls.length).toBeGreaterThan(0);
+  });
+
+  it('404s for a task that is not yours', async () => {
+    const { app } = buildTestApp({ tasks: [{ ...seedTask, userId: 'someone-else' } as never] });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'POST', url: '/schedule', headers: { authorization: `Bearer ${token}` }, payload: body });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('400s an inverted range', async () => {
+    const { app } = buildTestApp({ tasks: [seedTask as never] });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'POST', url: '/schedule', headers: { authorization: `Bearer ${token}` }, payload: { ...body, endsAt: '2026-01-06T08:00:00.000Z' } });
+    expect(res.statusCode).toBe(400);
+  });
+});
