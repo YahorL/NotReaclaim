@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Task } from '../../api/types';
 import { ApiError } from '../../api/client';
-import { useTasksQuery, useSchedulePreviewQuery, useUpdateTaskMutation, useDeleteTaskMutation } from '../../api/queries';
+import { useTasksQuery, useSchedulePreviewQuery, useUpdateTaskMutation, useDeleteTaskMutation, useUpdateSubtaskMutation } from '../../api/queries';
 import { TaskDrawer } from '../tasks/TaskDrawer';
 import { Toolbar } from '../priorities/Toolbar';
 import { Board, type BoardColumn } from '../priorities/Board';
@@ -12,6 +12,8 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
   const previewQ = useSchedulePreviewQuery();
   const updateM = useUpdateTaskMutation();
   const deleteM = useDeleteTaskMutation();
+  const subtaskM = useUpdateSubtaskMutation();
+  const onToggleSubtask = (subtaskId: string, done: boolean) => subtaskM.mutate({ id: subtaskId, patch: { done } });
 
   const [query, setQuery] = useState('');
   const [hideCompleted, setHideCompleted] = useState(false);
@@ -60,7 +62,7 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
         {!tasksQ.isLoading && !tasksQ.isError && (
           <Board
             columns={columns} now={nowMs} nextMsFor={nextMsFor}
-            onMove={onMove} onComplete={onComplete} onEdit={(t) => setEditingId(t.id)} onDelete={onDelete}
+            onMove={onMove} onComplete={onComplete} onEdit={(t) => setEditingId(t.id)} onDelete={onDelete} onToggleSubtask={onToggleSubtask}
           />
         )}
       </div>
