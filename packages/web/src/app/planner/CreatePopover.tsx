@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../../api/client';
 import { useCreateTaskMutation, useCreateCalendarEventMutation, useCreateScheduledBlockMutation } from '../../api/queries';
 import { DurationStepper } from '../components/DurationStepper';
+import { WINDOW_END_MIN } from './weekModel';
 
 const iso = (ms: number): string => new Date(ms).toISOString();
 const fmt = (ms: number): string => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -18,7 +19,8 @@ type Mode = 'event' | 'task';
 export function CreatePopover({ dayStartMs, startMin, topPct, onClose }: CreatePopoverProps) {
   const [mode, setMode] = useState<Mode>('event');
   const [title, setTitle] = useState('');
-  const [durationMs, setDurationMs] = useState(30 * 60_000);
+  const maxDurationMs = (WINDOW_END_MIN - startMin) * 60_000;
+  const [durationMs, setDurationMs] = useState(Math.min(30 * 60_000, maxDurationMs));
   const ref = useRef<HTMLDivElement>(null);
   const createTaskM = useCreateTaskMutation();
   const createEventM = useCreateCalendarEventMutation();
@@ -75,7 +77,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose }: CreateP
         className="mb-2 w-full rounded-[9px] border-[1.5px] border-line px-2.5 py-1.5 text-[14px] font-semibold outline-none focus:border-indigo"
       />
       <div className="mb-1 rounded-[9px] border-[1.5px] border-line px-2.5 py-1.5">
-        <DurationStepper label="slot" size={20} valueMs={durationMs} onChange={setDurationMs} />
+        <DurationStepper label="slot" size={20} valueMs={durationMs} onChange={(ms) => setDurationMs(Math.max(15 * 60_000, Math.min(ms, maxDurationMs)))} />
       </div>
       <p data-testid="slot-label" className="mb-2 text-[12px] font-semibold text-inkSoft">{fmt(startMs)} – {fmt(endMs)}</p>
       {apiError && <p data-testid="create-error" className="mb-2 text-[11px] text-crit">{apiError.message}</p>}
