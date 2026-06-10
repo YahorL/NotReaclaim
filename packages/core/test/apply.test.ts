@@ -134,6 +134,18 @@ describe('planLocally', () => {
 });
 
 describe('applyDesiredSchedule across time (stale past blocks)', () => {
+  it('releases the engineKey from a pinned holder when the engine reissues its key', async () => {
+    // e.g. a drag-pinned chunk keeps its key while the engine re-emits task:t1:0 for residual work
+    const pinnedHolder = dbBlock({ id: 'p1', pinned: true });
+    const repo = fakeRepo([pinnedHolder]);
+    const reissued = eBlock({ start: Date.parse('2026-01-05T11:00:00.000Z'), end: Date.parse('2026-01-05T12:00:00.000Z') });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([reissued]), { now: NOW, horizonEnd: HORIZON });
+    expect(res).toEqual({ created: 1, updated: 0, deleted: 0 });
+    expect(repo.update).toHaveBeenCalledWith('u1', 'p1', { engineKey: null });
+    expect(repo.create).toHaveBeenCalledWith('u1', expect.objectContaining({ engineKey: 'task:t1:0' }));
+    expect(repo.delete).not.toHaveBeenCalled(); // the pinned row itself is untouched apart from the key release
+  });
+
   const LATER = Date.parse('2026-01-12T00:00:00.000Z'); // a week after the seeded block
   const LATER_HORIZON = LATER + 24 * 60 * 60 * 1000;
 
