@@ -103,6 +103,24 @@ export function pxToMinutes(px: number): number {
   return (px / GRID_COLUMN_PX) * (WINDOW_END_MIN - WINDOW_START_MIN);
 }
 
+/** Convert a signed minute delta to a signed pixel delta within a day column (inverse of pxToMinutes). */
+export function minutesToPx(min: number): number {
+  return (min / (WINDOW_END_MIN - WINDOW_START_MIN)) * GRID_COLUMN_PX;
+}
+
+/** Shift a timestamp by whole days via local-date arithmetic (DST-safe; preserves wall-clock time). */
+export function shiftDays(ms: number, days: number): number {
+  if (days === 0) return ms;
+  const d = new Date(ms);
+  d.setDate(d.getDate() + days);
+  return d.getTime();
+}
+
+/** Clamp a horizontal day delta so dayIndex + delta stays within the rendered week (0..6). */
+export function clampDayDelta(dayIndex: number, delta: number): number {
+  return Math.max(-dayIndex, Math.min(6 - dayIndex, delta)) || 0;
+}
+
 /** Keep [startMin, startMin+durationMin] inside the [WINDOW_START_MIN, WINDOW_END_MIN] window. */
 export function clampToWindow(startMin: number, durationMin: number): { startMin: number; endMin: number } {
   let s = Math.max(WINDOW_START_MIN, startMin);
