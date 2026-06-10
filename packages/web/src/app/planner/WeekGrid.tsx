@@ -179,6 +179,7 @@ export function WeekGrid(props: WeekGridProps) {
                       startMin={creating.startMin}
                       topPct={((creating.startMin - WINDOW_START_MIN) / (WINDOW_END_MIN - WINDOW_START_MIN)) * 100}
                       onClose={() => setCreating(null)}
+                      align={i <= 3 ? 'left' : 'right'}
                     />
                   )}
                 </div>

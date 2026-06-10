@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
-import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation } from '../../api/queries';
+import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useTasksQuery } from '../../api/queries';
 import { startOfWeek, dayColumns, addWeeks } from '../planner/weekModel';
 import { WeekGrid } from '../planner/WeekGrid';
 import { AtRiskPanel } from '../planner/AtRiskPanel';
+import { labelBlocksWithSubtasks } from '../planner/blockLabels';
 
 function weekLabel(days: number[]): string {
   const fmt = (ms: number) => new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric' });
@@ -19,8 +20,14 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const schedule = useScheduleQuery(fromIso, toIso);
   const calendar = useCalendarEventsQuery(fromIso, toIso);
   const preview = useSchedulePreviewQuery();
+  const tasksQ = useTasksQuery();
   const replan = useReplanMutation();
   const updateBlock = useUpdateScheduledBlockMutation();
+
+  const labeledBlocks = useMemo(
+    () => labelBlocksWithSubtasks(schedule.data ?? [], tasksQ.data ?? []),
+    [schedule.data, tasksQ.data],
+  );
 
   const isLoading = schedule.isLoading || calendar.isLoading || preview.isLoading;
   const isError = schedule.isError || calendar.isError || preview.isError;
@@ -47,7 +54,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           days={days}
           nowMs={nowMs}
           weekLabel={weekLabel(days)}
-          blocks={schedule.data ?? []}
+          blocks={labeledBlocks}
           events={calendar.data ?? []}
           replanPending={replan.isPending}
           onPrev={() => setWeekStartMs((ms) => addWeeks(ms, -1))}
