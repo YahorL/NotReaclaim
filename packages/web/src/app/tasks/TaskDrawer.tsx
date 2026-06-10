@@ -48,10 +48,6 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
         {errors.durationMs && <p data-testid="err-durationMs" className={errCls}>{errors.durationMs}</p>}
       </div>
 
-      <FieldBox label="Priority (lower = scheduled first)">
-        <input type="number" className={ctl} value={form.priority} onChange={(e) => set('priority', Number(e.target.value))} />
-      </FieldBox>
-
       <div>
         <FieldBox label="Due by">
           <input type="datetime-local" className={ctl} value={form.dueByLocal} onChange={(e) => set('dueByLocal', e.target.value)} />

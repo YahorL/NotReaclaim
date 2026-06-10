@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
-import type { ScheduledBlock, CalendarEvent, SchedulePreview } from '../../api/types';
+import type { ScheduledBlock, CalendarEvent, SchedulePreview, Task } from '../../api/types';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 import { Planner } from './Planner';
 
@@ -28,6 +28,7 @@ function makeApi(over = {}) {
     getSchedulePreview: vi.fn(async () => preview),
     replan: vi.fn(async () => ({ created: 1, updated: 0, deleted: 0, pinned: 0, removed: 0 })),
     updateScheduledBlock: vi.fn(async () => blocks[0]!),
+    listTasks: vi.fn(async () => [] as Task[]),
     ...over,
   } as never);
 }
@@ -60,5 +61,17 @@ describe('Planner', () => {
     await waitFor(() => expect(getSchedule).toHaveBeenCalledTimes(2));
     const secondFrom = (getSchedule.mock.calls[1]! as unknown[])[0];
     expect(secondFrom).not.toBe(firstFrom);
+  });
+
+  it('block label shows "Task: subtask" when task has an open subtask', async () => {
+    const taskWithSubtask: Task = {
+      id: 't1', userId: 'u1', title: 'Write spec', priority: 2, sortOrder: 0,
+      durationMs: 3_600_000, dueBy: '2026-01-10T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1,
+      categoryId: null, status: 'pending', timeLoggedMs: 0, createdAt: '', updatedAt: '',
+      subtasks: [{ id: 's1', taskId: 't1', title: 'outline', done: false }],
+    };
+    const api = makeApi({ listTasks: vi.fn(async () => [taskWithSubtask]) });
+    renderWithProviders(<Planner now={() => NOW} />, { api });
+    await waitFor(() => expect(screen.getByText('Write spec: outline')).toBeInTheDocument());
   });
 });

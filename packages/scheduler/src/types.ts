@@ -16,6 +16,8 @@ export interface FlexibleTask {
   id: string;
   title: string;
   priority: number;
+  /** User-chosen order among same-priority tasks (board position); lower first. Defaults to 0. */
+  sortOrder?: number;
   /** Total work time required, in ms. */
   durationMs: number;
   /** Deadline: every placed chunk must end at or before this epoch ms. */

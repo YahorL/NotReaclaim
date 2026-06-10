@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
-import type { Task } from '../../api/types';
+import type { Task, UpdateTaskInput } from '../../api/types';
 import { ApiError } from '../../api/client';
 import { useTasksQuery, useSchedulePreviewQuery, useUpdateTaskMutation, useDeleteTaskMutation, useUpdateSubtaskMutation } from '../../api/queries';
 import { TaskDrawer } from '../tasks/TaskDrawer';
 import { Toolbar } from '../priorities/Toolbar';
 import { Board, type BoardColumn } from '../priorities/Board';
-import { type BucketKey, BUCKETS, priorityToBucket, bucketToPriority, nextBlockMsForTask } from '../priorities/priorityBucket';
+import { type BucketKey, BUCKETS, priorityToBucket, bucketToPriority, nextBlockMsForTask, sortBucket, insertionSortOrder } from '../priorities/priorityBucket';
 
 export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
   const tasksQ = useTasksQuery();
@@ -31,17 +31,26 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
       && (!q || t.title.toLowerCase().includes(q)));
     return BUCKETS.filter((b) => colsVisible[b]).map((key) => ({
       key,
-      tasks: visible.filter((t) => priorityToBucket(t.priority) === key),
+      tasks: sortBucket(visible.filter((t) => priorityToBucket(t.priority) === key)),
     }));
   }, [tasksQ.data, query, hideCompleted, colsVisible]);
 
   const nextMsFor = (taskId: string) => nextBlockMsForTask(taskId, previewQ.data);
   const onComplete = (t: Task) => updateM.mutate({ id: t.id, patch: { status: t.status === 'completed' ? 'pending' : 'completed' } });
   const onDelete = (t: Task) => deleteM.mutate(t.id, { onSuccess: () => { if (editingId === t.id) setEditingId(null); } });
-  const onMove = (taskId: string, to: BucketKey) => {
-    const t = (tasksQ.data ?? []).find((x) => x.id === taskId);
-    if (!t || priorityToBucket(t.priority) === to) return;
-    updateM.mutate({ id: taskId, patch: { priority: bucketToPriority(to) } });
+  const onMove = (taskId: string, to: BucketKey, index: number) => {
+    const all = tasksQ.data ?? [];
+    const t = all.find((x) => x.id === taskId);
+    if (!t) return;
+    const column = columns.find((c) => c.key === to);
+    const colTasks = column?.tasks ?? [];
+    const sourceIndex = colTasks.findIndex((x) => x.id === taskId);
+    const adjustedIndex = sourceIndex !== -1 && sourceIndex < index ? index - 1 : index;
+    const neighbors = colTasks.filter((x) => x.id !== taskId);
+    const sortOrder = insertionSortOrder(neighbors, adjustedIndex);
+    const patch: UpdateTaskInput = { sortOrder };
+    if (priorityToBucket(t.priority) !== to) patch.priority = bucketToPriority(to);
+    updateM.mutate({ id: taskId, patch });
   };
 
   return (

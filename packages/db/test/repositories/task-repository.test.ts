@@ -64,4 +64,30 @@ describe('TaskRepository', () => {
     const cleared = await repo.update(user.id, created.id, { notBefore: null });
     expect(cleared.notBefore).toBeNull();
   });
+
+  it('defaults sortOrder to max+1 within the user (bottom of the board)', async () => {
+    const user = await users.create({ email: 'so1@example.com' });
+    const a = await repo.create(user.id, taskInput({ title: 'A' }));
+    expect(a.sortOrder).toBe(1); // empty board → 0 + 1
+    const b = await repo.create(user.id, taskInput({ title: 'B' }));
+    expect(b.sortOrder).toBe(2);
+    const explicit = await repo.create(user.id, taskInput({ title: 'C', sortOrder: 1.5 }));
+    expect(explicit.sortOrder).toBe(1.5);
+  });
+
+  it('lists by priority, then sortOrder, then dueBy', async () => {
+    const user = await users.create({ email: 'so2@example.com' });
+    await repo.create(user.id, taskInput({ title: 'second', priority: 2, sortOrder: 5 }));
+    await repo.create(user.id, taskInput({ title: 'first', priority: 2, sortOrder: 1 }));
+    await repo.create(user.id, taskInput({ title: 'crit', priority: 1, sortOrder: 99 }));
+    const titles = (await repo.listByUser(user.id)).map((t) => t.title);
+    expect(titles).toEqual(['crit', 'first', 'second']);
+  });
+
+  it('updates sortOrder via update()', async () => {
+    const user = await users.create({ email: 'so3@example.com' });
+    const t = await repo.create(user.id, taskInput({ title: 'T' }));
+    const moved = await repo.update(user.id, t.id, { sortOrder: 0.25 });
+    expect(moved.sortOrder).toBe(0.25);
+  });
 });

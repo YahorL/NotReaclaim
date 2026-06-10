@@ -96,4 +96,24 @@ describe('CreatePopover', () => {
     fireEvent.click(screen.getByTestId('create-submit'));
     await waitFor(() => expect(createTask).toHaveBeenCalled());
   });
+
+  it('default align renders left-1 class', () => {
+    renderWithProviders(<CreatePopover {...baseProps} />, { api: fakeApiClient() });
+    const popover = screen.getByTestId('create-popover');
+    expect(popover.className).toContain('left-1');
+    expect(popover.className).not.toContain('right-1');
+  });
+
+  it('align="right" renders right-1 and not left-1', () => {
+    renderWithProviders(<CreatePopover {...baseProps} align="right" />, { api: fakeApiClient() });
+    const popover = screen.getByTestId('create-popover');
+    expect(popover.className).toContain('right-1');
+    expect(popover.className).not.toContain('left-1');
+  });
+
+  it('popover has w-[340px] width class', () => {
+    renderWithProviders(<CreatePopover {...baseProps} />, { api: fakeApiClient() });
+    const popover = screen.getByTestId('create-popover');
+    expect(popover.className).toContain('w-[340px]');
+  });
 });

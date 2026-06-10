@@ -79,6 +79,7 @@ model Task {
   userId       String
   title        String
   priority     Int
+  sortOrder    Float    @default(0)
   durationMs   Int
   dueBy        DateTime   @db.Timestamptz
   notBefore    DateTime?  @db.Timestamptz

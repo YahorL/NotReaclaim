@@ -7,7 +7,7 @@ import { Priorities } from './Priorities';
 const NOW = Date.parse('2026-01-07T12:00:00.000Z');
 
 const task = (over: Partial<Task> = {}): Task => ({
-  id: 't1', userId: 'u1', title: 'Write spec', priority: 2, durationMs: 3_600_000,
+  id: 't1', userId: 'u1', title: 'Write spec', priority: 2, sortOrder: 0, durationMs: 3_600_000,
   dueBy: '2026-06-01T17:00:00.000Z', minChunkMs: 1_800_000, maxChunkMs: 7_200_000,
   categoryId: null, status: 'pending', timeLoggedMs: 0,
   createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', ...over,
@@ -87,10 +87,66 @@ describe('Priorities board', () => {
     await waitFor(() => expect(screen.getByText('Low thing')).toBeInTheDocument());
     const row = screen.getByText('Low thing').closest('[data-testid="task-row"]')! as HTMLElement;
     const target = screen.getByTestId('column-critical');
-    fireEvent.dragStart(row, { dataTransfer: dataTransfer() });
-    fireEvent.dragOver(target, { dataTransfer: dataTransfer() });
-    fireEvent.drop(target, { dataTransfer: dataTransfer() });
-    await waitFor(() => expect(updateTask).toHaveBeenCalledWith('l1', { priority: 1 }));
+    const dt = dataTransfer();
+    fireEvent.dragStart(row, { dataTransfer: dt });
+    fireEvent.dragOver(target, { dataTransfer: dt });
+    fireEvent.drop(target, { dataTransfer: dt });
+    // critical has one task (sortOrder:0); drop to bottom → sortOrder 0+1=1; cross-column → priority: 1
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith('l1', { priority: 1, sortOrder: 1 }));
+  });
+
+  it('reorders within a column via drag (midpoint sortOrder, same priority)', async () => {
+    const updateTask = vi.fn(async () => task());
+    const listTasks = vi.fn(async () => [
+      task({ id: 'a', title: 'Alpha', priority: 2, sortOrder: 1 }),
+      task({ id: 'b', title: 'Beta', priority: 2, sortOrder: 2 }),
+      task({ id: 'c', title: 'Gamma', priority: 2, sortOrder: 3 }),
+    ]);
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateTask }) });
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
+    const rows = screen.getAllByTestId('task-row');
+    const dt = dataTransfer();
+    // jsdom rects are all-zero so r.height > 0 short-circuits and any clientY means "insert above the hovered row"
+    // drag Gamma over the TOP half of Alpha → insertion index 0 → sortOrder 1 - 1 = 0
+    fireEvent.dragStart(rows[2]!, { dataTransfer: dt });
+    fireEvent.dragOver(rows[0]!, { dataTransfer: dt, clientY: 0 });
+    fireEvent.drop(screen.getByTestId('column-high'), { dataTransfer: dt });
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith('c', { sortOrder: 0 }));
+  });
+
+  it('drags the first task DOWN within a column without off-by-one', async () => {
+    const updateTask = vi.fn(async () => task());
+    const listTasks = vi.fn(async () => [
+      task({ id: 'a', title: 'Alpha', priority: 2, sortOrder: 1 }),
+      task({ id: 'b', title: 'Beta', priority: 2, sortOrder: 2 }),
+      task({ id: 'c', title: 'Gamma', priority: 2, sortOrder: 3 }),
+    ]);
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateTask }) });
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
+    const rows = screen.getAllByTestId('task-row');
+    const dt = dataTransfer();
+    // jsdom rects are all-zero so r.height > 0 short-circuits and any clientY means "insert above the hovered row"
+    // drag Alpha over Gamma (insert above Gamma, i.e. between Beta and Gamma)
+    fireEvent.dragStart(rows[0]!, { dataTransfer: dt });
+    fireEvent.dragOver(rows[2]!, { dataTransfer: dt, clientY: 0 });
+    fireEvent.drop(screen.getByTestId('column-high'), { dataTransfer: dt });
+    // index 2 in the rendered list; Alpha removed from neighbors AND sits above → adjusted to 1 → midpoint(Beta=2, Gamma=3) = 2.5
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith('a', { sortOrder: 2.5 }));
+  });
+
+  it('cross-column drop sets priority AND a bottom sortOrder', async () => {
+    const updateTask = vi.fn(async () => task());
+    const listTasks = vi.fn(async () => [
+      task({ id: 'a', title: 'Alpha', priority: 2, sortOrder: 1 }),
+      task({ id: 'l', title: 'Lonely', priority: 4, sortOrder: 7 }),
+    ]);
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateTask }) });
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
+    const dt = dataTransfer();
+    fireEvent.dragStart(screen.getAllByTestId('task-row')[0]!, { dataTransfer: dt }); // Alpha
+    fireEvent.dragOver(screen.getByTestId('column-low'), { dataTransfer: dt });       // empty area of low column
+    fireEvent.drop(screen.getByTestId('column-low'), { dataTransfer: dt });
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith('a', { priority: 4, sortOrder: 8 })); // below Lonely
   });
 
   it('opens the edit drawer from the row menu and deletes', async () => {

@@ -6,7 +6,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export interface TaskFormState {
   title: string;
   durationMs: number;
-  priority: number;
   dueByLocal: string;   // "YYYY-MM-DDTHH:MM"
   notBeforeLocal: string;   // "YYYY-MM-DDTHH:MM"
   minChunkMs: number;
@@ -36,7 +35,6 @@ export function toFormState(t: Task): TaskFormState {
   return {
     title: t.title,
     durationMs: t.durationMs,
-    priority: t.priority,
     dueByLocal: isoToLocalInput(t.dueBy),
     notBeforeLocal: t.notBefore ? isoToLocalInput(t.notBefore) : '',
     minChunkMs: t.minChunkMs,
@@ -62,7 +60,6 @@ export function validateTaskForm(s: TaskFormState): { ok: boolean; errors: TaskF
 export function toUpdateInput(s: TaskFormState): UpdateTaskInput {
   return {
     title: s.title.trim(),
-    priority: s.priority,
     durationMs: s.durationMs,
     dueBy: localInputToIso(s.dueByLocal),
     notBefore: s.notBeforeLocal ? localInputToIso(s.notBeforeLocal) : null,

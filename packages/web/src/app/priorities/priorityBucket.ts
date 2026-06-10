@@ -49,6 +49,20 @@ export function relativeDayTimeLabel(ms: number, now: number): string {
   return `${weekday} ${timeLabel(d)}`;
 }
 
+/** Within-bucket display order: user sortOrder, then due date. */
+export function sortBucket<T extends { sortOrder: number; dueBy: string }>(tasks: T[]): T[] {
+  return [...tasks].sort((a, b) => a.sortOrder - b.sortOrder || Date.parse(a.dueBy) - Date.parse(b.dueBy));
+}
+
+/** sortOrder for inserting at `index` into a sorted bucket (midpoint of neighbors). */
+export function insertionSortOrder(sorted: Array<{ sortOrder: number }>, index: number): number {
+  if (sorted.length === 0) return 0;
+  const i = Math.max(0, Math.min(index, sorted.length));
+  if (i === 0) return sorted[0]!.sortOrder - 1;
+  if (i === sorted.length) return sorted[sorted.length - 1]!.sortOrder + 1;
+  return (sorted[i - 1]!.sortOrder + sorted[i]!.sortOrder) / 2;
+}
+
 export function nextBlockMsForTask(taskId: string, preview: SchedulePreview | undefined): number | null {
   if (!preview) return null;
   const starts = preview.blocks
