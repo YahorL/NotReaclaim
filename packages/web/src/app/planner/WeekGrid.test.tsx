@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import type { ScheduledBlock, CalendarEvent } from '../../api/types';
 import { startOfWeek, dayColumns } from './weekModel';
 import { WeekGrid, type WeekGridProps } from './WeekGrid';
+import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 
 const MON = startOfWeek(Date.parse('2026-01-05T12:00:00.000Z')); // 2026-01-05
 const days = dayColumns(MON);
@@ -37,6 +38,41 @@ function renderGrid(props: Partial<WeekGridProps> = {}) {
     />,
   );
 }
+
+function renderGridWithProviders(props: Partial<WeekGridProps> = {}) {
+  return renderWithProviders(
+    <WeekGrid
+      days={days} nowMs={WED_NOON} weekLabel="Jan 5 – 11"
+      blocks={[block()]} events={[event()]} replanPending={false}
+      onPrev={vi.fn()} onToday={vi.fn()} onNext={vi.fn()} onReplan={vi.fn()} onCommit={vi.fn()}
+      {...props}
+    />,
+    { api: fakeApiClient() },
+  );
+}
+
+describe('WeekGrid click-to-create', () => {
+  it('clicking empty column space opens the popover at the snapped slot', () => {
+    renderGridWithProviders();
+    fireEvent.click(screen.getByTestId('day-col-2'), { clientY: 0 });
+    expect(screen.getByTestId('create-popover')).toBeInTheDocument();
+    // jsdom: rect height 0 → fraction 0 → slot starts at the 06:00 window top
+    expect(screen.getByTestId('slot-label').textContent).toMatch(/06:00/);
+  });
+
+  it('clicking an existing block does not open the popover', () => {
+    renderGridWithProviders();
+    fireEvent.click(screen.getAllByTestId('event-block')[0]!);
+    expect(screen.queryByTestId('create-popover')).not.toBeInTheDocument();
+  });
+
+  it('Escape closes the popover', () => {
+    renderGridWithProviders();
+    fireEvent.click(screen.getByTestId('day-col-2'), { clientY: 0 });
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByTestId('create-popover')).not.toBeInTheDocument();
+  });
+});
 
 describe('WeekGrid', () => {
   it('places a meeting and a task block in their day columns', () => {

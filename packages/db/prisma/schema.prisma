@@ -61,8 +61,8 @@ model Settings {
 model CalendarEvent {
   id               String   @id @default(uuid())
   userId           String
-  googleCalendarId String
-  googleEventId    String
+  googleCalendarId String?
+  googleEventId    String?
   title            String
   startsAt         DateTime @db.Timestamptz
   endsAt           DateTime @db.Timestamptz

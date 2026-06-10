@@ -116,6 +116,13 @@ export function shiftDays(ms: number, days: number): number {
   return d.getTime();
 }
 
+/** Map a click's fractional position within a day column (0..1) to a snapped start minute with room for a 15-min slot. */
+export function snapClickToSlot(fraction: number): number {
+  const span = WINDOW_END_MIN - WINDOW_START_MIN;
+  const min = snapMinutes(WINDOW_START_MIN + fraction * span);
+  return Math.min(WINDOW_END_MIN - 15, Math.max(WINDOW_START_MIN, min));
+}
+
 /** Clamp a horizontal day delta so dayIndex + delta stays within the rendered week (0..6). */
 export function clampDayDelta(dayIndex: number, delta: number): number {
   return Math.max(-dayIndex, Math.min(6 - dayIndex, delta)) || 0;

@@ -82,6 +82,14 @@ export const rangeQuerySchema = z.object({
   to: z.string().datetime().optional(),
 });
 
+export const createCalendarEventSchema = z
+  .object({ title: z.string().min(1), startsAt: z.string().datetime(), endsAt: z.string().datetime() })
+  .refine((b) => Date.parse(b.startsAt) < Date.parse(b.endsAt), { message: 'startsAt must be before endsAt' });
+
+export const createScheduledBlockSchema = z
+  .object({ taskId: z.string().min(1), startsAt: z.string().datetime(), endsAt: z.string().datetime() })
+  .refine((b) => Date.parse(b.startsAt) < Date.parse(b.endsAt), { message: 'startsAt must be before endsAt' });
+
 export const updateScheduledBlockSchema = z
   .object({
     startsAt: z.string().datetime().optional(),

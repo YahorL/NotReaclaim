@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import type { ScheduledBlock, CalendarEvent } from '../../api/types';
 import { EventBlock, type BlockKind } from './EventBlock';
 import { InteractiveBlock } from './InteractiveBlock';
-import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY } from './weekModel';
+import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY, snapClickToSlot, WINDOW_START_MIN, WINDOW_END_MIN } from './weekModel';
+import { CreatePopover } from './CreatePopover';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const HOURS = Array.from({ length: 16 }, (_, i) => 6 + i); // 06:00 → 21:00 row starts (06:00–22:00 window)
@@ -65,6 +67,7 @@ function toItems(blocks: ScheduledBlock[], events: CalendarEvent[]): Item[] {
 export function WeekGrid(props: WeekGridProps) {
   const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit } = props;
   const items = toItems(blocks, events);
+  const [creating, setCreating] = useState<{ dayIndex: number; startMin: number } | null>(null);
 
   return (
     <div className="flex flex-col">
@@ -131,7 +134,14 @@ export function WeekGrid(props: WeekGridProps) {
               const dayItems = items.filter((it) => it.startMs >= d && it.startMs < d + MS_PER_DAY);
               const line = nowLine(nowMs, d);
               return (
-                <div key={d} data-testid={`day-col-${i}`} className="relative border-l border-line">
+                <div key={d} data-testid={`day-col-${i}`} className="relative border-l border-line"
+                  onClick={(e) => {
+                    if ((e.target as HTMLElement).closest('[data-testid="event-block"],[data-testid="create-popover"]')) return;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const fraction = rect.height > 0 ? (e.clientY - rect.top) / rect.height : 0;
+                    setCreating({ dayIndex: i, startMin: snapClickToSlot(fraction) });
+                  }}
+                >
                   {HOURS.map((h) => <div key={h} className="h-[58px] border-t border-[#f1f2f6]" />)}
                   {dayItems.map((it) => {
                     const pos = placeInDay(it.startMs, it.endMs, d);
@@ -162,6 +172,14 @@ export function WeekGrid(props: WeekGridProps) {
                   })}
                   {line != null && (
                     <div data-testid="now-line" className="absolute left-0 right-0 h-0.5 bg-crit" style={{ top: `${line}%` }} />
+                  )}
+                  {creating?.dayIndex === i && (
+                    <CreatePopover
+                      dayStartMs={d}
+                      startMin={creating.startMin}
+                      topPct={((creating.startMin - WINDOW_START_MIN) / (WINDOW_END_MIN - WINDOW_START_MIN)) * 100}
+                      onClose={() => setCreating(null)}
+                    />
                   )}
                 </div>
               );

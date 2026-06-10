@@ -1,4 +1,11 @@
 import type { PrismaClient, CalendarEvent } from '@prisma/client';
+import { NotFoundError, translatePrismaError } from '../errors.js';
+
+export interface CreateCalendarEventInput {
+  title: string;
+  startsAt: Date;
+  endsAt: Date;
+}
 
 export interface UpsertCalendarEventInput {
   googleCalendarId: string;
@@ -10,6 +17,25 @@ export interface UpsertCalendarEventInput {
 
 export function createCalendarEventRepository(prisma: PrismaClient) {
   return {
+    /** A locally created event (no Google ids until written back). */
+    create(userId: string, data: CreateCalendarEventInput): Promise<CalendarEvent> {
+      return prisma.calendarEvent.create({ data: { userId, ...data } });
+    },
+
+    /** Attach Google ids after a successful write-back. Throws NotFound for other users' events. */
+    async setGoogleIds(userId: string, id: string, googleCalendarId: string, googleEventId: string): Promise<CalendarEvent> {
+      try {
+        const result = await prisma.calendarEvent.updateMany({ where: { id, userId }, data: { googleCalendarId, googleEventId } });
+        if (result.count === 0) {
+          throw new NotFoundError(`CalendarEvent ${id}`);
+        }
+        return await prisma.calendarEvent.findUniqueOrThrow({ where: { id } });
+      } catch (error) {
+        if (error instanceof NotFoundError) throw error;
+        translatePrismaError(error);
+      }
+    },
+
     /** Events whose [startsAt, endsAt) overlaps [start, end). */
     listByUserInRange(userId: string, start: Date, end: Date): Promise<CalendarEvent[]> {
       return prisma.calendarEvent.findMany({

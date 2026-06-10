@@ -32,6 +32,8 @@ export function fakeApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     createSubtask: notImplemented('createSubtask'),
     updateSubtask: notImplemented('updateSubtask'),
     deleteSubtask: notImplemented('deleteSubtask'),
+    createCalendarEvent: notImplemented('createCalendarEvent'),
+    createScheduledBlock: notImplemented('createScheduledBlock'),
   } as unknown as ApiClient;
   return { ...base, ...overrides };
 }

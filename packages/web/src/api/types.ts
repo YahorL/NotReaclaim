@@ -178,3 +178,6 @@ export interface UpdateScheduledBlockInput {
   endsAt?: string;
   pinned?: boolean;
 }
+
+export interface CreateCalendarEventInput { title: string; startsAt: string; endsAt: string; }
+export interface CreateScheduledBlockInput { taskId: string; startsAt: string; endsAt: string; }

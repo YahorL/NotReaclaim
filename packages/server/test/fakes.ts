@@ -90,10 +90,18 @@ export function fakeSettingsRepo(seed: Settings | null = null) {
 }
 
 export function fakeScheduledBlockRepo(seed: ScheduledBlock[] = []) {
-  const rows = [...seed];
+  let rows = [...seed];
   return {
     async listByUserInRange(userId: string, start: Date, end: Date): Promise<ScheduledBlock[]> {
       return rows.filter((b) => b.userId === userId && b.startsAt < end && b.endsAt > start);
+    },
+    async create(userId: string, data: Record<string, unknown>): Promise<ScheduledBlock> {
+      const row = {
+        id: `block-${rows.length + 1}`, userId, taskId: null, habitId: null, title: '',
+        pinned: false, googleEventId: null, googleCalendarId: null, engineKey: null,
+        createdAt: new Date(0), updatedAt: new Date(0), ...data,
+      } as ScheduledBlock;
+      rows.push(row); return row;
     },
     async update(userId: string, id: string, data: Partial<ScheduledBlock>): Promise<ScheduledBlock> {
       const row = rows.find((b) => b.id === id && b.userId === userId);
@@ -104,11 +112,29 @@ export function fakeScheduledBlockRepo(seed: ScheduledBlock[] = []) {
 }
 
 export function fakeCalendarEventRepo(seed: CalendarEvent[] = []) {
+  let rows = [...seed];
+  let n = seed.length;
   return {
     async listByUserInRange(userId: string, start: Date, end: Date): Promise<CalendarEvent[]> {
-      return seed.filter(
+      return rows.filter(
         (e) => e.userId === userId && e.startsAt < end && e.endsAt > start,
       );
+    },
+    async create(userId: string, data: Record<string, unknown>): Promise<CalendarEvent> {
+      const row: CalendarEvent = {
+        id: `cal-${++n}`, userId, googleCalendarId: null, googleEventId: null,
+        title: '', startsAt: new Date(0), endsAt: new Date(0),
+        createdAt: new Date(0), updatedAt: new Date(0),
+        ...data,
+      } as CalendarEvent;
+      rows.push(row);
+      return row;
+    },
+    async setGoogleIds(userId: string, id: string, googleCalendarId: string, googleEventId: string): Promise<CalendarEvent> {
+      const row = rows.find((r) => r.id === id && r.userId === userId);
+      if (!row) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`CalendarEvent ${id}`); }
+      Object.assign(row, { googleCalendarId, googleEventId });
+      return row;
     },
   };
 }
@@ -193,6 +219,8 @@ export interface TestAppOptions {
   reconcileResult?: AppDeps['reconcile'] extends (...a: never[]) => Promise<infer R> ? R : never;
   schedulingReposOverride?: SchedulingRepositories;
   webClientUrl?: string;
+  accessToken?: string;
+  insertEvent?: AppDeps['google']['client']['insertEvent'];
 }
 
 export function buildTestApp(opts: TestAppOptions = {}) {
@@ -221,13 +249,20 @@ export function buildTestApp(opts: TestAppOptions = {}) {
   const app = buildApp({
     repos: { settings, tasks, habits, scheduledBlocks, calendarEvents, categories, subtasks },
     google: {
-      client: { getConsentUrl: () => 'https://consent.example/auth' },
+      client: {
+        getConsentUrl: () => 'https://consent.example/auth',
+        insertEvent: opts.insertEvent ?? (async () => { throw new Error('not connected'); }),
+      },
       tokens: {
         connectFromCode: async () =>
           opts.connectUser ?? ({
             id: 'u1', email: 'a@example.com', googleId: 'g-1', googleRefreshToken: 'enc',
             autoScheduledCalendarId: null, createdAt: new Date(0), updatedAt: new Date(0),
           } as User),
+        getAccessToken: async () => {
+          if (!opts.accessToken) throw new Error('not connected');
+          return opts.accessToken;
+        },
       },
     },
     schedulingRepos,
