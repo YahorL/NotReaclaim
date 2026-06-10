@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../../api/client';
-import { useCreateTaskMutation, useCreateCalendarEventMutation, useCreateScheduledBlockMutation } from '../../api/queries';
+import { useCreateTaskMutation, useCreateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery } from '../../api/queries';
 import { DurationStepper } from '../components/DurationStepper';
 import { WINDOW_END_MIN } from './weekModel';
 
@@ -19,12 +19,16 @@ type Mode = 'event' | 'task';
 export function CreatePopover({ dayStartMs, startMin, topPct, onClose }: CreatePopoverProps) {
   const [mode, setMode] = useState<Mode>('event');
   const [title, setTitle] = useState('');
+  const [taskId, setTaskId] = useState('');
   const maxDurationMs = (WINDOW_END_MIN - startMin) * 60_000;
   const [durationMs, setDurationMs] = useState(Math.min(30 * 60_000, maxDurationMs));
   const ref = useRef<HTMLDivElement>(null);
   const createTaskM = useCreateTaskMutation();
   const createEventM = useCreateCalendarEventMutation();
   const createBlockM = useCreateScheduledBlockMutation();
+  const tasksQ = useTasksQuery();
+  const activeTasks = (tasksQ.data ?? []).filter((t) => t.status === 'pending' || t.status === 'scheduled');
+  const existingChosen = mode === 'task' && taskId !== '';
 
   const startMs = dayStartMs + startMin * 60_000;
   const endMs = startMs + durationMs;
@@ -40,9 +44,11 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose }: CreateP
   }, [onClose]);
 
   const submit = () => {
-    if (!title.trim() || pending) return;
+    if (pending || (!existingChosen && !title.trim())) return;
     if (mode === 'event') {
       createEventM.mutate({ title: title.trim(), startsAt: iso(startMs), endsAt: iso(endMs) }, { onSuccess: onClose });
+    } else if (existingChosen) {
+      createBlockM.mutate({ taskId, startsAt: iso(startMs), endsAt: iso(endMs) }, { onSuccess: onClose });
     } else {
       const dueBy = iso(dayStartMs + (23 * 60 + 59) * 60_000);
       createTaskM.mutate(
@@ -67,15 +73,28 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose }: CreateP
         <button type="button" data-testid="mode-event" onClick={() => setMode('event')} className={tabCls(mode === 'event')}>Event</button>
         <button type="button" data-testid="mode-task" onClick={() => setMode('task')} className={tabCls(mode === 'task')}>Task</button>
       </div>
-      <input
-        autoFocus
-        data-testid="create-title"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
-        placeholder={mode === 'event' ? 'Event name…' : 'Task name…'}
-        className="mb-2 w-full rounded-[9px] border-[1.5px] border-line px-2.5 py-1.5 text-[14px] font-semibold outline-none focus:border-indigo"
-      />
+      {mode === 'task' && (
+        <select
+          data-testid="task-select"
+          value={taskId}
+          onChange={(e) => setTaskId(e.target.value)}
+          className="mb-2 w-full rounded-[9px] border-[1.5px] border-line bg-card px-2 py-1.5 text-[14px] font-semibold outline-none focus:border-indigo"
+        >
+          <option value="">➕ New task</option>
+          {activeTasks.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
+        </select>
+      )}
+      {!existingChosen && (
+        <input
+          autoFocus
+          data-testid="create-title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+          placeholder={mode === 'event' ? 'Event name…' : 'Task name…'}
+          className="mb-2 w-full rounded-[9px] border-[1.5px] border-line px-2.5 py-1.5 text-[14px] font-semibold outline-none focus:border-indigo"
+        />
+      )}
       <div className="mb-1 rounded-[9px] border-[1.5px] border-line px-2.5 py-1.5">
         <DurationStepper label="slot" size={20} valueMs={durationMs} onChange={(ms) => setDurationMs(Math.max(15 * 60_000, Math.min(ms, maxDurationMs)))} />
       </div>
@@ -84,11 +103,11 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose }: CreateP
       <button
         type="button"
         data-testid="create-submit"
-        disabled={!title.trim() || pending}
+        disabled={(!existingChosen && !title.trim()) || pending}
         onClick={submit}
         className="w-full rounded-[20px] bg-indigo py-1.5 text-[13px] font-bold text-white disabled:opacity-50"
       >
-        Create {mode === 'event' ? 'event' : 'task'}
+        {mode === 'event' ? 'Create event' : existingChosen ? 'Schedule task' : 'Create task'}
       </button>
     </div>
   );
