@@ -69,11 +69,11 @@ export function Column({ bucket, tasks, now, nextMsFor, dnd, onComplete, onEdit,
                     onComplete={onComplete} onEdit={onEdit} onDelete={onDelete} onToggleSubtask={onToggleSubtask}
                     onDragStart={dnd.start} onDragEnd={dnd.end}
                   />
+                  {i === tasks.length - 1 && dnd.over === bucket && dnd.overIndex === tasks.length && (
+                    <div data-testid="insert-line" className="h-0.5 bg-indigo" />
+                  )}
                 </div>
               ))}
-              {dnd.over === bucket && dnd.overIndex === tasks.length && (
-                <div data-testid="insert-line" className="h-0.5 bg-indigo" />
-              )}
             </TasksCard>
           ) : (
             <div className={`rounded-xl border-[1.5px] px-1 py-[22px] text-center text-[14.5px] ${isTarget ? 'border-dashed border-indigo font-bold text-indigo' : 'border-transparent text-[#aeb2c0]'}`}>

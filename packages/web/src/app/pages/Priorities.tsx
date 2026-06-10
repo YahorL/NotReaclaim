@@ -43,8 +43,11 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
     const t = all.find((x) => x.id === taskId);
     if (!t) return;
     const column = columns.find((c) => c.key === to);
-    const neighbors = (column?.tasks ?? []).filter((x) => x.id !== taskId);
-    const sortOrder = insertionSortOrder(neighbors, index);
+    const colTasks = column?.tasks ?? [];
+    const sourceIndex = colTasks.findIndex((x) => x.id === taskId);
+    const adjustedIndex = sourceIndex !== -1 && sourceIndex < index ? index - 1 : index;
+    const neighbors = colTasks.filter((x) => x.id !== taskId);
+    const sortOrder = insertionSortOrder(neighbors, adjustedIndex);
     const patch: UpdateTaskInput = { sortOrder };
     if (priorityToBucket(t.priority) !== to) patch.priority = bucketToPriority(to);
     updateM.mutate({ id: taskId, patch });

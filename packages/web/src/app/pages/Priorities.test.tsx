@@ -106,11 +106,32 @@ describe('Priorities board', () => {
     await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
     const rows = screen.getAllByTestId('task-row');
     const dt = dataTransfer();
+    // jsdom rects are all-zero so r.height > 0 short-circuits and any clientY means "insert above the hovered row"
     // drag Gamma over the TOP half of Alpha → insertion index 0 → sortOrder 1 - 1 = 0
     fireEvent.dragStart(rows[2]!, { dataTransfer: dt });
     fireEvent.dragOver(rows[0]!, { dataTransfer: dt, clientY: 0 });
     fireEvent.drop(screen.getByTestId('column-high'), { dataTransfer: dt });
     await waitFor(() => expect(updateTask).toHaveBeenCalledWith('c', { sortOrder: 0 }));
+  });
+
+  it('drags the first task DOWN within a column without off-by-one', async () => {
+    const updateTask = vi.fn(async () => task());
+    const listTasks = vi.fn(async () => [
+      task({ id: 'a', title: 'Alpha', priority: 2, sortOrder: 1 }),
+      task({ id: 'b', title: 'Beta', priority: 2, sortOrder: 2 }),
+      task({ id: 'c', title: 'Gamma', priority: 2, sortOrder: 3 }),
+    ]);
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateTask }) });
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
+    const rows = screen.getAllByTestId('task-row');
+    const dt = dataTransfer();
+    // jsdom rects are all-zero so r.height > 0 short-circuits and any clientY means "insert above the hovered row"
+    // drag Alpha over Gamma (insert above Gamma, i.e. between Beta and Gamma)
+    fireEvent.dragStart(rows[0]!, { dataTransfer: dt });
+    fireEvent.dragOver(rows[2]!, { dataTransfer: dt, clientY: 0 });
+    fireEvent.drop(screen.getByTestId('column-high'), { dataTransfer: dt });
+    // index 2 in the rendered list; Alpha removed from neighbors AND sits above → adjusted to 1 → midpoint(Beta=2, Gamma=3) = 2.5
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith('a', { sortOrder: 2.5 }));
   });
 
   it('cross-column drop sets priority AND a bottom sortOrder', async () => {
