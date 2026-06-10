@@ -69,4 +69,27 @@ describe('CalendarEventRepository', () => {
     );
     expect(remaining.map((e) => e.googleCalendarId)).toEqual(['other']);
   });
+
+  it('creates a local event with null google ids', async () => {
+    const user = await users.create({ email: 'c5@example.com' });
+    const created = await repo.create(user.id, {
+      title: 'Standup', startsAt: new Date('2026-01-03T09:00:00.000Z'), endsAt: new Date('2026-01-03T09:30:00.000Z'),
+    });
+    expect(created.googleCalendarId).toBeNull();
+    expect(created.googleEventId).toBeNull();
+    const listed = await repo.listByUserInRange(user.id, new Date('2026-01-03T00:00:00.000Z'), new Date('2026-01-04T00:00:00.000Z'));
+    expect(listed.map((e) => e.id)).toContain(created.id);
+  });
+
+  it('setGoogleIds attaches write-back ids scoped to the user', async () => {
+    const user = await users.create({ email: 'c6@example.com' });
+    const other = await users.create({ email: 'c7@example.com' });
+    const created = await repo.create(user.id, {
+      title: 'Standup', startsAt: new Date('2026-01-03T09:00:00.000Z'), endsAt: new Date('2026-01-03T09:30:00.000Z'),
+    });
+    await expect(repo.setGoogleIds(other.id, created.id, 'primary', 'g-x')).rejects.toThrow();
+    const updated = await repo.setGoogleIds(user.id, created.id, 'primary', 'g-x');
+    expect(updated.googleCalendarId).toBe('primary');
+    expect(updated.googleEventId).toBe('g-x');
+  });
 });
