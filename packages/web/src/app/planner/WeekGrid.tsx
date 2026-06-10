@@ -140,7 +140,7 @@ export function WeekGrid(props: WeekGridProps) {
                     if (it.kind !== 'meeting' && blockId) {
                       return (
                         <InteractiveBlock
-                          key={it.key} id={blockId} dayStartMs={d}
+                          key={it.key} id={blockId} dayStartMs={d} dayIndex={i}
                           startMs={it.startMs} endMs={it.endMs}
                           topPct={pos.topPct} heightPct={pos.heightPct}
                           startLabel={it.startLabel} title={it.title} kind={it.kind} pinned={it.pinned}

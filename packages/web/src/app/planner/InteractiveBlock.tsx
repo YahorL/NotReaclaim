@@ -1,6 +1,6 @@
 import { useState, useRef, type PointerEvent as ReactPointerEvent } from 'react';
 import { BASE, variantClass, type BlockKind } from './EventBlock';
-import { WINDOW_END_MIN, snapMinutes, pxToMinutes, minutesToPx, clampToWindow } from './weekModel';
+import { WINDOW_END_MIN, snapMinutes, pxToMinutes, minutesToPx, clampToWindow, shiftDays, clampDayDelta } from './weekModel';
 
 const MIN_DURATION_MIN = 15;
 const iso = (ms: number): string => new Date(ms).toISOString();
@@ -10,6 +10,7 @@ const finite = (n: number): number => (Number.isFinite(n) ? n : 0);
 export interface InteractiveBlockProps {
   id: string;
   dayStartMs: number;
+  dayIndex: number;
   startMs: number;
   endMs: number;
   topPct: number;
@@ -25,7 +26,7 @@ type DragMode = 'move' | 'resize';
 
 export function InteractiveBlock(props: InteractiveBlockProps) {
   // `id` is part of the props for the parent's onCommit binding; not read inside this component.
-  const { dayStartMs, startMs, endMs, topPct, heightPct, startLabel, title, kind, pinned, onCommit } = props;
+  const { dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, startLabel, title, kind, pinned, onCommit } = props;
   // Refs hold the authoritative drag state; mutated directly so pointer handlers always
   // see the latest values regardless of React's batching/commit schedule.
   const modeRef = useRef<DragMode | null>(null);
@@ -35,6 +36,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
   // State is used only to trigger re-renders for the snapped CSS preview.
   const [moveMin, setMoveMin] = useState(0);
   const [growMin, setGrowMin] = useState(0);
+  const [dayDelta, setDayDelta] = useState(0);
 
   const begin = (mode: DragMode) => (e: ReactPointerEvent<HTMLElement>) => {
     e.stopPropagation();
@@ -45,15 +47,22 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
     modeRef.current = mode;
     startYRef.current = finite(e.clientY);
     startXRef.current = finite(e.clientX);
+    colWidthRef.current = mode === 'move' ? (el.parentElement?.getBoundingClientRect().width ?? 0) : 0;
   };
 
   const snappedDy = (clientY: number): number => snapMinutes(pxToMinutes(finite(clientY) - startYRef.current));
 
+  const snappedDx = (clientX: number): number => {
+    const w = colWidthRef.current;
+    if (w <= 0) return 0;
+    return clampDayDelta(dayIndex, Math.round((finite(clientX) - startXRef.current) / w));
+  };
+
   const onPointerMove = (e: ReactPointerEvent<HTMLElement>) => {
     if (!modeRef.current) return;
     const min = snappedDy(e.clientY);
-    if (modeRef.current === 'move') { setMoveMin(min); setGrowMin(0); }
-    else { setGrowMin(min); setMoveMin(0); }
+    if (modeRef.current === 'move') { setMoveMin(min); setDayDelta(snappedDx(e.clientX)); setGrowMin(0); }
+    else { setGrowMin(min); setMoveMin(0); setDayDelta(0); }
   };
 
   const reset = () => {
@@ -63,19 +72,22 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
     colWidthRef.current = 0;
     setMoveMin(0);
     setGrowMin(0);
+    setDayDelta(0);
   };
 
   const onPointerUp = (e: ReactPointerEvent<HTMLElement>) => {
     const deltaMin = snappedDy(e.clientY);
+    const deltaDays = modeRef.current === 'move' ? snappedDx(e.clientX) : 0;
     const mode = modeRef.current;
     reset();
     if (!mode) return;
     const startMin = (startMs - dayStartMs) / 60_000;
     const endMin = (endMs - dayStartMs) / 60_000;
     if (mode === 'move') {
-      if (deltaMin === 0) return;
+      if (deltaMin === 0 && deltaDays === 0) return;
       const moved = clampToWindow(startMin + deltaMin, endMin - startMin);
-      onCommit({ startsAt: iso(dayStartMs + moved.startMin * 60_000), endsAt: iso(dayStartMs + moved.endMin * 60_000), pinned: true });
+      const dayStart = shiftDays(dayStartMs, deltaDays);
+      onCommit({ startsAt: iso(dayStart + moved.startMin * 60_000), endsAt: iso(dayStart + moved.endMin * 60_000), pinned: true });
     } else {
       const newEndMin = Math.min(WINDOW_END_MIN, Math.max(startMin + MIN_DURATION_MIN, endMin + deltaMin));
       if (newEndMin === endMin) return;
@@ -85,7 +97,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
 
   const onPointerCancel = () => { reset(); };
 
-  const dragging = moveMin !== 0 || growMin !== 0;
+  const dragging = moveMin !== 0 || growMin !== 0 || dayDelta !== 0;
   const previewStart = startMs + moveMin * 60_000;
   const previewEnd = growMin !== 0 ? endMs + growMin * 60_000 : endMs + moveMin * 60_000;
 
@@ -100,7 +112,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
       className={`${BASE} ${dragging ? 'cursor-grabbing' : 'cursor-grab'} select-none ${variantClass(kind, pinned)}`}
-      style={{ top: `${topPct}%`, height: `calc(${heightPct}% + ${minutesToPx(growMin)}px)`, transform: `translate(0px, ${minutesToPx(moveMin)}px)` }}
+      style={{ top: `${topPct}%`, height: `calc(${heightPct}% + ${minutesToPx(growMin)}px)`, transform: `translate(${dayDelta * colWidthRef.current}px, ${minutesToPx(moveMin)}px)` }}
     >
       {pinned && <span aria-hidden="true">🔒 </span>}
       <span className="font-medium">{startLabel}</span> {title}

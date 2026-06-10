@@ -11,11 +11,26 @@ const PX_PER_60MIN = (60 / 960) * GRID_COLUMN_PX; // = 58
 function renderBlock(onCommit = vi.fn()) {
   render(
     <InteractiveBlock
-      id="b1" dayStartMs={DAY} startMs={START} endMs={END}
+      id="b1" dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
       topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
       onCommit={onCommit}
     />,
   );
+  return onCommit;
+}
+
+function renderBlockInColumn(onCommit = vi.fn(), dayIndex = 0, colWidth = 120) {
+  const { container } = render(
+    <div>
+      <InteractiveBlock
+        id="b1" dayStartMs={DAY} dayIndex={dayIndex} startMs={START} endMs={END}
+        topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
+        onCommit={onCommit}
+      />
+    </div>,
+  );
+  const column = container.firstChild as HTMLElement;
+  vi.spyOn(column, 'getBoundingClientRect').mockReturnValue({ width: colWidth, height: 928, top: 0, left: 0, right: colWidth, bottom: 928, x: 0, y: 0, toJSON: () => ({}) } as DOMRect);
   return onCommit;
 }
 
@@ -99,5 +114,47 @@ describe('InteractiveBlock', () => {
     fireEvent.pointerMove(el, { clientX: 50, clientY: 120, pointerId: 1 });
     fireEvent.pointerUp(el, { clientX: 50, clientY: 120, pointerId: 1 });
     expect(screen.queryByTestId('drag-label')).not.toBeInTheDocument();
+  });
+});
+
+describe('InteractiveBlock cross-day move', () => {
+  it('previews a one-column shift and commits +1 day', () => {
+    const onCommit = renderBlockInColumn();
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 100, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientX: 230, clientY: 100, pointerId: 1 }); // dx=130 → round(130/120)=1
+    expect(el.style.transform).toBe('translate(120px, 0px)');
+    fireEvent.pointerUp(el, { clientX: 230, clientY: 100, pointerId: 1 });
+    expect(onCommit).toHaveBeenCalledWith({
+      startsAt: '2026-01-06T09:00:00.000Z', endsAt: '2026-01-06T10:00:00.000Z', pinned: true,
+    });
+  });
+
+  it('combines a day shift with a snapped vertical move', () => {
+    const onCommit = renderBlockInColumn();
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 100, clientY: 100, pointerId: 1 });
+    fireEvent.pointerUp(el, { clientX: 230, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
+    expect(onCommit).toHaveBeenCalledWith({
+      startsAt: '2026-01-06T10:00:00.000Z', endsAt: '2026-01-06T11:00:00.000Z', pinned: true,
+    });
+  });
+
+  it('clamps the day delta at the week edge (Sunday cannot go right)', () => {
+    const onCommit = renderBlockInColumn(vi.fn(), 6);
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 100, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientX: 400, clientY: 100, pointerId: 1 });
+    expect(el.style.transform).toBe('translate(0px, 0px)');
+    fireEvent.pointerUp(el, { clientX: 400, clientY: 100, pointerId: 1 });
+    expect(onCommit).not.toHaveBeenCalled(); // day clamped to 0 + no vertical delta = no-op
+  });
+
+  it('a pure day shift with zero vertical delta still no-ops when clamped (Monday cannot go left)', () => {
+    const onCommit = renderBlockInColumn();
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 100, clientY: 100, pointerId: 1 });
+    fireEvent.pointerUp(el, { clientX: 100 - 130, clientY: 100, pointerId: 1 });
+    expect(onCommit).not.toHaveBeenCalled();
   });
 });
