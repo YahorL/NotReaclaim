@@ -20,6 +20,7 @@ export function toFlexibleTask(row: Task): FlexibleTask {
     id: row.id,
     title: row.title,
     priority: row.priority,
+    sortOrder: row.sortOrder,
     durationMs: row.durationMs,
     dueBy: row.dueBy.getTime(),
     minChunkMs: row.minChunkMs,

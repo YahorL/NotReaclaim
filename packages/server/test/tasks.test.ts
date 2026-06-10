@@ -134,4 +134,16 @@ describe('task routes', () => {
     });
     expect(res.statusCode).toBe(400);
   });
+
+  it('passes sortOrder through create and patch', async () => {
+    const { app } = buildTestApp();
+    const token = await tokenFor(app);
+    const created = await app.inject({ method: 'POST', url: '/tasks', headers: { authorization: `Bearer ${token}` },
+      payload: { title: 'T', priority: 4, durationMs: 60_000, dueBy: '2026-01-09T17:00:00.000Z', minChunkMs: 60_000, maxChunkMs: 60_000, sortOrder: 2.5 } });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().sortOrder).toBe(2.5);
+    const patched = await app.inject({ method: 'PATCH', url: `/tasks/${created.json().id}`, headers: { authorization: `Bearer ${token}` }, payload: { sortOrder: 0.5 } });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json().sortOrder).toBe(0.5);
+  });
 });

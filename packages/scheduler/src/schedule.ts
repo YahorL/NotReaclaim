@@ -11,8 +11,8 @@ import { mergeIntervals, subtractIntervals } from './intervals.js';
 import { scheduleHabit, scheduleTask } from './items.js';
 
 type WorkItem =
-  | { kind: 'task'; priority: number; tie: number; id: string; task: FlexibleTask }
-  | { kind: 'habit'; priority: number; tie: number; id: string; habit: Habit };
+  | { kind: 'task'; priority: number; order: number; tie: number; id: string; task: FlexibleTask }
+  | { kind: 'habit'; priority: number; order: number; tie: number; id: string; habit: Habit };
 
 function earliestPeriodStart(periods: Interval[]): number {
   let min = Infinity;
@@ -30,12 +30,13 @@ export function schedule(input: ScheduleInput): ScheduleResult {
 
   const work: WorkItem[] = [
     ...input.tasks.map(
-      (t): WorkItem => ({ kind: 'task', priority: t.priority, tie: t.dueBy, id: t.id, task: t }),
+      (t): WorkItem => ({ kind: 'task', priority: t.priority, order: t.sortOrder ?? 0, tie: t.dueBy, id: t.id, task: t }),
     ),
     ...input.habits.map(
       (h): WorkItem => ({
         kind: 'habit',
         priority: h.priority,
+        order: 0,
         tie: earliestPeriodStart(h.periods),
         id: h.id,
         habit: h,
@@ -43,7 +44,7 @@ export function schedule(input: ScheduleInput): ScheduleResult {
     ),
   ];
   work.sort(
-    (a, b) => a.priority - b.priority || a.tie - b.tie || a.id.localeCompare(b.id),
+    (a, b) => a.priority - b.priority || a.order - b.order || a.tie - b.tie || a.id.localeCompare(b.id),
   );
 
   const blocks: ScheduledBlock[] = [...input.pinnedBlocks];

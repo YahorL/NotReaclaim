@@ -13,6 +13,7 @@ export const createTaskSchema = z.object({
   maxChunkMs: z.number().int().positive(),
   categoryId: z.string().nullable().optional(),
   notBefore: z.string().datetime().nullable().optional(),
+  sortOrder: z.number().optional(),
 });
 export const updateTaskSchema = createTaskSchema.partial().extend({
   status: z.enum(['pending', 'scheduled', 'completed', 'archived']).optional(),

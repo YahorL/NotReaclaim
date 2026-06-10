@@ -12,6 +12,7 @@ export interface CreateTaskInput {
   maxChunkMs: number;
   notBefore?: Date | null;
   categoryId?: string | null;
+  sortOrder?: number;
 }
 
 export interface UpdateTaskInput {
@@ -25,12 +26,18 @@ export interface UpdateTaskInput {
   categoryId?: string | null;
   status?: TaskStatus;
   timeLoggedMs?: number;
+  sortOrder?: number;
 }
 
 export function createTaskRepository(prisma: PrismaClient) {
   return {
-    create(userId: string, data: CreateTaskInput): Promise<Task> {
-      return prisma.task.create({ data: { userId, ...data } });
+    async create(userId: string, data: CreateTaskInput): Promise<Task> {
+      let sortOrder = data.sortOrder;
+      if (sortOrder === undefined) {
+        const agg = await prisma.task.aggregate({ where: { userId }, _max: { sortOrder: true } });
+        sortOrder = (agg._max.sortOrder ?? 0) + 1;
+      }
+      return prisma.task.create({ data: { userId, ...data, sortOrder } });
     },
 
     findById(userId: string, id: string): Promise<TaskWithSubtasks | null> {
@@ -43,7 +50,7 @@ export function createTaskRepository(prisma: PrismaClient) {
     listByUser(userId: string, opts: { status?: TaskStatus } = {}): Promise<TaskWithSubtasks[]> {
       return prisma.task.findMany({
         where: { userId, ...(opts.status ? { status: opts.status } : {}) },
-        orderBy: [{ priority: 'asc' }, { dueBy: 'asc' }],
+        orderBy: [{ priority: 'asc' }, { sortOrder: 'asc' }, { dueBy: 'asc' }],
         include: { subtasks: { orderBy: { createdAt: 'asc' } } },
       });
     },

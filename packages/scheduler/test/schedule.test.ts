@@ -61,6 +61,19 @@ describe('schedule', () => {
   });
 });
 
+describe('sortOrder tiebreaker', () => {
+  it('orders same-priority tasks by sortOrder before dueBy', () => {
+    const mkT = (id: string, sortOrder: number, dueBy: number) =>
+      ({ id, title: id, priority: 1, durationMs: 20, dueBy, minChunkMs: 20, maxChunkMs: 20, sortOrder });
+    const res = schedule({
+      workingWindows: [{ start: 0, end: 100 }], fixedEvents: [], pinnedBlocks: [], habits: [],
+      tasks: [mkT('a-late-due', 1, 90), mkT('b-early-due', 2, 50)],
+    });
+    // sortOrder 1 belongs to 'a-late-due'; it must be placed FIRST even though b-early-due has earlier dueBy
+    expect(res.blocks.map((b) => b.sourceId)).toEqual(['a-late-due', 'b-early-due']);
+  });
+});
+
 describe('blockBufferMs', () => {
   it('spaces two consecutive tasks by the buffer', () => {
     const mk = (id: string) => ({ id, title: id, priority: 1, durationMs: 20, dueBy: 100, minChunkMs: 20, maxChunkMs: 20 });
