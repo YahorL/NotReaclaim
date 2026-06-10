@@ -4,7 +4,7 @@ import {
   startOfWeek, dayColumns, addWeeks, classifyBlock, placeInDay, nowLine, humanizeMs, isToday,
   WINDOW_START_MIN, WINDOW_END_MIN,
   HOUR_ROW_PX, GRID_COLUMN_PX, snapMinutes, pxToMinutes, clampToWindow,
-  minutesToPx, shiftDays, clampDayDelta,
+  minutesToPx, shiftDays, clampDayDelta, snapClickToSlot,
 } from './weekModel';
 
 const MON = Date.parse('2026-01-05T00:00:00.000Z'); // Monday 00:00 UTC
@@ -160,5 +160,14 @@ describe('clampDayDelta', () => {
     expect(clampDayDelta(3, 9)).toBe(3);
     expect(clampDayDelta(3, -9)).toBe(-3);
     expect(clampDayDelta(2, 0)).toBe(0);
+  });
+});
+
+describe('snapClickToSlot', () => {
+  it('maps a clicked offset fraction to a snapped, clamped start minute', () => {
+    expect(snapClickToSlot(0)).toBe(WINDOW_START_MIN);              // top of the window
+    expect(snapClickToSlot(0.5)).toBe(840);                          // 14:00 (06:00 + 480min)
+    expect(snapClickToSlot(0.99)).toBe(WINDOW_END_MIN - 15);        // clamped so a 15-min slot fits
+    expect(snapClickToSlot(-0.2)).toBe(WINDOW_START_MIN);
   });
 });
