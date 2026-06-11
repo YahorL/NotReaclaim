@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Task } from '../../api/types';
 import { Icons } from '../shell/icons';
-import { type BoardColumnKey, columnMeta, relativeDayTimeLabel } from './priorityBucket';
+import { type BoardColumnKey, columnMeta, relativeDayTimeLabel, insertionSortOrder } from './priorityBucket';
 
 function dueShort(iso: string): string {
   return new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric' }).format(new Date(iso));
@@ -21,11 +21,14 @@ export interface TaskRowProps {
   onDragStart: (taskId: string) => void;
   onDragEnd: () => void;
   onToggleSubtask: (subtaskId: string, done: boolean) => void;
+  onReorderSubtask: (subtaskId: string, sortOrder: number) => void;
 }
 
-export function TaskRow({ task, columnKey, nextMs, now, dragging, draggable = true, muted = false, onComplete, onEdit, onDelete, onDragStart, onDragEnd, onToggleSubtask }: TaskRowProps) {
+export function TaskRow({ task, columnKey, nextMs, now, dragging, draggable = true, muted = false, onComplete, onEdit, onDelete, onDragStart, onDragEnd, onToggleSubtask, onReorderSubtask }: TaskRowProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [subtaskDragId, setSubtaskDragId] = useState<string | null>(null);
+  const [subtaskOverIndex, setSubtaskOverIndex] = useState<number | null>(null);
   useEffect(() => {
     if (!menuOpen) return;
     const onDown = (e: MouseEvent) => { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false); };
@@ -66,18 +69,57 @@ export function TaskRow({ task, columnKey, nextMs, now, dragging, draggable = tr
         </div>
         {subtasks.length > 0 && (
           <ul data-testid="card-subtasks" className="mt-1.5 space-y-1" onClick={(e) => e.stopPropagation()}>
-            {subtasks.map((s) => (
-              <li key={s.id} className="flex items-center gap-2 text-[13px]">
-                <input
-                  type="checkbox"
-                  data-testid={`card-subtask-${s.id}`}
-                  checked={s.done}
-                  onChange={() => onToggleSubtask(s.id, !s.done)}
-                  className="h-3.5 w-3.5 accent-indigo"
-                />
-                <span className={s.done ? 'text-inkSoft line-through' : 'text-ink'}>{s.title}</span>
+            {subtasks.map((s, i) => (
+              <li
+                key={s.id}
+                draggable
+                onDragStart={(e) => {
+                  e.stopPropagation();
+                  if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', s.id); }
+                  setSubtaskDragId(s.id);
+                }}
+                onDragEnd={(e) => { e.stopPropagation(); setSubtaskDragId(null); setSubtaskOverIndex(null); }}
+                onDragOver={(e) => {
+                  if (subtaskDragId === null) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const r = e.currentTarget.getBoundingClientRect();
+                  const idx = r.height > 0 && e.clientY >= r.top + r.height / 2 ? i + 1 : i;
+                  setSubtaskOverIndex(idx);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (subtaskDragId === null || subtaskOverIndex === null) return;
+                  const srcIndex = subtasks.findIndex((x) => x.id === subtaskDragId);
+                  let insertIdx = subtaskOverIndex;
+                  if (srcIndex !== -1 && srcIndex < insertIdx) insertIdx -= 1;
+                  const others = subtasks.filter((x) => x.id !== subtaskDragId);
+                  const sortOrder = insertionSortOrder(others, insertIdx);
+                  onReorderSubtask(subtaskDragId, sortOrder);
+                  setSubtaskDragId(null);
+                  setSubtaskOverIndex(null);
+                }}
+                className="flex flex-col"
+              >
+                {subtaskOverIndex === i && subtaskDragId !== null && subtaskDragId !== s.id && (
+                  <div className="mb-0.5 h-0.5 bg-indigo" />
+                )}
+                <div className="flex items-center gap-2 text-[13px]">
+                  <input
+                    type="checkbox"
+                    data-testid={`card-subtask-${s.id}`}
+                    checked={s.done}
+                    onChange={() => onToggleSubtask(s.id, !s.done)}
+                    className="h-3.5 w-3.5 accent-indigo"
+                  />
+                  <span className={s.done ? 'text-inkSoft line-through' : 'text-ink'}>{s.title}</span>
+                </div>
               </li>
             ))}
+            {subtaskOverIndex === subtasks.length && subtaskDragId !== null && (
+              <li><div className="h-0.5 bg-indigo" /></li>
+            )}
           </ul>
         )}
       </div>

@@ -104,6 +104,21 @@ describe('TaskDrawer', () => {
   });
 });
 
+describe('TaskDrawer layout', () => {
+  it('drawer root has w-[440px] class for two-column layout', () => {
+    renderWithProviders(<TaskDrawer task={task()} onSave={vi.fn()} onCancel={vi.fn()} />, { api: emptyCategories() });
+    const drawer = screen.getByTestId('task-drawer');
+    expect(drawer.className).toContain('w-[440px]');
+  });
+
+  it('field grid has grid grid-cols-2 class', () => {
+    renderWithProviders(<TaskDrawer task={task()} onSave={vi.fn()} onCancel={vi.fn()} />, { api: emptyCategories() });
+    const drawer = screen.getByTestId('task-drawer');
+    // The field grid should exist inside the drawer
+    expect(drawer.querySelector('.grid.grid-cols-2')).not.toBeNull();
+  });
+});
+
 describe('TaskDrawer subtask drag-reorder', () => {
   // Two subtasks: first at sortOrder=0, last at sortOrder=1
   const subtasks = [
