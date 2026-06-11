@@ -7,8 +7,8 @@ const DAY = Date.parse('2026-01-05T00:00:00.000Z'); // local midnight, TZ=UTC
 const baseProps = { dayStartMs: DAY, startMin: 540, topPct: 18.75, onClose: vi.fn() }; // 09:00
 
 const fakeCategories = [
-  { id: 'cat-default', userId: 'u1', name: 'Work', windows: null, isDefault: true },
-  { id: 'cat-other', userId: 'u1', name: 'Personal', windows: null, isDefault: false },
+  { id: 'cat-default', userId: 'u1', name: 'Work', windows: null, isDefault: true, color: null },
+  { id: 'cat-other', userId: 'u1', name: 'Personal', windows: null, isDefault: false, color: null },
 ];
 
 describe('CreatePopover', () => {
@@ -236,5 +236,18 @@ describe('CreatePopover', () => {
       expect(call).toBeDefined();
       expect((call as Record<string, unknown>)['categoryId']).toBeUndefined();
     });
+  });
+});
+
+describe('CreatePopover due-date guard', () => {
+  it('Enter on the title does not submit when the due date is cleared', async () => {
+    const createTask = vi.fn();
+    renderWithProviders(<CreatePopover {...baseProps} />, { api: fakeApiClient({ createTask, listCategories: vi.fn(async () => []) } as never) });
+    fireEvent.click(screen.getByTestId('mode-task'));
+    fireEvent.change(screen.getByTestId('create-title'), { target: { value: 'No due' } });
+    fireEvent.change(screen.getByTestId('create-due'), { target: { value: '' } });
+    fireEvent.keyDown(screen.getByTestId('create-title'), { key: 'Enter' });
+    expect(createTask).not.toHaveBeenCalled();
+    expect(screen.getByTestId('create-submit')).toBeDisabled();
   });
 });

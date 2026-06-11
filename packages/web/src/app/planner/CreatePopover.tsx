@@ -61,7 +61,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
   }, [onClose]);
 
   const submit = () => {
-    if (pending || (!existingChosen && !title.trim())) return;
+    if (pending || (!existingChosen && !title.trim()) || (showNewTaskFields && !dueLocal)) return;
     if (mode === 'event') {
       createEventM.mutate({ title: title.trim(), startsAt: iso(startMs), endsAt: iso(endMs) }, { onSuccess: onClose });
     } else if (existingChosen) {
