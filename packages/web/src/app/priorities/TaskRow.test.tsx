@@ -3,12 +3,12 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { TaskRow } from './TaskRow';
 import type { Task } from '../../api/types';
 
-const base = { id: 't', userId: 'u', title: 'T', priority: 1, sortOrder: 0, durationMs: 1, dueBy: '2026-01-09T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1, categoryId: null, status: 'pending', timeLoggedMs: 0, createdAt: '', updatedAt: '' };
+const base = { id: 't', userId: 'u', title: 'T', priority: 1, sortOrder: 0, durationMs: 1, dueBy: '2026-01-09T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1, categoryId: null, status: 'pending', completedAt: null, timeLoggedMs: 0, createdAt: '', updatedAt: '' };
 const noop = () => {};
 function renderRow(task: Task, over: { onEdit?: (t: Task) => void; onToggleSubtask?: (id: string, done: boolean) => void } = {}) {
   return render(
     <TaskRow
-      task={task} bucket="critical" nextMs={null} now={Date.parse('2026-01-05T00:00:00.000Z')} dragging={false}
+      task={task} columnKey="critical" nextMs={null} now={Date.parse('2026-01-05T00:00:00.000Z')} dragging={false}
       onComplete={noop} onEdit={over.onEdit ?? noop} onDelete={noop} onDragStart={noop} onDragEnd={noop}
       onToggleSubtask={over.onToggleSubtask ?? noop}
     />,
@@ -16,8 +16,8 @@ function renderRow(task: Task, over: { onEdit?: (t: Task) => void; onToggleSubta
 }
 
 const twoSubtasks = [
-  { id: 's1', taskId: 't', title: 'first step', done: true },
-  { id: 's2', taskId: 't', title: 'second step', done: false },
+  { id: 's1', taskId: 't', title: 'first step', done: true, sortOrder: 0 },
+  { id: 's2', taskId: 't', title: 'second step', done: false, sortOrder: 1 },
 ];
 
 describe('TaskRow subtask badge', () => {

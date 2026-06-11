@@ -9,7 +9,7 @@ const NOW = Date.parse('2026-01-07T12:00:00.000Z');
 const task = (over: Partial<Task> = {}): Task => ({
   id: 't1', userId: 'u1', title: 'Write spec', priority: 2, sortOrder: 0, durationMs: 3_600_000,
   dueBy: '2026-06-01T17:00:00.000Z', minChunkMs: 1_800_000, maxChunkMs: 7_200_000,
-  categoryId: null, status: 'pending', timeLoggedMs: 0,
+  categoryId: null, status: 'pending', completedAt: null, timeLoggedMs: 0,
   createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', ...over,
 });
 
@@ -180,10 +180,87 @@ describe('Priorities board', () => {
     expect(screen.getByTestId('task-drawer')).toBeInTheDocument();
   });
 
+  // ── Lifecycle column tests ──────────────────────────────────────────────────
+
+  it('renders a completed task in column-completed, not in its priority bucket', async () => {
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
+    await waitFor(() => expect(screen.getByTestId('column-completed')).toBeInTheDocument());
+    expect(within(screen.getByTestId('column-completed')).getByText('Done thing')).toBeInTheDocument();
+    // should NOT be in the low bucket (priority 4)
+    expect(within(screen.getByTestId('column-low')).queryByText('Done thing')).toBeNull();
+  });
+
+  it('dragging a pending task onto the backlog column patches {status:"backlog", sortOrder}', async () => {
+    const updateTask = vi.fn(async () => task());
+    const listTasks = vi.fn(async () => [
+      task({ id: 'p1', title: 'Pending task', priority: 4, sortOrder: 5 }),
+    ]);
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateTask }) });
+    await waitFor(() => expect(screen.getByText('Pending task')).toBeInTheDocument());
+    const row = screen.getByText('Pending task').closest('[data-testid="task-row"]')! as HTMLElement;
+    const dt = dataTransfer();
+    fireEvent.dragStart(row, { dataTransfer: dt });
+    fireEvent.dragOver(screen.getByTestId('column-backlog'), { dataTransfer: dt });
+    fireEvent.drop(screen.getByTestId('column-backlog'), { dataTransfer: dt });
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith('p1', { status: 'backlog', sortOrder: expect.any(Number) }));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((updateTask.mock.calls[0] as any[])[1]).not.toHaveProperty('priority');
+  });
+
+  it('dragging a backlog task to a bucket column patches {status:"pending", priority, sortOrder}', async () => {
+    const updateTask = vi.fn(async () => task());
+    const listTasks = vi.fn(async () => [
+      task({ id: 'b1', title: 'Backlog task', priority: 4, sortOrder: 3, status: 'backlog' }),
+    ]);
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateTask }) });
+    await waitFor(() => expect(screen.getByText('Backlog task')).toBeInTheDocument());
+    const row = screen.getByText('Backlog task').closest('[data-testid="task-row"]')! as HTMLElement;
+    const dt = dataTransfer();
+    fireEvent.dragStart(row, { dataTransfer: dt });
+    fireEvent.dragOver(screen.getByTestId('column-critical'), { dataTransfer: dt });
+    fireEvent.drop(screen.getByTestId('column-critical'), { dataTransfer: dt });
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith('b1', {
+      status: 'pending', priority: 1, sortOrder: expect.any(Number),
+    }));
+  });
+
+  it('dropping onto the completed column does nothing (no updateTask call)', async () => {
+    const updateTask = vi.fn(async () => task());
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ updateTask }) });
+    await waitFor(() => expect(screen.getByText('Low thing')).toBeInTheDocument());
+    const row = screen.getByText('Low thing').closest('[data-testid="task-row"]')! as HTMLElement;
+    const dt = dataTransfer();
+    fireEvent.dragStart(row, { dataTransfer: dt });
+    fireEvent.dragOver(screen.getByTestId('column-completed'), { dataTransfer: dt });
+    fireEvent.drop(screen.getByTestId('column-completed'), { dataTransfer: dt });
+    // allow any async flush
+    await new Promise((r) => setTimeout(r, 20));
+    expect(updateTask).not.toHaveBeenCalled();
+  });
+
+  it('hide-completed hides the Completed column entirely', async () => {
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
+    await waitFor(() => expect(screen.getByTestId('column-completed')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /filter/i }));
+    fireEvent.click(screen.getByRole('button', { name: /hide completed/i }));
+    expect(screen.queryByTestId('column-completed')).toBeNull();
+    expect(screen.queryByText('Done thing')).toBeNull();
+  });
+
+  it('un-completes a task from the completed column via the ✓ button', async () => {
+    const updateTask = vi.fn(async () => task());
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ updateTask }) });
+    await waitFor(() => expect(screen.getByTestId('column-completed')).toBeInTheDocument());
+    const col = screen.getByTestId('column-completed');
+    const row = within(col).getByTestId('task-row');
+    fireEvent.click(within(row as HTMLElement).getByRole('button', { name: 'complete' }));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith('d1', { status: 'pending' }));
+  });
+
   it('toggles a subtask from the board card without opening the drawer', async () => {
     const updateSubtask = vi.fn(async () => ({ id: 's1', taskId: 'c1', title: 'step', done: true }));
     const listTasks = vi.fn(async () => [
-      task({ id: 'c1', title: 'Critical thing', priority: 1, subtasks: [{ id: 's1', taskId: 'c1', title: 'step', done: false }] } as Partial<Task>),
+      task({ id: 'c1', title: 'Critical thing', priority: 1, subtasks: [{ id: 's1', taskId: 'c1', title: 'step', done: false, sortOrder: 0 }] } as Partial<Task>),
     ]);
     renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateSubtask }) });
     await waitFor(() => expect(screen.getByText('Critical thing')).toBeInTheDocument());

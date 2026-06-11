@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Task } from '../../api/types';
 import { Icons } from '../shell/icons';
-import { type BucketKey, BUCKET_META, relativeDayTimeLabel } from './priorityBucket';
+import { type BoardColumnKey, columnMeta, relativeDayTimeLabel } from './priorityBucket';
 
 function dueShort(iso: string): string {
   return new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric' }).format(new Date(iso));
@@ -9,10 +9,12 @@ function dueShort(iso: string): string {
 
 export interface TaskRowProps {
   task: Task;
-  bucket: BucketKey;
+  columnKey: BoardColumnKey;
   nextMs: number | null;
   now: number;
   dragging: boolean;
+  draggable?: boolean;
+  muted?: boolean;
   onComplete: (task: Task) => void;
   onEdit: (task: Task) => void;
   onDelete: (task: Task) => void;
@@ -21,7 +23,7 @@ export interface TaskRowProps {
   onToggleSubtask: (subtaskId: string, done: boolean) => void;
 }
 
-export function TaskRow({ task, bucket, nextMs, now, dragging, onComplete, onEdit, onDelete, onDragStart, onDragEnd, onToggleSubtask }: TaskRowProps) {
+export function TaskRow({ task, columnKey, nextMs, now, dragging, draggable = true, muted = false, onComplete, onEdit, onDelete, onDragStart, onDragEnd, onToggleSubtask }: TaskRowProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -34,15 +36,16 @@ export function TaskRow({ task, bucket, nextMs, now, dragging, onComplete, onEdi
   const meta = `Due ${dueShort(task.dueBy)}${nextMs !== null ? ` · Next: ${relativeDayTimeLabel(nextMs, now)}` : ''}`;
   const subtasks = task.subtasks ?? [];
   const subtaskDone = subtasks.filter((s) => s.done).length;
+  const colMeta = columnMeta(columnKey);
 
   return (
     <div
-      data-testid="task-row" data-task-id={task.id} data-bucket={bucket}
-      draggable
-      onDragStart={(e) => { if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'; onDragStart(task.id); }}
+      data-testid="task-row" data-task-id={task.id} data-bucket={columnKey}
+      draggable={draggable}
+      onDragStart={(e) => { if (!draggable) return; if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'; onDragStart(task.id); }}
       onDragEnd={onDragEnd}
       onClick={() => onEdit(task)}
-      className={`flex cursor-grab items-start gap-3 border-t border-l-4 border-t-line ${BUCKET_META[bucket].leftBorder} bg-card last:rounded-b-xl py-3.5 pl-4 pr-3.5 transition-colors hover:bg-[#fafbfc] ${dragging ? 'opacity-40' : done ? 'opacity-45' : ''}`}
+      className={`flex items-start gap-3 border-t border-l-4 border-t-line ${colMeta.leftBorder} bg-card last:rounded-b-xl py-3.5 pl-4 pr-3.5 transition-colors hover:bg-[#fafbfc] ${draggable ? 'cursor-grab' : 'cursor-default'} ${dragging ? 'opacity-40' : muted ? 'opacity-70' : done ? 'opacity-45' : ''}`}
     >
       <button
         type="button" aria-label="complete"

@@ -1,7 +1,18 @@
 import type { Prisma, PrismaClient, Task, TaskStatus } from '@prisma/client';
 import { NotFoundError, translatePrismaError } from '../errors.js';
 
-export type TaskWithSubtasks = Prisma.TaskGetPayload<{ include: { subtasks: true } }>;
+const SUBTASK_ORDER_BY: Prisma.SubtaskOrderByWithRelationInput[] = [
+  { sortOrder: 'asc' },
+  { createdAt: 'asc' },
+];
+
+const subtaskInclude = {
+  include: {
+    subtasks: { orderBy: SUBTASK_ORDER_BY },
+  },
+} as const satisfies { include: Prisma.TaskInclude };
+
+export type TaskWithSubtasks = Prisma.TaskGetPayload<typeof subtaskInclude>;
 
 export interface CreateTaskInput {
   title: string;
@@ -25,6 +36,7 @@ export interface UpdateTaskInput {
   notBefore?: Date | null;
   categoryId?: string | null;
   status?: TaskStatus;
+  completedAt?: Date | null;
   timeLoggedMs?: number;
   sortOrder?: number;
 }
@@ -43,7 +55,7 @@ export function createTaskRepository(prisma: PrismaClient) {
     findById(userId: string, id: string): Promise<TaskWithSubtasks | null> {
       return prisma.task.findFirst({
         where: { id, userId },
-        include: { subtasks: { orderBy: { createdAt: 'asc' } } },
+        ...subtaskInclude,
       });
     },
 
@@ -51,7 +63,7 @@ export function createTaskRepository(prisma: PrismaClient) {
       return prisma.task.findMany({
         where: { userId, ...(opts.status ? { status: opts.status } : {}) },
         orderBy: [{ priority: 'asc' }, { sortOrder: 'asc' }, { dueBy: 'asc' }],
-        include: { subtasks: { orderBy: { createdAt: 'asc' } } },
+        ...subtaskInclude,
       });
     },
 
@@ -73,6 +85,17 @@ export function createTaskRepository(prisma: PrismaClient) {
       if (result.count === 0) {
         throw new NotFoundError(`Task ${id} not found for user`);
       }
+    },
+
+    async purgeCompletedBefore(userId: string, cutoff: Date): Promise<number> {
+      const result = await prisma.task.deleteMany({
+        where: {
+          userId,
+          status: 'completed',
+          completedAt: { not: null, lt: cutoff },
+        },
+      });
+      return result.count;
     },
   };
 }

@@ -8,6 +8,8 @@ describe('routeTitle', () => {
     expect(routeTitle('/habits')).toBe('Habits');
     expect(routeTitle('/settings')).toBe('Settings');
     expect(routeTitle('/stats')).toBe('Stats');
+    expect(routeTitle('/buffers')).toBe('Buffers');
+    expect(routeTitle('/hours')).toBe('Hours');
   });
   it('falls back to the app name for unknown routes', () => {
     expect(routeTitle('/nope')).toBe('NotReclaim');

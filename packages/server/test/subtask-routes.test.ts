@@ -43,4 +43,15 @@ describe('subtask routes', () => {
     const missing = await app.inject({ method: 'POST', url: '/subtasks', headers: auth, payload: { taskId: 'nope', title: 'x' } });
     expect(missing.statusCode).toBe(404);
   });
+
+  it('PATCH subtask with sortOrder updates and returns the new sortOrder', async () => {
+    const { app } = buildTestApp({ tasks: [seededTask] });
+    const token = await tokenFor(app);
+    const auth = { authorization: `Bearer ${token}` };
+    const created = await app.inject({ method: 'POST', url: '/subtasks', headers: auth, payload: { taskId: 't1', title: 'step 1' } });
+    const id = (created.json() as { id: string }).id;
+    const patched = await app.inject({ method: 'PATCH', url: `/subtasks/${id}`, headers: auth, payload: { sortOrder: 0.5 } });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json().sortOrder).toBe(0.5);
+  });
 });

@@ -108,6 +108,13 @@ export function minutesToPx(min: number): number {
   return (min / (WINDOW_END_MIN - WINDOW_START_MIN)) * GRID_COLUMN_PX;
 }
 
+/** Local midnight (00:00:00.000) of the day containing `ms`. */
+export function localMidnight(ms: number): number {
+  const d = new Date(ms);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
 /** Shift a timestamp by whole days via local-date arithmetic (DST-safe; preserves wall-clock time). */
 export function shiftDays(ms: number, days: number): number {
   if (days === 0) return ms;

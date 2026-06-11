@@ -42,4 +42,24 @@ describe('SubtaskRepository', () => {
     await tasks.delete(owner.id, task.id);
     expect(await prisma.subtask.findUnique({ where: { id: s.id } })).toBeNull();
   });
+
+  it('defaults sortOrder to max+1 within the task', async () => {
+    const user = await users.create({ email: 'sto1@example.com' });
+    const task = await tasks.create(user.id, taskInput());
+    const s1 = await repo.create(user.id, task.id, { title: 'first' });
+    expect(s1.sortOrder).toBe(1); // empty → 0+1
+    const s2 = await repo.create(user.id, task.id, { title: 'second' });
+    expect(s2.sortOrder).toBe(2);
+  });
+
+  it('updates sortOrder via update() and ordering follows via task.findById', async () => {
+    const user = await users.create({ email: 'sto2@example.com' });
+    const task = await tasks.create(user.id, taskInput());
+    const s1 = await repo.create(user.id, task.id, { title: 'alpha' });
+    const s2 = await repo.create(user.id, task.id, { title: 'beta' });
+    // Move s2 before s1
+    await repo.update(user.id, s2.id, { sortOrder: s1.sortOrder - 0.5 });
+    const fetched = await tasks.findById(user.id, task.id);
+    expect(fetched!.subtasks.map((s) => s.title)).toEqual(['beta', 'alpha']);
+  });
 });

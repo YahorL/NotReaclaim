@@ -4,6 +4,8 @@ const TITLES: Record<string, string> = {
   '/habits': 'Habits',
   '/settings': 'Settings',
   '/stats': 'Stats',
+  '/buffers': 'Buffers',
+  '/hours': 'Hours',
 };
 
 export function routeTitle(pathname: string): string {

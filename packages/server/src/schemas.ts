@@ -16,11 +16,11 @@ export const createTaskSchema = z.object({
   sortOrder: z.number().optional(),
 });
 export const updateTaskSchema = createTaskSchema.partial().extend({
-  status: z.enum(['pending', 'scheduled', 'completed', 'archived']).optional(),
+  status: z.enum(['pending', 'scheduled', 'completed', 'archived', 'backlog']).optional(),
   timeLoggedMs: z.number().int().nonnegative().optional(),
 });
 export const listTasksQuerySchema = z.object({
-  status: z.enum(['pending', 'scheduled', 'completed', 'archived']).optional(),
+  status: z.enum(['pending', 'scheduled', 'completed', 'archived', 'backlog']).optional(),
 });
 
 export const createHabitSchema = z.object({
@@ -81,7 +81,11 @@ export const createSubtaskSchema = z.object({
 export const updateSubtaskSchema = z.object({
   title: z.string().min(1).optional(),
   done: z.boolean().optional(),
-}).refine((b) => b.title !== undefined || b.done !== undefined, { message: 'title or done is required' });
+  sortOrder: z.number().optional(),
+}).refine(
+  (b) => b.title !== undefined || b.done !== undefined || b.sortOrder !== undefined,
+  { message: 'title, done, or sortOrder is required' },
+);
 
 export const rangeQuerySchema = z.object({
   from: z.string().datetime().optional(),

@@ -1,4 +1,4 @@
-export type TaskStatus = 'pending' | 'scheduled' | 'completed' | 'archived';
+export type TaskStatus = 'pending' | 'scheduled' | 'backlog' | 'completed' | 'archived';
 export type HabitStatus = 'active' | 'paused';
 
 export interface Subtask {
@@ -6,6 +6,7 @@ export interface Subtask {
   taskId: string;
   title: string;
   done: boolean;
+  sortOrder: number;
 }
 export interface CreateSubtaskInput {
   taskId: string;
@@ -14,6 +15,7 @@ export interface CreateSubtaskInput {
 export interface UpdateSubtaskInput {
   title?: string;
   done?: boolean;
+  sortOrder?: number;
 }
 
 export interface Task {
@@ -29,6 +31,7 @@ export interface Task {
   maxChunkMs: number;
   categoryId: string | null;
   status: TaskStatus;
+  completedAt: string | null;
   timeLoggedMs: number;
   subtasks?: Subtask[];
   createdAt: string;

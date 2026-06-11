@@ -7,6 +7,7 @@ export interface CreateSubtaskInput {
 export interface UpdateSubtaskInput {
   title?: string;
   done?: boolean;
+  sortOrder?: number;
 }
 
 export function createSubtaskRepository(prisma: PrismaClient) {
@@ -15,7 +16,9 @@ export function createSubtaskRepository(prisma: PrismaClient) {
       const task = await prisma.task.findFirst({ where: { id: taskId, userId } });
       if (!task) throw new NotFoundError(`Task ${taskId} not found for user`);
       try {
-        return await prisma.subtask.create({ data: { taskId, title: data.title } });
+        const agg = await prisma.subtask.aggregate({ where: { taskId }, _max: { sortOrder: true } });
+        const sortOrder = (agg._max.sortOrder ?? 0) + 1;
+        return await prisma.subtask.create({ data: { taskId, title: data.title, sortOrder } });
       } catch (error) {
         translatePrismaError(error);
       }

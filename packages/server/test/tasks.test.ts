@@ -146,4 +146,74 @@ describe('task routes', () => {
     expect(patched.statusCode).toBe(200);
     expect(patched.json().sortOrder).toBe(0.5);
   });
+
+  it('PATCH status completed sets completedAt, un-complete clears it', async () => {
+    const { app, FIXED_NOW } = buildTestApp();
+    const token = await tokenFor(app);
+    const auth = { authorization: `Bearer ${token}` };
+    const created = await app.inject({ method: 'POST', url: '/tasks', headers: auth, payload: taskBody });
+    const id = created.json().id;
+
+    // Complete: completedAt should be set to now
+    const completed = await app.inject({ method: 'PATCH', url: `/tasks/${id}`, headers: auth, payload: { status: 'completed' } });
+    expect(completed.statusCode).toBe(200);
+    expect(completed.json().completedAt).toBe(new Date(FIXED_NOW).toISOString());
+
+    // Un-complete: completedAt should be cleared
+    const pending = await app.inject({ method: 'PATCH', url: `/tasks/${id}`, headers: auth, payload: { status: 'pending' } });
+    expect(pending.statusCode).toBe(200);
+    expect(pending.json().completedAt).toBeNull();
+  });
+
+  it('PATCH accepts backlog status', async () => {
+    const { app } = buildTestApp();
+    const token = await tokenFor(app);
+    const auth = { authorization: `Bearer ${token}` };
+    const created = await app.inject({ method: 'POST', url: '/tasks', headers: auth, payload: taskBody });
+    const id = created.json().id;
+    const patched = await app.inject({ method: 'PATCH', url: `/tasks/${id}`, headers: auth, payload: { status: 'backlog' } });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json().status).toBe('backlog');
+    expect(patched.json().completedAt).toBeNull();
+  });
+
+  it('GET /tasks filters by backlog status', async () => {
+    const { app } = buildTestApp();
+    const token = await tokenFor(app);
+    const auth = { authorization: `Bearer ${token}` };
+    await app.inject({ method: 'POST', url: '/tasks', headers: auth, payload: taskBody });
+    const list = await app.inject({ method: 'GET', url: '/tasks?status=backlog', headers: auth });
+    expect(list.statusCode).toBe(200);
+    expect(list.json()).toHaveLength(0); // task is pending, not backlog
+  });
+
+  it('GET /tasks purges old completed tasks (>30 days) but keeps recent ones', async () => {
+    // FIXED_NOW = 2026-01-05T00:00:00.000Z
+    const THIRTY_ONE_DAYS_AGO = new Date('2025-12-05T00:00:00.000Z');
+    const FIVE_DAYS_AGO = new Date('2025-12-31T00:00:00.000Z');
+
+    const oldCompleted = {
+      id: 'old-done', userId: 'u1', title: 'old', priority: 1, sortOrder: 0,
+      durationMs: 1, dueBy: new Date(0), minChunkMs: 1, maxChunkMs: 1,
+      categoryId: null, notBefore: null, status: 'completed', completedAt: THIRTY_ONE_DAYS_AGO,
+      timeLoggedMs: 0, createdAt: new Date(0), updatedAt: new Date(0), subtasks: [],
+    } as unknown as import('@notreclaim/db').Task;
+
+    const recentCompleted = {
+      id: 'recent-done', userId: 'u1', title: 'recent', priority: 1, sortOrder: 0,
+      durationMs: 1, dueBy: new Date(0), minChunkMs: 1, maxChunkMs: 1,
+      categoryId: null, notBefore: null, status: 'completed', completedAt: FIVE_DAYS_AGO,
+      timeLoggedMs: 0, createdAt: new Date(0), updatedAt: new Date(0), subtasks: [],
+    } as unknown as import('@notreclaim/db').Task;
+
+    const { app } = buildTestApp({ tasks: [oldCompleted, recentCompleted] });
+    const token = await tokenFor(app);
+    const auth = { authorization: `Bearer ${token}` };
+
+    const list = await app.inject({ method: 'GET', url: '/tasks', headers: auth });
+    expect(list.statusCode).toBe(200);
+    const ids = list.json().map((t: { id: string }) => t.id);
+    expect(ids).not.toContain('old-done');
+    expect(ids).toContain('recent-done');
+  });
 });

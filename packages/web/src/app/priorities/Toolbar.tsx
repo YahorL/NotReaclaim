@@ -1,14 +1,16 @@
 import { Icons } from '../shell/icons';
 import { Dropdown, MenuRow } from './Dropdown';
-import { type BucketKey, BUCKETS, BUCKET_META } from './priorityBucket';
+import { type BoardColumnKey, type BucketKey, BUCKETS, BUCKET_META, EXTRA_COLUMN_META } from './priorityBucket';
+
+const EXTRA_COLS: Array<'backlog' | 'completed'> = ['backlog', 'completed'];
 
 export interface ToolbarProps {
   query: string;
   setQuery: (s: string) => void;
   hideCompleted: boolean;
   setHideCompleted: (b: boolean) => void;
-  colsVisible: Record<BucketKey, boolean>;
-  setColsVisible: (r: Record<BucketKey, boolean>) => void;
+  colsVisible: Record<BoardColumnKey, boolean>;
+  setColsVisible: (r: Record<BoardColumnKey, boolean>) => void;
 }
 
 export function Toolbar({ query, setQuery, hideCompleted, setHideCompleted, colsVisible, setColsVisible }: ToolbarProps) {
@@ -25,8 +27,11 @@ export function Toolbar({ query, setQuery, hideCompleted, setHideCompleted, cols
       </Dropdown>
       <Dropdown icon={<Icons.columns size={18} />} label="Columns">
         <div className="px-3.5 pb-1 pt-2 text-[12.5px] font-extrabold uppercase tracking-wide text-inkSoft">Show columns</div>
-        {BUCKETS.map((b) => (
+        {BUCKETS.map((b: BucketKey) => (
           <MenuRow key={b} label={BUCKET_META[b].label} dotClass={BUCKET_META[b].dot} checked={colsVisible[b]} onClick={() => setColsVisible({ ...colsVisible, [b]: !colsVisible[b] })} />
+        ))}
+        {EXTRA_COLS.map((k) => (
+          <MenuRow key={k} label={EXTRA_COLUMN_META[k].label} dotClass={EXTRA_COLUMN_META[k].dot} checked={colsVisible[k]} onClick={() => setColsVisible({ ...colsVisible, [k]: !colsVisible[k] })} />
         ))}
       </Dropdown>
       <Dropdown icon={<Icons.help size={18} />} label="Help" width={220}>

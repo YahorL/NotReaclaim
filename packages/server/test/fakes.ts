@@ -12,7 +12,7 @@ export function fakeTaskRepo(seed: Task[] = []) {
   const make = (userId: string, data: Record<string, unknown>): Task => ({
     id: `task-${++n}`, userId, title: '', priority: 1, sortOrder: 0, durationMs: 0,
     dueBy: new Date(0), minChunkMs: 0, maxChunkMs: 0, categoryId: null, notBefore: null,
-    status: 'pending', timeLoggedMs: 0, createdAt: new Date(0), updatedAt: new Date(0),
+    status: 'pending', completedAt: null, timeLoggedMs: 0, createdAt: new Date(0), updatedAt: new Date(0),
     subtasks: [],
     ...data,
   }) as Task;
@@ -35,6 +35,16 @@ export function fakeTaskRepo(seed: Task[] = []) {
       const before = rows.length;
       rows = rows.filter((r) => !(r.id === id && r.userId === userId));
       if (rows.length === before) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`Task ${id}`); }
+    },
+    async purgeCompletedBefore(userId: string, cutoff: Date): Promise<number> {
+      const before = rows.length;
+      rows = rows.filter((r) => !(
+        r.userId === userId &&
+        r.status === 'completed' &&
+        r.completedAt != null &&
+        r.completedAt < cutoff
+      ));
+      return before - rows.length;
     },
   };
 }
@@ -182,7 +192,7 @@ export function fakeSubtaskRepo(seed: Subtask[] = [], taskRepo: { findById(userI
   let rows = [...seed];
   let n = seed.length;
   const make = (taskId: string, data: Record<string, unknown>): Subtask => ({
-    id: `sub-${++n}`, taskId, title: '', done: false, createdAt: new Date(0), updatedAt: new Date(0), ...data,
+    id: `sub-${++n}`, taskId, title: '', done: false, sortOrder: 0, createdAt: new Date(0), updatedAt: new Date(0), ...data,
   }) as Subtask;
   const owned = async (userId: string, id: string): Promise<Subtask | null> => {
     const row = rows.find((r) => r.id === id);
@@ -192,7 +202,10 @@ export function fakeSubtaskRepo(seed: Subtask[] = [], taskRepo: { findById(userI
   return {
     async create(userId: string, taskId: string, data: Record<string, unknown>): Promise<Subtask> {
       if (!(await taskRepo.findById(userId, taskId))) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`Task ${taskId}`); }
-      const row = make(taskId, data); rows.push(row); return row;
+      const taskSubtasks = rows.filter((r) => r.taskId === taskId);
+      const maxOrder = taskSubtasks.reduce((m, r) => Math.max(m, r.sortOrder), 0);
+      const sortOrder = maxOrder + 1;
+      const row = make(taskId, { sortOrder, ...data }); rows.push(row); return row;
     },
     async update(userId: string, id: string, data: Record<string, unknown>): Promise<Subtask> {
       const row = await owned(userId, id);

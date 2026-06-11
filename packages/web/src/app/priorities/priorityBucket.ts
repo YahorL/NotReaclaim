@@ -2,6 +2,7 @@ import type { SchedulePreview } from '../../api/types';
 
 export const BUCKETS = ['critical', 'high', 'medium', 'low'] as const;
 export type BucketKey = (typeof BUCKETS)[number];
+export type BoardColumnKey = BucketKey | 'backlog' | 'completed';
 
 export function priorityToBucket(priority: number): BucketKey {
   if (priority <= 1) return 'critical';
@@ -26,6 +27,16 @@ export const BUCKET_META: Record<BucketKey, { label: string; dot: string; leftBo
   medium: { label: 'Medium priority', dot: 'bg-med', leftBorder: 'border-l-med' },
   low: { label: 'Low priority', dot: 'bg-low', leftBorder: 'border-l-low' },
 };
+
+export const EXTRA_COLUMN_META: Record<'backlog' | 'completed', { label: string; dot: string; leftBorder: string }> = {
+  backlog: { label: 'Backlog', dot: 'bg-[#aeb2c0]', leftBorder: 'border-l-[#aeb2c0]' },
+  completed: { label: 'Completed', dot: 'bg-low', leftBorder: 'border-l-low' },
+};
+
+export function columnMeta(key: BoardColumnKey): { label: string; dot: string; leftBorder: string } {
+  if (key === 'backlog' || key === 'completed') return EXTRA_COLUMN_META[key];
+  return BUCKET_META[key];
+}
 
 function timeLabel(d: Date): string {
   return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
@@ -52,6 +63,16 @@ export function relativeDayTimeLabel(ms: number, now: number): string {
 /** Within-bucket display order: user sortOrder, then due date. */
 export function sortBucket<T extends { sortOrder: number; dueBy: string }>(tasks: T[]): T[] {
   return [...tasks].sort((a, b) => a.sortOrder - b.sortOrder || Date.parse(a.dueBy) - Date.parse(b.dueBy));
+}
+
+/** Completed column order: completedAt desc (nulls last). */
+export function sortCompleted<T extends { completedAt: string | null }>(tasks: T[]): T[] {
+  return [...tasks].sort((a, b) => {
+    if (a.completedAt === null && b.completedAt === null) return 0;
+    if (a.completedAt === null) return 1;
+    if (b.completedAt === null) return -1;
+    return Date.parse(b.completedAt) - Date.parse(a.completedAt);
+  });
 }
 
 /** sortOrder for inserting at `index` into a sorted bucket (midpoint of neighbors). */
