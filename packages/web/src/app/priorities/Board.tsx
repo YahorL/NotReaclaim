@@ -1,15 +1,15 @@
 import { useState } from 'react';
 import type { Task } from '../../api/types';
-import { type BucketKey } from './priorityBucket';
+import { type BucketKey, type BoardColumnKey } from './priorityBucket';
 import { Column, type ColumnDnd } from './Column';
 
-export interface BoardColumn { key: BucketKey; tasks: Task[]; }
+export interface BoardColumn { key: BoardColumnKey; tasks: Task[]; }
 
 export interface BoardProps {
   columns: BoardColumn[];
   now: number;
   nextMsFor: (taskId: string) => number | null;
-  onMove: (taskId: string, to: BucketKey, index: number) => void;
+  onMove: (taskId: string, to: BoardColumnKey, index: number) => void;
   onComplete: (task: Task) => void;
   onEdit: (task: Task) => void;
   onDelete: (task: Task) => void;
@@ -17,7 +17,7 @@ export interface BoardProps {
 }
 
 export function Board({ columns, now, nextMsFor, onMove, onComplete, onEdit, onDelete, onToggleSubtask }: BoardProps) {
-  const [drag, setDrag] = useState<{ id: string | null; over: BucketKey | null; overIndex: number | null }>({ id: null, over: null, overIndex: null });
+  const [drag, setDrag] = useState<{ id: string | null; over: BoardColumnKey | null; overIndex: number | null }>({ id: null, over: null, overIndex: null });
   const dnd: ColumnDnd = {
     id: drag.id,
     over: drag.over,
@@ -31,7 +31,7 @@ export function Board({ columns, now, nextMsFor, onMove, onComplete, onEdit, onD
     <div className="flex items-start gap-[26px]" style={{ minWidth: 'min-content' }}>
       {columns.map((c) => (
         <Column
-          key={c.key} bucket={c.key} tasks={c.tasks} now={now} nextMsFor={nextMsFor} dnd={dnd}
+          key={c.key} columnKey={c.key} tasks={c.tasks} now={now} nextMsFor={nextMsFor} dnd={dnd}
           onComplete={onComplete} onEdit={onEdit} onDelete={onDelete} onToggleSubtask={onToggleSubtask}
         />
       ))}

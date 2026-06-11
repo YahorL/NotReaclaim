@@ -5,7 +5,7 @@ import { useTasksQuery, useSchedulePreviewQuery, useUpdateTaskMutation, useDelet
 import { TaskDrawer } from '../tasks/TaskDrawer';
 import { Toolbar } from '../priorities/Toolbar';
 import { Board, type BoardColumn } from '../priorities/Board';
-import { type BucketKey, BUCKETS, priorityToBucket, bucketToPriority, nextBlockMsForTask, sortBucket, insertionSortOrder } from '../priorities/priorityBucket';
+import { type BucketKey, type BoardColumnKey, BUCKETS, priorityToBucket, bucketToPriority, nextBlockMsForTask, sortBucket, sortCompleted, insertionSortOrder } from '../priorities/priorityBucket';
 
 export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
   const tasksQ = useTasksQuery();
@@ -17,7 +17,9 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
 
   const [query, setQuery] = useState('');
   const [hideCompleted, setHideCompleted] = useState(false);
-  const [colsVisible, setColsVisible] = useState<Record<BucketKey, boolean>>({ critical: true, high: true, medium: true, low: true });
+  const [colsVisible, setColsVisible] = useState<Record<BoardColumnKey, boolean>>({
+    critical: true, high: true, medium: true, low: true, backlog: true, completed: true,
+  });
   const [editingId, setEditingId] = useState<string | null>(null);
   const nowMs = now();
 
@@ -27,30 +29,63 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
     const q = query.trim().toLowerCase();
     const visible = (tasksQ.data ?? []).filter((t) =>
       t.status !== 'archived'
-      && (!hideCompleted || t.status !== 'completed')
       && (!q || t.title.toLowerCase().includes(q)));
-    return BUCKETS.filter((b) => colsVisible[b]).map((key) => ({
-      key,
-      tasks: sortBucket(visible.filter((t) => priorityToBucket(t.priority) === key)),
-    }));
+
+    const bucketCols: BoardColumn[] = BUCKETS
+      .filter((b) => colsVisible[b])
+      .map((key) => ({
+        key,
+        tasks: sortBucket(visible.filter((t) => (t.status === 'pending' || t.status === 'scheduled') && priorityToBucket(t.priority) === key)),
+      }));
+
+    const extraCols: BoardColumn[] = [];
+
+    if (colsVisible.backlog) {
+      extraCols.push({
+        key: 'backlog',
+        tasks: sortBucket(visible.filter((t) => t.status === 'backlog')),
+      });
+    }
+
+    if (!hideCompleted && colsVisible.completed) {
+      extraCols.push({
+        key: 'completed',
+        tasks: sortCompleted(visible.filter((t) => t.status === 'completed')),
+      });
+    }
+
+    return [...bucketCols, ...extraCols];
   }, [tasksQ.data, query, hideCompleted, colsVisible]);
 
   const nextMsFor = (taskId: string) => nextBlockMsForTask(taskId, previewQ.data);
   const onComplete = (t: Task) => updateM.mutate({ id: t.id, patch: { status: t.status === 'completed' ? 'pending' : 'completed' } });
   const onDelete = (t: Task) => deleteM.mutate(t.id, { onSuccess: () => { if (editingId === t.id) setEditingId(null); } });
-  const onMove = (taskId: string, to: BucketKey, index: number) => {
+
+  const onMove = (taskId: string, to: BoardColumnKey, index: number) => {
     const all = tasksQ.data ?? [];
     const t = all.find((x) => x.id === taskId);
     if (!t) return;
+
+    if (to === 'completed') return; // completed column rejects drops
+
     const column = columns.find((c) => c.key === to);
     const colTasks = column?.tasks ?? [];
     const sourceIndex = colTasks.findIndex((x) => x.id === taskId);
     const adjustedIndex = sourceIndex !== -1 && sourceIndex < index ? index - 1 : index;
     const neighbors = colTasks.filter((x) => x.id !== taskId);
     const sortOrder = insertionSortOrder(neighbors, adjustedIndex);
-    const patch: UpdateTaskInput = { sortOrder };
-    if (priorityToBucket(t.priority) !== to) patch.priority = bucketToPriority(to);
-    updateM.mutate({ id: taskId, patch });
+
+    if (to === 'backlog') {
+      updateM.mutate({ id: taskId, patch: { status: 'backlog', sortOrder } });
+    } else {
+      // Dropping on a bucket column
+      const targetBucket = to as BucketKey;
+      const patch: UpdateTaskInput = { sortOrder };
+      if (priorityToBucket(t.priority) !== targetBucket) patch.priority = bucketToPriority(targetBucket);
+      // If task was backlog or completed, reactivate it
+      if (t.status === 'backlog' || t.status === 'completed') patch.status = 'pending';
+      updateM.mutate({ id: taskId, patch });
+    }
   };
 
   return (

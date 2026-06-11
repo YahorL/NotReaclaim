@@ -8,7 +8,7 @@ import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 const task = (over: Partial<Task> = {}): Task => ({
   id: 't1', userId: 'u1', title: 'Write spec', priority: 2, sortOrder: 0, durationMs: 5_400_000,
   dueBy: '2026-06-01T17:00:00.000Z', minChunkMs: 1_800_000, maxChunkMs: 7_200_000,
-  categoryId: 'cat-work', status: 'pending', timeLoggedMs: 0,
+  categoryId: 'cat-work', status: 'pending', completedAt: null, timeLoggedMs: 0,
   createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', ...over,
 });
 
@@ -90,7 +90,7 @@ describe('TaskDrawer', () => {
     const updateSubtask = vi.fn().mockResolvedValue({ id: 's1', taskId: 't', title: 'a', done: true });
     const deleteSubtask = vi.fn().mockResolvedValue(undefined);
     const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue([]), createSubtask, updateSubtask, deleteSubtask } as never);
-    const t = task({ id: 't', subtasks: [{ id: 's1', taskId: 't', title: 'a', done: false }] });
+    const t = task({ id: 't', subtasks: [{ id: 's1', taskId: 't', title: 'a', done: false, sortOrder: 0 }] });
     renderWithProviders(<TaskDrawer task={t as never} onSave={() => {}} onCancel={() => {}} />, { api });
 
     expect(await screen.findByText('a')).toBeInTheDocument();

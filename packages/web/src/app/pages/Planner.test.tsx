@@ -68,8 +68,8 @@ describe('Planner', () => {
     const taskWithSubtask: Task = {
       id: 't1', userId: 'u1', title: 'Write spec', priority: 2, sortOrder: 0,
       durationMs: 3_600_000, dueBy: '2026-01-10T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1,
-      categoryId: null, status: 'pending', timeLoggedMs: 0, createdAt: '', updatedAt: '',
-      subtasks: [{ id: 's1', taskId: 't1', title: 'outline', done: false }],
+      categoryId: null, status: 'pending', completedAt: null, timeLoggedMs: 0, createdAt: '', updatedAt: '',
+      subtasks: [{ id: 's1', taskId: 't1', title: 'outline', done: false, sortOrder: 0 }],
     };
     const api = makeApi({ listTasks: vi.fn(async () => [taskWithSubtask]) });
     renderWithProviders(<Planner now={() => NOW} />, { api });
@@ -81,7 +81,7 @@ describe('Planner', () => {
     const task: Task = {
       id: 't1', userId: 'u1', title: 'Write spec', priority: 2, sortOrder: 0,
       durationMs: 3_600_000, dueBy: '2026-01-10T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1,
-      categoryId: 'cat-1', status: 'pending', timeLoggedMs: 0, createdAt: '', updatedAt: '',
+      categoryId: 'cat-1', status: 'pending', completedAt: null, timeLoggedMs: 0, createdAt: '', updatedAt: '',
     };
     const category: Category = { id: 'cat-1', userId: 'u1', name: 'Deep Work', windows: null, color: '#5b62e3', isDefault: false };
     const api = fakeApiClient({
