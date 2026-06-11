@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../../api/client';
-import { useCreateTaskMutation, useCreateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery } from '../../api/queries';
+import { useCreateTaskMutation, useCreateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useCategoriesQuery } from '../../api/queries';
 import { DurationStepper } from '../components/DurationStepper';
+import { isoToLocalInput, localInputToIso } from '../lib/duration';
 import { WINDOW_END_MIN } from './weekModel';
 
 const iso = (ms: number): string => new Date(ms).toISOString();
@@ -23,13 +24,28 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
   const [taskId, setTaskId] = useState('');
   const maxDurationMs = (WINDOW_END_MIN - startMin) * 60_000;
   const [durationMs, setDurationMs] = useState(Math.min(30 * 60_000, maxDurationMs));
+  const defaultDueLocal = isoToLocalInput(iso(dayStartMs + (23 * 60 + 59) * 60_000));
+  const [dueLocal, setDueLocal] = useState(defaultDueLocal);
+  const [afterLocal, setAfterLocal] = useState('');
+  const [categoryId, setCategoryId] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const createTaskM = useCreateTaskMutation();
   const createEventM = useCreateCalendarEventMutation();
   const createBlockM = useCreateScheduledBlockMutation();
   const tasksQ = useTasksQuery();
+  const categoriesQ = useCategoriesQuery();
+  const categories = categoriesQ.data ?? [];
   const activeTasks = (tasksQ.data ?? []).filter((t) => t.status === 'pending' || t.status === 'scheduled');
   const existingChosen = mode === 'task' && taskId !== '';
+  const showNewTaskFields = mode === 'task' && !existingChosen;
+
+  // Mirror NewTaskModal: default-select the isDefault category once categories load
+  useEffect(() => {
+    if (categoryId === null && categories.length > 0) {
+      const def = categories.find((c) => c.isDefault) ?? categories[0]!;
+      setCategoryId(def.id);
+    }
+  }, [categories, categoryId]);
 
   const startMs = dayStartMs + startMin * 60_000;
   const endMs = startMs + durationMs;
@@ -45,15 +61,21 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
   }, [onClose]);
 
   const submit = () => {
-    if (pending || (!existingChosen && !title.trim())) return;
+    if (pending || (!existingChosen && !title.trim()) || (showNewTaskFields && !dueLocal)) return;
     if (mode === 'event') {
       createEventM.mutate({ title: title.trim(), startsAt: iso(startMs), endsAt: iso(endMs) }, { onSuccess: onClose });
     } else if (existingChosen) {
       createBlockM.mutate({ taskId, startsAt: iso(startMs), endsAt: iso(endMs) }, { onSuccess: onClose });
     } else {
-      const dueBy = iso(dayStartMs + (23 * 60 + 59) * 60_000);
+      const dueBy = dueLocal ? localInputToIso(dueLocal) : iso(dayStartMs + (23 * 60 + 59) * 60_000);
+      const notBefore = afterLocal ? localInputToIso(afterLocal) : undefined;
+      const catId = categoryId ?? undefined;
       createTaskM.mutate(
-        { title: title.trim(), durationMs, minChunkMs: durationMs, maxChunkMs: durationMs, priority: 4, dueBy },
+        {
+          title: title.trim(), durationMs, minChunkMs: durationMs, maxChunkMs: durationMs, priority: 4, dueBy,
+          ...(notBefore !== undefined && { notBefore }),
+          ...(catId !== undefined && { categoryId: catId }),
+        },
         { onSuccess: (task) => createBlockM.mutate({ taskId: task.id, startsAt: iso(startMs), endsAt: iso(endMs) }, { onSuccess: onClose }) },
       );
     }
@@ -96,6 +118,43 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
           className="mb-2 w-full rounded-[9px] border-[1.5px] border-line px-3 py-2 text-[15px] font-semibold outline-none focus:border-indigo"
         />
       )}
+      {showNewTaskFields && (
+        <>
+          <div className="mb-2">
+            <label className="mb-0.5 block text-[11px] font-semibold text-inkSoft">Due date</label>
+            <input
+              type="datetime-local"
+              data-testid="create-due"
+              required
+              value={dueLocal}
+              onChange={(e) => setDueLocal(e.target.value)}
+              className="w-full rounded-[9px] border-[1.5px] border-line px-3 py-1.5 text-[13px] font-semibold outline-none focus:border-indigo"
+            />
+          </div>
+          <div className="mb-2">
+            <label className="mb-0.5 block text-[11px] font-semibold text-inkSoft">Hours</label>
+            <select
+              data-testid="create-category"
+              value={categoryId ?? ''}
+              onChange={(e) => setCategoryId(e.target.value || null)}
+              className="w-full rounded-[9px] border-[1.5px] border-line px-3 py-1.5 text-[13px] font-semibold outline-none focus:border-indigo"
+            >
+              <option value="">— none —</option>
+              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div className="mb-2">
+            <label className="mb-0.5 block text-[11px] font-semibold text-inkSoft">Schedule after</label>
+            <input
+              type="datetime-local"
+              data-testid="create-after"
+              value={afterLocal}
+              onChange={(e) => setAfterLocal(e.target.value)}
+              className="w-full rounded-[9px] border-[1.5px] border-line px-3 py-1.5 text-[13px] font-semibold outline-none focus:border-indigo"
+            />
+          </div>
+        </>
+      )}
       <div className="mb-1 rounded-[9px] border-[1.5px] border-line px-2.5 py-1.5">
         <DurationStepper label="slot" size={22} valueMs={durationMs} onChange={(ms) => setDurationMs(Math.max(15 * 60_000, Math.min(ms, maxDurationMs)))} />
       </div>
@@ -104,7 +163,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
       <button
         type="button"
         data-testid="create-submit"
-        disabled={(!existingChosen && !title.trim()) || pending}
+        disabled={(!existingChosen && (!title.trim() || (showNewTaskFields && !dueLocal))) || pending}
         onClick={submit}
         className="w-full rounded-[20px] bg-indigo py-2 text-[14px] font-bold text-white disabled:opacity-50"
       >

@@ -111,4 +111,22 @@ describe('WeekGrid', () => {
     expect(onToday).toHaveBeenCalledTimes(1);
   });
 
+  it('threads accent to a task block when accents map is provided', () => {
+    // block() has taskId:'t1', provide accent for t1
+    renderGrid({ accents: { t1: '#5b62e3' } });
+    // The task block should receive the accent → borderColor inline style
+    const taskBlock = screen.getAllByTestId('event-block').find(
+      (b) => b.getAttribute('data-kind') === 'task',
+    )!;
+    expect(taskBlock.style.borderColor).toBe('rgb(91, 98, 227)');
+  });
+
+  it('no accents → task block has no inline borderColor', () => {
+    renderGrid();
+    const taskBlock = screen.getAllByTestId('event-block').find(
+      (b) => b.getAttribute('data-kind') === 'task',
+    )!;
+    expect(taskBlock.style.borderColor).toBe('');
+  });
+
 });

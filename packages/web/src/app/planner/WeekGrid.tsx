@@ -32,6 +32,7 @@ export interface WeekGridProps {
   onNext: () => void;
   onReplan: () => void;
   onCommit: (id: string, patch: { startsAt: string; endsAt: string; pinned: boolean }) => void;
+  accents?: Record<string, string>;
 }
 
 interface Item {
@@ -43,6 +44,7 @@ interface Item {
   endMs: number;
   startLabel: string;
   blockId: string | null;
+  taskId: string | null;
 }
 
 function timeLabel(ms: number): string {
@@ -54,18 +56,19 @@ function toItems(blocks: ScheduledBlock[], events: CalendarEvent[]): Item[] {
     const cls = classifyBlock(b);
     const startMs = Date.parse(b.startsAt);
     return { key: `b:${b.id}`, title: b.title, kind: cls.kind, pinned: cls.pinned,
-      startMs, endMs: Date.parse(b.endsAt), startLabel: timeLabel(startMs), blockId: b.id };
+      startMs, endMs: Date.parse(b.endsAt), startLabel: timeLabel(startMs), blockId: b.id,
+      taskId: b.taskId };
   });
   const fromEvents = events.map((e): Item => {
     const startMs = Date.parse(e.startsAt);
     return { key: `e:${e.id}`, title: e.title, kind: 'meeting', pinned: false,
-      startMs, endMs: Date.parse(e.endsAt), startLabel: timeLabel(startMs), blockId: null };
+      startMs, endMs: Date.parse(e.endsAt), startLabel: timeLabel(startMs), blockId: null, taskId: null };
   });
   return [...fromEvents, ...fromBlocks];
 }
 
 export function WeekGrid(props: WeekGridProps) {
-  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit } = props;
+  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit, accents = {} } = props;
   const items = toItems(blocks, events);
   const [creating, setCreating] = useState<{ dayIndex: number; startMin: number } | null>(null);
 
@@ -147,6 +150,8 @@ export function WeekGrid(props: WeekGridProps) {
                     const pos = placeInDay(it.startMs, it.endMs, d);
                     if (!pos) return null;
                     const blockId = it.blockId;
+                    // Resolve accent: task blocks with a taskId that has a colored category
+                    const accent = it.taskId ? accents[it.taskId] : undefined;
                     if (it.kind !== 'meeting' && blockId) {
                       return (
                         <InteractiveBlock
@@ -155,6 +160,7 @@ export function WeekGrid(props: WeekGridProps) {
                           topPct={pos.topPct} heightPct={pos.heightPct}
                           startLabel={it.startLabel} title={it.title} kind={it.kind} pinned={it.pinned}
                           onCommit={(patch) => onCommit(blockId, patch)}
+                          accent={accent}
                         />
                       );
                     }
@@ -167,6 +173,7 @@ export function WeekGrid(props: WeekGridProps) {
                         topPct={pos.topPct}
                         heightPct={pos.heightPct}
                         startLabel={it.startLabel}
+                        accent={accent}
                       />
                     );
                   })}

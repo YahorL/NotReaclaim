@@ -26,7 +26,7 @@ export function Settings() {
   const initial = settingsQ.data ? toFormState(settingsQ.data) : defaultFormState(browserTz);
 
   return (
-    <>
+    <div className="p-4">
       <SettingsForm
         initial={initial}
         saving={updateM.isPending}
@@ -35,6 +35,6 @@ export function Settings() {
         onSave={(input) => updateM.mutate(input)}
       />
       <CategoriesSection />
-    </>
+    </div>
   );
 }

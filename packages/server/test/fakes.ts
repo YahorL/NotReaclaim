@@ -143,7 +143,7 @@ export function fakeCategoryRepo(seed: Category[] = []) {
   let rows = [...seed];
   let n = seed.length;
   const make = (userId: string, data: Record<string, unknown>): Category => ({
-    id: `cat-${++n}`, userId, name: '', windows: null, isDefault: false,
+    id: `cat-${++n}`, userId, name: '', windows: null, color: null, isDefault: false,
     createdAt: new Date(0), updatedAt: new Date(0), ...data,
   }) as Category;
   return {

@@ -62,16 +62,19 @@ export interface Category {
   userId: string;
   name: string;
   windows: WorkingHour[] | null;
+  color: string | null;
   isDefault: boolean;
 }
 
 export interface CreateCategoryInput {
   name: string;
   windows: WorkingHour[];
+  color?: string | null;
 }
 export interface UpdateCategoryInput {
   name?: string;
-  windows?: WorkingHour[];
+  windows?: WorkingHour[] | null;
+  color?: string | null;
 }
 
 export interface Settings {

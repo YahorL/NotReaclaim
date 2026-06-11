@@ -113,6 +113,7 @@ model Category {
   userId    String
   name      String
   windows   Json?
+  color     String?
   isDefault Boolean  @default(false)
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz

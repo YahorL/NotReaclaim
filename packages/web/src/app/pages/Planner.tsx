@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useTasksQuery } from '../../api/queries';
+import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useTasksQuery, useCategoriesQuery } from '../../api/queries';
 import { startOfWeek, dayColumns, addWeeks } from '../planner/weekModel';
 import { WeekGrid } from '../planner/WeekGrid';
 import { AtRiskPanel } from '../planner/AtRiskPanel';
@@ -21,6 +21,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const calendar = useCalendarEventsQuery(fromIso, toIso);
   const preview = useSchedulePreviewQuery();
   const tasksQ = useTasksQuery();
+  const categoriesQ = useCategoriesQuery();
   const replan = useReplanMutation();
   const updateBlock = useUpdateScheduledBlockMutation();
 
@@ -28,6 +29,19 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
     () => labelBlocksWithSubtasks(schedule.data ?? [], tasksQ.data ?? []),
     [schedule.data, tasksQ.data],
   );
+
+  // Build accent map: taskId → hex color (only for tasks whose category has a non-null color)
+  const accents = useMemo<Record<string, string>>(() => {
+    const cats = categoriesQ.data ?? [];
+    const colorById = new Map(cats.filter((c) => c.color).map((c) => [c.id, c.color!]));
+    const result: Record<string, string> = {};
+    for (const task of tasksQ.data ?? []) {
+      if (task.categoryId && colorById.has(task.categoryId)) {
+        result[task.id] = colorById.get(task.categoryId)!;
+      }
+    }
+    return result;
+  }, [tasksQ.data, categoriesQ.data]);
 
   const isLoading = schedule.isLoading || calendar.isLoading || preview.isLoading;
   const isError = schedule.isError || calendar.isError || preview.isError;
@@ -62,6 +76,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           onToday={() => setWeekStartMs(startOfWeek(now()))}
           onReplan={() => replan.mutate()}
           onCommit={(id, patch) => updateBlock.mutate({ id, patch })}
+          accents={accents}
         />
         {replan.isError && <p className="mt-2 text-sm text-red-600">Re-plan failed. Try again.</p>}
       </div>
