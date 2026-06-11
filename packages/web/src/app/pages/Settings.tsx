@@ -26,13 +26,15 @@ export function Settings() {
 
   return (
     <div className="p-4">
-      <SettingsForm
-        initial={initial}
-        saving={updateM.isPending}
-        justSaved={updateM.isSuccess}
-        error={updateM.error instanceof ApiError ? updateM.error : null}
-        onSave={(input) => updateM.mutate(input)}
-      />
+      <div className="mx-auto w-full max-w-[720px]">
+        <SettingsForm
+          initial={initial}
+          saving={updateM.isPending}
+          justSaved={updateM.isSuccess}
+          error={updateM.error instanceof ApiError ? updateM.error : null}
+          onSave={(input) => updateM.mutate(input)}
+        />
+      </div>
     </div>
   );
 }
