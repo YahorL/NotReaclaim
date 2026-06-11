@@ -46,39 +46,12 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
           {errors.title && <p data-testid="err-title" className={errCls}>{errors.title}</p>}
         </div>
 
-        {/* Row: Duration | Due by */}
+        {/* Row: Duration | Hours */}
         <div>
           <FieldBox label="Duration">
             <DurationStepper label="duration" size={22} valueMs={form.durationMs} onChange={(ms) => set('durationMs', ms)} />
           </FieldBox>
           {errors.durationMs && <p data-testid="err-durationMs" className={errCls}>{errors.durationMs}</p>}
-        </div>
-        <div>
-          <FieldBox label="Due by">
-            <input type="datetime-local" className={ctl} value={form.dueByLocal} onChange={(e) => set('dueByLocal', e.target.value)} />
-          </FieldBox>
-          {errors.dueByLocal && <p data-testid="err-dueByLocal" className={errCls}>{errors.dueByLocal}</p>}
-        </div>
-
-        {/* Row: Schedule after | Min chunk */}
-        <div>
-          <FieldBox label="Schedule after">
-            <input type="datetime-local" data-testid="schedule-after" className={ctl} value={form.notBeforeLocal} onChange={(e) => set('notBeforeLocal', e.target.value)} />
-          </FieldBox>
-        </div>
-        <div>
-          <FieldBox label="Min chunk">
-            <DurationStepper label="min" size={22} valueMs={form.minChunkMs} onChange={(ms) => set('minChunkMs', ms)} />
-          </FieldBox>
-          {errors.minChunkMs && <p data-testid="err-minChunkMs" className={errCls}>{errors.minChunkMs}</p>}
-        </div>
-
-        {/* Row: Max chunk | Hours */}
-        <div>
-          <FieldBox label="Max chunk">
-            <DurationStepper label="max" size={22} valueMs={form.maxChunkMs} onChange={(ms) => set('maxChunkMs', ms)} />
-          </FieldBox>
-          {errors.maxChunkMs && <p data-testid="err-maxChunkMs" className={errCls}>{errors.maxChunkMs}</p>}
         </div>
         <div>
           <FieldBox label="Hours">
@@ -87,6 +60,33 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
               {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </FieldBox>
+        </div>
+
+        {/* Row: Due by | Schedule after (dates together) */}
+        <div>
+          <FieldBox label="Due by">
+            <input type="datetime-local" className={ctl} value={form.dueByLocal} onChange={(e) => set('dueByLocal', e.target.value)} />
+          </FieldBox>
+          {errors.dueByLocal && <p data-testid="err-dueByLocal" className={errCls}>{errors.dueByLocal}</p>}
+        </div>
+        <div>
+          <FieldBox label="Schedule after">
+            <input type="datetime-local" data-testid="schedule-after" className={ctl} value={form.notBeforeLocal} onChange={(e) => set('notBeforeLocal', e.target.value)} />
+          </FieldBox>
+        </div>
+
+        {/* Row: Min chunk | Max chunk (chunk sizes together) */}
+        <div>
+          <FieldBox label="Min chunk">
+            <DurationStepper label="min" size={22} valueMs={form.minChunkMs} onChange={(ms) => set('minChunkMs', ms)} />
+          </FieldBox>
+          {errors.minChunkMs && <p data-testid="err-minChunkMs" className={errCls}>{errors.minChunkMs}</p>}
+        </div>
+        <div>
+          <FieldBox label="Max chunk">
+            <DurationStepper label="max" size={22} valueMs={form.maxChunkMs} onChange={(ms) => set('maxChunkMs', ms)} />
+          </FieldBox>
+          {errors.maxChunkMs && <p data-testid="err-maxChunkMs" className={errCls}>{errors.maxChunkMs}</p>}
         </div>
 
         {/* Row: Status | (spare) */}
