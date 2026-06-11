@@ -1,8 +1,9 @@
-import { useState, useRef, type PointerEvent as ReactPointerEvent } from 'react';
+import { useState, useRef, useEffect, type PointerEvent as ReactPointerEvent } from 'react';
 import { BASE, variantClass, type BlockKind } from './EventBlock';
 import { WINDOW_END_MIN, snapMinutes, pxToMinutes, minutesToPx, clampToWindow, shiftDays, clampDayDelta } from './weekModel';
 
 const MIN_DURATION_MIN = 15;
+const HELD_TIMEOUT_MS = 1500;
 const iso = (ms: number): string => new Date(ms).toISOString();
 const fmtTime = (ms: number): string => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const finite = (n: number): number => (Number.isFinite(n) ? n : 0);
@@ -20,6 +21,7 @@ export interface InteractiveBlockProps {
   kind: BlockKind;
   pinned: boolean;
   onCommit: (patch: { startsAt: string; endsAt: string; pinned: boolean }) => void;
+  onUnpin?: () => void;
   accent?: string;
 }
 
@@ -27,7 +29,7 @@ type DragMode = 'move' | 'resize';
 
 export function InteractiveBlock(props: InteractiveBlockProps) {
   // `id` is part of the props for the parent's onCommit binding; not read inside this component.
-  const { dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, startLabel, title, kind, pinned, onCommit, accent } = props;
+  const { dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, startLabel, title, kind, pinned, onCommit, onUnpin, accent } = props;
   // Refs hold the authoritative drag state; mutated directly so pointer handlers always
   // see the latest values regardless of React's batching/commit schedule.
   const modeRef = useRef<DragMode | null>(null);
@@ -38,6 +40,53 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
   const [moveMin, setMoveMin] = useState(0);
   const [growMin, setGrowMin] = useState(0);
   const [dayDelta, setDayDelta] = useState(0);
+  // activeDrag: true only while a drag is in progress (cleared on pointer-up/cancel)
+  const [activeDrag, setActiveDrag] = useState(false);
+  // Held preview: persists the committed deltas after pointer-up until props change or timeout
+  const [heldMove, setHeldMove] = useState(0);
+  const [heldGrow, setHeldGrow] = useState(0);
+  const [heldDay, setHeldDay] = useState(0);
+  const [heldColWidth, setHeldColWidth] = useState(0);
+  // Safety timeout ref for held preview
+  const heldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clear held preview when startMs/endMs props change (optimistic update landed)
+  useEffect(() => {
+    if (heldTimerRef.current) {
+      clearTimeout(heldTimerRef.current);
+      heldTimerRef.current = null;
+    }
+    setHeldMove(0);
+    setHeldGrow(0);
+    setHeldDay(0);
+    setHeldColWidth(0);
+  }, [startMs, endMs]);
+
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (heldTimerRef.current) clearTimeout(heldTimerRef.current);
+    };
+  }, []);
+
+  const clearHeld = () => {
+    setHeldMove(0);
+    setHeldGrow(0);
+    setHeldDay(0);
+    setHeldColWidth(0);
+    heldTimerRef.current = null;
+  };
+
+  const holdPreview = (hm: number, hg: number, hd: number, hw: number) => {
+    if (heldTimerRef.current) clearTimeout(heldTimerRef.current);
+    setHeldMove(hm);
+    setHeldGrow(hg);
+    setHeldDay(hd);
+    setHeldColWidth(hw);
+    // Safety timeout: clear held preview after 1.5s (covers failed mutations that
+    // roll back to identical props — the useEffect won't fire in that case)
+    heldTimerRef.current = setTimeout(clearHeld, HELD_TIMEOUT_MS);
+  };
 
   const begin = (mode: DragMode) => (e: ReactPointerEvent<HTMLElement>) => {
     e.stopPropagation();
@@ -49,6 +98,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
     startYRef.current = finite(e.clientY);
     startXRef.current = finite(e.clientX);
     colWidthRef.current = mode === 'move' ? (el.parentElement?.getBoundingClientRect().width ?? 0) : 0;
+    setActiveDrag(true);
   };
 
   const snappedDy = (clientY: number): number => snapMinutes(pxToMinutes(finite(clientY) - startYRef.current));
@@ -66,11 +116,12 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
     else { setGrowMin(min); setMoveMin(0); setDayDelta(0); }
   };
 
-  const reset = () => {
+  const resetDragState = () => {
     modeRef.current = null;
     startYRef.current = 0;
     startXRef.current = 0;
     colWidthRef.current = 0;
+    setActiveDrag(false);
     setMoveMin(0);
     setGrowMin(0);
     setDayDelta(0);
@@ -80,33 +131,65 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
     const deltaMin = snappedDy(e.clientY);
     const deltaDays = modeRef.current === 'move' ? snappedDx(e.clientX) : 0;
     const mode = modeRef.current;
-    reset();
+    // Capture current live drag deltas and column width before resetting
+    const captureMoveMin = moveMin;
+    const captureGrowMin = growMin;
+    const captureDayDelta = dayDelta;
+    const captureColWidth = colWidthRef.current;
+
+    resetDragState();
+
     if (!mode) return;
+
     const startMin = (startMs - dayStartMs) / 60_000;
     const endMin = (endMs - dayStartMs) / 60_000;
+
     if (mode === 'move') {
-      if (deltaMin === 0 && deltaDays === 0) return;
+      if (deltaMin === 0 && deltaDays === 0) return; // zero-delta no-op: no held preview
       const moved = clampToWindow(startMin + deltaMin, endMin - startMin);
       const dayStart = shiftDays(dayStartMs, deltaDays);
+      // Transfer to held preview before firing mutation
+      holdPreview(captureMoveMin, 0, captureDayDelta, captureColWidth);
       onCommit({ startsAt: iso(dayStart + moved.startMin * 60_000), endsAt: iso(dayStart + moved.endMin * 60_000), pinned: true });
     } else {
       const newEndMin = Math.min(WINDOW_END_MIN, Math.max(startMin + MIN_DURATION_MIN, endMin + deltaMin));
-      if (newEndMin === endMin) return;
+      if (newEndMin === endMin) return; // zero-delta no-op: no held preview
+      // Transfer to held preview before firing mutation
+      holdPreview(0, captureGrowMin, 0, 0);
       onCommit({ startsAt: iso(startMs), endsAt: iso(dayStartMs + newEndMin * 60_000), pinned: true });
     }
   };
 
-  const onPointerCancel = () => { reset(); };
+  const onPointerCancel = () => { resetDragState(); };
 
-  const dragging = moveMin !== 0 || growMin !== 0 || dayDelta !== 0;
-  const previewStart = startMs + moveMin * 60_000;
-  const previewEnd = growMin !== 0 ? endMs + growMin * 60_000 : endMs + moveMin * 60_000;
+  // During active drag, use live state deltas; otherwise show held preview
+  const effectiveMoveMin = activeDrag ? moveMin : heldMove;
+  const effectiveGrowMin = activeDrag ? growMin : heldGrow;
+  const effectiveDayDelta = activeDrag ? dayDelta : heldDay;
+  const effectiveColWidth = activeDrag ? colWidthRef.current : heldColWidth;
+
+  // The drag label shows only during active drag AND when there is a non-zero live delta.
+  const showDragLabel = activeDrag && (moveMin !== 0 || growMin !== 0 || dayDelta !== 0);
+
+  const previewStart = startMs + effectiveMoveMin * 60_000;
+  const previewEnd = effectiveGrowMin !== 0 ? endMs + effectiveGrowMin * 60_000 : endMs + effectiveMoveMin * 60_000;
 
   const accentStyles = accent && kind !== 'meeting'
     ? pinned
       ? { backgroundColor: accent }
       : { borderColor: accent, color: accent }
     : {};
+
+  const transformX = effectiveDayDelta * effectiveColWidth;
+  const transformY = minutesToPx(effectiveMoveMin);
+  const heightDelta = minutesToPx(effectiveGrowMin);
+
+  // Transition classes:
+  // - active drag: transition-transform duration-75 (fluid ticks), no top/height transition (no lag)
+  // - not dragging: transition-[top,height] duration-300 ease-out (replan animations)
+  const transitionClass = activeDrag
+    ? 'transition-transform duration-75'
+    : 'transition-[top,height] duration-300 ease-out';
 
   return (
     <div
@@ -118,12 +201,27 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
-      className={`${BASE} ${dragging ? 'cursor-grabbing' : 'cursor-grab'} select-none ${variantClass(kind, pinned, accent)}`}
-      style={{ top: `${topPct}%`, height: `calc(${heightPct}% + ${minutesToPx(growMin)}px)`, transform: `translate(${dayDelta * colWidthRef.current}px, ${minutesToPx(moveMin)}px)`, ...accentStyles }}
+      className={`${BASE} ${activeDrag ? 'cursor-grabbing' : 'cursor-grab'} select-none ${variantClass(kind, pinned, accent)} ${transitionClass}`}
+      style={{ top: `${topPct}%`, height: `calc(${heightPct}% + ${heightDelta}px)`, transform: `translate(${transformX}px, ${transformY}px)`, ...accentStyles }}
     >
-      {pinned && <span aria-hidden="true">🔒 </span>}
+      {pinned && (
+        onUnpin
+          ? (
+            <button
+              type="button"
+              aria-label="Unpin"
+              title="Unpin — let the scheduler move this"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); onUnpin(); }}
+              className="mr-0.5 cursor-pointer border-0 bg-transparent p-0 leading-none"
+            >
+              🔒
+            </button>
+          )
+          : <span aria-hidden="true">🔒 </span>
+      )}
       <span className="font-medium">{startLabel}</span> {title}
-      {dragging && (
+      {showDragLabel && (
         <span data-testid="drag-label" className="absolute right-1 top-0.5 rounded bg-ink/70 px-1 text-[10px] font-semibold text-white">
           {fmtTime(previewStart)} – {fmtTime(previewEnd)}
         </span>

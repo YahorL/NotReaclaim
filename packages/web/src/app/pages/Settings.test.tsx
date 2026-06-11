@@ -39,4 +39,14 @@ describe('Settings page', () => {
     expect(input.timezone).toBe('UTC');
     expect(input.workingHours).toHaveLength(1);
   });
+
+  // Item 8: centered layout
+  it('wraps content in a centered max-width container', async () => {
+    const api = fakeApiClient({ getSettings: async () => settings() } as never);
+    const { container } = renderWithProviders(<SettingsPage />, { api });
+    await waitFor(() => expect(screen.getByTestId('settings-form')).toBeInTheDocument());
+    const wrapper = container.querySelector('.mx-auto');
+    expect(wrapper).not.toBeNull();
+    expect(wrapper!.className).toContain('max-w-');
+  });
 });

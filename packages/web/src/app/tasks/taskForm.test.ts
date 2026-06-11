@@ -14,7 +14,7 @@ const task = (over: Partial<Task> = {}): Task => ({
 const validState = (over: Partial<TaskFormState> = {}): TaskFormState => ({
   title: 'X', durationMs: 3_600_000, dueByLocal: '2026-06-01T17:00',
   notBeforeLocal: '',
-  minChunkMs: 1_800_000, maxChunkMs: 7_200_000, categoryId: null, status: 'pending', ...over,
+  minChunkMs: 1_800_000, maxChunkMs: 7_200_000, categoryId: null, ...over,
 });
 
 describe('taskForm', () => {
@@ -37,7 +37,7 @@ describe('taskForm', () => {
     expect(toFormState(task())).toEqual({
       title: 'Write spec', durationMs: 5_400_000, dueByLocal: '2026-06-01T17:00',
       notBeforeLocal: '',
-      minChunkMs: 1_800_000, maxChunkMs: 7_200_000, categoryId: 'cat-work', status: 'pending',
+      minChunkMs: 1_800_000, maxChunkMs: 7_200_000, categoryId: 'cat-work',
     });
     expect(toFormState(task({ categoryId: null })).categoryId).toBeNull();
   });
@@ -50,11 +50,11 @@ describe('taskForm', () => {
     expect(validateTaskForm(validState({ dueByLocal: '' })).errors.dueByLocal).toBeTruthy();
   });
 
-  it('toUpdateInput converts local due → ISO and passes categoryId, includes status', () => {
-    expect(toUpdateInput(validState({ categoryId: null, status: 'scheduled' }))).toEqual({
+  it('toUpdateInput converts local due → ISO and passes categoryId (no status)', () => {
+    expect(toUpdateInput(validState({ categoryId: null }))).toEqual({
       title: 'X', durationMs: 3_600_000, dueBy: '2026-06-01T17:00:00.000Z',
       notBefore: null,
-      minChunkMs: 1_800_000, maxChunkMs: 7_200_000, categoryId: null, status: 'scheduled',
+      minChunkMs: 1_800_000, maxChunkMs: 7_200_000, categoryId: null,
     });
   });
 

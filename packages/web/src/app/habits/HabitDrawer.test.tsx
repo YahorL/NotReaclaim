@@ -13,8 +13,8 @@ describe('HabitDrawer', () => {
   it('prefills and saves a converted patch', () => {
     const onSave = vi.fn();
     render(<HabitDrawer habit={habit()} onSave={onSave} onCancel={vi.fn()} />);
-    expect((screen.getByTestId('chunk-h') as HTMLInputElement).value).toBe('0');
-    expect((screen.getByTestId('chunk-m') as HTMLInputElement).value).toBe('30');
+    // DurationStepper renders the human label instead of h/m inputs
+    expect(screen.getByText('30 mins')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('save'));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ title: 'Run', chunkMs: 1_800_000, perPeriod: 4, eligibleDays: [1, 3, 5], status: 'active' }));
   });
@@ -34,5 +34,25 @@ describe('HabitDrawer', () => {
     fireEvent.click(screen.getByTestId('save'));
     expect(onSave).not.toHaveBeenCalled();
     expect(screen.getByTestId('err-eligibleDays')).toBeInTheDocument();
+  });
+
+  it('chunk stepper decrease/increase adjusts chunkMs in 15-min steps', () => {
+    const onSave = vi.fn();
+    render(<HabitDrawer habit={habit()} onSave={onSave} onCancel={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'increase chunk' }));
+    fireEvent.click(screen.getByTestId('save'));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ chunkMs: 1_800_000 + 15 * 60_000 }));
+  });
+
+  it('drawer root has w-[440px] class', () => {
+    render(<HabitDrawer habit={habit()} onSave={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.getByTestId('habit-drawer').className).toContain('w-[440px]');
+  });
+
+  it('drawer has max-h overflow-y-auto for scroll safety', () => {
+    render(<HabitDrawer habit={habit()} onSave={vi.fn()} onCancel={vi.fn()} />);
+    const drawer = screen.getByTestId('habit-drawer');
+    expect(drawer.className).toMatch(/max-h-\[calc/);
+    expect(drawer.className).toContain('overflow-y-auto');
   });
 });

@@ -1,4 +1,4 @@
-import type { Task, TaskStatus, CreateTaskInput, UpdateTaskInput } from '../../api/types';
+import type { Task, CreateTaskInput, UpdateTaskInput } from '../../api/types';
 import { isoToLocalInput, localInputToIso } from '../lib/duration';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -11,7 +11,6 @@ export interface TaskFormState {
   minChunkMs: number;
   maxChunkMs: number;
   categoryId: string | null;
-  status: TaskStatus;
 }
 
 export function defaultQuickAddInput(
@@ -40,7 +39,6 @@ export function toFormState(t: Task): TaskFormState {
     minChunkMs: t.minChunkMs,
     maxChunkMs: t.maxChunkMs,
     categoryId: t.categoryId,
-    status: t.status,
   };
 }
 
@@ -66,6 +64,5 @@ export function toUpdateInput(s: TaskFormState): UpdateTaskInput {
     minChunkMs: s.minChunkMs,
     maxChunkMs: s.maxChunkMs,
     categoryId: s.categoryId,
-    status: s.status,
   };
 }

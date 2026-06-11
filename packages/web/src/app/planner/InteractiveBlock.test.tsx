@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { InteractiveBlock } from './InteractiveBlock';
 import { GRID_COLUMN_PX } from './weekModel';
+import { minutesToPx } from './weekModel';
 
 const DAY = Date.parse('2026-01-05T00:00:00.000Z'); // local midnight (TZ=UTC)
 const START = Date.parse('2026-01-05T09:00:00.000Z');
@@ -156,6 +157,105 @@ describe('InteractiveBlock cross-day move', () => {
     fireEvent.pointerDown(el, { clientX: 100, clientY: 100, pointerId: 1 });
     fireEvent.pointerUp(el, { clientX: 100 - 130, clientY: 100, pointerId: 1 });
     expect(onCommit).not.toHaveBeenCalled();
+  });
+});
+
+describe('InteractiveBlock held preview (flicker fix)', () => {
+  it('after pointerUp with a 15-min move, the transform STILL shows the moved offset (held)', () => {
+    renderBlock();
+    const el = screen.getByTestId('event-block');
+    // Move down by ~20px which snaps to 15 min
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 120, pointerId: 1 }); // snaps to 15 min
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 120, pointerId: 1 });
+    // After release, the transform should still reflect the held preview (not reset to 0)
+    expect(el.style.transform).toBe(`translate(0px, ${minutesToPx(15)}px)`);
+  });
+
+  it('after rerendering with new startMs/endMs props, the transform resets to 0 (cleared)', () => {
+    const { rerender } = render(
+      <InteractiveBlock
+        id="b1" dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
+        topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
+        onCommit={vi.fn()}
+      />,
+    );
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 120, pointerId: 1 }); // snaps to 15 min
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 120, pointerId: 1 });
+    // Held preview is active
+    expect(el.style.transform).toBe(`translate(0px, ${minutesToPx(15)}px)`);
+    // Rerender with new props (simulating optimistic update landing)
+    const NEW_START = START + 15 * 60_000;
+    const NEW_END = END + 15 * 60_000;
+    rerender(
+      <InteractiveBlock
+        id="b1" dayStartMs={DAY} dayIndex={0} startMs={NEW_START} endMs={NEW_END}
+        topPct={10} heightPct={5} startLabel="09:15" title="Write spec" kind="task" pinned={false}
+        onCommit={vi.fn()}
+      />,
+    );
+    // After props change, held preview should clear → transform back to 0
+    expect(el.style.transform).toBe('translate(0px, 0px)');
+  });
+
+  it('zero-delta click still resets immediately (no held preview on no-op)', () => {
+    renderBlock();
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    // No-op move — no held preview
+    expect(el.style.transform).toBe('translate(0px, 0px)');
+  });
+
+  it('drag label disappears on release even with held preview', () => {
+    renderBlock();
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 120, pointerId: 1 });
+    expect(screen.getByTestId('drag-label')).toBeInTheDocument();
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 120, pointerId: 1 });
+    expect(screen.queryByTestId('drag-label')).not.toBeInTheDocument();
+  });
+});
+
+describe('InteractiveBlock unpin button', () => {
+  function renderPinnedBlock(onCommit = vi.fn(), onUnpin = vi.fn()) {
+    render(
+      <InteractiveBlock
+        id="b1" dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
+        topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={true}
+        onCommit={onCommit} onUnpin={onUnpin}
+      />,
+    );
+    return { onCommit, onUnpin };
+  }
+
+  it('renders an unpin button with aria-label when pinned', () => {
+    renderPinnedBlock();
+    expect(screen.getByRole('button', { name: /unpin/i })).toBeInTheDocument();
+  });
+
+  it('clicking the unpin button calls onUnpin and not onCommit', () => {
+    const { onCommit, onUnpin } = renderPinnedBlock();
+    fireEvent.click(screen.getByRole('button', { name: /unpin/i }));
+    expect(onUnpin).toHaveBeenCalledTimes(1);
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('pointerDown on unpin button does not start a drag', () => {
+    const { onCommit } = renderPinnedBlock();
+    const btn = screen.getByRole('button', { name: /unpin/i });
+    fireEvent.pointerDown(btn, { clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(screen.getByTestId('event-block'), { clientY: 200, pointerId: 1 });
+    fireEvent.pointerUp(screen.getByTestId('event-block'), { clientY: 200, pointerId: 1 });
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('no unpin button when not pinned', () => {
+    renderBlock();
+    expect(screen.queryByRole('button', { name: /unpin/i })).not.toBeInTheDocument();
   });
 });
 
