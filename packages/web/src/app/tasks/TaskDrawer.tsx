@@ -34,59 +34,71 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
   const errCls = 'mt-0.5 text-[11px] text-crit';
 
   return (
-    <aside data-testid="task-drawer" className="w-[300px] shrink-0 space-y-2.5 rounded-[14px] border border-line bg-card p-4 shadow-pop max-h-[calc(100vh-100px)] overflow-y-auto">
+    <aside data-testid="task-drawer" className="w-[440px] shrink-0 space-y-2.5 rounded-[14px] border border-line bg-card p-4 shadow-pop max-h-[calc(100vh-100px)] overflow-y-auto">
       <h4 className="text-[15px] font-bold text-ink">Edit task</h4>
 
-      <div>
-        <FieldBox label="Title">
-          <input className={ctl} value={form.title} onChange={(e) => set('title', e.target.value)} />
-        </FieldBox>
-        {errors.title && <p data-testid="err-title" className={errCls}>{errors.title}</p>}
+      <div className="grid grid-cols-2 gap-2.5">
+        {/* Title — spans both columns */}
+        <div className="col-span-2">
+          <FieldBox label="Title">
+            <input className={ctl} value={form.title} onChange={(e) => set('title', e.target.value)} />
+          </FieldBox>
+          {errors.title && <p data-testid="err-title" className={errCls}>{errors.title}</p>}
+        </div>
+
+        {/* Row: Duration | Due by */}
+        <div>
+          <FieldBox label="Duration">
+            <DurationStepper label="duration" size={22} valueMs={form.durationMs} onChange={(ms) => set('durationMs', ms)} />
+          </FieldBox>
+          {errors.durationMs && <p data-testid="err-durationMs" className={errCls}>{errors.durationMs}</p>}
+        </div>
+        <div>
+          <FieldBox label="Due by">
+            <input type="datetime-local" className={ctl} value={form.dueByLocal} onChange={(e) => set('dueByLocal', e.target.value)} />
+          </FieldBox>
+          {errors.dueByLocal && <p data-testid="err-dueByLocal" className={errCls}>{errors.dueByLocal}</p>}
+        </div>
+
+        {/* Row: Schedule after | Min chunk */}
+        <div>
+          <FieldBox label="Schedule after">
+            <input type="datetime-local" data-testid="schedule-after" className={ctl} value={form.notBeforeLocal} onChange={(e) => set('notBeforeLocal', e.target.value)} />
+          </FieldBox>
+        </div>
+        <div>
+          <FieldBox label="Min chunk">
+            <DurationStepper label="min" size={22} valueMs={form.minChunkMs} onChange={(ms) => set('minChunkMs', ms)} />
+          </FieldBox>
+          {errors.minChunkMs && <p data-testid="err-minChunkMs" className={errCls}>{errors.minChunkMs}</p>}
+        </div>
+
+        {/* Row: Max chunk | Hours */}
+        <div>
+          <FieldBox label="Max chunk">
+            <DurationStepper label="max" size={22} valueMs={form.maxChunkMs} onChange={(ms) => set('maxChunkMs', ms)} />
+          </FieldBox>
+          {errors.maxChunkMs && <p data-testid="err-maxChunkMs" className={errCls}>{errors.maxChunkMs}</p>}
+        </div>
+        <div>
+          <FieldBox label="Hours">
+            <select data-testid="category-select" className={`${ctl} appearance-none`} value={form.categoryId ?? ''} onChange={(e) => set('categoryId', e.target.value || null)}>
+              <option value="">— none —</option>
+              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </FieldBox>
+        </div>
+
+        {/* Row: Status | (spare) */}
+        <div>
+          <FieldBox label="Status">
+            <select className={`${ctl} appearance-none capitalize`} value={form.status} onChange={(e) => set('status', e.target.value as TaskStatus)}>
+              {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </FieldBox>
+        </div>
+        <div />
       </div>
-
-      <div>
-        <FieldBox label="Duration">
-          <DurationStepper label="duration" size={22} valueMs={form.durationMs} onChange={(ms) => set('durationMs', ms)} />
-        </FieldBox>
-        {errors.durationMs && <p data-testid="err-durationMs" className={errCls}>{errors.durationMs}</p>}
-      </div>
-
-      <div>
-        <FieldBox label="Due by">
-          <input type="datetime-local" className={ctl} value={form.dueByLocal} onChange={(e) => set('dueByLocal', e.target.value)} />
-        </FieldBox>
-        {errors.dueByLocal && <p data-testid="err-dueByLocal" className={errCls}>{errors.dueByLocal}</p>}
-      </div>
-
-      <FieldBox label="Schedule after">
-        <input type="datetime-local" data-testid="schedule-after" className={ctl} value={form.notBeforeLocal} onChange={(e) => set('notBeforeLocal', e.target.value)} />
-      </FieldBox>
-
-      <div>
-        <FieldBox label="Min chunk">
-          <DurationStepper label="min" size={22} valueMs={form.minChunkMs} onChange={(ms) => set('minChunkMs', ms)} />
-        </FieldBox>
-        {errors.minChunkMs && <p data-testid="err-minChunkMs" className={errCls}>{errors.minChunkMs}</p>}
-      </div>
-      <div>
-        <FieldBox label="Max chunk">
-          <DurationStepper label="max" size={22} valueMs={form.maxChunkMs} onChange={(ms) => set('maxChunkMs', ms)} />
-        </FieldBox>
-        {errors.maxChunkMs && <p data-testid="err-maxChunkMs" className={errCls}>{errors.maxChunkMs}</p>}
-      </div>
-
-      <FieldBox label="Hours">
-        <select data-testid="category-select" className={`${ctl} appearance-none`} value={form.categoryId ?? ''} onChange={(e) => set('categoryId', e.target.value || null)}>
-          <option value="">— none —</option>
-          {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-      </FieldBox>
-
-      <FieldBox label="Status">
-        <select className={`${ctl} appearance-none capitalize`} value={form.status} onChange={(e) => set('status', e.target.value as TaskStatus)}>
-          {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
-      </FieldBox>
 
       <div>
         <span className="mb-1 block text-[13px] font-semibold text-inkSoft">Subtasks</span>
@@ -96,7 +108,7 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
               key={s.id}
               data-testid={`subtask-li-${s.id}`}
               draggable
-              onDragStart={() => setDragId(s.id)}
+              onDragStart={(e) => { if (e.dataTransfer) e.dataTransfer.setData('text/plain', s.id); setDragId(s.id); }}
               onDragEnd={() => { setDragId(null); setOverIndex(null); }}
               onDragOver={(e) => {
                 if (dragId === null) return;

@@ -24,9 +24,10 @@ export interface ColumnProps {
   onEdit: (task: Task) => void;
   onDelete: (task: Task) => void;
   onToggleSubtask: (subtaskId: string, done: boolean) => void;
+  onReorderSubtask: (subtaskId: string, sortOrder: number) => void;
 }
 
-export function Column({ columnKey, tasks, now, nextMsFor, dnd, onComplete, onEdit, onDelete, onToggleSubtask }: ColumnProps) {
+export function Column({ columnKey, tasks, now, nextMsFor, dnd, onComplete, onEdit, onDelete, onToggleSubtask, onReorderSubtask }: ColumnProps) {
   const [collapsed, setCollapsed] = useState(false);
   const isCompleted = columnKey === 'completed';
   const isDropTarget = !isCompleted;
@@ -53,7 +54,7 @@ export function Column({ columnKey, tasks, now, nextMsFor, dnd, onComplete, onEd
               {tasks.map((t, i) => (
                 <div
                   key={t.id}
-                  className="last:rounded-b-xl overflow-hidden"
+                  className="last:[&>[data-testid=task-row]]:rounded-b-xl"
                   onDragOver={(e) => {
                     if (!isDropTarget || dnd.id === null) return;
                     e.preventDefault();
@@ -72,6 +73,7 @@ export function Column({ columnKey, tasks, now, nextMsFor, dnd, onComplete, onEd
                     draggable={!isCompleted}
                     muted={columnKey === 'backlog'}
                     onComplete={onComplete} onEdit={onEdit} onDelete={onDelete} onToggleSubtask={onToggleSubtask}
+                    onReorderSubtask={onReorderSubtask}
                     onDragStart={dnd.start} onDragEnd={dnd.end}
                   />
                   {i === tasks.length - 1 && dnd.over === columnKey && dnd.overIndex === tasks.length && (

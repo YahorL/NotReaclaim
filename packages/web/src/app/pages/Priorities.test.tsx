@@ -89,6 +89,8 @@ describe('Priorities board', () => {
     const target = screen.getByTestId('column-critical');
     const dt = dataTransfer();
     fireEvent.dragStart(row, { dataTransfer: dt });
+    // Firefox fix: dragstart must call setData so the drag is not aborted
+    expect(dt.setData).toHaveBeenCalledWith('text/plain', 'l1');
     fireEvent.dragOver(target, { dataTransfer: dt });
     fireEvent.drop(target, { dataTransfer: dt });
     // critical has one task (sortOrder:0); drop to bottom → sortOrder 0+1=1; cross-column → priority: 1
@@ -267,5 +269,27 @@ describe('Priorities board', () => {
     fireEvent.click(screen.getByTestId('card-subtask-s1'));
     await waitFor(() => expect(updateSubtask).toHaveBeenCalledWith('s1', { done: true }));
     expect(screen.queryByTestId('task-drawer')).not.toBeInTheDocument();
+  });
+
+  it('card subtask drag-reorder PATCHes updateSubtask with {sortOrder}', async () => {
+    const updateSubtask = vi.fn(async () => ({ id: 's2', taskId: 'c1', title: 'second', done: false, sortOrder: 5 }));
+    const listTasks = vi.fn(async () => [
+      task({
+        id: 'c1', title: 'Critical thing', priority: 1,
+        subtasks: [
+          { id: 's1', taskId: 'c1', title: 'first', done: false, sortOrder: 10 },
+          { id: 's2', taskId: 'c1', title: 'second', done: false, sortOrder: 20 },
+        ],
+      } as Partial<Task>),
+    ]);
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateSubtask }) });
+    await waitFor(() => expect(screen.getByText('first')).toBeInTheDocument());
+    const lis = screen.getAllByRole('listitem');
+    const dt = { setData: vi.fn(), effectAllowed: '', dropEffect: '' };
+    // drag s2 (second) above s1 (first) → sortOrder = 10 - 1 = 9
+    fireEvent.dragStart(lis[1]!, { dataTransfer: dt });
+    fireEvent.dragOver(lis[0]!, { dataTransfer: dt, clientY: 0 });
+    fireEvent.drop(lis[0]!, { dataTransfer: dt });
+    await waitFor(() => expect(updateSubtask).toHaveBeenCalledWith('s2', { sortOrder: 9 }));
   });
 });

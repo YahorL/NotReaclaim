@@ -14,9 +14,10 @@ export interface BoardProps {
   onEdit: (task: Task) => void;
   onDelete: (task: Task) => void;
   onToggleSubtask: (subtaskId: string, done: boolean) => void;
+  onReorderSubtask: (subtaskId: string, sortOrder: number) => void;
 }
 
-export function Board({ columns, now, nextMsFor, onMove, onComplete, onEdit, onDelete, onToggleSubtask }: BoardProps) {
+export function Board({ columns, now, nextMsFor, onMove, onComplete, onEdit, onDelete, onToggleSubtask, onReorderSubtask }: BoardProps) {
   const [drag, setDrag] = useState<{ id: string | null; over: BoardColumnKey | null; overIndex: number | null }>({ id: null, over: null, overIndex: null });
   const dnd: ColumnDnd = {
     id: drag.id,
@@ -33,6 +34,7 @@ export function Board({ columns, now, nextMsFor, onMove, onComplete, onEdit, onD
         <Column
           key={c.key} columnKey={c.key} tasks={c.tasks} now={now} nextMsFor={nextMsFor} dnd={dnd}
           onComplete={onComplete} onEdit={onEdit} onDelete={onDelete} onToggleSubtask={onToggleSubtask}
+          onReorderSubtask={onReorderSubtask}
         />
       ))}
     </div>

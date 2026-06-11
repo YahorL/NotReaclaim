@@ -27,7 +27,6 @@ export function SettingsForm({ initial, onSave, saving = false, error = null, ju
     setForm((f) => ({ ...f, days: f.days.map((d) => (d.weekday === weekday ? { ...d, ...patch } : d)) }));
 
   const errCls = 'text-[11px] text-red-600';
-  const labelCls = 'mb-0.5 block text-[10px] uppercase tracking-wide text-inkSoft';
 
   return (
     <div data-testid="settings-form" className="max-w-md p-4">
@@ -99,34 +98,6 @@ export function SettingsForm({ initial, onSave, saving = false, error = null, ju
           </div>
         </div>
 
-        {/* Scheduling buffers sub-section */}
-        <h4 className="mb-2 text-[12px] font-bold uppercase tracking-wide text-inkSoft">Scheduling buffers</h4>
-        <div className="mb-2 flex gap-2">
-          <div className="flex-1">
-            <label className={labelCls}>Buffer around meetings (min)</label>
-            <input
-              type="number" step="1" min="0"
-              data-testid="meeting-buffer"
-              className="w-full rounded-[9px] border border-line px-2 py-1 text-sm font-bold text-ink focus:border-indigo focus:outline-none"
-              value={Math.round(form.meetingBufferMs / 60000)}
-              onChange={(e) => setForm((f) => ({ ...f, meetingBufferMs: Math.round(Number(e.target.value)) * 60000 }))}
-            />
-            <p className="mt-0.5 text-[11px] text-inkSoft">Kept free around meetings</p>
-            {errors.meetingBufferMs && <p data-testid="err-meetingBufferMs" className={errCls}>{errors.meetingBufferMs}</p>}
-          </div>
-          <div className="flex-1">
-            <label className={labelCls}>Gap between tasks (min)</label>
-            <input
-              type="number" step="1" min="0"
-              data-testid="task-buffer"
-              className="w-full rounded-[9px] border border-line px-2 py-1 text-sm font-bold text-ink focus:border-indigo focus:outline-none"
-              value={Math.round(form.taskBufferMs / 60000)}
-              onChange={(e) => setForm((f) => ({ ...f, taskBufferMs: Math.round(Number(e.target.value)) * 60000 }))}
-            />
-            <p className="mt-0.5 text-[11px] text-inkSoft">Minimum gap between scheduled blocks</p>
-            {errors.taskBufferMs && <p data-testid="err-taskBufferMs" className={errCls}>{errors.taskBufferMs}</p>}
-          </div>
-        </div>
       </section>
 
       {error && <p data-testid="form-error" className={errCls}>{error.message}</p>}

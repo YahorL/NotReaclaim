@@ -58,12 +58,4 @@ describe('SettingsForm', () => {
     expect(screen.getByTestId('form-error')).toHaveTextContent('Nope');
   });
 
-  it('renders and edits the buffer inputs (minutes ⇄ ms)', () => {
-    const onSave = vi.fn();
-    render(<SettingsForm initial={defaultFormState('UTC')} onSave={onSave} timezones={['UTC']} />);
-    fireEvent.change(screen.getByTestId('meeting-buffer'), { target: { value: '15' } });
-    fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '5' } });
-    fireEvent.click(screen.getByTestId('save'));
-    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ meetingBufferMs: 900000, taskBufferMs: 300000 }));
-  });
 });

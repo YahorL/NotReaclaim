@@ -2,7 +2,6 @@ import { ApiError } from '../../api/client';
 import { useSettingsQuery, useUpdateSettingsMutation } from '../../api/queries';
 import { SettingsForm } from '../settings/SettingsForm';
 import { toFormState, defaultFormState } from '../settings/settingsForm';
-import { CategoriesSection } from '../settings/CategoriesSection';
 
 export function Settings() {
   const settingsQ = useSettingsQuery();
@@ -34,7 +33,6 @@ export function Settings() {
         error={updateM.error instanceof ApiError ? updateM.error : null}
         onSave={(input) => updateM.mutate(input)}
       />
-      <CategoriesSection />
     </div>
   );
 }
