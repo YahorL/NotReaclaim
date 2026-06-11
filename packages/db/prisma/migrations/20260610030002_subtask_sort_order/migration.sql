@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Subtask" ADD COLUMN "sortOrder" DOUBLE PRECISION NOT NULL DEFAULT 0;

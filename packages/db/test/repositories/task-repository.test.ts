@@ -90,4 +90,70 @@ describe('TaskRepository', () => {
     const moved = await repo.update(user.id, t.id, { sortOrder: 0.25 });
     expect(moved.sortOrder).toBe(0.25);
   });
+
+  it('backlog status round-trips on create and update', async () => {
+    const user = await users.create({ email: 'bl1@example.com' });
+    const t = await repo.create(user.id, taskInput({ title: 'Backlog task' }));
+    expect(t.status).toBe('pending');
+    const updated = await repo.update(user.id, t.id, { status: 'backlog' });
+    expect(updated.status).toBe('backlog');
+    const fetched = await repo.findById(user.id, t.id);
+    expect(fetched?.status).toBe('backlog');
+    const listed = await repo.listByUser(user.id, { status: 'backlog' });
+    expect(listed.map((x) => x.id)).toContain(t.id);
+  });
+
+  it('completedAt round-trips on update (set and clear)', async () => {
+    const user = await users.create({ email: 'ca1@example.com' });
+    const t = await repo.create(user.id, taskInput({ title: 'T' }));
+    expect(t.completedAt).toBeNull();
+    const stamp = new Date('2026-06-01T10:00:00.000Z');
+    const withDate = await repo.update(user.id, t.id, { completedAt: stamp });
+    expect(withDate.completedAt?.toISOString()).toBe('2026-06-01T10:00:00.000Z');
+    const cleared = await repo.update(user.id, t.id, { completedAt: null });
+    expect(cleared.completedAt).toBeNull();
+  });
+
+  it('purgeCompletedBefore deletes only old-completed; completed-recent and pending-old survive; cascades subtasks', async () => {
+    const user = await users.create({ email: 'purge@example.com' });
+    const cutoff = new Date('2026-05-01T00:00:00.000Z');
+
+    // Old completed task — should be purged
+    const oldCompleted = await repo.create(user.id, taskInput({ title: 'old-done' }));
+    await repo.update(user.id, oldCompleted.id, {
+      status: 'completed',
+      completedAt: new Date('2026-04-01T00:00:00.000Z'),
+    });
+
+    // Recent completed task — should survive
+    const recentCompleted = await repo.create(user.id, taskInput({ title: 'recent-done' }));
+    await repo.update(user.id, recentCompleted.id, {
+      status: 'completed',
+      completedAt: new Date('2026-05-15T00:00:00.000Z'),
+    });
+
+    // Old pending task — should survive (wrong status)
+    const oldPending = await repo.create(user.id, taskInput({ title: 'old-pending' }));
+
+    const count = await repo.purgeCompletedBefore(user.id, cutoff);
+    expect(count).toBe(1);
+
+    expect(await repo.findById(user.id, oldCompleted.id)).toBeNull();
+    expect(await repo.findById(user.id, recentCompleted.id)).not.toBeNull();
+    expect(await repo.findById(user.id, oldPending.id)).not.toBeNull();
+  });
+
+  it('subtasks are ordered by sortOrder asc then createdAt asc', async () => {
+    const user = await users.create({ email: 'sto1@example.com' });
+    const t = await repo.create(user.id, taskInput({ title: 'T' }));
+    // Create them; their sortOrder will be max+1 each time
+    const { createSubtaskRepository } = await import('../../src/repositories/subtask-repository.js');
+    const subtasks = createSubtaskRepository(prisma);
+    const s1 = await subtasks.create(user.id, t.id, { title: 'first' });
+    const s2 = await subtasks.create(user.id, t.id, { title: 'second' });
+    // Swap: give s2 a lower sortOrder so it appears first
+    await subtasks.update(user.id, s2.id, { sortOrder: 0.5 });
+    const fetched = await repo.findById(user.id, t.id);
+    expect(fetched!.subtasks.map((s) => s.title)).toEqual(['second', 'first']);
+  });
 });

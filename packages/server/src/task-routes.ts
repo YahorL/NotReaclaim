@@ -19,6 +19,8 @@ export function registerTaskRoutes(app: FastifyInstance, deps: AppDeps, afterMut
 
   app.get('/tasks', guard, async (request) => {
     const query = listTasksQuerySchema.parse(request.query);
+    const cutoff = new Date(deps.now() - 30 * 24 * 60 * 60 * 1000);
+    await deps.repos.tasks.purgeCompletedBefore(request.userId, cutoff);
     return deps.repos.tasks.listByUser(request.userId, query.status ? { status: query.status } : {});
   });
 
@@ -39,6 +41,9 @@ export function registerTaskRoutes(app: FastifyInstance, deps: AppDeps, afterMut
       ...rest,
       ...(dueByStr ? { dueBy: new Date(dueByStr) } : {}),
       ...(nbStr !== undefined ? { notBefore: nbStr === null ? null : new Date(nbStr) } : {}),
+      ...(rest.status !== undefined
+        ? { completedAt: rest.status === 'completed' ? new Date(deps.now()) : null }
+        : {}),
     };
     const task = await deps.repos.tasks.update(request.userId, id, data);
     afterMutation(request.userId, { taskId: id, action: 'updated' });
