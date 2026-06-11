@@ -42,7 +42,7 @@ export function TaskRow({ task, columnKey, nextMs, now, dragging, draggable = tr
     <div
       data-testid="task-row" data-task-id={task.id} data-bucket={columnKey}
       draggable={draggable}
-      onDragStart={(e) => { if (!draggable) return; if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'; onDragStart(task.id); }}
+      onDragStart={(e) => { if (!draggable) return; if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', task.id); } onDragStart(task.id); }}
       onDragEnd={onDragEnd}
       onClick={() => onEdit(task)}
       className={`flex items-start gap-3 border-t border-l-4 border-t-line ${colMeta.leftBorder} bg-card last:rounded-b-xl py-3.5 pl-4 pr-3.5 transition-colors hover:bg-[#fafbfc] ${draggable ? 'cursor-grab' : 'cursor-default'} ${dragging ? 'opacity-40' : muted ? 'opacity-70' : done ? 'opacity-45' : ''}`}

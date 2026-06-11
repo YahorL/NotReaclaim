@@ -96,7 +96,7 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
               key={s.id}
               data-testid={`subtask-li-${s.id}`}
               draggable
-              onDragStart={() => setDragId(s.id)}
+              onDragStart={(e) => { if (e.dataTransfer) e.dataTransfer.setData('text/plain', s.id); setDragId(s.id); }}
               onDragEnd={() => { setDragId(null); setOverIndex(null); }}
               onDragOver={(e) => {
                 if (dragId === null) return;

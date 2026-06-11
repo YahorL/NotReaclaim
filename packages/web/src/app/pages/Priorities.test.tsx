@@ -89,6 +89,8 @@ describe('Priorities board', () => {
     const target = screen.getByTestId('column-critical');
     const dt = dataTransfer();
     fireEvent.dragStart(row, { dataTransfer: dt });
+    // Firefox fix: dragstart must call setData so the drag is not aborted
+    expect(dt.setData).toHaveBeenCalledWith('text/plain', 'l1');
     fireEvent.dragOver(target, { dataTransfer: dt });
     fireEvent.drop(target, { dataTransfer: dt });
     // critical has one task (sortOrder:0); drop to bottom → sortOrder 0+1=1; cross-column → priority: 1

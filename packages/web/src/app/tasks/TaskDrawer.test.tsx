@@ -123,7 +123,10 @@ describe('TaskDrawer subtask drag-reorder', () => {
     const lastLi = screen.getByTestId('subtask-li-s2');
     const firstLi = screen.getByTestId('subtask-li-s1');
 
-    fireEvent.dragStart(lastLi);
+    const dt = { setData: vi.fn(), getData: vi.fn(), effectAllowed: '' };
+    fireEvent.dragStart(lastLi, { dataTransfer: dt });
+    // Firefox fix: dragstart must call setData so the subtask drag is not aborted
+    expect(dt.setData).toHaveBeenCalledWith('text/plain', 's2');
     fireEvent.dragOver(firstLi);
     fireEvent.drop(firstLi);
 

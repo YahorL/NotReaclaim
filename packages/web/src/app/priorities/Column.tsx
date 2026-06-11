@@ -53,7 +53,7 @@ export function Column({ columnKey, tasks, now, nextMsFor, dnd, onComplete, onEd
               {tasks.map((t, i) => (
                 <div
                   key={t.id}
-                  className="last:rounded-b-xl overflow-hidden"
+                  className="last:[&>[data-testid=task-row]]:rounded-b-xl"
                   onDragOver={(e) => {
                     if (!isDropTarget || dnd.id === null) return;
                     e.preventDefault();
