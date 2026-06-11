@@ -3,6 +3,20 @@ import type { Task } from '../../api/types';
 import { type BoardColumnKey, columnMeta } from './priorityBucket';
 import { TasksCard } from './TasksCard';
 import { TaskRow } from './TaskRow';
+import { useFlip } from './useFlip';
+
+/** Animated insertion gap: collapses to 0 when inactive so rows slide rather than jump. */
+function InsertGap({ active }: { active: boolean }) {
+  return (
+    <div
+      data-testid={active ? 'insert-line' : undefined}
+      aria-hidden="true"
+      className={`overflow-hidden transition-[height] duration-150 ease-out ${active ? 'h-9' : 'h-0'}`}
+    >
+      <div className="mx-2 mt-[15px] h-1 rounded bg-indigo" />
+    </div>
+  );
+}
 
 export interface ColumnDnd {
   id: string | null;
@@ -33,6 +47,7 @@ export function Column({ columnKey, tasks, now, nextMsFor, dnd, onComplete, onEd
   const isDropTarget = !isCompleted;
   const isTarget = dnd.over === columnKey && dnd.id !== null && isDropTarget;
   const meta = columnMeta(columnKey);
+  const setFlipRef = useFlip(tasks.map((t) => t.id).join('|'));
 
   return (
     <div
@@ -54,6 +69,7 @@ export function Column({ columnKey, tasks, now, nextMsFor, dnd, onComplete, onEd
               {tasks.map((t, i) => (
                 <div
                   key={t.id}
+                  ref={setFlipRef(t.id)}
                   className="last:[&>[data-testid=task-row]]:rounded-b-xl"
                   onDragOver={(e) => {
                     if (!isDropTarget || dnd.id === null) return;
@@ -64,9 +80,7 @@ export function Column({ columnKey, tasks, now, nextMsFor, dnd, onComplete, onEd
                     dnd.setOver(columnKey, idx);
                   }}
                 >
-                  {dnd.over === columnKey && dnd.overIndex === i && (
-                    <div data-testid="insert-line" className="h-0.5 bg-indigo" />
-                  )}
+                  <InsertGap active={dnd.over === columnKey && dnd.overIndex === i} />
                   <TaskRow
                     task={t} columnKey={columnKey} now={now} nextMs={nextMsFor(t.id)}
                     dragging={dnd.id === t.id}
@@ -76,8 +90,8 @@ export function Column({ columnKey, tasks, now, nextMsFor, dnd, onComplete, onEd
                     onReorderSubtask={onReorderSubtask}
                     onDragStart={dnd.start} onDragEnd={dnd.end}
                   />
-                  {i === tasks.length - 1 && dnd.over === columnKey && dnd.overIndex === tasks.length && (
-                    <div data-testid="insert-line" className="h-0.5 bg-indigo" />
+                  {i === tasks.length - 1 && (
+                    <InsertGap active={dnd.over === columnKey && dnd.overIndex === tasks.length} />
                   )}
                 </div>
               ))}
