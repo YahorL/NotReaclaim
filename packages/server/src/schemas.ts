@@ -62,12 +62,17 @@ export const workingHourEntrySchema = z.object({
 export const createCategorySchema = z.object({
   name: z.string().min(1),
   windows: z.array(workingHourEntrySchema).min(1),
+  color: z.string().regex(/^#[0-9a-f]{6}$/i).nullable().optional(),
 });
 
 export const updateCategorySchema = z.object({
   name: z.string().min(1).optional(),
-  windows: z.array(workingHourEntrySchema).min(1).optional(),
-}).refine((b) => b.name !== undefined || b.windows !== undefined, { message: 'name or windows is required' });
+  windows: z.array(workingHourEntrySchema).min(1).nullable().optional(),
+  color: z.string().regex(/^#[0-9a-f]{6}$/i).nullable().optional(),
+}).refine(
+  (b) => b.name !== undefined || b.windows !== undefined || b.color !== undefined,
+  { message: 'name, windows, or color is required' },
+);
 
 export const createSubtaskSchema = z.object({
   taskId: z.string().min(1),

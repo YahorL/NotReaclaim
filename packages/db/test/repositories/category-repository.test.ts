@@ -55,4 +55,25 @@ describe('CategoryRepository', () => {
     const after = await prisma.task.findUniqueOrThrow({ where: { id: task.id } });
     expect(after.categoryId).toBeNull();
   });
+
+  it('creates a category with a color and patches it to null', async () => {
+    const user = await users.create({ email: 'c6@example.com' });
+    const cat = await repo.create(user.id, { name: 'Colorful', windows, color: '#5b62e3' });
+    expect(cat.color).toBe('#5b62e3');
+    const patched = await repo.update(user.id, cat.id, { color: null });
+    expect(patched.color).toBeNull();
+  });
+
+  it('patches default category windows to null (inherit)', async () => {
+    const user = await users.create({ email: 'c7@example.com' });
+    const def = await repo.ensureDefault(user.id);
+    // Give the default category custom windows first
+    await repo.update(user.id, def.id, { windows });
+    let updated = await prisma.category.findUniqueOrThrow({ where: { id: def.id } });
+    expect(updated.windows).toEqual(windows);
+    // Now clear to null (inherit global)
+    await repo.update(user.id, def.id, { windows: null });
+    updated = await prisma.category.findUniqueOrThrow({ where: { id: def.id } });
+    expect(updated.windows).toBeNull();
+  });
 });

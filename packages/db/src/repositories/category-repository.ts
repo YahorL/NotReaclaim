@@ -4,12 +4,14 @@ import { NotFoundError, ConflictError, translatePrismaError } from '../errors.js
 export interface CreateCategoryInput {
   name: string;
   windows: Prisma.InputJsonValue; // WorkingHourEntry[]
+  color?: string | null;
 }
 
 export interface UpdateCategoryInput {
   name?: string;
-  // Non-null windows only; clearing to SQL NULL (inherit) is reserved for the default category, which is never updated this way.
-  windows?: Prisma.InputJsonValue;
+  // Windows may be null to inherit the user's global working hours (default category).
+  windows?: Prisma.InputJsonValue | null;
+  color?: string | null;
 }
 
 export function createCategoryRepository(prisma: PrismaClient) {
@@ -42,7 +44,7 @@ export function createCategoryRepository(prisma: PrismaClient) {
     async create(userId: string, data: CreateCategoryInput): Promise<Category> {
       try {
         return await prisma.category.create({
-          data: { userId, name: data.name, windows: data.windows, isDefault: false },
+          data: { userId, name: data.name, windows: data.windows, color: data.color ?? null, isDefault: false },
         });
       } catch (error) {
         translatePrismaError(error);
@@ -51,7 +53,12 @@ export function createCategoryRepository(prisma: PrismaClient) {
 
     async update(userId: string, id: string, data: UpdateCategoryInput): Promise<Category> {
       try {
-        const result = await prisma.category.updateMany({ where: { id, userId }, data });
+        // Build the update payload; windows: null must be sent as Prisma.DbNull to set SQL NULL.
+        const updateData: Record<string, unknown> = {};
+        if (data.name !== undefined) updateData.name = data.name;
+        if ('color' in data) updateData.color = data.color ?? null;
+        if ('windows' in data) updateData.windows = data.windows === null ? Prisma.DbNull : data.windows;
+        const result = await prisma.category.updateMany({ where: { id, userId }, data: updateData });
         if (result.count === 0) throw new NotFoundError(`Category ${id} not found for user`);
         return await prisma.category.findUniqueOrThrow({ where: { id } });
       } catch (error) {
