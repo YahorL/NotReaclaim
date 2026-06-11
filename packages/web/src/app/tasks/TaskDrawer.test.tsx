@@ -22,8 +22,10 @@ describe('TaskDrawer', () => {
     fireEvent.click(screen.getByTestId('save'));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
       title: 'Write spec', durationMs: 5_400_000, dueBy: '2026-06-01T17:00:00.000Z',
-      minChunkMs: 1_800_000, maxChunkMs: 7_200_000, categoryId: 'cat-work', status: 'pending',
+      minChunkMs: 1_800_000, maxChunkMs: 7_200_000, categoryId: 'cat-work',
     }));
+    // status is board-owned — must NOT be in the PATCH
+    expect(onSave).toHaveBeenCalledWith(expect.not.objectContaining({ status: expect.anything() }));
   });
 
   it('blocks save and shows an error when min chunk > max chunk', () => {

@@ -1,13 +1,11 @@
 import { useState } from 'react';
-import type { Task, TaskStatus, UpdateTaskInput } from '../../api/types';
+import type { Task, UpdateTaskInput } from '../../api/types';
 import type { ApiError } from '../../api/client';
 import { FieldBox } from '../components/FieldBox';
 import { DurationStepper } from '../components/DurationStepper';
 import { type TaskFormState, toFormState, validateTaskForm, toUpdateInput } from './taskForm';
 import { useCategoriesQuery, useCreateSubtaskMutation, useUpdateSubtaskMutation, useDeleteSubtaskMutation } from '../../api/queries';
 import { insertionSortOrder } from '../priorities/priorityBucket';
-
-const STATUSES: TaskStatus[] = ['pending', 'scheduled', 'completed', 'archived'];
 
 export interface TaskDrawerProps {
   task: Task;
@@ -89,15 +87,6 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
           {errors.maxChunkMs && <p data-testid="err-maxChunkMs" className={errCls}>{errors.maxChunkMs}</p>}
         </div>
 
-        {/* Row: Status | (spare) */}
-        <div>
-          <FieldBox label="Status">
-            <select className={`${ctl} appearance-none capitalize`} value={form.status} onChange={(e) => set('status', e.target.value as TaskStatus)}>
-              {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </FieldBox>
-        </div>
-        <div />
       </div>
 
       <div>
