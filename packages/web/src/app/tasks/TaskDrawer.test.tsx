@@ -103,3 +103,50 @@ describe('TaskDrawer', () => {
     await waitFor(() => expect(createSubtask).toHaveBeenCalledWith({ taskId: 't', title: 'new' }));
   });
 });
+
+describe('TaskDrawer subtask drag-reorder', () => {
+  // Two subtasks: first at sortOrder=0, last at sortOrder=1
+  const subtasks = [
+    { id: 's1', taskId: 't', title: 'First', done: false, sortOrder: 0 },
+    { id: 's2', taskId: 't', title: 'Last', done: false, sortOrder: 1 },
+  ];
+  const t = () => task({ id: 't', subtasks });
+
+  it('drag last subtask above first → PATCH sortOrder = first.sortOrder - 1', async () => {
+    const updateSubtask = vi.fn().mockResolvedValue({});
+    const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue([]), updateSubtask } as never);
+    renderWithProviders(<TaskDrawer task={t() as never} onSave={() => {}} onCancel={() => {}} />, { api });
+
+    // jsdom: getBoundingClientRect returns all zeros (height=0) → insert above → index=0
+    // drag s2 (last) over s1 (first) → after off-by-one: source(s2) is BELOW target(s1),
+    // no decrement needed → index stays 0 → insertionSortOrder([s1], 0) = s1.sortOrder - 1 = -1
+    const lastLi = screen.getByTestId('subtask-li-s2');
+    const firstLi = screen.getByTestId('subtask-li-s1');
+
+    fireEvent.dragStart(lastLi);
+    fireEvent.dragOver(firstLi);
+    fireEvent.drop(firstLi);
+
+    await waitFor(() => expect(updateSubtask).toHaveBeenCalledWith('s2', { sortOrder: -1 }));
+  });
+
+  it('drag first subtask below second (downward) → midpoint of remaining neighbors (off-by-one guard)', async () => {
+    const updateSubtask = vi.fn().mockResolvedValue({});
+    const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue([]), updateSubtask } as never);
+    renderWithProviders(<TaskDrawer task={t() as never} onSave={() => {}} onCancel={() => {}} />, { api });
+
+    // drag s1 (first) over s2 (last):
+    // jsdom height=0 → insert above s2 → raw index=1
+    // source s1 is at index 0, target index=1: source is above target → decrement → index=0
+    // others (excluding s1) = [s2 sortOrder=1]
+    // insertionSortOrder([s2], 0) = s2.sortOrder - 1 = 0
+    const firstLi = screen.getByTestId('subtask-li-s1');
+    const lastLi = screen.getByTestId('subtask-li-s2');
+
+    fireEvent.dragStart(firstLi);
+    fireEvent.dragOver(lastLi);
+    fireEvent.drop(lastLi);
+
+    await waitFor(() => expect(updateSubtask).toHaveBeenCalledWith('s1', { sortOrder: 0 }));
+  });
+});

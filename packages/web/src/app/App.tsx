@@ -8,6 +8,8 @@ import { Priorities } from './pages/Priorities';
 import { Habits } from './pages/Habits';
 import { Settings } from './pages/Settings';
 import { Stats } from './pages/Stats';
+import { Buffers } from './pages/Buffers';
+import { Hours } from './pages/Hours';
 
 export function App() {
   return (
@@ -21,6 +23,8 @@ export function App() {
           <Route path="/stats" element={<Stats />} />
           <Route path="/habits" element={<Habits />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/buffers" element={<Buffers />} />
+          <Route path="/hours" element={<Hours />} />
           <Route path="/tasks" element={<Navigate to="/priorities" replace />} />
         </Route>
       </Route>

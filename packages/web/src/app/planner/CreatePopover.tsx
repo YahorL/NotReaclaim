@@ -3,7 +3,7 @@ import { ApiError } from '../../api/client';
 import { useCreateTaskMutation, useCreateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useCategoriesQuery } from '../../api/queries';
 import { DurationStepper } from '../components/DurationStepper';
 import { isoToLocalInput, localInputToIso } from '../lib/duration';
-import { WINDOW_END_MIN } from './weekModel';
+import { WINDOW_END_MIN, MS_PER_DAY, localMidnight } from './weekModel';
 
 const iso = (ms: number): string => new Date(ms).toISOString();
 const fmt = (ms: number): string => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -14,17 +14,19 @@ export interface CreatePopoverProps {
   topPct: number;     // vertical anchor within the column (%)
   onClose: () => void;
   align?: 'left' | 'right';
+  now?: () => number;
 }
 
 type Mode = 'event' | 'task';
 
-export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = 'left' }: CreatePopoverProps) {
+export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = 'left', now = () => Date.now() }: CreatePopoverProps) {
   const [mode, setMode] = useState<Mode>('event');
   const [title, setTitle] = useState('');
   const [taskId, setTaskId] = useState('');
   const maxDurationMs = (WINDOW_END_MIN - startMin) * 60_000;
   const [durationMs, setDurationMs] = useState(Math.min(30 * 60_000, maxDurationMs));
-  const defaultDueLocal = isoToLocalInput(iso(dayStartMs + (23 * 60 + 59) * 60_000));
+  const defaultDueMs = Math.max(dayStartMs, localMidnight(now()) + 7 * MS_PER_DAY) + (23 * 60 + 59) * 60_000;
+  const defaultDueLocal = isoToLocalInput(iso(defaultDueMs));
   const [dueLocal, setDueLocal] = useState(defaultDueLocal);
   const [afterLocal, setAfterLocal] = useState('');
   const [categoryId, setCategoryId] = useState<string | null>(null);
@@ -67,7 +69,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
     } else if (existingChosen) {
       createBlockM.mutate({ taskId, startsAt: iso(startMs), endsAt: iso(endMs) }, { onSuccess: onClose });
     } else {
-      const dueBy = dueLocal ? localInputToIso(dueLocal) : iso(dayStartMs + (23 * 60 + 59) * 60_000);
+      const dueBy = dueLocal ? localInputToIso(dueLocal) : iso(defaultDueMs);
       const notBefore = afterLocal ? localInputToIso(afterLocal) : undefined;
       const catId = categoryId ?? undefined;
       createTaskM.mutate(

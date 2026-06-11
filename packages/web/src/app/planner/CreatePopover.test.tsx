@@ -4,7 +4,9 @@ import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 import { CreatePopover } from './CreatePopover';
 
 const DAY = Date.parse('2026-01-05T00:00:00.000Z'); // local midnight, TZ=UTC
-const baseProps = { dayStartMs: DAY, startMin: 540, topPct: 18.75, onClose: vi.fn() }; // 09:00
+// now fixed to 8 days before DAY so that localMidnight(now)+7d < DAY → due = DAY 23:59
+const NOW_BEFORE_DAY = Date.parse('2025-12-28T00:00:00.000Z');
+const baseProps = { dayStartMs: DAY, startMin: 540, topPct: 18.75, onClose: vi.fn(), now: () => NOW_BEFORE_DAY }; // 09:00
 
 const fakeCategories = [
   { id: 'cat-default', userId: 'u1', name: 'Work', windows: null, isDefault: true, color: null },
@@ -249,5 +251,30 @@ describe('CreatePopover due-date guard', () => {
     fireEvent.keyDown(screen.getByTestId('create-title'), { key: 'Enter' });
     expect(createTask).not.toHaveBeenCalled();
     expect(screen.getByTestId('create-submit')).toBeDisabled();
+  });
+});
+
+describe('CreatePopover due-default: week-out rule', () => {
+  it('clicking today\'s column → due defaults to today+7d at 23:59', () => {
+    // now = DAY (Jan 5) → today+7d = Jan 12; max(Jan5, Jan12) = Jan12 23:59
+    renderWithProviders(
+      <CreatePopover dayStartMs={DAY} startMin={540} topPct={18} onClose={vi.fn()} now={() => DAY} />,
+      { api: fakeApiClient() },
+    );
+    fireEvent.click(screen.getByTestId('mode-task'));
+    const dueInput = screen.getByTestId('create-due') as HTMLInputElement;
+    expect(dueInput.value).toBe('2026-01-12T23:59');
+  });
+
+  it('clicking a column 10 days out → due defaults to that day at 23:59 (max guard)', () => {
+    // dayStartMs = Jan 15; now = Jan 5 → now+7d = Jan 12 < Jan 15 → due = Jan 15 23:59
+    const TEN_DAYS_OUT = Date.parse('2026-01-15T00:00:00.000Z');
+    renderWithProviders(
+      <CreatePopover dayStartMs={TEN_DAYS_OUT} startMin={540} topPct={18} onClose={vi.fn()} now={() => DAY} />,
+      { api: fakeApiClient() },
+    );
+    fireEvent.click(screen.getByTestId('mode-task'));
+    const dueInput = screen.getByTestId('create-due') as HTMLInputElement;
+    expect(dueInput.value).toBe('2026-01-15T23:59');
   });
 });

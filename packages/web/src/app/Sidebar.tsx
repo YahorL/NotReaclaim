@@ -25,7 +25,8 @@ export function Sidebar() {
           <>
             <NavDisabledItem label="Focus" indent />
             <NavLinkItem to="/habits" label="Habits" indent />
-            <NavDisabledItem label="Buffers" indent />
+            <NavLinkItem to="/buffers" label="Buffers" indent />
+            <NavLinkItem to="/hours" label="Hours" icon={<Icons.clock size={16} />} indent />
             <NavDisabledItem label="Tasks" indent />
           </>
         )}

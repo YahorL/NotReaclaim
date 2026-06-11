@@ -4,7 +4,7 @@ import {
   startOfWeek, dayColumns, addWeeks, classifyBlock, placeInDay, nowLine, humanizeMs, isToday,
   WINDOW_START_MIN, WINDOW_END_MIN,
   HOUR_ROW_PX, GRID_COLUMN_PX, snapMinutes, pxToMinutes, clampToWindow,
-  minutesToPx, shiftDays, clampDayDelta, snapClickToSlot,
+  minutesToPx, shiftDays, clampDayDelta, snapClickToSlot, localMidnight,
 } from './weekModel';
 
 const MON = Date.parse('2026-01-05T00:00:00.000Z'); // Monday 00:00 UTC
@@ -169,5 +169,17 @@ describe('snapClickToSlot', () => {
     expect(snapClickToSlot(0.5)).toBe(840);                          // 14:00 (06:00 + 480min)
     expect(snapClickToSlot(0.99)).toBe(WINDOW_END_MIN - 15);        // clamped so a 15-min slot fits
     expect(snapClickToSlot(-0.2)).toBe(WINDOW_START_MIN);
+  });
+});
+
+describe('localMidnight', () => {
+  it('strips hours/minutes/seconds to local midnight', () => {
+    // MON is already 2026-01-05T00:00:00.000Z (= local midnight under TZ=UTC)
+    expect(localMidnight(MON)).toBe(MON);
+    // noon on Wednesday → same Wednesday midnight
+    expect(localMidnight(WED_NOON)).toBe(Date.parse('2026-01-07T00:00:00.000Z'));
+    // one millisecond before midnight is still the prior day's midnight
+    const beforeMidnight = Date.parse('2026-01-06T23:59:59.999Z');
+    expect(localMidnight(beforeMidnight)).toBe(Date.parse('2026-01-06T00:00:00.000Z'));
   });
 });
