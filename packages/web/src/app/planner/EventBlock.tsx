@@ -39,7 +39,7 @@ export function EventBlock({ title, kind, topPct, heightPct, startLabel, pinned 
       data-kind={kind}
       data-pinned={pinned}
       title={`${startLabel} ${title}`}
-      className={`${BASE} ${variantClass(kind, pinned, accent)}`}
+      className={`${BASE} ${variantClass(kind, pinned, accent)} transition-[top,height] duration-300 ease-out`}
       style={{ top: `${topPct}%`, height: `${heightPct}%`, ...accentStyles }}
     >
       {locked && <span aria-hidden="true">🔒 </span>}

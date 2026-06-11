@@ -31,7 +31,7 @@ export interface WeekGridProps {
   onToday: () => void;
   onNext: () => void;
   onReplan: () => void;
-  onCommit: (id: string, patch: { startsAt: string; endsAt: string; pinned: boolean }) => void;
+  onCommit: (id: string, patch: { startsAt?: string; endsAt?: string; pinned?: boolean }) => void;
   accents?: Record<string, string>;
 }
 
@@ -160,6 +160,7 @@ export function WeekGrid(props: WeekGridProps) {
                           topPct={pos.topPct} heightPct={pos.heightPct}
                           startLabel={it.startLabel} title={it.title} kind={it.kind} pinned={it.pinned}
                           onCommit={(patch) => onCommit(blockId, patch)}
+                          onUnpin={it.pinned ? () => onCommit(blockId, { pinned: false }) : undefined}
                           accent={accent}
                         />
                       );
