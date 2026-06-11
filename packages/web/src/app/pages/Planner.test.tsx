@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
-import type { ScheduledBlock, CalendarEvent, SchedulePreview, Task } from '../../api/types';
+import type { ScheduledBlock, CalendarEvent, SchedulePreview, Task, Category } from '../../api/types';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 import { Planner } from './Planner';
 
@@ -29,6 +29,7 @@ function makeApi(over = {}) {
     replan: vi.fn(async () => ({ created: 1, updated: 0, deleted: 0, pinned: 0, removed: 0 })),
     updateScheduledBlock: vi.fn(async () => blocks[0]!),
     listTasks: vi.fn(async () => [] as Task[]),
+    listCategories: vi.fn(async () => [] as Category[]),
     ...over,
   } as never);
 }
@@ -73,5 +74,31 @@ describe('Planner', () => {
     const api = makeApi({ listTasks: vi.fn(async () => [taskWithSubtask]) });
     renderWithProviders(<Planner now={() => NOW} />, { api });
     await waitFor(() => expect(screen.getByText('Write spec: outline')).toBeInTheDocument());
+  });
+
+  it('task block is tinted when its category has a color', async () => {
+    // blocks[0] has taskId:'t1'; task has categoryId:'cat-1'; category has color:'#5b62e3'
+    const task: Task = {
+      id: 't1', userId: 'u1', title: 'Write spec', priority: 2, sortOrder: 0,
+      durationMs: 3_600_000, dueBy: '2026-01-10T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1,
+      categoryId: 'cat-1', status: 'pending', timeLoggedMs: 0, createdAt: '', updatedAt: '',
+    };
+    const category: Category = { id: 'cat-1', userId: 'u1', name: 'Deep Work', windows: null, color: '#5b62e3', isDefault: false };
+    const api = fakeApiClient({
+      getSchedule: vi.fn(async () => blocks),
+      getCalendarEvents: vi.fn(async () => events),
+      getSchedulePreview: vi.fn(async () => preview),
+      replan: vi.fn(async () => ({ created: 0, updated: 0, deleted: 0, pinned: 0, removed: 0 })),
+      updateScheduledBlock: vi.fn(async () => blocks[0]!),
+      listTasks: vi.fn(async () => [task]),
+      listCategories: vi.fn(async () => [category]),
+    } as never);
+    renderWithProviders(<Planner now={() => NOW} />, { api });
+    await waitFor(() => expect(screen.getByText('Write spec')).toBeInTheDocument());
+    const taskBlock = screen.getAllByTestId('event-block').find(
+      (b) => b.getAttribute('data-kind') === 'task',
+    )!;
+    // Movable task → borderColor tinted
+    expect(taskBlock.style.borderColor).toBe('rgb(91, 98, 227)');
   });
 });

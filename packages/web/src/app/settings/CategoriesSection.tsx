@@ -13,7 +13,7 @@ function ColorSwatches({ categoryId, current, onSelect }: {
   onSelect: (color: string | null) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-1 mt-1">
+    <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
       {COLOR_PALETTE.map((hex) => (
         <button
           key={hex}
@@ -21,7 +21,7 @@ function ColorSwatches({ categoryId, current, onSelect }: {
           onClick={() => onSelect(hex)}
           title={hex}
           style={{ backgroundColor: hex }}
-          className={`h-5 w-5 rounded-full border-2 ${current === hex ? 'border-gray-800 ring-2 ring-gray-400' : 'border-transparent'}`}
+          className={`h-5 w-5 rounded-full border-2 transition-transform hover:scale-110 ${current === hex ? 'border-ink ring-2 ring-indigo/40' : 'border-transparent'}`}
         />
       ))}
       {/* None swatch */}
@@ -29,7 +29,7 @@ function ColorSwatches({ categoryId, current, onSelect }: {
         data-testid={`cat-color-${categoryId}-none`}
         onClick={() => onSelect(null)}
         title="No color"
-        className={`h-5 w-5 rounded-full border-2 bg-gray-200 ${current === null ? 'border-gray-800 ring-2 ring-gray-400' : 'border-transparent'}`}
+        className={`h-5 w-5 rounded-full border-2 bg-line transition-transform hover:scale-110 ${current === null ? 'border-ink ring-2 ring-indigo/40' : 'border-transparent'}`}
       />
     </div>
   );
@@ -82,23 +82,25 @@ function CategoryRow({ category }: { category: Category }) {
   const { ok, error } = validateCategoryForm(localName, days);
 
   return (
-    <div className="mb-2 rounded-lg border border-gray-200 p-3" data-testid={`cat-row-${category.id}`}>
+    <div className="mb-2 rounded-[11px] border border-line bg-card p-3" data-testid={`cat-row-${category.id}`}>
       <div className="mb-1 flex items-center justify-between">
-        <input
-          ref={nameRef}
-          data-testid={`cat-name-${category.id}`}
-          value={localName}
-          onChange={(e) => setLocalName(e.target.value)}
-          onBlur={handleNameCommit}
-          onKeyDown={handleNameKeyDown}
-          className="rounded border border-gray-200 px-1 text-sm font-semibold focus:border-blue-400 focus:outline-none"
-        />
-        {category.isDefault && <span className="ml-1 text-xs font-normal text-gray-400">(default)</span>}
+        <div className="flex items-center gap-1">
+          <input
+            ref={nameRef}
+            data-testid={`cat-name-${category.id}`}
+            value={localName}
+            onChange={(e) => setLocalName(e.target.value)}
+            onBlur={handleNameCommit}
+            onKeyDown={handleNameKeyDown}
+            className="rounded-[9px] border border-line px-2 py-0.5 text-sm font-semibold text-ink focus:border-indigo focus:outline-none"
+          />
+          {category.isDefault && <span className="ml-1 text-[11px] font-normal text-inkSoft">(default)</span>}
+        </div>
         <button
           data-testid={`delete-${category.id}`}
           disabled={category.isDefault || deleteM.isPending}
           onClick={() => deleteM.mutate(category.id)}
-          className="text-[12px] text-red-600 disabled:opacity-40"
+          className="rounded-[9px] px-2 py-0.5 text-[12px] font-semibold text-red-500 hover:bg-red-50 disabled:opacity-40"
         >Delete</button>
       </div>
 
@@ -107,12 +109,13 @@ function CategoryRow({ category }: { category: Category }) {
 
       {category.isDefault ? (
         <div className="mt-2">
-          <label className="flex items-center gap-2 text-[12px] text-gray-600">
+          <label className="flex items-center gap-2 text-[12px] font-semibold text-inkSoft">
             <input
               type="checkbox"
               data-testid="cat-default-custom"
               checked={useCustom}
               onChange={(e) => handleCustomToggle(e.target.checked)}
+              className="accent-indigo h-4 w-4 rounded"
             />
             Use custom working hours
           </label>
@@ -124,12 +127,12 @@ function CategoryRow({ category }: { category: Category }) {
                 data-testid={`save-${category.id}`}
                 disabled={!ok || updateM.isPending}
                 onClick={() => updateM.mutate({ id: category.id, patch: { windows: daysToWindows(days) } })}
-                className="mt-1 rounded bg-blue-600 px-3 py-1 text-[12px] text-white disabled:opacity-50"
+                className="mt-1 rounded-[9px] bg-indigo px-3 py-1 text-[12px] font-bold text-white disabled:opacity-50"
               >Save hours</button>
             </>
           )}
           {!useCustom && (
-            <p className="text-[12px] text-gray-400">Uses your working hours above.</p>
+            <p className="mt-1 text-[12px] text-inkSoft">Uses your working hours above.</p>
           )}
         </div>
       ) : (
@@ -140,7 +143,7 @@ function CategoryRow({ category }: { category: Category }) {
             data-testid={`save-${category.id}`}
             disabled={!ok || updateM.isPending}
             onClick={() => updateM.mutate({ id: category.id, patch: { windows: daysToWindows(days) } })}
-            className="mt-1 rounded bg-blue-600 px-3 py-1 text-[12px] text-white disabled:opacity-50"
+            className="mt-1 rounded-[9px] bg-indigo px-3 py-1 text-[12px] font-bold text-white disabled:opacity-50"
           >Save hours</button>
         </>
       )}
@@ -166,22 +169,37 @@ export function CategoriesSection() {
   };
 
   return (
-    <section className="mb-4 max-w-md rounded-lg border border-gray-200 p-3" data-testid="categories-section">
-      <h3 className="mb-2 text-sm font-semibold">Categories</h3>
+    <section className="mb-4 max-w-md rounded-[14px] border border-line bg-card p-4" data-testid="categories-section">
+      <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-inkSoft">Categories</h3>
       {(categoriesQ.data ?? []).map((c) => <CategoryRow key={c.id} category={c} />)}
 
       {adding ? (
-        <div className="rounded-lg border border-gray-200 p-3">
-          <input data-testid="cat-name-input" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Category name…" className="mb-1 w-full rounded border border-gray-300 px-2 py-0.5 text-sm" />
+        <div className="rounded-[11px] border border-line p-3">
+          <input
+            data-testid="cat-name-input"
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Category name…"
+            className="mb-1.5 w-full rounded-[9px] border border-line px-2 py-1 text-sm font-semibold text-ink focus:border-indigo focus:outline-none"
+          />
           <WeeklyHoursEditor days={days} onChange={setDay} idPrefix="newcat" />
           {!ok && <p className="mb-1 text-[11px] text-red-600">{error}</p>}
-          <div className="mt-1 flex gap-2">
-            <button data-testid="save-new-category" disabled={!ok || createM.isPending} onClick={submit} className="rounded bg-blue-600 px-3 py-1 text-[12px] text-white disabled:opacity-50">Create</button>
-            <button onClick={() => { setAdding(false); setName(''); setDays(windowsToDays([])); }} className="rounded border border-gray-300 px-3 py-1 text-[12px]">Cancel</button>
+          <div className="mt-2 flex gap-2">
+            <button
+              data-testid="save-new-category"
+              disabled={!ok || createM.isPending}
+              onClick={submit}
+              className="rounded-[9px] bg-indigo px-3 py-1 text-[12px] font-bold text-white disabled:opacity-50"
+            >Create</button>
+            <button
+              onClick={() => { setAdding(false); setName(''); setDays(windowsToDays([])); }}
+              className="rounded-[9px] border border-line px-3 py-1 text-[12px] font-semibold text-inkSoft hover:bg-indigoSoft"
+            >Cancel</button>
           </div>
         </div>
       ) : (
-        <button data-testid="add-category" onClick={() => setAdding(true)} className="text-[13px] font-bold text-blue-600">+ Add category</button>
+        <button data-testid="add-category" onClick={() => setAdding(true)} className="mt-1 rounded-[9px] px-2 py-1 text-[13px] font-bold text-indigo hover:bg-indigoSoft">+ Add category</button>
       )}
     </section>
   );

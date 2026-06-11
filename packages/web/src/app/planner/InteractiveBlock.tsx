@@ -20,13 +20,14 @@ export interface InteractiveBlockProps {
   kind: BlockKind;
   pinned: boolean;
   onCommit: (patch: { startsAt: string; endsAt: string; pinned: boolean }) => void;
+  accent?: string;
 }
 
 type DragMode = 'move' | 'resize';
 
 export function InteractiveBlock(props: InteractiveBlockProps) {
   // `id` is part of the props for the parent's onCommit binding; not read inside this component.
-  const { dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, startLabel, title, kind, pinned, onCommit } = props;
+  const { dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, startLabel, title, kind, pinned, onCommit, accent } = props;
   // Refs hold the authoritative drag state; mutated directly so pointer handlers always
   // see the latest values regardless of React's batching/commit schedule.
   const modeRef = useRef<DragMode | null>(null);
@@ -101,6 +102,12 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
   const previewStart = startMs + moveMin * 60_000;
   const previewEnd = growMin !== 0 ? endMs + growMin * 60_000 : endMs + moveMin * 60_000;
 
+  const accentStyles = accent && kind !== 'meeting'
+    ? pinned
+      ? { backgroundColor: accent }
+      : { borderColor: accent, color: accent }
+    : {};
+
   return (
     <div
       data-testid="event-block"
@@ -111,8 +118,8 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
-      className={`${BASE} ${dragging ? 'cursor-grabbing' : 'cursor-grab'} select-none ${variantClass(kind, pinned)}`}
-      style={{ top: `${topPct}%`, height: `calc(${heightPct}% + ${minutesToPx(growMin)}px)`, transform: `translate(${dayDelta * colWidthRef.current}px, ${minutesToPx(moveMin)}px)` }}
+      className={`${BASE} ${dragging ? 'cursor-grabbing' : 'cursor-grab'} select-none ${variantClass(kind, pinned, accent)}`}
+      style={{ top: `${topPct}%`, height: `calc(${heightPct}% + ${minutesToPx(growMin)}px)`, transform: `translate(${dayDelta * colWidthRef.current}px, ${minutesToPx(moveMin)}px)`, ...accentStyles }}
     >
       {pinned && <span aria-hidden="true">🔒 </span>}
       <span className="font-medium">{startLabel}</span> {title}

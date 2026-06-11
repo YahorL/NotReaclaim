@@ -158,3 +158,38 @@ describe('InteractiveBlock cross-day move', () => {
     expect(onCommit).not.toHaveBeenCalled();
   });
 });
+
+describe('InteractiveBlock accent tinting', () => {
+  const ACCENT = '#5b62e3';
+
+  it('movable task with accent: borderColor + color inline styles', () => {
+    render(
+      <InteractiveBlock
+        id="b1" dayStartMs={Date.parse('2026-01-05T00:00:00.000Z')} dayIndex={0}
+        startMs={Date.parse('2026-01-05T09:00:00.000Z')} endMs={Date.parse('2026-01-05T10:00:00.000Z')}
+        topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
+        onCommit={vi.fn()} accent={ACCENT}
+      />,
+    );
+    const el = screen.getByTestId('event-block');
+    expect(el.style.borderColor).toBe('rgb(91, 98, 227)');
+    expect(el.style.color).toBe('rgb(91, 98, 227)');
+    expect(el.className).toContain('border-dashed');
+    expect(el.className).not.toContain('border-low');
+  });
+
+  it('pinned task with accent: backgroundColor inline style, keeps white text', () => {
+    render(
+      <InteractiveBlock
+        id="b1" dayStartMs={Date.parse('2026-01-05T00:00:00.000Z')} dayIndex={0}
+        startMs={Date.parse('2026-01-05T09:00:00.000Z')} endMs={Date.parse('2026-01-05T10:00:00.000Z')}
+        topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned
+        onCommit={vi.fn()} accent={ACCENT}
+      />,
+    );
+    const el = screen.getByTestId('event-block');
+    expect(el.style.backgroundColor).toBe('rgb(91, 98, 227)');
+    expect(el.className).not.toContain('bg-low');
+    expect(el.className).toContain('text-white');
+  });
+});
