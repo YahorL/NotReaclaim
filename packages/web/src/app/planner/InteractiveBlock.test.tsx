@@ -218,6 +218,78 @@ describe('InteractiveBlock held preview (flicker fix)', () => {
     fireEvent.pointerUp(el, { clientX: 50, clientY: 120, pointerId: 1 });
     expect(screen.queryByTestId('drag-label')).not.toBeInTheDocument();
   });
+
+  // The "jump from initial to final" fix: while the held preview is up, the block must NOT
+  // carry the top/height replan transition — otherwise the transform→0 + top→newTop swap on
+  // the next prop change animates top while transform snaps, jumping back to the start.
+  it('uses transition-none while held, and the replan transition once cleared', () => {
+    const { rerender } = render(
+      <InteractiveBlock
+        id="b1" dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
+        topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
+        onCommit={vi.fn()}
+      />,
+    );
+    const el = screen.getByTestId('event-block');
+    // Idle: replan glide present
+    expect(el.className).toContain('transition-[top,height]');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 120, pointerId: 1 });
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 120, pointerId: 1 });
+    // Held: no transition, so transform & top swap atomically with no animation
+    expect(el.className).toContain('transition-none');
+    expect(el.className).not.toContain('transition-[top,height]');
+    // Props land → held clears → replan transition restored
+    rerender(
+      <InteractiveBlock
+        id="b1" dayStartMs={DAY} dayIndex={0} startMs={START + 15 * 60_000} endMs={END + 15 * 60_000}
+        topPct={11.5} heightPct={5} startLabel="09:15" title="Write spec" kind="task" pinned={false}
+        onCommit={vi.fn()}
+      />,
+    );
+    expect(el.className).toContain('transition-[top,height]');
+  });
+});
+
+describe('InteractiveBlock delete button', () => {
+  function renderWithDelete(onDelete = vi.fn()) {
+    render(
+      <InteractiveBlock
+        id="b1" dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
+        topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
+        onCommit={vi.fn()} onDelete={onDelete}
+      />,
+    );
+    return onDelete;
+  }
+
+  it('renders a delete button when onDelete is given', () => {
+    renderWithDelete();
+    // hidden:true — the button is display:none until group-hover (jsdom can't hover)
+    expect(screen.getByRole('button', { name: /delete block/i, hidden: true })).toBeInTheDocument();
+  });
+
+  it('clicking delete calls onDelete and does not start a drag/commit', () => {
+    const onCommit = vi.fn();
+    const onDelete = vi.fn();
+    render(
+      <InteractiveBlock
+        id="b1" dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
+        topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
+        onCommit={onCommit} onDelete={onDelete}
+      />,
+    );
+    const btn = screen.getByRole('button', { name: /delete block/i, hidden: true });
+    fireEvent.pointerDown(btn, { clientY: 100, pointerId: 1 });
+    fireEvent.click(btn);
+    expect(onDelete).toHaveBeenCalledTimes(1);
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('no delete button when onDelete is omitted', () => {
+    renderBlock();
+    expect(screen.queryByRole('button', { name: /delete block/i, hidden: true })).toBeNull();
+  });
 });
 
 describe('InteractiveBlock unpin button', () => {

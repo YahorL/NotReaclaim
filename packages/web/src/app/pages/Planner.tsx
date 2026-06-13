@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useTasksQuery, useCategoriesQuery } from '../../api/queries';
+import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useTasksQuery, useCategoriesQuery } from '../../api/queries';
 import { startOfWeek, dayColumns, addWeeks } from '../planner/weekModel';
 import { WeekGrid } from '../planner/WeekGrid';
 import { AtRiskPanel } from '../planner/AtRiskPanel';
@@ -24,6 +24,8 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const categoriesQ = useCategoriesQuery();
   const replan = useReplanMutation();
   const updateBlock = useUpdateScheduledBlockMutation();
+  const deleteBlock = useDeleteScheduledBlockMutation();
+  const deleteEvent = useDeleteCalendarEventMutation();
 
   const labeledBlocks = useMemo(
     () => labelBlocksWithSubtasks(schedule.data ?? [], tasksQ.data ?? []),
@@ -76,6 +78,8 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           onToday={() => setWeekStartMs(startOfWeek(now()))}
           onReplan={() => replan.mutate()}
           onCommit={(id, patch) => updateBlock.mutate({ id, patch })}
+          onDeleteBlock={(id) => deleteBlock.mutate(id)}
+          onDeleteEvent={(id) => deleteEvent.mutate(id)}
           accents={accents}
         />
         {replan.isError && <p className="mt-2 text-sm text-red-600">Re-plan failed. Try again.</p>}

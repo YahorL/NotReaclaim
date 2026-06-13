@@ -88,6 +88,22 @@ describe('schedule routes', () => {
     expect(res.statusCode).toBe(404);
   });
 
+  it('DELETE /schedule/:id removes the block and returns 204', async () => {
+    const { app } = buildTestApp({ blocks: [block()], settings: settings() });
+    const token = await tokenFor(app);
+    const del = await app.inject({ method: 'DELETE', url: '/schedule/b1', headers: { authorization: `Bearer ${token}` } });
+    expect(del.statusCode).toBe(204);
+    const list = await app.inject({ method: 'GET', url: '/schedule', headers: { authorization: `Bearer ${token}` } });
+    expect(list.json()).toHaveLength(0);
+  });
+
+  it('DELETE /schedule/:id 404s for a block the user does not own', async () => {
+    const { app } = buildTestApp({ blocks: [block()], settings: settings() });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'DELETE', url: '/schedule/nope', headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(404);
+  });
+
   it('PATCH /schedule/:id rejects startsAt >= endsAt with 400', async () => {
     const { app } = buildTestApp({ blocks: [block()], settings: settings() });
     const token = await tokenFor(app);

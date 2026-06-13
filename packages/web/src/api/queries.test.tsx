@@ -4,7 +4,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiProvider } from './ApiProvider';
 import { fakeApiClient } from '../test/fakes';
-import { queryKeys, useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useHabitsQuery, useCreateTaskMutation, useDeleteHabitMutation, useSettingsQuery, useUpdateSettingsMutation, useCreateCalendarEventMutation, useCreateScheduledBlockMutation } from './queries';
+import { queryKeys, useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useHabitsQuery, useCreateTaskMutation, useDeleteHabitMutation, useSettingsQuery, useUpdateSettingsMutation, useCreateCalendarEventMutation, useCreateScheduledBlockMutation } from './queries';
 
 function wrap(api = fakeApiClient(), qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   const Wrapper = ({ children }: { children: ReactNode }) => (
@@ -215,5 +215,60 @@ describe('useUpdateScheduledBlockMutation optimistic update', () => {
     result.current.mutate({ id: 'b1', patch });
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(qc.getQueryData(queryKeys.schedule('a', 'b'))).toEqual([block]);
+  });
+});
+
+describe('useDeleteScheduledBlockMutation', () => {
+  const block = { id: 'b1', startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T10:00:00.000Z', pinned: false };
+  const other = { id: 'b2', startsAt: '2026-01-05T11:00:00.000Z', endsAt: '2026-01-05T12:00:00.000Z', pinned: false };
+
+  it('optimistically drops the block from cached lists, leaves the preview entry alone', async () => {
+    let resolveReq!: () => void;
+    const deleteScheduledBlock = vi.fn(() => new Promise<void>((res) => { resolveReq = res; }));
+    const api = fakeApiClient({ deleteScheduledBlock } as never);
+    const { Wrapper, qc } = wrap(api);
+    qc.setQueryData(queryKeys.schedule('a', 'b'), [block, other]);
+    qc.setQueryData(queryKeys.schedulePreview(), { blocks: [], unscheduled: [] });
+    const { result } = renderHook(() => useDeleteScheduledBlockMutation(), { wrapper: Wrapper });
+    result.current.mutate('b1');
+    await waitFor(() => {
+      const cached = qc.getQueryData<(typeof block)[]>(queryKeys.schedule('a', 'b'))!;
+      expect(cached).toEqual([other]);
+    });
+    expect(qc.getQueryData(queryKeys.schedulePreview())).toEqual({ blocks: [], unscheduled: [] });
+    resolveReq();
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(deleteScheduledBlock).toHaveBeenCalledWith('b1');
+  });
+
+  it('rolls the cache back when the delete fails', async () => {
+    const deleteScheduledBlock = vi.fn(async () => { throw new Error('500'); });
+    const api = fakeApiClient({ deleteScheduledBlock } as never);
+    const { Wrapper, qc } = wrap(api);
+    qc.setQueryData(queryKeys.schedule('a', 'b'), [block, other]);
+    const { result } = renderHook(() => useDeleteScheduledBlockMutation(), { wrapper: Wrapper });
+    result.current.mutate('b1');
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(qc.getQueryData(queryKeys.schedule('a', 'b'))).toEqual([block, other]);
+  });
+});
+
+describe('useDeleteCalendarEventMutation', () => {
+  const ev = { id: 'e1', title: 'Standup' };
+  it('optimistically removes the event and invalidates calendar + schedule on settle', async () => {
+    const deleteCalendarEvent = vi.fn(async () => {});
+    const api = fakeApiClient({ deleteCalendarEvent } as never);
+    const { Wrapper, qc } = wrap(api);
+    qc.setQueryData(queryKeys.calendarEvents('a', 'b'), [ev]);
+    const spy = vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    const { result } = renderHook(() => useDeleteCalendarEventMutation(), { wrapper: Wrapper });
+    result.current.mutate('e1');
+    await waitFor(() => {
+      expect(qc.getQueryData(queryKeys.calendarEvents('a', 'b'))).toEqual([]);
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(deleteCalendarEvent).toHaveBeenCalledWith('e1');
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['calendarEvents'] });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['schedule'] });
   });
 });

@@ -118,6 +118,11 @@ export function fakeScheduledBlockRepo(seed: ScheduledBlock[] = []) {
       if (!row) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`ScheduledBlock ${id}`); }
       Object.assign(row, data); return row;
     },
+    async delete(userId: string, id: string): Promise<void> {
+      const before = rows.length;
+      rows = rows.filter((b) => !(b.id === id && b.userId === userId));
+      if (rows.length === before) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`ScheduledBlock ${id}`); }
+    },
   };
 }
 
@@ -145,6 +150,14 @@ export function fakeCalendarEventRepo(seed: CalendarEvent[] = []) {
       if (!row) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`CalendarEvent ${id}`); }
       Object.assign(row, { googleCalendarId, googleEventId });
       return row;
+    },
+    async findById(userId: string, id: string): Promise<CalendarEvent | null> {
+      return rows.find((r) => r.id === id && r.userId === userId) ?? null;
+    },
+    async delete(userId: string, id: string): Promise<void> {
+      const before = rows.length;
+      rows = rows.filter((r) => !(r.id === id && r.userId === userId));
+      if (rows.length === before) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`CalendarEvent ${id}`); }
     },
   };
 }
@@ -234,6 +247,7 @@ export interface TestAppOptions {
   webClientUrl?: string;
   accessToken?: string;
   insertEvent?: AppDeps['google']['client']['insertEvent'];
+  deleteEvent?: AppDeps['google']['client']['deleteEvent'];
 }
 
 export function buildTestApp(opts: TestAppOptions = {}) {
@@ -265,6 +279,7 @@ export function buildTestApp(opts: TestAppOptions = {}) {
       client: {
         getConsentUrl: () => 'https://consent.example/auth',
         insertEvent: opts.insertEvent ?? (async () => { throw new Error('not connected'); }),
+        deleteEvent: opts.deleteEvent ?? (async () => { throw new Error('not connected'); }),
       },
       tokens: {
         connectFromCode: async () =>

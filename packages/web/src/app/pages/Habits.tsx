@@ -17,9 +17,9 @@ export function Habits() {
   const habits = habitsQ.data ?? [];
 
   return (
-    <div className="flex gap-3 p-4">
-      <div className="flex-1">
-        <h2 className="mb-3 text-lg font-semibold">Habits</h2>
+    <div className="p-4">
+      <div className="mx-auto w-full max-w-[720px]">
+        <h2 className="mb-4 text-[22px] font-extrabold tracking-[-.3px] text-ink">Habits</h2>
         <QuickAdd placeholder="+ Add a habit…" onAdd={(title) => createM.mutate(defaultQuickAddInput(title))} />
         {habitsQ.isLoading && <div className="text-sm text-gray-500">Loading habits…</div>}
         {habitsQ.isError && (
@@ -41,10 +41,12 @@ export function Habits() {
         </div>
       </div>
       {editing && (
-        <HabitDrawer habit={editing} saving={updateM.isPending}
-          error={updateM.error instanceof ApiError ? updateM.error : null}
-          onSave={(patch) => updateM.mutate({ id: editing.id, patch }, { onSuccess: () => setEditing(null) })}
-          onCancel={() => setEditing(null)} />
+        <div className="fixed right-3 top-[84px] z-40">
+          <HabitDrawer habit={editing} saving={updateM.isPending}
+            error={updateM.error instanceof ApiError ? updateM.error : null}
+            onSave={(patch) => updateM.mutate({ id: editing.id, patch }, { onSuccess: () => setEditing(null) })}
+            onCancel={() => setEditing(null)} />
+        </div>
       )}
     </div>
   );

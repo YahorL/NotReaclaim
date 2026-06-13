@@ -57,4 +57,12 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
     afterMutation(request.userId);
     return block;
   });
+
+  app.delete('/schedule/:id', guard, async (request, reply) => {
+    const { id } = idParamSchema.parse(request.params);
+    // No reconcile here: deleting a block clears it from the planner. The task (if any)
+    // stays in Priorities and only reappears on an explicit re-plan.
+    await deps.repos.scheduledBlocks.delete(request.userId, id);
+    reply.code(204);
+  });
 }

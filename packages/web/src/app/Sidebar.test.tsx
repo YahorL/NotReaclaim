@@ -60,13 +60,13 @@ describe('Sidebar', () => {
     expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument();
   });
 
-  // Item 6: pin button
-  it('pin header button has aria-label "Unpin sidebar" when pinned', () => {
+  // Item 6: collapse button — a panel-collapse arrow ("Hide sidebar"), not the pin glyph
+  it('header collapse button has aria-label "Hide sidebar" when pinned', () => {
     renderSidebar('/', true);
-    expect(screen.getByRole('button', { name: 'Unpin sidebar' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Hide sidebar' })).toBeInTheDocument();
   });
 
-  it('calls onUnpin when the Unpin sidebar button is clicked', () => {
+  it('calls onUnpin when the Hide sidebar button is clicked', () => {
     let unpinCalled = false;
     render(
       <MemoryRouter initialEntries={['/']}>
@@ -75,8 +75,15 @@ describe('Sidebar', () => {
         </AuthProvider>
       </MemoryRouter>,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Unpin sidebar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Hide sidebar' }));
     expect(unpinCalled).toBe(true);
+  });
+
+  // Item 8: Help section removed
+  it('does not render the Help section', () => {
+    renderSidebar();
+    expect(screen.queryByRole('button', { name: /help/i })).toBeNull();
+    expect(screen.queryByText('Documentation')).toBeNull();
   });
 
   it('shows "Pin sidebar" button when rendered as overlay', () => {
@@ -113,11 +120,11 @@ describe('AppShell sidebar pin/unpin', () => {
     expect(screen.getByRole('button', { name: 'Show sidebar' })).toBeInTheDocument();
   });
 
-  it('clicking Unpin hides the sidebar and shows hamburger', async () => {
+  it('clicking Hide hides the sidebar and shows hamburger', async () => {
     const { renderAppShell } = await import('./AppShell.testhelper');
     renderAppShell();
-    // Initially pinned, click unpin
-    fireEvent.click(screen.getByRole('button', { name: 'Unpin sidebar' }));
+    // Initially pinned, click the collapse arrow
+    fireEvent.click(screen.getByRole('button', { name: 'Hide sidebar' }));
     expect(screen.getByRole('button', { name: 'Show sidebar' })).toBeInTheDocument();
     expect(localStorage.getItem('nr.sidebarPinned')).toBe('0');
   });

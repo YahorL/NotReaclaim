@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type PointerEvent as ReactPointerEvent } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, type PointerEvent as ReactPointerEvent } from 'react';
 import { BASE, variantClass, type BlockKind } from './EventBlock';
 import { WINDOW_END_MIN, snapMinutes, pxToMinutes, minutesToPx, clampToWindow, shiftDays, clampDayDelta } from './weekModel';
 
@@ -22,6 +22,7 @@ export interface InteractiveBlockProps {
   pinned: boolean;
   onCommit: (patch: { startsAt: string; endsAt: string; pinned: boolean }) => void;
   onUnpin?: () => void;
+  onDelete?: () => void;
   accent?: string;
 }
 
@@ -29,7 +30,7 @@ type DragMode = 'move' | 'resize';
 
 export function InteractiveBlock(props: InteractiveBlockProps) {
   // `id` is part of the props for the parent's onCommit binding; not read inside this component.
-  const { dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, startLabel, title, kind, pinned, onCommit, onUnpin, accent } = props;
+  const { dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, startLabel, title, kind, pinned, onCommit, onUnpin, onDelete, accent } = props;
   // Refs hold the authoritative drag state; mutated directly so pointer handlers always
   // see the latest values regardless of React's batching/commit schedule.
   const modeRef = useRef<DragMode | null>(null);
@@ -50,8 +51,12 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
   // Safety timeout ref for held preview
   const heldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Clear held preview when startMs/endMs props change (optimistic update landed)
-  useEffect(() => {
+  // Clear held preview when startMs/endMs props change (optimistic update landed).
+  // useLayoutEffect runs synchronously *before paint*: the render that carries the new
+  // top/height arrives with `transition-none` still applied (held flag set), then this
+  // effect zeroes the transform in the same frame — so top→newTop and transform→0 swap
+  // atomically and cancel, with no intermediate paint that could show a jump.
+  useLayoutEffect(() => {
     if (heldTimerRef.current) {
       clearTimeout(heldTimerRef.current);
       heldTimerRef.current = null;
@@ -186,10 +191,15 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
 
   // Transition classes:
   // - active drag: transition-transform duration-75 (fluid ticks), no top/height transition (no lag)
-  // - not dragging: transition-[top,height] duration-300 ease-out (replan animations)
+  // - held (post-drag, before props land): transition-none so transform→0 + top→newTop swap
+  //   atomically and cancel — no "jump back to initial then glide to final" artifact
+  // - idle: transition-[top,height] duration-300 ease-out (replan animations for other blocks)
+  const held = heldMove !== 0 || heldGrow !== 0 || heldDay !== 0;
   const transitionClass = activeDrag
     ? 'transition-transform duration-75'
-    : 'transition-[top,height] duration-300 ease-out';
+    : held
+      ? 'transition-none'
+      : 'transition-[top,height] duration-300 ease-out';
 
   return (
     <div
@@ -201,9 +211,21 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
-      className={`${BASE} ${activeDrag ? 'cursor-grabbing' : 'cursor-grab'} select-none ${variantClass(kind, pinned, accent)} ${transitionClass}`}
+      className={`group ${BASE} ${activeDrag ? 'cursor-grabbing' : 'cursor-grab'} select-none ${variantClass(kind, pinned, accent)} ${transitionClass}`}
       style={{ top: `${topPct}%`, height: `calc(${heightPct}% + ${heightDelta}px)`, transform: `translate(${transformX}px, ${transformY}px)`, ...accentStyles }}
     >
+      {onDelete && !activeDrag && (
+        <button
+          type="button"
+          aria-label="Delete block"
+          title="Delete"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          className="absolute right-0.5 top-0.5 z-10 hidden h-4 w-4 items-center justify-center rounded-full bg-black/25 text-[11px] leading-none text-white group-hover:flex hover:bg-black/45"
+        >
+          ×
+        </button>
+      )}
       {pinned && (
         onUnpin
           ? (

@@ -32,6 +32,8 @@ export interface WeekGridProps {
   onNext: () => void;
   onReplan: () => void;
   onCommit: (id: string, patch: { startsAt?: string; endsAt?: string; pinned?: boolean }) => void;
+  onDeleteBlock?: (id: string) => void;
+  onDeleteEvent?: (id: string) => void;
   accents?: Record<string, string>;
 }
 
@@ -44,6 +46,7 @@ interface Item {
   endMs: number;
   startLabel: string;
   blockId: string | null;
+  eventId: string | null;
   taskId: string | null;
 }
 
@@ -57,18 +60,18 @@ function toItems(blocks: ScheduledBlock[], events: CalendarEvent[]): Item[] {
     const startMs = Date.parse(b.startsAt);
     return { key: `b:${b.id}`, title: b.title, kind: cls.kind, pinned: cls.pinned,
       startMs, endMs: Date.parse(b.endsAt), startLabel: timeLabel(startMs), blockId: b.id,
-      taskId: b.taskId };
+      eventId: null, taskId: b.taskId };
   });
   const fromEvents = events.map((e): Item => {
     const startMs = Date.parse(e.startsAt);
     return { key: `e:${e.id}`, title: e.title, kind: 'meeting', pinned: false,
-      startMs, endMs: Date.parse(e.endsAt), startLabel: timeLabel(startMs), blockId: null, taskId: null };
+      startMs, endMs: Date.parse(e.endsAt), startLabel: timeLabel(startMs), blockId: null, eventId: e.id, taskId: null };
   });
   return [...fromEvents, ...fromBlocks];
 }
 
 export function WeekGrid(props: WeekGridProps) {
-  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit, accents = {} } = props;
+  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit, onDeleteBlock, onDeleteEvent, accents = {} } = props;
   const items = toItems(blocks, events);
   const [creating, setCreating] = useState<{ dayIndex: number; startMin: number } | null>(null);
 
@@ -161,6 +164,7 @@ export function WeekGrid(props: WeekGridProps) {
                           startLabel={it.startLabel} title={it.title} kind={it.kind} pinned={it.pinned}
                           onCommit={(patch) => onCommit(blockId, patch)}
                           onUnpin={it.pinned ? () => onCommit(blockId, { pinned: false }) : undefined}
+                          onDelete={onDeleteBlock ? () => onDeleteBlock(blockId) : undefined}
                           accent={accent}
                         />
                       );
@@ -175,6 +179,7 @@ export function WeekGrid(props: WeekGridProps) {
                         heightPct={pos.heightPct}
                         startLabel={it.startLabel}
                         accent={accent}
+                        onDelete={it.eventId && onDeleteEvent ? () => onDeleteEvent(it.eventId!) : undefined}
                       />
                     );
                   })}

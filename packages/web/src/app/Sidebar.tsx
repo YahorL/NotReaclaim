@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Logo } from './shell/Logo';
-import { NavLinkItem, NavDisabledItem, NavSection } from './shell/NavItem';
+import { NavLinkItem, NavSection } from './shell/NavItem';
 import { Icons } from './shell/icons';
 
 interface SidebarProps {
@@ -12,27 +12,18 @@ interface SidebarProps {
 
 export function Sidebar({ pinned, onUnpin, onPin, isOverlay }: SidebarProps) {
   const [tbOpen, setTbOpen] = useState(true);
-  const [helpOpen, setHelpOpen] = useState(false);
 
-  const pinButton = isOverlay
+  // Pinned → a collapse arrow that hides the sidebar; opened-but-unpinned → a pin glyph
+  // that makes it permanent. (Previously both states showed the pin glyph — "not arrow nor pin".)
+  const collapseButton = isOverlay
     ? (
-      <button
-        type="button"
-        aria-label="Pin sidebar"
-        onClick={onPin}
-        className="text-sidebarMuted hover:text-sidebarText"
-      >
+      <button type="button" aria-label="Pin sidebar" title="Pin sidebar" onClick={onPin} className="text-sidebarMuted hover:text-sidebarText">
         <Icons.pin size={18} />
       </button>
     )
     : (
-      <button
-        type="button"
-        aria-label="Unpin sidebar"
-        onClick={onUnpin}
-        className="text-sidebarMuted hover:text-sidebarText"
-      >
-        <Icons.pin size={18} />
+      <button type="button" aria-label="Hide sidebar" title="Hide sidebar" onClick={onUnpin} className="text-sidebarMuted hover:text-sidebarText">
+        <Icons.panelLeft size={19} />
       </button>
     );
 
@@ -40,7 +31,7 @@ export function Sidebar({ pinned, onUnpin, onPin, isOverlay }: SidebarProps) {
     <aside className="dark-scroll flex h-screen w-[280px] shrink-0 flex-col overflow-y-auto bg-sidebar">
       <div className="flex items-center justify-between px-[18px] pb-[14px] pt-5">
         <Logo />
-        {pinButton}
+        {collapseButton}
       </div>
 
       <nav className="flex flex-col gap-0.5 px-[14px] py-1.5">
@@ -53,25 +44,14 @@ export function Sidebar({ pinned, onUnpin, onPin, isOverlay }: SidebarProps) {
           <>
             <NavLinkItem to="/habits" label="Habits" indent />
             <NavLinkItem to="/buffers" label="Buffers" indent />
-            <NavLinkItem to="/hours" label="Hours" icon={<Icons.clock size={16} />} indent />
+            <NavLinkItem to="/hours" label="Hours" indent />
           </>
         )}
 
-        <NavLinkItem to="/settings" label="Settings" icon={<Icons.sync size={20} />} />
+        <NavLinkItem to="/settings" label="Settings" icon={<Icons.settings size={20} />} />
       </nav>
 
       <div className="flex-1" />
-
-      <div className="flex flex-col gap-0.5 px-[14px] pb-[18px] pt-2.5">
-        <NavSection label="Help" icon={<Icons.help size={20} />} open={helpOpen} onToggle={() => setHelpOpen((v) => !v)} />
-        {helpOpen && (
-          <>
-            <NavDisabledItem label="Documentation" indent />
-            <NavDisabledItem label="Contact support" indent />
-            <NavDisabledItem label="What's new" indent />
-          </>
-        )}
-      </div>
     </aside>
   );
 }

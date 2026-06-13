@@ -34,11 +34,6 @@ export function Toolbar({ query, setQuery, hideCompleted, setHideCompleted, cols
           <MenuRow key={k} label={EXTRA_COLUMN_META[k].label} dotClass={EXTRA_COLUMN_META[k].dot} checked={colsVisible[k]} onClick={() => setColsVisible({ ...colsVisible, [k]: !colsVisible[k] })} />
         ))}
       </Dropdown>
-      <Dropdown icon={<Icons.help size={18} />} label="Help" width={220}>
-        <MenuRow label="Keyboard shortcuts (Soon)" />
-        <MenuRow label="Watch a tutorial (Soon)" />
-        <MenuRow label="Contact support (Soon)" />
-      </Dropdown>
     </div>
   );
 }

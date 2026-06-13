@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { AppDeps, AfterMutation } from './app.js';
-import { rangeQuerySchema, createCalendarEventSchema } from './schemas.js';
+import { rangeQuerySchema, createCalendarEventSchema, idParamSchema } from './schemas.js';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const PRIMARY = 'primary';
@@ -39,5 +39,24 @@ export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afte
     afterMutation(request.userId);
     reply.code(201);
     return event;
+  });
+
+  app.delete('/calendar/events/:id', guard, async (request, reply) => {
+    const { id } = idParamSchema.parse(request.params);
+    const event = await deps.repos.calendarEvents.findById(request.userId, id);
+    if (!event) {
+      reply.code(404).send({ code: 'not_found', message: `Event ${id} not found` });
+      return;
+    }
+    // Best-effort Google removal for events previously written back to the primary calendar.
+    if (event.googleEventId && event.googleCalendarId) {
+      try {
+        const accessToken = await deps.google.tokens.getAccessToken(request.userId, deps.now());
+        await deps.google.client.deleteEvent(accessToken, event.googleCalendarId, event.googleEventId);
+      } catch { /* not connected or Google failure — local delete still proceeds */ }
+    }
+    await deps.repos.calendarEvents.delete(request.userId, id);
+    afterMutation(request.userId);
+    reply.code(204);
   });
 }

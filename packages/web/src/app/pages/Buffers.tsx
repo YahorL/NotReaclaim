@@ -40,8 +40,9 @@ function BuffersForm({ initial, onSave, saving, justSaved }: {
 
   return (
     <div className="p-4">
-      <h2 className="mb-4 text-[20px] font-extrabold text-ink">Buffers</h2>
-      <section className="mb-4 max-w-md rounded-[14px] border border-line bg-card p-4">
+      <div className="mx-auto w-full max-w-[720px]">
+      <h2 className="mb-4 text-[22px] font-extrabold tracking-[-.3px] text-ink">Buffers</h2>
+      <section className="mb-4 rounded-[14px] border border-line bg-card p-4">
         <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-inkSoft">Scheduling buffers</h3>
         <div className="flex gap-2">
           <div className="flex-1">
@@ -79,6 +80,7 @@ function BuffersForm({ initial, onSave, saving, justSaved }: {
           Save
         </button>
         {justSaved && <span data-testid="saved" className={errCls.replace('red', 'green')}>Saved</span>}
+      </div>
       </div>
     </div>
   );
