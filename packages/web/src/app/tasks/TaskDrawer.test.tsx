@@ -39,6 +39,15 @@ describe('TaskDrawer', () => {
     expect(screen.getByTestId('err-maxChunkMs')).toBeInTheDocument();
   });
 
+  it('closes (onCancel) on a mousedown outside the drawer, but not inside it', () => {
+    const onCancel = vi.fn();
+    renderWithProviders(<TaskDrawer task={task()} onSave={vi.fn()} onCancel={onCancel} />, { api: emptyCategories() });
+    fireEvent.mouseDown(screen.getByTestId('task-drawer')); // inside → stays open
+    expect(onCancel).not.toHaveBeenCalled();
+    fireEvent.mouseDown(document.body); // outside → closes
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
   it('surfaces a mutation ApiError', () => {
     renderWithProviders(
       <TaskDrawer task={task()} onSave={vi.fn()} onCancel={vi.fn()} error={new ApiError(409, 'conflict', 'Nope')} />,

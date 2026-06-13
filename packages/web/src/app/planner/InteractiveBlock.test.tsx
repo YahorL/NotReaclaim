@@ -219,10 +219,12 @@ describe('InteractiveBlock held preview (flicker fix)', () => {
     expect(screen.queryByTestId('drag-label')).not.toBeInTheDocument();
   });
 
-  // The "jump from initial to final" fix: while the held preview is up, the block must NOT
-  // carry the top/height replan transition — otherwise the transform→0 + top→newTop swap on
-  // the next prop change animates top while transform snaps, jumping back to the start.
-  it('uses transition-none while held, and the replan transition once cleared', () => {
+  // The "jump from initial to final" fix. The drag preview lives in `transform` while the
+  // committed position arrives in `top`. If the replan transition (transition-[top,height])
+  // were active on the render that moves top to its new value, the browser would animate top
+  // old→new while transform snaps to 0 — the block jumps back to the start then glides to the
+  // end. So the block must stay transition-none through the *landed paint* (held → landing).
+  it('stays transition-none through the held preview AND the landed commit (no jump)', () => {
     const { rerender } = render(
       <InteractiveBlock
         id="b1" dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
@@ -231,19 +233,40 @@ describe('InteractiveBlock held preview (flicker fix)', () => {
       />,
     );
     const el = screen.getByTestId('event-block');
-    // Idle: replan glide present
-    expect(el.className).toContain('transition-[top,height]');
+    expect(el.className).toContain('transition-[top,height]'); // idle replan glide
     fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
     fireEvent.pointerMove(el, { clientX: 50, clientY: 120, pointerId: 1 });
     fireEvent.pointerUp(el, { clientX: 50, clientY: 120, pointerId: 1 });
-    // Held: no transition, so transform & top swap atomically with no animation
+    // Held: no transition
     expect(el.className).toContain('transition-none');
-    expect(el.className).not.toContain('transition-[top,height]');
-    // Props land → held clears → replan transition restored
+    // Commit lands (new props after a drag) → `landing` keeps the transition off for the
+    // painted frame, so top jumps to newTop with transform 0 and nothing animates.
     rerender(
       <InteractiveBlock
         id="b1" dayStartMs={DAY} dayIndex={0} startMs={START + 15 * 60_000} endMs={END + 15 * 60_000}
         topPct={11.5} heightPct={5} startLabel="09:15" title="Write spec" kind="task" pinned={false}
+        onCommit={vi.fn()}
+      />,
+    );
+    expect(el.className).toContain('transition-none');
+    expect(el.className).not.toContain('transition-[top,height]');
+  });
+
+  // A replan (props change with NO preceding drag) must keep the glide — `landing` only
+  // engages when a held preview was being cleared.
+  it('keeps the replan glide when props change without a drag', () => {
+    const { rerender } = render(
+      <InteractiveBlock
+        id="b1" dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
+        topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
+        onCommit={vi.fn()}
+      />,
+    );
+    const el = screen.getByTestId('event-block');
+    rerender(
+      <InteractiveBlock
+        id="b1" dayStartMs={DAY} dayIndex={0} startMs={START + 60 * 60_000} endMs={END + 60 * 60_000}
+        topPct={20} heightPct={5} startLabel="10:00" title="Write spec" kind="task" pinned={false}
         onCommit={vi.fn()}
       />,
     );

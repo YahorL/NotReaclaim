@@ -35,12 +35,12 @@ function makeApi(over = {}) {
 }
 
 describe('Planner', () => {
-  it('renders blocks, meetings, and at-risk items', async () => {
-    const api = makeApi();
+  it('renders blocks and meetings', async () => {
+    const api = makeApi(); // listTasks → [] so the task panel is empty (no duplicate titles)
     renderWithProviders(<Planner now={() => NOW} />, { api });
     await waitFor(() => expect(screen.getByText('Write spec')).toBeInTheDocument());
     expect(screen.getByText('Standup')).toBeInTheDocument();
-    expect(screen.getByText('Tax filing')).toBeInTheDocument();
+    expect(screen.getByTestId('planner-task-panel')).toBeInTheDocument();
   });
 
   it('clicking Re-plan calls api.replan', async () => {
@@ -94,7 +94,8 @@ describe('Planner', () => {
       listCategories: vi.fn(async () => [category]),
     } as never);
     renderWithProviders(<Planner now={() => NOW} />, { api });
-    await waitFor(() => expect(screen.getByText('Write spec')).toBeInTheDocument());
+    // 'Write spec' now also shows in the task panel, so wait on the block instead of getByText
+    await waitFor(() => expect(screen.getAllByTestId('event-block').length).toBeGreaterThan(0));
     const taskBlock = screen.getAllByTestId('event-block').find(
       (b) => b.getAttribute('data-kind') === 'task',
     )!;

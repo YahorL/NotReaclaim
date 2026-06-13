@@ -21,7 +21,7 @@ describe('TopBar (bare render)', () => {
   function renderTopBar(onNewTask = vi.fn(), path = '/priorities') {
     const api = fakeApiClient({ getSchedule: async () => [] });
     renderWithProviders(
-      <TopBar onNewTask={onNewTask} onShowSidebar={() => {}} sidebarPinned />,
+      <TopBar onNewTask={onNewTask} />,
       { api, initialEntries: [path] },
     );
     return onNewTask;
@@ -52,7 +52,7 @@ describe('TopBar Next-task indicator', () => {
       getSchedule: async () => [block()],
     });
     renderWithProviders(
-      <TopBar onNewTask={() => {}} onShowSidebar={() => {}} sidebarPinned now={nowFn} />,
+      <TopBar onNewTask={() => {}} now={nowFn} />,
       { api },
     );
     await waitFor(() =>
@@ -68,7 +68,7 @@ describe('TopBar Next-task indicator', () => {
       getSchedule: async () => [],
     });
     renderWithProviders(
-      <TopBar onNewTask={() => {}} onShowSidebar={() => {}} sidebarPinned now={nowFn} />,
+      <TopBar onNewTask={() => {}} now={nowFn} />,
       { api },
     );
     // Allow query to settle
@@ -80,7 +80,7 @@ describe('TopBar Next-task indicator', () => {
       getSchedule: async () => [block({ taskId: null })],
     });
     renderWithProviders(
-      <TopBar onNewTask={() => {}} onShowSidebar={() => {}} sidebarPinned now={nowFn} />,
+      <TopBar onNewTask={() => {}} now={nowFn} />,
       { api },
     );
     await waitFor(() => expect(screen.queryByTestId('next-task')).toBeNull());
@@ -91,29 +91,17 @@ describe('TopBar Next-task indicator', () => {
       getSchedule: async () => [block({ startsAt: '2026-06-11T10:00:00Z' })],
     });
     renderWithProviders(
-      <TopBar onNewTask={() => {}} onShowSidebar={() => {}} sidebarPinned now={nowFn} />,
+      <TopBar onNewTask={() => {}} now={nowFn} />,
       { api },
     );
     await waitFor(() => expect(screen.queryByTestId('next-task')).toBeNull());
   });
 
-  it('shows hamburger Show sidebar button when sidebar is not pinned', () => {
-    const api = fakeApiClient({ getSchedule: async () => [] });
-    const onShowSidebar = vi.fn();
-    renderWithProviders(
-      <TopBar onNewTask={() => {}} onShowSidebar={onShowSidebar} sidebarPinned={false} now={nowFn} />,
-      { api },
-    );
-    const btn = screen.getByRole('button', { name: 'Show sidebar' });
-    expect(btn).toBeInTheDocument();
-    fireEvent.click(btn);
-    expect(onShowSidebar).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not show the hamburger when sidebar is pinned', () => {
+  // Review 11: the sidebar hamburger was removed (sidebar is always visible).
+  it('does not render a Show sidebar hamburger', () => {
     const api = fakeApiClient({ getSchedule: async () => [] });
     renderWithProviders(
-      <TopBar onNewTask={() => {}} onShowSidebar={() => {}} sidebarPinned now={nowFn} />,
+      <TopBar onNewTask={() => {}} now={nowFn} />,
       { api },
     );
     expect(screen.queryByRole('button', { name: 'Show sidebar' })).toBeNull();
