@@ -19,7 +19,8 @@ export function useFlip(orderKey: string): (key: string) => (el: HTMLElement | n
       if (before !== undefined && before !== top && typeof el.animate === 'function') {
         el.animate(
           [{ transform: `translateY(${before - top}px)` }, { transform: 'translateY(0)' }],
-          { duration: 180, easing: 'ease-out' },
+          // Calmer, less "agile" glide: longer duration + gentle decelerating ease.
+          { duration: 300, easing: 'cubic-bezier(.22,.61,.36,1)' },
         );
       }
     }

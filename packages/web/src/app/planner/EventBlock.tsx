@@ -24,9 +24,10 @@ export interface EventBlockProps {
   startLabel: string;
   pinned?: boolean;
   accent?: string;
+  onDelete?: () => void;
 }
 
-export function EventBlock({ title, kind, topPct, heightPct, startLabel, pinned = false, accent }: EventBlockProps) {
+export function EventBlock({ title, kind, topPct, heightPct, startLabel, pinned = false, accent, onDelete }: EventBlockProps) {
   const locked = kind !== 'meeting' && pinned;
   const accentStyles = accent && kind !== 'meeting'
     ? pinned
@@ -39,9 +40,20 @@ export function EventBlock({ title, kind, topPct, heightPct, startLabel, pinned 
       data-kind={kind}
       data-pinned={pinned}
       title={`${startLabel} ${title}`}
-      className={`${BASE} ${variantClass(kind, pinned, accent)} transition-[top,height] duration-300 ease-out`}
+      className={`group ${BASE} ${variantClass(kind, pinned, accent)} transition-[top,height] duration-300 ease-out`}
       style={{ top: `${topPct}%`, height: `${heightPct}%`, ...accentStyles }}
     >
+      {onDelete && (
+        <button
+          type="button"
+          aria-label="Delete event"
+          title="Delete"
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          className="absolute right-0.5 top-0.5 z-10 hidden h-4 w-4 items-center justify-center rounded-full bg-black/25 text-[11px] leading-none text-white group-hover:flex hover:bg-black/45"
+        >
+          ×
+        </button>
+      )}
       {locked && <span aria-hidden="true">🔒 </span>}
       <span className="font-medium">{startLabel}</span> {title}
     </div>

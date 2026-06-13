@@ -69,6 +69,53 @@ export function useUpdateScheduledBlockMutation() {
   });
 }
 
+export function useDeleteScheduledBlockMutation() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteScheduledBlock(id),
+    // Optimistic: drop the block from every cached schedule LIST so it vanishes immediately.
+    // The preview entry shares the root but is non-array — the Array.isArray guard skips it.
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: queryKeys.scheduleRoot });
+      const snapshots = qc.getQueriesData<unknown>({ queryKey: queryKeys.scheduleRoot });
+      qc.setQueriesData<unknown>({ queryKey: queryKeys.scheduleRoot }, (old: unknown) =>
+        Array.isArray(old) ? old.filter((b: { id: string }) => b.id !== id) : old,
+      );
+      return { snapshots };
+    },
+    onError: (_err, _id, ctx) => {
+      ctx?.snapshots.forEach(([key, data]) => qc.setQueryData(key, data));
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.scheduleRoot });
+    },
+  });
+}
+
+export function useDeleteCalendarEventMutation() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteCalendarEvent(id),
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: queryKeys.calendarEventsRoot });
+      const snapshots = qc.getQueriesData<unknown>({ queryKey: queryKeys.calendarEventsRoot });
+      qc.setQueriesData<unknown>({ queryKey: queryKeys.calendarEventsRoot }, (old: unknown) =>
+        Array.isArray(old) ? old.filter((e: { id: string }) => e.id !== id) : old,
+      );
+      return { snapshots };
+    },
+    onError: (_err, _id, ctx) => {
+      ctx?.snapshots.forEach(([key, data]) => qc.setQueryData(key, data));
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.calendarEventsRoot });
+      void qc.invalidateQueries({ queryKey: queryKeys.scheduleRoot });
+    },
+  });
+}
+
 export function useTasksQuery() {
   const api = useApi();
   return useQuery({ queryKey: queryKeys.tasks(), queryFn: () => api.listTasks() });

@@ -92,4 +92,25 @@ describe('CalendarEventRepository', () => {
     expect(updated.googleCalendarId).toBe('primary');
     expect(updated.googleEventId).toBe('g-x');
   });
+
+  it('findById returns an owned event and null for another user', async () => {
+    const user = await users.create({ email: 'c8@example.com' });
+    const other = await users.create({ email: 'c9@example.com' });
+    const created = await repo.create(user.id, {
+      title: 'Standup', startsAt: new Date('2026-01-03T09:00:00.000Z'), endsAt: new Date('2026-01-03T09:30:00.000Z'),
+    });
+    expect((await repo.findById(user.id, created.id))?.id).toBe(created.id);
+    expect(await repo.findById(other.id, created.id)).toBeNull();
+  });
+
+  it('delete removes an owned event and throws NotFound otherwise', async () => {
+    const user = await users.create({ email: 'c10@example.com' });
+    const other = await users.create({ email: 'c11@example.com' });
+    const created = await repo.create(user.id, {
+      title: 'Standup', startsAt: new Date('2026-01-03T09:00:00.000Z'), endsAt: new Date('2026-01-03T09:30:00.000Z'),
+    });
+    await expect(repo.delete(other.id, created.id)).rejects.toThrow();
+    await repo.delete(user.id, created.id);
+    expect(await repo.findById(user.id, created.id)).toBeNull();
+  });
 });

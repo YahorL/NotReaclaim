@@ -114,3 +114,53 @@ describe('POST /calendar/events', () => {
     expect(res.statusCode).toBe(400);
   });
 });
+
+describe('DELETE /calendar/events/:id', () => {
+  it('deletes a local event, reflows, returns 204', async () => {
+    const { app, reconcileCalls } = buildTestApp({
+      settings: settings(),
+      calendarEvents: [event({ googleEventId: null, googleCalendarId: null })],
+    });
+    const token = await tokenFor(app);
+    const del = await app.inject({ method: 'DELETE', url: '/calendar/events/e1', headers: { authorization: `Bearer ${token}` } });
+    expect(del.statusCode).toBe(204);
+    expect(reconcileCalls.length).toBeGreaterThan(0);
+    const list = await app.inject({ method: 'GET', url: '/calendar/events', headers: { authorization: `Bearer ${token}` } });
+    expect(list.json()).toHaveLength(0);
+  });
+
+  it('removes the event from Google when connected and previously written back', async () => {
+    const deleted: Array<{ calendarId: string; googleEventId: string }> = [];
+    const { app } = buildTestApp({
+      settings: settings(),
+      calendarEvents: [event()], // googleCalendarId 'primary', googleEventId 'g1'
+      accessToken: 'at-1',
+      deleteEvent: async (_t, calendarId, googleEventId) => { deleted.push({ calendarId, googleEventId }); },
+    });
+    const token = await tokenFor(app);
+    const del = await app.inject({ method: 'DELETE', url: '/calendar/events/e1', headers: { authorization: `Bearer ${token}` } });
+    expect(del.statusCode).toBe(204);
+    expect(deleted).toEqual([{ calendarId: 'primary', googleEventId: 'g1' }]);
+  });
+
+  it('still deletes locally when the Google removal fails', async () => {
+    const { app } = buildTestApp({
+      settings: settings(),
+      calendarEvents: [event()],
+      accessToken: 'at-1',
+      deleteEvent: async () => { throw new Error('google down'); },
+    });
+    const token = await tokenFor(app);
+    const del = await app.inject({ method: 'DELETE', url: '/calendar/events/e1', headers: { authorization: `Bearer ${token}` } });
+    expect(del.statusCode).toBe(204);
+    const list = await app.inject({ method: 'GET', url: '/calendar/events', headers: { authorization: `Bearer ${token}` } });
+    expect(list.json()).toHaveLength(0);
+  });
+
+  it('404s for an unknown / other-user event', async () => {
+    const { app } = buildTestApp({ settings: settings(), calendarEvents: [event()] });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'DELETE', url: '/calendar/events/nope', headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(404);
+  });
+});

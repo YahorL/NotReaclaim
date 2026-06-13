@@ -32,7 +32,9 @@ export interface ApiClient {
   putSettings(body: SettingsInput): Promise<Settings>;
   getSchedule(from?: string, to?: string): Promise<ScheduledBlock[]>;
   updateScheduledBlock(id: string, patch: UpdateScheduledBlockInput): Promise<ScheduledBlock>;
+  deleteScheduledBlock(id: string): Promise<void>;
   getCalendarEvents(from?: string, to?: string): Promise<CalendarEvent[]>;
+  deleteCalendarEvent(id: string): Promise<void>;
   getSchedulePreview(): Promise<SchedulePreview>;
   replan(): Promise<ReconcileResult>;
   listCategories(): Promise<Category[]>;
@@ -96,6 +98,7 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
       return request('GET', `/schedule${qs ? `?${qs}` : ''}`);
     },
     updateScheduledBlock: (id, patch) => request('PATCH', `/schedule/${id}`, patch),
+    deleteScheduledBlock: (id) => request('DELETE', `/schedule/${id}`),
     getCalendarEvents: (from, to) => {
       const q = new URLSearchParams();
       if (from) q.set('from', from);
@@ -112,6 +115,7 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
     createSubtask: (body) => request('POST', '/subtasks', body),
     updateSubtask: (id, patch) => request('PATCH', `/subtasks/${id}`, patch),
     deleteSubtask: (id) => request('DELETE', `/subtasks/${id}`),
+    deleteCalendarEvent: (id) => request('DELETE', `/calendar/events/${id}`),
     createCalendarEvent: (body) => request('POST', '/calendar/events', body),
     createScheduledBlock: (body) => request('POST', '/schedule', body),
   };

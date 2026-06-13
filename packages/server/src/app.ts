@@ -30,13 +30,13 @@ export interface AppDeps {
     settings: SettingsRepository;
     tasks: TaskRepository;
     habits: HabitRepository;
-    scheduledBlocks: Pick<ScheduledBlockRepository, 'listByUserInRange' | 'update' | 'create'>;
-    calendarEvents: Pick<CalendarEventRepository, 'listByUserInRange' | 'create' | 'setGoogleIds'>;
+    scheduledBlocks: Pick<ScheduledBlockRepository, 'listByUserInRange' | 'update' | 'create' | 'delete'>;
+    calendarEvents: Pick<CalendarEventRepository, 'listByUserInRange' | 'create' | 'setGoogleIds' | 'findById' | 'delete'>;
     categories: CategoryRepository;
     subtasks: SubtaskRepository;
   };
   google: {
-    client: Pick<GoogleClient, 'getConsentUrl' | 'insertEvent'>;
+    client: Pick<GoogleClient, 'getConsentUrl' | 'insertEvent' | 'deleteEvent'>;
     tokens: Pick<TokenService, 'connectFromCode' | 'getAccessToken'>;
   };
   schedulingRepos: SchedulingRepositories;

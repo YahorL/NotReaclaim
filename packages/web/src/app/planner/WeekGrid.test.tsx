@@ -129,4 +129,20 @@ describe('WeekGrid', () => {
     expect(taskBlock.style.borderColor).toBe('');
   });
 
+  it('delete on a task block calls onDeleteBlock with the block id', () => {
+    const onDeleteBlock = vi.fn();
+    renderGrid({ onDeleteBlock });
+    const btn = screen.getByRole('button', { name: /delete block/i, hidden: true });
+    fireEvent.click(btn);
+    expect(onDeleteBlock).toHaveBeenCalledWith('b1');
+  });
+
+  it('delete on a calendar event calls onDeleteEvent with the event id', () => {
+    const onDeleteEvent = vi.fn();
+    renderGrid({ onDeleteEvent });
+    const btn = screen.getByRole('button', { name: /delete event/i, hidden: true });
+    fireEvent.click(btn);
+    expect(onDeleteEvent).toHaveBeenCalledWith('e1');
+  });
+
 });

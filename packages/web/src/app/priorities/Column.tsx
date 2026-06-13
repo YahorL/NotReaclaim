@@ -11,7 +11,7 @@ function InsertGap({ active }: { active: boolean }) {
     <div
       data-testid={active ? 'insert-line' : undefined}
       aria-hidden="true"
-      className={`overflow-hidden transition-[height] duration-150 ease-out ${active ? 'h-9' : 'h-0'}`}
+      className={`overflow-hidden transition-[height] duration-[220ms] ease-out ${active ? 'h-9' : 'h-0'}`}
     >
       <div className="mx-2 mt-[15px] h-1 rounded bg-indigo" />
     </div>

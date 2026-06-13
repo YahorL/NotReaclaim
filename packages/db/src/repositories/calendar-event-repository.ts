@@ -36,6 +36,18 @@ export function createCalendarEventRepository(prisma: PrismaClient) {
       }
     },
 
+    findById(userId: string, id: string): Promise<CalendarEvent | null> {
+      return prisma.calendarEvent.findFirst({ where: { id, userId } });
+    },
+
+    /** Delete a single locally-listed event. Throws NotFound for missing / other users' events. */
+    async delete(userId: string, id: string): Promise<void> {
+      const result = await prisma.calendarEvent.deleteMany({ where: { id, userId } });
+      if (result.count === 0) {
+        throw new NotFoundError(`CalendarEvent ${id}`);
+      }
+    },
+
     /** Events whose [startsAt, endsAt) overlaps [start, end). */
     listByUserInRange(userId: string, start: Date, end: Date): Promise<CalendarEvent[]> {
       return prisma.calendarEvent.findMany({
