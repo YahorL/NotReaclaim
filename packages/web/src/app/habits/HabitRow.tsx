@@ -11,25 +11,33 @@ export interface HabitRowProps {
   onDelete: (habit: Habit) => void;
 }
 
+// Pill button matching the app's design system (drawers/popovers).
+const pill = 'rounded-full border border-line px-3 py-1 text-[13px] font-semibold text-inkSoft transition-colors hover:bg-bg hover:text-ink';
+
 export function HabitRow({ habit, onEdit, onToggleStatus, onDelete }: HabitRowProps) {
   const [confirming, setConfirming] = useState(false);
   const paused = habit.status === 'paused';
   const days = [...habit.eligibleDays].sort((a, b) => a - b).map((d) => DAY_LABELS[d]).join(' ');
   return (
-    <div data-testid="habit-row" className={`flex items-center gap-2 border-b border-gray-100 px-2 py-1.5 text-sm ${paused ? 'opacity-60' : ''}`}>
-      <span className="flex-1 font-medium">{habit.title}</span>
-      <span className="text-xs text-gray-500">{formatDurationShort(habit.chunkMs)} × {habit.perPeriod}/week · {days}</span>
+    <div
+      data-testid="habit-row"
+      className={`mb-1.5 flex items-center gap-3 rounded-[12px] border border-line bg-card px-3.5 py-2.5 shadow-card ${paused ? 'opacity-60' : ''}`}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[15px] font-bold text-ink">{habit.title}</div>
+        <div className="mt-0.5 text-[12.5px] text-inkSoft">{formatDurationShort(habit.chunkMs)} × {habit.perPeriod}/week · {days}</div>
+      </div>
       {confirming ? (
-        <span className="flex items-center gap-1 text-xs">
-          <span className="text-gray-500">Delete?</span>
-          <button onClick={() => { onDelete(habit); setConfirming(false); }} className="text-red-600">Yes</button>
-          <button onClick={() => setConfirming(false)} className="text-gray-600">Cancel</button>
+        <span className="flex items-center gap-2 text-[13px]">
+          <span className="text-inkSoft">Delete?</span>
+          <button type="button" onClick={() => { onDelete(habit); setConfirming(false); }} className="rounded-full bg-crit px-3 py-1 text-[13px] font-semibold text-white hover:opacity-90">Yes</button>
+          <button type="button" onClick={() => setConfirming(false)} className={pill}>Cancel</button>
         </span>
       ) : (
-        <span className="flex gap-1">
-          <button onClick={() => onEdit(habit)} className="rounded border border-gray-200 px-1.5 text-xs">edit</button>
-          <button onClick={() => onToggleStatus(habit)} className="rounded border border-gray-200 px-1.5 text-xs">{paused ? 'resume' : 'pause'}</button>
-          <button aria-label="delete" onClick={() => setConfirming(true)} className="rounded border border-gray-200 px-1.5 text-xs text-red-600">×</button>
+        <span className="flex items-center gap-1.5">
+          <button type="button" onClick={() => onEdit(habit)} className={pill}>Edit</button>
+          <button type="button" onClick={() => onToggleStatus(habit)} className={pill}>{paused ? 'Resume' : 'Pause'}</button>
+          <button type="button" aria-label="delete" onClick={() => setConfirming(true)} className="rounded-full border border-line px-2.5 py-1 text-[14px] font-bold text-crit transition-colors hover:bg-crit/10">×</button>
         </span>
       )}
     </div>

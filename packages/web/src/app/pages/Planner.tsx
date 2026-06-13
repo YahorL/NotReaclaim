@@ -1,8 +1,11 @@
 import { useMemo, useState } from 'react';
-import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useTasksQuery, useCategoriesQuery } from '../../api/queries';
+import type { Task } from '../../api/types';
+import { ApiError } from '../../api/client';
+import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useTasksQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation } from '../../api/queries';
 import { startOfWeek, dayColumns, addWeeks } from '../planner/weekModel';
 import { WeekGrid } from '../planner/WeekGrid';
-import { AtRiskPanel } from '../planner/AtRiskPanel';
+import { PlannerTaskPanel } from '../planner/PlannerTaskPanel';
+import { TaskDrawer } from '../tasks/TaskDrawer';
 import { labelBlocksWithSubtasks } from '../planner/blockLabels';
 
 function weekLabel(days: number[]): string {
@@ -26,6 +29,13 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const updateBlock = useUpdateScheduledBlockMutation();
   const deleteBlock = useDeleteScheduledBlockMutation();
   const deleteEvent = useDeleteCalendarEventMutation();
+  const updateTask = useUpdateTaskMutation();
+  const deleteTask = useDeleteTaskMutation();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const editing = (tasksQ.data ?? []).find((t) => t.id === editingId) ?? null;
+
+  const onCompleteTask = (t: Task) => updateTask.mutate({ id: t.id, patch: { status: t.status === 'completed' ? 'pending' : 'completed' } });
+  const onDeleteTask = (t: Task) => deleteTask.mutate(t.id, { onSuccess: () => { if (editingId === t.id) setEditingId(null); } });
 
   const labeledBlocks = useMemo(
     () => labelBlocksWithSubtasks(schedule.data ?? [], tasksQ.data ?? []),
@@ -84,7 +94,24 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
         />
         {replan.isError && <p className="mt-2 text-sm text-red-600">Re-plan failed. Try again.</p>}
       </div>
-      <AtRiskPanel items={preview.data?.unscheduled ?? []} />
+      <PlannerTaskPanel
+        tasks={tasksQ.data ?? []}
+        preview={preview.data}
+        nowMs={nowMs}
+        onComplete={onCompleteTask}
+        onEdit={(t) => setEditingId(t.id)}
+        onDelete={onDeleteTask}
+      />
+      {editing && (
+        <div className="fixed right-3 top-[84px] z-40">
+          <TaskDrawer
+            task={editing} saving={updateTask.isPending}
+            error={updateTask.error instanceof ApiError ? updateTask.error : null}
+            onSave={(patch) => updateTask.mutate({ id: editing.id, patch }, { onSuccess: () => setEditingId(null) })}
+            onCancel={() => setEditingId(null)}
+          />
+        </div>
+      )}
     </div>
   );
 }

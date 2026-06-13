@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { Task, UpdateTaskInput } from '../../api/types';
 import type { ApiError } from '../../api/client';
 import { FieldBox } from '../components/FieldBox';
 import { DurationStepper } from '../components/DurationStepper';
+import { useClickOutside } from '../components/useClickOutside';
 import { type TaskFormState, toFormState, validateTaskForm, toUpdateInput } from './taskForm';
 import { useCategoriesQuery, useCreateSubtaskMutation, useUpdateSubtaskMutation, useDeleteSubtaskMutation } from '../../api/queries';
 import { insertionSortOrder } from '../priorities/priorityBucket';
@@ -24,6 +25,8 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
   const updateSubtaskM = useUpdateSubtaskMutation();
   const deleteSubtaskM = useDeleteSubtaskMutation();
   const [newSubtask, setNewSubtask] = useState('');
+  const rootRef = useRef<HTMLElement>(null);
+  useClickOutside(rootRef, onCancel);
   const [dragId, setDragId] = useState<string | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
   const subtasks = task.subtasks ?? [];
@@ -32,7 +35,7 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
   const errCls = 'mt-0.5 text-[11px] text-crit';
 
   return (
-    <aside data-testid="task-drawer" className="w-[440px] shrink-0 space-y-2.5 rounded-[14px] border border-line bg-card p-4 shadow-pop max-h-[calc(100vh-100px)] overflow-y-auto">
+    <aside ref={rootRef} data-testid="task-drawer" className="w-[440px] shrink-0 space-y-2.5 rounded-[14px] border border-line bg-card p-4 shadow-pop max-h-[calc(100vh-100px)] overflow-y-auto">
       <h4 className="text-[15px] font-bold text-ink">Edit task</h4>
 
       <div className="grid grid-cols-2 gap-2.5">

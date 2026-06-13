@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { Habit, HabitStatus, UpdateHabitInput } from '../../api/types';
 import type { ApiError } from '../../api/client';
 import { FieldBox } from '../components/FieldBox';
 import { DurationStepper } from '../components/DurationStepper';
+import { useClickOutside } from '../components/useClickOutside';
 import { type HabitFormState, toFormState, validateHabitForm, toUpdateInput } from './habitForm';
 
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -18,6 +19,8 @@ export interface HabitDrawerProps {
 
 export function HabitDrawer({ habit, onSave, onCancel, saving = false, error = null }: HabitDrawerProps) {
   const [form, setForm] = useState<HabitFormState>(() => toFormState(habit));
+  const rootRef = useRef<HTMLElement>(null);
+  useClickOutside(rootRef, onCancel);
   const { ok, errors } = validateHabitForm(form);
   const set = <K extends keyof HabitFormState>(k: K, v: HabitFormState[K]) => setForm((f) => ({ ...f, [k]: v }));
   const toggleDay = (d: number) =>
@@ -26,7 +29,7 @@ export function HabitDrawer({ habit, onSave, onCancel, saving = false, error = n
   const errCls = 'mt-0.5 text-[11px] text-crit';
 
   return (
-    <aside data-testid="habit-drawer" className="w-[440px] shrink-0 space-y-2.5 rounded-[14px] border border-line bg-card p-4 shadow-pop max-h-[calc(100vh-100px)] overflow-y-auto">
+    <aside ref={rootRef} data-testid="habit-drawer" className="w-[440px] shrink-0 space-y-2.5 rounded-[14px] border border-line bg-card p-4 shadow-pop max-h-[calc(100vh-100px)] overflow-y-auto">
       <h4 className="text-[15px] font-bold text-ink">Edit habit</h4>
 
       <div className="grid grid-cols-2 gap-2.5">

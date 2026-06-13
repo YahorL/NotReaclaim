@@ -48,33 +48,59 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
   const [heldGrow, setHeldGrow] = useState(0);
   const [heldDay, setHeldDay] = useState(0);
   const [heldColWidth, setHeldColWidth] = useState(0);
+  // `landing`: the single frame where the committed top/height first paints. We keep the
+  // transition OFF for that frame so the transform→0 + top→newTop swap paints with NO
+  // animation (they cancel → no movement), THEN restore the replan glide a frame later.
+  const [landing, setLanding] = useState(false);
+  // Mirror of "is a held preview active" readable synchronously inside the layout effect
+  // (whose deps are only [startMs,endMs] — it must not list the held state or it would
+  // re-run and clear the preview the instant pointer-up sets it).
+  const heldActiveRef = useRef(false);
   // Safety timeout ref for held preview
   const heldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rafRef = useRef<number | null>(null);
 
-  // Clear held preview when startMs/endMs props change (optimistic update landed).
-  // useLayoutEffect runs synchronously *before paint*: the render that carries the new
-  // top/height arrives with `transition-none` still applied (held flag set), then this
-  // effect zeroes the transform in the same frame — so top→newTop and transform→0 swap
-  // atomically and cancel, with no intermediate paint that could show a jump.
+  // Clear the held preview when startMs/endMs change (the optimistic commit landed).
+  // CRITICAL: clearing it here would, on its own, restore `transition-[top,height]` on the
+  // very render that moves `top` to its new value — the browser then animates top old→new
+  // while transform snaps to 0, i.e. the block jumps back to the start and glides to the
+  // end. So when this clear follows a real drag (heldActiveRef), we enter `landing`: keep
+  // the transition off for the landed paint, then drop `landing` next frame.
   useLayoutEffect(() => {
     if (heldTimerRef.current) {
       clearTimeout(heldTimerRef.current);
       heldTimerRef.current = null;
     }
+    const wasHeld = heldActiveRef.current;
+    heldActiveRef.current = false;
     setHeldMove(0);
     setHeldGrow(0);
     setHeldDay(0);
     setHeldColWidth(0);
+    if (wasHeld) {
+      setLanding(true);
+      const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : null;
+      if (raf) {
+        rafRef.current = raf(() => { rafRef.current = raf(() => setLanding(false)); });
+      } else {
+        setLanding(false);
+      }
+    }
   }, [startMs, endMs]);
 
-  // Clean up timer on unmount
+  // Clean up timer / rAF on unmount
   useEffect(() => {
     return () => {
       if (heldTimerRef.current) clearTimeout(heldTimerRef.current);
+      if (rafRef.current != null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(rafRef.current);
     };
   }, []);
 
   const clearHeld = () => {
+    // Safety-timeout path (e.g. a failed mutation rolled back to identical props so the
+    // layout effect never fired): just drop the offset. No `landing` — letting the replan
+    // transition glide the block back to its original slot is the right feel for a rollback.
+    heldActiveRef.current = false;
     setHeldMove(0);
     setHeldGrow(0);
     setHeldDay(0);
@@ -84,6 +110,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
 
   const holdPreview = (hm: number, hg: number, hd: number, hw: number) => {
     if (heldTimerRef.current) clearTimeout(heldTimerRef.current);
+    heldActiveRef.current = true;
     setHeldMove(hm);
     setHeldGrow(hg);
     setHeldDay(hd);
@@ -191,13 +218,13 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
 
   // Transition classes:
   // - active drag: transition-transform duration-75 (fluid ticks), no top/height transition (no lag)
-  // - held (post-drag, before props land): transition-none so transform→0 + top→newTop swap
-  //   atomically and cancel — no "jump back to initial then glide to final" artifact
-  // - idle: transition-[top,height] duration-300 ease-out (replan animations for other blocks)
+  // - held (post-drag, before props land) OR landing (the committed paint): transition-none, so
+  //   the transform→0 + top→newTop swap paints with no animation — kills the jump-to-initial.
+  // - idle: transition-[top,height] duration-300 ease-out (replan animations for actual replans)
   const held = heldMove !== 0 || heldGrow !== 0 || heldDay !== 0;
   const transitionClass = activeDrag
     ? 'transition-transform duration-75'
-    : held
+    : (held || landing)
       ? 'transition-none'
       : 'transition-[top,height] duration-300 ease-out';
 
