@@ -32,7 +32,16 @@ function TaskCard({ task, nowMs, nextMs, atRisk, leftBorder, onComplete, onEdit,
   return (
     <div
       data-testid="panel-task"
-      className={`group relative flex items-center gap-2.5 border-l-[3px] ${leftBorder} rounded-r-[10px] border-y border-r border-line bg-card px-3 py-2.5 shadow-card`}
+      draggable
+      onDragStart={(e) => {
+        // Firefox aborts HTML5 drags without setData; the custom type lets the grid
+        // distinguish a task-card drag from anything else during dragover.
+        e.dataTransfer.setData('text/plain', task.id);
+        e.dataTransfer.setData('application/x-nr-task', task.id);
+        e.dataTransfer.effectAllowed = 'copy';
+      }}
+      title="Drag onto the calendar to schedule"
+      className={`group relative flex cursor-grab items-center gap-2.5 border-l-[3px] ${leftBorder} rounded-r-[10px] border-y border-r border-line bg-card px-3 py-2.5 shadow-card active:cursor-grabbing`}
     >
       <button
         type="button"

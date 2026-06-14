@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import type { Task } from '../../api/types';
 import { ApiError } from '../../api/client';
-import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useTasksQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation } from '../../api/queries';
-import { startOfWeek, dayColumns, addWeeks } from '../planner/weekModel';
+import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation } from '../../api/queries';
+import { startOfWeek, dayColumns, addWeeks, clampToWindow, WINDOW_START_MIN, WINDOW_END_MIN } from '../planner/weekModel';
 import { WeekGrid } from '../planner/WeekGrid';
 import { PlannerTaskPanel } from '../planner/PlannerTaskPanel';
 import { TaskDrawer } from '../tasks/TaskDrawer';
@@ -31,11 +31,26 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const deleteEvent = useDeleteCalendarEventMutation();
   const updateTask = useUpdateTaskMutation();
   const deleteTask = useDeleteTaskMutation();
+  const createBlock = useCreateScheduledBlockMutation();
   const [editingId, setEditingId] = useState<string | null>(null);
   const editing = (tasksQ.data ?? []).find((t) => t.id === editingId) ?? null;
 
   const onCompleteTask = (t: Task) => updateTask.mutate({ id: t.id, patch: { status: t.status === 'completed' ? 'pending' : 'completed' } });
   const onDeleteTask = (t: Task) => deleteTask.mutate(t.id, { onSuccess: () => { if (editingId === t.id) setEditingId(null); } });
+
+  // Drag a task card from the side panel onto a day column → create a pinned block at the slot.
+  const onScheduleTaskAt = (taskId: string, dayStartMs: number, startMin: number) => {
+    const task = (tasksQ.data ?? []).find((t) => t.id === taskId);
+    if (!task) return;
+    const windowSpan = WINDOW_END_MIN - WINDOW_START_MIN;
+    const durationMin = Math.min(Math.max(15, Math.round(task.durationMs / 60_000)), windowSpan);
+    const { startMin: s, endMin: e } = clampToWindow(startMin, durationMin);
+    createBlock.mutate({
+      taskId,
+      startsAt: new Date(dayStartMs + s * 60_000).toISOString(),
+      endsAt: new Date(dayStartMs + e * 60_000).toISOString(),
+    });
+  };
 
   const labeledBlocks = useMemo(
     () => labelBlocksWithSubtasks(schedule.data ?? [], tasksQ.data ?? []),
@@ -90,6 +105,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           onCommit={(id, patch) => updateBlock.mutate({ id, patch })}
           onDeleteBlock={(id) => deleteBlock.mutate(id)}
           onDeleteEvent={(id) => deleteEvent.mutate(id)}
+          onScheduleTaskAt={onScheduleTaskAt}
           accents={accents}
         />
         {replan.isError && <p className="mt-2 text-sm text-red-600">Re-plan failed. Try again.</p>}
