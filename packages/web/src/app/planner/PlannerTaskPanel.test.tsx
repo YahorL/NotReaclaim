@@ -88,4 +88,14 @@ describe('PlannerTaskPanel', () => {
     renderPanel([]);
     expect(screen.getByText(/no active tasks/i)).toBeInTheDocument();
   });
+
+  it('task cards are draggable and seed the dataTransfer with the task id', () => {
+    renderPanel([task({ id: 'drag-me', title: 'Grab me' })]);
+    const card = screen.getByTestId('panel-task');
+    expect(card).toHaveAttribute('draggable', 'true');
+    const setData = vi.fn();
+    fireEvent.dragStart(card, { dataTransfer: { setData, effectAllowed: '' } });
+    expect(setData).toHaveBeenCalledWith('text/plain', 'drag-me');
+    expect(setData).toHaveBeenCalledWith('application/x-nr-task', 'drag-me');
+  });
 });

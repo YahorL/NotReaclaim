@@ -145,4 +145,32 @@ describe('WeekGrid', () => {
     expect(onDeleteEvent).toHaveBeenCalledWith('e1');
   });
 
+  it('dropping a task card on a day column calls onScheduleTaskAt with the day + slot', () => {
+    const onScheduleTaskAt = vi.fn();
+    renderGrid({ onScheduleTaskAt });
+    const col = screen.getByTestId('day-col-0');
+    const dt = {
+      types: ['application/x-nr-task'],
+      getData: (t: string) => (t === 'application/x-nr-task' ? 'task-1' : ''),
+      dropEffect: '',
+    };
+    fireEvent.dragOver(col, { clientY: 100, dataTransfer: dt });
+    // indicator appears for the hovered column
+    expect(screen.getByTestId('task-drop-indicator')).toBeInTheDocument();
+    fireEvent.drop(col, { clientY: 100, dataTransfer: dt });
+    expect(onScheduleTaskAt).toHaveBeenCalledTimes(1);
+    const [taskId, dayStartMs, startMin] = onScheduleTaskAt.mock.calls[0]!;
+    expect(taskId).toBe('task-1');
+    expect(dayStartMs).toBe(days[0]);
+    expect(typeof startMin).toBe('number');
+  });
+
+  it('ignores dragover that is not a task card (no indicator)', () => {
+    const onScheduleTaskAt = vi.fn();
+    renderGrid({ onScheduleTaskAt });
+    const col = screen.getByTestId('day-col-0');
+    fireEvent.dragOver(col, { clientY: 100, dataTransfer: { types: ['text/plain'], getData: () => '', dropEffect: '' } });
+    expect(screen.queryByTestId('task-drop-indicator')).toBeNull();
+  });
+
 });

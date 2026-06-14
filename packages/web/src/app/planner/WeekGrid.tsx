@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ScheduledBlock, CalendarEvent } from '../../api/types';
 import { EventBlock, type BlockKind } from './EventBlock';
 import { InteractiveBlock } from './InteractiveBlock';
@@ -34,6 +34,7 @@ export interface WeekGridProps {
   onCommit: (id: string, patch: { startsAt?: string; endsAt?: string; pinned?: boolean }) => void;
   onDeleteBlock?: (id: string) => void;
   onDeleteEvent?: (id: string) => void;
+  onScheduleTaskAt?: (taskId: string, dayStartMs: number, startMin: number) => void;
   accents?: Record<string, string>;
 }
 
@@ -71,9 +72,25 @@ function toItems(blocks: ScheduledBlock[], events: CalendarEvent[]): Item[] {
 }
 
 export function WeekGrid(props: WeekGridProps) {
-  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit, onDeleteBlock, onDeleteEvent, accents = {} } = props;
+  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit, onDeleteBlock, onDeleteEvent, onScheduleTaskAt, accents = {} } = props;
   const items = toItems(blocks, events);
   const [creating, setCreating] = useState<{ dayIndex: number; startMin: number } | null>(null);
+  // Live drop indicator while dragging a task card from the side panel over the grid.
+  const [taskDrop, setTaskDrop] = useState<{ dayIndex: number; startMin: number } | null>(null);
+
+  // Always clear the drop indicator when any drag ends — covers ESC-cancel and drops that
+  // land off the grid, where no column `dragleave`/`drop` fires (dragend fires on the source).
+  useEffect(() => {
+    const clear = () => setTaskDrop(null);
+    window.addEventListener('dragend', clear);
+    return () => window.removeEventListener('dragend', clear);
+  }, []);
+
+  const slotFromEvent = (e: { currentTarget: HTMLElement; clientY: number }): number => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const fraction = rect.height > 0 ? (e.clientY - rect.top) / rect.height : 0;
+    return snapClickToSlot(fraction);
+  };
 
   return (
     <div className="flex flex-col">
@@ -140,12 +157,31 @@ export function WeekGrid(props: WeekGridProps) {
               const dayItems = items.filter((it) => it.startMs >= d && it.startMs < d + MS_PER_DAY);
               const line = nowLine(nowMs, d);
               return (
-                <div key={d} data-testid={`day-col-${i}`} className="relative border-l border-line"
+                <div key={d} data-testid={`day-col-${i}`}
+                  className={`relative border-l border-line ${taskDrop?.dayIndex === i ? 'bg-indigoSoft/60' : ''}`}
                   onClick={(e) => {
                     if ((e.target as HTMLElement).closest('[data-testid="event-block"],[data-testid="create-popover"]')) return;
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const fraction = rect.height > 0 ? (e.clientY - rect.top) / rect.height : 0;
-                    setCreating({ dayIndex: i, startMin: snapClickToSlot(fraction) });
+                    setCreating({ dayIndex: i, startMin: slotFromEvent(e) });
+                  }}
+                  onDragOver={(e) => {
+                    // Only react to task cards dragged from the side panel.
+                    if (!onScheduleTaskAt || !e.dataTransfer.types.includes('application/x-nr-task')) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'copy';
+                    setTaskDrop({ dayIndex: i, startMin: slotFromEvent(e) });
+                  }}
+                  onDragLeave={(e) => {
+                    // Ignore leaves into child elements of the same column.
+                    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+                    setTaskDrop((p) => (p?.dayIndex === i ? null : p));
+                  }}
+                  onDrop={(e) => {
+                    if (!onScheduleTaskAt) return;
+                    const taskId = e.dataTransfer.getData('application/x-nr-task') || e.dataTransfer.getData('text/plain');
+                    setTaskDrop(null);
+                    if (!taskId) return;
+                    e.preventDefault();
+                    onScheduleTaskAt(taskId, d, slotFromEvent(e));
                   }}
                 >
                   {HOURS.map((h) => <div key={h} className="h-[58px] border-t border-[#f1f2f6]" />)}
@@ -185,6 +221,13 @@ export function WeekGrid(props: WeekGridProps) {
                   })}
                   {line != null && (
                     <div data-testid="now-line" className="absolute left-0 right-0 h-0.5 bg-crit" style={{ top: `${line}%` }} />
+                  )}
+                  {taskDrop?.dayIndex === i && (
+                    <div
+                      data-testid="task-drop-indicator"
+                      className="pointer-events-none absolute left-0.5 right-0.5 z-10 h-1 rounded bg-indigo"
+                      style={{ top: `${((taskDrop.startMin - WINDOW_START_MIN) / (WINDOW_END_MIN - WINDOW_START_MIN)) * 100}%` }}
+                    />
                   )}
                   {creating?.dayIndex === i && (
                     <CreatePopover
