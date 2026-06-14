@@ -41,7 +41,7 @@ export function Habits() {
         </div>
       </div>
       {editing && (
-        <div className="fixed right-3 top-[84px] z-40">
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/20 p-4">
           <HabitDrawer habit={editing} saving={updateM.isPending}
             error={updateM.error instanceof ApiError ? updateM.error : null}
             onSave={(patch) => updateM.mutate({ id: editing.id, patch }, { onSuccess: () => setEditing(null) })}
