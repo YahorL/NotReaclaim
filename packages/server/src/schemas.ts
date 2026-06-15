@@ -51,6 +51,7 @@ export const settingsSchema = z.object({
   defaultMaxChunkMs: z.number().int().positive(),
   meetingBufferMs: z.number().int().nonnegative().optional(),
   taskBufferMs: z.number().int().nonnegative().optional(),
+  requireStartToTrack: z.boolean().optional(),
 });
 
 export const workingHourEntrySchema = z.object({

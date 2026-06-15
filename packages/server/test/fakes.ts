@@ -91,6 +91,7 @@ export function fakeSettingsRepo(seed: Settings | null = null) {
       row = {
         id: 'settings-1', userId, timezone: 'utc', workingHours: [], horizonDays: 14,
         defaultMinChunkMs: 0, defaultMaxChunkMs: 0, meetingBufferMs: 0, taskBufferMs: 0,
+        requireStartToTrack: false,
         createdAt: new Date(0), updatedAt: new Date(0),
         ...data,
       } as Settings;
@@ -105,10 +106,13 @@ export function fakeScheduledBlockRepo(seed: ScheduledBlock[] = []) {
     async listByUserInRange(userId: string, start: Date, end: Date): Promise<ScheduledBlock[]> {
       return rows.filter((b) => b.userId === userId && b.startsAt < end && b.endsAt > start);
     },
+    async findById(userId: string, id: string): Promise<ScheduledBlock | null> {
+      return rows.find((b) => b.id === id && b.userId === userId) ?? null;
+    },
     async create(userId: string, data: Record<string, unknown>): Promise<ScheduledBlock> {
       const row = {
         id: `block-${rows.length + 1}`, userId, taskId: null, habitId: null, title: '',
-        pinned: false, googleEventId: null, googleCalendarId: null, engineKey: null,
+        pinned: false, googleEventId: null, googleCalendarId: null, engineKey: null, startedAt: null,
         createdAt: new Date(0), updatedAt: new Date(0), ...data,
       } as ScheduledBlock;
       rows.push(row); return row;
