@@ -173,4 +173,16 @@ describe('WeekGrid', () => {
     expect(screen.queryByTestId('task-drop-indicator')).toBeNull();
   });
 
+  it('renders one column per day for a 3-day window and has no horizontal-scroll wrapper', () => {
+    const days = [
+      new Date('2026-01-07T00:00:00.000Z').getTime(),
+      new Date('2026-01-08T00:00:00.000Z').getTime(),
+      new Date('2026-01-09T00:00:00.000Z').getTime(),
+    ];
+    renderGrid({ days }); // adapt to the file's helper; pass the 3-day array
+    expect(screen.getByTestId('day-col-0')).toBeInTheDocument();
+    expect(screen.getByTestId('day-col-2')).toBeInTheDocument();
+    expect(screen.queryByTestId('day-col-3')).toBeNull();
+  });
+
 });

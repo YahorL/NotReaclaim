@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ScheduledBlock, CalendarEvent } from '../../api/types';
 import { EventBlock, type BlockKind } from './EventBlock';
 import { InteractiveBlock } from './InteractiveBlock';
-import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY, snapClickToSlot, WINDOW_START_MIN, WINDOW_END_MIN } from './weekModel';
+import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY, snapClickToSlot, WINDOW_START_MIN, WINDOW_END_MIN, TIME_GUTTER_PX } from './weekModel';
 import { CreatePopover } from './CreatePopover';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -35,7 +35,6 @@ export interface WeekGridProps {
   onDeleteBlock?: (id: string) => void;
   onDeleteEvent?: (id: string) => void;
   onScheduleTaskAt?: (taskId: string, dayStartMs: number, startMin: number) => void;
-  onStartBlock?: (id: string) => void;
   accents?: Record<string, string>;
 }
 
@@ -50,7 +49,6 @@ interface Item {
   blockId: string | null;
   eventId: string | null;
   taskId: string | null;
-  startedAt: string | null;
 }
 
 function timeLabel(ms: number): string {
@@ -63,18 +61,19 @@ function toItems(blocks: ScheduledBlock[], events: CalendarEvent[]): Item[] {
     const startMs = Date.parse(b.startsAt);
     return { key: `b:${b.id}`, title: b.title, kind: cls.kind, pinned: cls.pinned,
       startMs, endMs: Date.parse(b.endsAt), startLabel: timeLabel(startMs), blockId: b.id,
-      eventId: null, taskId: b.taskId, startedAt: b.startedAt ?? null };
+      eventId: null, taskId: b.taskId };
   });
   const fromEvents = events.map((e): Item => {
     const startMs = Date.parse(e.startsAt);
     return { key: `e:${e.id}`, title: e.title, kind: 'meeting', pinned: false,
-      startMs, endMs: Date.parse(e.endsAt), startLabel: timeLabel(startMs), blockId: null, eventId: e.id, taskId: null, startedAt: null };
+      startMs, endMs: Date.parse(e.endsAt), startLabel: timeLabel(startMs), blockId: null, eventId: e.id, taskId: null };
   });
   return [...fromEvents, ...fromBlocks];
 }
 
 export function WeekGrid(props: WeekGridProps) {
-  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit, onDeleteBlock, onDeleteEvent, onScheduleTaskAt, onStartBlock, accents = {} } = props;
+  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit, onDeleteBlock, onDeleteEvent, onScheduleTaskAt, accents = {} } = props;
+  const gridCols = `${TIME_GUTTER_PX}px repeat(${days.length}, minmax(0, 1fr))`;
   const items = toItems(blocks, events);
   const [creating, setCreating] = useState<{ dayIndex: number; startMin: number } | null>(null);
   // Live drop indicator while dragging a task card from the side panel over the grid.
@@ -120,10 +119,10 @@ export function WeekGrid(props: WeekGridProps) {
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <div className="min-w-[820px] overflow-hidden rounded-[14px] border border-line bg-card">
+      <div className="w-full">
+        <div className="overflow-hidden rounded-[14px] border border-line bg-card">
           {/* header grid */}
-          <div className="grid grid-cols-[64px_repeat(7,1fr)] border-b border-line">
+          <div className="grid border-b border-line" style={{ gridTemplateColumns: gridCols }}>
             <div />
             {days.map((d, i) => {
               const today = isToday(nowMs, d);
@@ -147,7 +146,7 @@ export function WeekGrid(props: WeekGridProps) {
           </div>
 
           {/* body grid */}
-          <div className="grid grid-cols-[64px_repeat(7,1fr)]">
+          <div className="grid" style={{ gridTemplateColumns: gridCols }}>
             <div>
               {HOURS.map((h) => (
                 <div key={h} className="relative h-[58px]">
@@ -203,8 +202,7 @@ export function WeekGrid(props: WeekGridProps) {
                           onCommit={(patch) => onCommit(blockId, patch)}
                           onUnpin={it.pinned ? () => onCommit(blockId, { pinned: false }) : undefined}
                           onDelete={onDeleteBlock ? () => onDeleteBlock(blockId) : undefined}
-                          onStart={onStartBlock && it.taskId ? () => onStartBlock(blockId) : undefined}
-                          startedAt={it.startedAt}
+                          dayCount={days.length}
                           accent={accent}
                         />
                       );
