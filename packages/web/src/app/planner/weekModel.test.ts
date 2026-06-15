@@ -5,6 +5,7 @@ import {
   WINDOW_START_MIN, WINDOW_END_MIN,
   HOUR_ROW_PX, GRID_COLUMN_PX, snapMinutes, pxToMinutes, clampToWindow,
   minutesToPx, shiftDays, clampDayDelta, snapClickToSlot, localMidnight,
+  daysThatFit,
 } from './weekModel';
 
 const MON = Date.parse('2026-01-05T00:00:00.000Z'); // Monday 00:00 UTC
@@ -181,5 +182,34 @@ describe('localMidnight', () => {
     // one millisecond before midnight is still the prior day's midnight
     const beforeMidnight = Date.parse('2026-01-06T23:59:59.999Z');
     expect(localMidnight(beforeMidnight)).toBe(Date.parse('2026-01-06T00:00:00.000Z'));
+  });
+});
+
+describe('dayColumns(count)', () => {
+  it('returns the requested number of consecutive local-midnight days', () => {
+    const start = new Date('2026-01-07T00:00:00').getTime();
+    expect(dayColumns(start, 3)).toHaveLength(3);
+    expect(dayColumns(start, 3)[1]).toBe(new Date('2026-01-08T00:00:00').getTime());
+    expect(dayColumns(start)).toHaveLength(7); // default
+  });
+});
+
+describe('clampDayDelta(lastIndex)', () => {
+  it('clamps the day delta to [-dayIndex, lastIndex - dayIndex]', () => {
+    expect(clampDayDelta(0, 5, 2)).toBe(2);   // last index 2
+    expect(clampDayDelta(2, -5, 2)).toBe(-2);
+    expect(clampDayDelta(1, 1, 6)).toBe(1);
+  });
+});
+
+describe('daysThatFit', () => {
+  it('returns 7 for unknown/zero width', () => {
+    expect(daysThatFit(0)).toBe(7);
+    expect(daysThatFit(-10)).toBe(7);
+  });
+  it('fits more days as width grows, capped at 7 and floored at 1', () => {
+    expect(daysThatFit(64 + 120 * 3 + 10)).toBe(3);
+    expect(daysThatFit(64 + 120 * 20)).toBe(7);
+    expect(daysThatFit(100)).toBe(1);
   });
 });

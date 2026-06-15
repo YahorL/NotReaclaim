@@ -14,11 +14,11 @@ export function startOfWeek(now: number): number {
   return d.getTime();
 }
 
-/** Seven consecutive local-midnight timestamps starting at `weekStartMs`. */
-export function dayColumns(weekStartMs: number): number[] {
+/** `count` consecutive local-midnight timestamps starting at `startMs` (default 7). */
+export function dayColumns(startMs: number, count = 7): number[] {
   const out: number[] = [];
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(weekStartMs);
+  for (let i = 0; i < count; i++) {
+    const d = new Date(startMs);
     d.setDate(d.getDate() + i);
     d.setHours(0, 0, 0, 0);
     out.push(d.getTime());
@@ -93,6 +93,17 @@ export const HOUR_ROW_PX = 58;
 /** Fixed day-column pixel height: one 58px row per hour of the window (16 * 58 = 928). */
 export const GRID_COLUMN_PX = ((WINDOW_END_MIN - WINDOW_START_MIN) / 60) * HOUR_ROW_PX;
 
+/** Time-gutter width (px) — must match WeekGrid's first column. */
+export const TIME_GUTTER_PX = 64;
+/** Minimum readable width (px) for one day column. */
+export const MIN_DAY_COL_PX = 120;
+
+/** How many day columns fit in `widthPx` (1..7); 7 when the width is unknown (0/SSR/jsdom). */
+export function daysThatFit(widthPx: number): number {
+  if (!(widthPx > 0)) return 7;
+  return Math.max(1, Math.min(7, Math.floor((widthPx - TIME_GUTTER_PX) / MIN_DAY_COL_PX)));
+}
+
 /** Round a minute value to the nearest `step` (default 15). */
 export function snapMinutes(min: number, step = 15): number {
   return Math.round(min / step) * step;
@@ -130,9 +141,9 @@ export function snapClickToSlot(fraction: number): number {
   return Math.min(WINDOW_END_MIN - 15, Math.max(WINDOW_START_MIN, min));
 }
 
-/** Clamp a horizontal day delta so dayIndex + delta stays within the rendered week (0..6). */
-export function clampDayDelta(dayIndex: number, delta: number): number {
-  return Math.max(-dayIndex, Math.min(6 - dayIndex, delta)) || 0;
+/** Clamp a horizontal day delta so dayIndex + delta stays within the rendered columns (0..lastIndex). */
+export function clampDayDelta(dayIndex: number, delta: number, lastIndex = 6): number {
+  return Math.max(-dayIndex, Math.min(lastIndex - dayIndex, delta)) || 0;
 }
 
 /** Keep [startMin, startMin+durationMin] inside the [WINDOW_START_MIN, WINDOW_END_MIN] window. */
