@@ -163,15 +163,15 @@ describe('POST /schedule/:id/start', () => {
     expect(reconcileCalls.length).toBeGreaterThan(0);
   });
 
-  it('does not move startsAt when the snap falls at/before the block start', async () => {
+  it('pulls an upcoming block start to the snapped current time, keeping the end', async () => {
     const b = block({ id: 'b1', startsAt: new Date('2026-01-05T02:00:00.000Z'), endsAt: new Date('2026-01-05T03:00:00.000Z') });
     const { app } = buildTestApp({ blocks: [b], settings: settings() });
     const token = await tokenFor(app);
     const res = await app.inject({ method: 'POST', url: '/schedule/b1/start', headers: { authorization: `Bearer ${token}` } });
     expect(res.statusCode).toBe(200);
-    expect(res.json().startsAt).toBe('2026-01-05T02:00:00.000Z'); // unchanged
+    expect(res.json().startsAt).toBe('2026-01-05T00:00:00.000Z'); // FIXED_NOW (00:00) snapped → pulled forward
+    expect(res.json().endsAt).toBe('2026-01-05T03:00:00.000Z');   // end unchanged
     expect(res.json().pinned).toBe(true);
-    expect(res.json().startedAt).toBe(new Date(FIXED).toISOString());
   });
 
   it('404s an unknown block and 400s a habit block', async () => {
