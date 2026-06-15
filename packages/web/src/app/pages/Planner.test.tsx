@@ -97,6 +97,22 @@ describe('Planner', () => {
     });
   });
 
+  it('starts a block from the planner tile', async () => {
+    const startBlock = vi.fn(async () => blocks[0]!);
+    const api = makeApi({
+      listTasks: vi.fn(async () => [{
+        id: 't1', userId: 'u1', title: 'Write spec', priority: 2, sortOrder: 0, durationMs: 3_600_000,
+        dueBy: '2026-01-10T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1, categoryId: null, notBefore: null,
+        status: 'pending', completedAt: null, timeLoggedMs: 0, spentMs: 0, subtasks: [], createdAt: '', updatedAt: '',
+      }] as Task[]),
+      startBlock,
+    });
+    renderWithProviders(<Planner now={() => NOW} />, { api });
+    await waitFor(() => expect(screen.getByTestId('planner-task-panel')).toBeInTheDocument());
+    fireEvent.click(await screen.findByTestId('block-start'));
+    await waitFor(() => expect(startBlock).toHaveBeenCalledWith('b1'));
+  });
+
   it('task block is tinted when its category has a color', async () => {
     // blocks[0] has taskId:'t1'; task has categoryId:'cat-1'; category has color:'#5b62e3'
     const task: Task = {

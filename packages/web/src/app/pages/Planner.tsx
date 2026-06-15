@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Task } from '../../api/types';
 import { ApiError } from '../../api/client';
-import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation } from '../../api/queries';
+import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useCreateScheduledBlockMutation, useStartBlockMutation, useTasksQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation } from '../../api/queries';
 import { startOfWeek, dayColumns, addWeeks, clampToWindow, WINDOW_START_MIN, WINDOW_END_MIN } from '../planner/weekModel';
 import { WeekGrid } from '../planner/WeekGrid';
 import { PlannerTaskPanel } from '../planner/PlannerTaskPanel';
@@ -32,6 +32,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const updateTask = useUpdateTaskMutation();
   const deleteTask = useDeleteTaskMutation();
   const createBlock = useCreateScheduledBlockMutation();
+  const startBlock = useStartBlockMutation();
   const [editingId, setEditingId] = useState<string | null>(null);
   const editing = (tasksQ.data ?? []).find((t) => t.id === editingId) ?? null;
 
@@ -106,6 +107,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           onDeleteBlock={(id) => deleteBlock.mutate(id)}
           onDeleteEvent={(id) => deleteEvent.mutate(id)}
           onScheduleTaskAt={onScheduleTaskAt}
+          onStartBlock={(id) => startBlock.mutate(id)}
           accents={accents}
         />
         {replan.isError && <p className="mt-2 text-sm text-red-600">Re-plan failed. Try again.</p>}
