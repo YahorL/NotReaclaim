@@ -21,6 +21,7 @@ import { toFixedEvent, toFlexibleTask, toScheduledBlock } from '@notreclaim/db/m
 import { expandWorkingWindows, type WorkingHourEntry } from './time-windows.js';
 import { expandHabit } from './habit-expansion.js';
 import { SettingsRequiredError } from './errors.js';
+import { computeSpentMs } from './spent.js';
 
 /** The repository surface the scheduling layer reads from (DI seam). */
 export interface SchedulingRepositories {
@@ -79,9 +80,9 @@ export async function assembleScheduleInput(
     return meetingBufferMs > 0 ? { id: fe.id, start: fe.start - meetingBufferMs, end: fe.end + meetingBufferMs } : fe;
   });
 
-  const blocks = await repos.scheduledBlocks.listByUserInRange(userId, horizonStart, horizonEnd);
+  const blocks = await repos.scheduledBlocks.listByUserInRange(userId, new Date(0), horizonEnd);
   const pinnedBlocks: EngineScheduledBlock[] = blocks
-    .filter((b) => b.pinned)
+    .filter((b) => b.pinned && b.endsAt.getTime() > now)
     .map(toScheduledBlock);
 
   // Pinned-block coverage reduces the work the engine must (re)place.
@@ -97,7 +98,8 @@ export async function assembleScheduleInput(
   for (const t of allTasks) {
     if (!SCHEDULABLE_TASK_STATUSES.includes(t.status)) continue;
     const flexible = toFlexibleTask(t);
-    const remaining = flexible.durationMs - (taskCoverageMs.get(t.id) ?? 0);
+    const spent = computeSpentMs(t.id, blocks, settings.requireStartToTrack, now);
+    const remaining = flexible.durationMs - (taskCoverageMs.get(t.id) ?? 0) - spent;
     if (remaining <= 0) continue;
     const resolvedId =
       t.categoryId && expandedByCategoryId.has(t.categoryId) ? t.categoryId : defaultCategoryId;
