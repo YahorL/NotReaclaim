@@ -52,7 +52,8 @@ model Settings {
   defaultMinChunkMs Int
   defaultMaxChunkMs Int
   meetingBufferMs   Int      @default(0)
-  taskBufferMs      Int      @default(0)
+  taskBufferMs        Int      @default(0)
+  requireStartToTrack Boolean  @default(false)
   createdAt         DateTime @default(now()) @db.Timestamptz
   updatedAt         DateTime @updatedAt @db.Timestamptz
 
@@ -158,6 +159,7 @@ model ScheduledBlock {
   googleEventId    String?
   googleCalendarId String?
   engineKey        String?
+  startedAt        DateTime? @db.Timestamptz
   createdAt        DateTime @default(now()) @db.Timestamptz
   updatedAt        DateTime @updatedAt @db.Timestamptz
 
