@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import type { ScheduledBlock } from '@notreclaim/db';
 import { buildTestApp, tokenFor } from './fakes.js';
 
 const taskBody = {
@@ -215,5 +216,39 @@ describe('task routes', () => {
     const ids = list.json().map((t: { id: string }) => t.id);
     expect(ids).not.toContain('old-done');
     expect(ids).toContain('recent-done');
+  });
+});
+
+describe('GET /tasks spentMs', () => {
+  const taskRow = {
+    id: 't1', userId: 'u1', title: 'T', priority: 1, sortOrder: 0, durationMs: 3_600_000,
+    dueBy: new Date('2026-01-09T17:00:00.000Z'), notBefore: null, minChunkMs: 1, maxChunkMs: 1,
+    categoryId: null, status: 'pending', completedAt: null, timeLoggedMs: 0,
+    createdAt: new Date(0), updatedAt: new Date(0), subtasks: [],
+  };
+  const finished: ScheduledBlock = {
+    id: 'b1', userId: 'u1', taskId: 't1', habitId: null, title: 'T',
+    startsAt: new Date('2026-01-04T09:00:00.000Z'), endsAt: new Date('2026-01-04T09:30:00.000Z'), // 30m, finished
+    pinned: false, googleEventId: null, googleCalendarId: null, engineKey: null, startedAt: null,
+    createdAt: new Date(0), updatedAt: new Date(0),
+  };
+  const settingsRow = (requireStartToTrack: boolean) => ({
+    id: 's', userId: 'u1', timezone: 'UTC', workingHours: [], horizonDays: 14,
+    defaultMinChunkMs: 1, defaultMaxChunkMs: 1, meetingBufferMs: 0, taskBufferMs: 0,
+    requireStartToTrack, createdAt: new Date(0), updatedAt: new Date(0),
+  });
+
+  it('reports auto-mode spent from finished blocks', async () => {
+    const { app } = buildTestApp({ tasks: [taskRow as never], blocks: [finished], settings: settingsRow(false) as never });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'GET', url: '/tasks', headers: { authorization: `Bearer ${token}` } });
+    expect(res.json()[0].spentMs).toBe(1_800_000);
+  });
+
+  it('manual mode counts only started finished blocks', async () => {
+    const { app } = buildTestApp({ tasks: [taskRow as never], blocks: [finished], settings: settingsRow(true) as never });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'GET', url: '/tasks', headers: { authorization: `Bearer ${token}` } });
+    expect(res.json()[0].spentMs).toBe(0); // finished but un-started → not counted
   });
 });
