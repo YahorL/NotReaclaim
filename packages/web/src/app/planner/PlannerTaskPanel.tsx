@@ -57,6 +57,18 @@ function TaskCard({ task, nowMs, nextMs, atRisk, leftBorder, onComplete, onEdit,
           {atRisk && <span data-testid="panel-at-risk" title="At risk" className="shrink-0 rounded-full bg-crit/15 px-1.5 text-[10px] font-bold text-crit">⚠</span>}
         </div>
         {meta && <div className="mt-0.5 truncate text-[12px] text-inkSoft">{meta}</div>}
+        {(() => {
+          const spent = task.spentMs ?? 0;
+          const pct = task.durationMs > 0 ? Math.min(100, (spent / task.durationMs) * 100) : 0;
+          return (
+            <div data-testid="panel-progress" className="mt-1 flex items-center gap-1.5">
+              <div className="h-1 flex-1 overflow-hidden rounded-full bg-line">
+                <div className="h-full rounded-full bg-indigo" style={{ width: `${pct}%` }} />
+              </div>
+              <span className="shrink-0 text-[11px] text-inkSoft">{formatDurationShort(spent)} / {formatDurationShort(task.durationMs)}</span>
+            </div>
+          );
+        })()}
       </div>
       <span className="shrink-0 rounded-full bg-bg px-2 py-0.5 text-[11.5px] font-semibold text-inkSoft">{formatDurationShort(task.durationMs)}</span>
       <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
