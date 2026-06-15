@@ -44,6 +44,6 @@ describe('SettingsRepository', () => {
     expect(withBuffers).toMatchObject({ meetingBufferMs: 900000, taskBufferMs: 600000 });
     const user2 = await users.create({ email: 'buf2@example.com' });
     const defaults = await repo.upsert(user2.id, settingsInput());
-    expect(defaults).toMatchObject({ meetingBufferMs: 0, taskBufferMs: 0 });
+    expect(defaults).toMatchObject({ meetingBufferMs: 0, taskBufferMs: 0, requireStartToTrack: false });
   });
 });

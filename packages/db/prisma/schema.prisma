@@ -52,8 +52,8 @@ model Settings {
   defaultMinChunkMs Int
   defaultMaxChunkMs Int
   meetingBufferMs   Int      @default(0)
-  taskBufferMs        Int      @default(0)
-  requireStartToTrack Boolean  @default(false)
+  taskBufferMs      Int      @default(0)
+  requireStartToTrack Boolean @default(false)
   createdAt         DateTime @default(now()) @db.Timestamptz
   updatedAt         DateTime @updatedAt @db.Timestamptz
 
