@@ -7,6 +7,7 @@ function block(over: Partial<ScheduledBlock> = {}): ScheduledBlock {
     id: 'b1', userId: 'u1', taskId: 't1', habitId: null, title: 'Focus',
     startsAt: new Date('2026-01-05T09:00:00.000Z'), endsAt: new Date('2026-01-05T09:30:00.000Z'),
     pinned: false, googleEventId: null, googleCalendarId: null, engineKey: 'task:t1:0',
+    startedAt: null,
     createdAt: new Date(0), updatedAt: new Date(0), ...over,
   };
 }
@@ -15,7 +16,7 @@ function settings(over: Partial<Settings> = {}): Settings {
     id: 's1', userId: 'u1', timezone: 'utc',
     workingHours: [{ weekday: 1, startMinute: 540, endMinute: 1020 }] as unknown as Settings['workingHours'],
     horizonDays: 1, defaultMinChunkMs: 1800000, defaultMaxChunkMs: 1800000,
-    meetingBufferMs: 0, taskBufferMs: 0,
+    meetingBufferMs: 0, taskBufferMs: 0, requireStartToTrack: false,
     createdAt: new Date(0), updatedAt: new Date(0), ...over,
   };
 }
@@ -143,5 +144,41 @@ describe('POST /schedule', () => {
     const token = await tokenFor(app);
     const res = await app.inject({ method: 'POST', url: '/schedule', headers: { authorization: `Bearer ${token}` }, payload: { ...body, endsAt: '2026-01-06T08:00:00.000Z' } });
     expect(res.statusCode).toBe(400);
+  });
+});
+
+describe('POST /schedule/:id/start', () => {
+  const FIXED = Date.parse('2026-01-05T00:00:00.000Z'); // FIXED_NOW from fakes (Monday 00:00 UTC)
+
+  it('late start snaps startsAt to the nearest 15 min, pins, sets startedAt', async () => {
+    // FIXED_NOW rounds to 00:00; block 23:50→01:00 spans it so the snap (00:00) lands inside.
+    const b = block({ id: 'b1', startsAt: new Date('2026-01-04T23:50:00.000Z'), endsAt: new Date('2026-01-05T01:00:00.000Z') });
+    const { app, reconcileCalls } = buildTestApp({ blocks: [b], settings: settings() });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'POST', url: '/schedule/b1/start', headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().startsAt).toBe('2026-01-05T00:00:00.000Z'); // snapped to FIXED_NOW
+    expect(res.json().pinned).toBe(true);
+    expect(res.json().startedAt).toBe('2026-01-05T00:00:00.000Z');
+    expect(reconcileCalls.length).toBeGreaterThan(0);
+  });
+
+  it('does not move startsAt when the snap falls at/before the block start', async () => {
+    const b = block({ id: 'b1', startsAt: new Date('2026-01-05T02:00:00.000Z'), endsAt: new Date('2026-01-05T03:00:00.000Z') });
+    const { app } = buildTestApp({ blocks: [b], settings: settings() });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'POST', url: '/schedule/b1/start', headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().startsAt).toBe('2026-01-05T02:00:00.000Z'); // unchanged
+    expect(res.json().pinned).toBe(true);
+    expect(res.json().startedAt).toBe(new Date(FIXED).toISOString());
+  });
+
+  it('404s an unknown block and 400s a habit block', async () => {
+    const habitBlock = block({ id: 'h1', taskId: null, habitId: 'hab1' });
+    const { app } = buildTestApp({ blocks: [habitBlock], settings: settings() });
+    const token = await tokenFor(app);
+    expect((await app.inject({ method: 'POST', url: '/schedule/none/start', headers: { authorization: `Bearer ${token}` } })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'POST', url: '/schedule/h1/start', headers: { authorization: `Bearer ${token}` } })).statusCode).toBe(400);
   });
 });

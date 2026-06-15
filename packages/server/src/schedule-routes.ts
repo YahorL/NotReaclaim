@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { computeDesiredSchedule } from '@notreclaim/core';
+import { computeDesiredSchedule, round15 } from '@notreclaim/core';
 import type { AppDeps, AfterMutation } from './app.js';
 import { rangeQuerySchema, idParamSchema, updateScheduledBlockSchema, createScheduledBlockSchema } from './schemas.js';
 
@@ -53,6 +53,28 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
       ...(body.endsAt ? { endsAt: new Date(body.endsAt) } : {}),
       ...(body.pinned !== undefined ? { pinned: body.pinned } : {}),
     };
+    const block = await deps.repos.scheduledBlocks.update(request.userId, id, data);
+    afterMutation(request.userId);
+    return block;
+  });
+
+  app.post('/schedule/:id/start', guard, async (request, reply) => {
+    const { id } = idParamSchema.parse(request.params);
+    const blockRow = await deps.repos.scheduledBlocks.findById(request.userId, id);
+    if (!blockRow) {
+      reply.code(404).send({ code: 'not_found', message: `ScheduledBlock ${id} not found` });
+      return;
+    }
+    if (!blockRow.taskId) {
+      reply.code(400).send({ code: 'bad_request', message: 'Only task blocks can be started' });
+      return;
+    }
+    const now = deps.now();
+    const snapped = round15(now);
+    const data: { pinned: boolean; startedAt: Date; startsAt?: Date } = { pinned: true, startedAt: new Date(now) };
+    if (snapped > blockRow.startsAt.getTime() && snapped < blockRow.endsAt.getTime()) {
+      data.startsAt = new Date(snapped);
+    }
     const block = await deps.repos.scheduledBlocks.update(request.userId, id, data);
     afterMutation(request.userId);
     return block;
