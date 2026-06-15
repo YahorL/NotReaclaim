@@ -10,14 +10,26 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
 
   app.get('/schedule', guard, async (request) => {
     const query = rangeQuerySchema.parse(request.query);
-    const start = query.from ? new Date(query.from) : new Date(deps.now());
+    const now = deps.now();
+    const settings = await deps.repos.settings.getByUserId(request.userId);
+
+    // Manual mode: discard past task blocks that were never started (self-heal on load).
+    if (settings?.requireStartToTrack) {
+      const past = await deps.repos.scheduledBlocks.listByUserInRange(request.userId, new Date(0), new Date(now));
+      for (const b of past) {
+        if (b.taskId && b.startedAt == null && b.endsAt.getTime() <= now) {
+          await deps.repos.scheduledBlocks.delete(request.userId, b.id);
+        }
+      }
+    }
+
+    const start = query.from ? new Date(query.from) : new Date(now);
     let end: Date;
     if (query.to) {
       end = new Date(query.to);
     } else {
-      const settings = await deps.repos.settings.getByUserId(request.userId);
       const horizonDays = settings?.horizonDays ?? 14;
-      end = new Date(deps.now() + horizonDays * MS_PER_DAY);
+      end = new Date(now + horizonDays * MS_PER_DAY);
     }
     return deps.repos.scheduledBlocks.listByUserInRange(request.userId, start, end);
   });

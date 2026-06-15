@@ -182,3 +182,26 @@ describe('POST /schedule/:id/start', () => {
     expect((await app.inject({ method: 'POST', url: '/schedule/h1/start', headers: { authorization: `Bearer ${token}` } })).statusCode).toBe(400);
   });
 });
+
+describe('GET /schedule discard sweep (manual mode)', () => {
+  const wide = '?from=2026-01-01T00:00:00.000Z&to=2026-01-10T00:00:00.000Z';
+
+  it('deletes past un-started task blocks but keeps started and future ones', async () => {
+    const missed = block({ id: 'missed', startsAt: new Date('2026-01-04T09:00:00.000Z'), endsAt: new Date('2026-01-04T09:30:00.000Z'), startedAt: null });
+    const kept = block({ id: 'kept', startsAt: new Date('2026-01-04T10:00:00.000Z'), endsAt: new Date('2026-01-04T10:30:00.000Z'), startedAt: new Date('2026-01-04T10:00:00.000Z') });
+    const future = block({ id: 'future', startsAt: new Date('2026-01-06T09:00:00.000Z'), endsAt: new Date('2026-01-06T09:30:00.000Z'), startedAt: null });
+    const { app } = buildTestApp({ blocks: [missed, kept, future], settings: settings({ requireStartToTrack: true }) });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'GET', url: `/schedule${wide}`, headers: { authorization: `Bearer ${token}` } });
+    const ids = (res.json() as { id: string }[]).map((b) => b.id).sort();
+    expect(ids).toEqual(['future', 'kept']);
+  });
+
+  it('keeps un-started past blocks in auto mode', async () => {
+    const missed = block({ id: 'missed', startsAt: new Date('2026-01-04T09:00:00.000Z'), endsAt: new Date('2026-01-04T09:30:00.000Z'), startedAt: null });
+    const { app } = buildTestApp({ blocks: [missed], settings: settings({ requireStartToTrack: false }) });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'GET', url: `/schedule${wide}`, headers: { authorization: `Bearer ${token}` } });
+    expect((res.json() as unknown[]).length).toBe(1);
+  });
+});
