@@ -15,7 +15,7 @@ const validState = (over: Partial<SettingsFormState> = {}): SettingsFormState =>
   timezone: 'UTC',
   days: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, enabled: weekday >= 1 && weekday <= 5, start: '09:00', end: '17:00' })),
   horizonDays: 14, defaultMinChunkMs: 1_800_000, defaultMaxChunkMs: 7_200_000,
-  meetingBufferMs: 0, taskBufferMs: 0, ...over,
+  meetingBufferMs: 0, taskBufferMs: 0, requireStartToTrack: false, ...over,
 });
 
 describe('settingsForm', () => {
