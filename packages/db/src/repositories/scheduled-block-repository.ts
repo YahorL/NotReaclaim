@@ -17,6 +17,7 @@ export interface UpdateScheduledBlockInput {
   startsAt?: Date;
   endsAt?: Date;
   pinned?: boolean;
+  startedAt?: Date | null;
   googleEventId?: string | null;
   googleCalendarId?: string | null;
   engineKey?: string | null;
@@ -30,6 +31,10 @@ export function createScheduledBlockRepository(prisma: PrismaClient) {
       } catch (error) {
         translatePrismaError(error);
       }
+    },
+
+    findById(userId: string, id: string): Promise<ScheduledBlock | null> {
+      return prisma.scheduledBlock.findFirst({ where: { id, userId } });
     },
 
     /** Blocks whose [startsAt, endsAt) overlaps [start, end). */
