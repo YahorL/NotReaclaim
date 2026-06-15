@@ -5,8 +5,8 @@ import { InteractiveBlock } from './InteractiveBlock';
 import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY, snapClickToSlot, WINDOW_START_MIN, WINDOW_END_MIN, TIME_GUTTER_PX } from './weekModel';
 import { CreatePopover } from './CreatePopover';
 
-const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const HOURS = Array.from({ length: 16 }, (_, i) => 6 + i); // 06:00 → 21:00 row starts (06:00–22:00 window)
+const dayLabel = (ms: number): string => new Date(ms).toLocaleDateString([], { weekday: 'short' });
 
 const LEGEND: { label: string; swatch: string }[] = [
   { label: 'Meeting', swatch: 'bg-event' },
@@ -97,8 +97,8 @@ export function WeekGrid(props: WeekGridProps) {
     <div className="flex flex-col">
       <div className="mb-4 flex items-center gap-3">
         <div className="flex gap-1">
-          <button onClick={onPrev} aria-label="Previous week" className="flex h-[38px] w-[38px] items-center justify-center rounded-[9px] border border-line bg-card text-[20px] text-inkSoft">‹</button>
-          <button onClick={onNext} aria-label="Next week" className="flex h-[38px] w-[38px] items-center justify-center rounded-[9px] border border-line bg-card text-[20px] text-inkSoft">›</button>
+          <button onClick={onPrev} aria-label="Previous" className="flex h-[38px] w-[38px] items-center justify-center rounded-[9px] border border-line bg-card text-[20px] text-inkSoft">‹</button>
+          <button onClick={onNext} aria-label="Next" className="flex h-[38px] w-[38px] items-center justify-center rounded-[9px] border border-line bg-card text-[20px] text-inkSoft">›</button>
         </div>
         <span className="text-[18px] font-bold text-ink">{weekLabel}</span>
         <button onClick={onToday} className="rounded-[9px] px-4 py-2 text-[14.5px] font-bold text-indigo hover:bg-indigoSoft">Today</button>
@@ -134,7 +134,7 @@ export function WeekGrid(props: WeekGridProps) {
                   data-today={today}
                   className="border-l border-line py-3 text-center"
                 >
-                  <div className="text-[13px] font-bold uppercase tracking-wide text-inkSoft">{DAY_LABELS[i]}</div>
+                  <div className="text-[13px] font-bold uppercase tracking-wide text-inkSoft">{dayLabel(d)}</div>
                   <div className="mt-0.5 text-[21px] font-extrabold">
                     {today
                       ? <span className="rounded-[9px] bg-indigo px-[9px] py-[1px] text-white">{date}</span>

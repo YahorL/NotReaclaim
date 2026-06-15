@@ -53,7 +53,8 @@ describe('Planner', () => {
   });
 
   it('navigating to the next week refetches with a new range', async () => {
-    // NOW = 2026-01-07T12:00:00Z (Wednesday); TZ=UTC; jsdom width=0 → dayCount=7
+    // NOW = 2026-01-07T12:00:00Z (Wednesday); TZ=UTC. useElementWidth starts at -1 and jsdom has
+    // no ResizeObserver, so it stays -1 → daysThatFit(-1) = 7 (full week window).
     // initial from=2026-01-07T00:00:00.000Z, to=2026-01-14T00:00:00.000Z
     // after Next: from=2026-01-14T00:00:00.000Z, to=2026-01-21T00:00:00.000Z
     const getSchedule = vi.fn(async () => blocks);
@@ -62,7 +63,7 @@ describe('Planner', () => {
     await waitFor(() => expect(getSchedule).toHaveBeenCalledTimes(1));
     expect((getSchedule.mock.calls[0]! as unknown[])[0]).toBe('2026-01-07T00:00:00.000Z');
     expect((getSchedule.mock.calls[0]! as unknown[])[1]).toBe('2026-01-14T00:00:00.000Z');
-    fireEvent.click(screen.getByRole('button', { name: /next week/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^next$/i }));
     await waitFor(() => expect(getSchedule).toHaveBeenCalledTimes(2));
     expect((getSchedule.mock.calls[1]! as unknown[])[0]).toBe('2026-01-14T00:00:00.000Z');
     expect((getSchedule.mock.calls[1]! as unknown[])[1]).toBe('2026-01-21T00:00:00.000Z');

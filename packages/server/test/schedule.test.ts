@@ -172,6 +172,7 @@ describe('POST /schedule/:id/start', () => {
     expect(res.json().startsAt).toBe('2026-01-05T00:00:00.000Z'); // FIXED_NOW (00:00) snapped → pulled forward
     expect(res.json().endsAt).toBe('2026-01-05T03:00:00.000Z');   // end unchanged
     expect(res.json().pinned).toBe(true);
+    expect(res.json().startedAt).toBe('2026-01-05T00:00:00.000Z');
   });
 
   it('404s an unknown block and 400s a habit block', async () => {
