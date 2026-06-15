@@ -98,9 +98,11 @@ export const TIME_GUTTER_PX = 64;
 /** Minimum readable width (px) for one day column. */
 export const MIN_DAY_COL_PX = 120;
 
-/** How many day columns fit in `widthPx` (1..7); 7 when the width is unknown (0/SSR/jsdom). */
+/** How many day columns fit in `widthPx` (1..7). A negative width is the "not measured yet"
+ *  sentinel (SSR/jsdom/before first paint) → show the full week. A measured width of 0 (e.g. the
+ *  grid squeezed out by the side panels at a tiny viewport) is real → floor to a single day. */
 export function daysThatFit(widthPx: number): number {
-  if (!(widthPx > 0)) return 7;
+  if (widthPx < 0) return 7;
   return Math.max(1, Math.min(7, Math.floor((widthPx - TIME_GUTTER_PX) / MIN_DAY_COL_PX)));
 }
 

@@ -203,9 +203,10 @@ describe('clampDayDelta(lastIndex)', () => {
 });
 
 describe('daysThatFit', () => {
-  it('returns 7 for unknown/zero width', () => {
-    expect(daysThatFit(0)).toBe(7);
-    expect(daysThatFit(-10)).toBe(7);
+  it('returns 7 only for an unmeasured (negative) width; a measured 0 width floors to 1 day', () => {
+    expect(daysThatFit(-1)).toBe(7);
+    expect(daysThatFit(0)).toBe(1);
+    expect(daysThatFit(50)).toBe(1);
   });
   it('fits more days as width grows, capped at 7 and floored at 1', () => {
     expect(daysThatFit(64 + 120 * 3 + 10)).toBe(3);
