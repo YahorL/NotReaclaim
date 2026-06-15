@@ -10,12 +10,23 @@ export function AppShell() {
   const { token } = useAuth();
   useWebSocket({ token });
   const [newTaskOpen, setNewTaskOpen] = useState(false);
+  const [sidebarHidden, setSidebarHidden] = useState(
+    () => localStorage.getItem('nr.sidebarHidden') === 'true',
+  );
+
+  function toggleSidebar() {
+    setSidebarHidden((prev) => {
+      const next = !prev;
+      localStorage.setItem('nr.sidebarHidden', String(next));
+      return next;
+    });
+  }
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar />
+      {!sidebarHidden && <Sidebar />}
       <main className="flex min-w-0 flex-1 flex-col">
-        <TopBar onNewTask={() => setNewTaskOpen(true)} />
+        <TopBar onNewTask={() => setNewTaskOpen(true)} sidebarHidden={sidebarHidden} onToggleSidebar={toggleSidebar} />
         <div className="min-h-0 flex-1 overflow-auto">
           <Outlet />
         </div>

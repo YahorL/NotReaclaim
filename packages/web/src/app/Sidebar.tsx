@@ -7,7 +7,7 @@ export function Sidebar() {
   const [tbOpen, setTbOpen] = useState(true);
 
   return (
-    <aside className="dark-scroll flex h-screen w-[280px] shrink-0 flex-col overflow-y-auto bg-sidebar">
+    <aside data-testid="sidebar" className="dark-scroll flex h-screen w-[280px] shrink-0 flex-col overflow-y-auto bg-sidebar">
       <div className="flex items-center px-[18px] pb-[14px] pt-5">
         <Logo />
       </div>
