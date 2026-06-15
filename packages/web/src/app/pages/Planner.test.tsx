@@ -53,15 +53,20 @@ describe('Planner', () => {
   });
 
   it('navigating to the next week refetches with a new range', async () => {
+    // NOW = 2026-01-07T12:00:00Z (Wednesday); TZ=UTC. useElementWidth starts at -1 and jsdom has
+    // no ResizeObserver, so it stays -1 → daysThatFit(-1) = 7 (full week window).
+    // initial from=2026-01-07T00:00:00.000Z, to=2026-01-14T00:00:00.000Z
+    // after Next: from=2026-01-14T00:00:00.000Z, to=2026-01-21T00:00:00.000Z
     const getSchedule = vi.fn(async () => blocks);
     const api = makeApi({ getSchedule });
     renderWithProviders(<Planner now={() => NOW} />, { api });
     await waitFor(() => expect(getSchedule).toHaveBeenCalledTimes(1));
-    const firstFrom = (getSchedule.mock.calls[0]! as unknown[])[0];
-    fireEvent.click(screen.getByRole('button', { name: /next week/i }));
+    expect((getSchedule.mock.calls[0]! as unknown[])[0]).toBe('2026-01-07T00:00:00.000Z');
+    expect((getSchedule.mock.calls[0]! as unknown[])[1]).toBe('2026-01-14T00:00:00.000Z');
+    fireEvent.click(screen.getByRole('button', { name: /^next$/i }));
     await waitFor(() => expect(getSchedule).toHaveBeenCalledTimes(2));
-    const secondFrom = (getSchedule.mock.calls[1]! as unknown[])[0];
-    expect(secondFrom).not.toBe(firstFrom);
+    expect((getSchedule.mock.calls[1]! as unknown[])[0]).toBe('2026-01-14T00:00:00.000Z');
+    expect((getSchedule.mock.calls[1]! as unknown[])[1]).toBe('2026-01-21T00:00:00.000Z');
   });
 
   it('block label shows "Task: subtask" when task has an open subtask', async () => {
@@ -86,31 +91,25 @@ describe('Planner', () => {
     const api = makeApi({ listTasks: vi.fn(async () => [taskRow]), createScheduledBlock });
     renderWithProviders(<Planner now={() => NOW} />, { api });
     await waitFor(() => expect(screen.getByText('Deep work')).toBeInTheDocument()); // task loaded into the panel
-    const col = screen.getByTestId('day-col-0'); // Monday 2026-01-05 (TZ=UTC); jsdom 0-height → 06:00 slot
+    const col = screen.getByTestId('day-col-0'); // today 2026-01-07 (TZ=UTC); jsdom 0-height → 06:00 slot
     const dt = { types: ['application/x-nr-task'], getData: (t: string) => (t === 'application/x-nr-task' ? 't1' : ''), dropEffect: '' };
     fireEvent.drop(col, { clientY: 100, dataTransfer: dt });
     await waitFor(() => expect(createScheduledBlock).toHaveBeenCalledTimes(1));
     expect(createScheduledBlock).toHaveBeenCalledWith({
       taskId: 't1',
-      startsAt: '2026-01-05T06:00:00.000Z',
-      endsAt: '2026-01-05T07:00:00.000Z',
+      startsAt: '2026-01-07T06:00:00.000Z',
+      endsAt: '2026-01-07T07:00:00.000Z',
     });
   });
 
-  it('starts a block from the planner tile', async () => {
-    const startBlock = vi.fn(async () => blocks[0]!);
-    const api = makeApi({
-      listTasks: vi.fn(async () => [{
-        id: 't1', userId: 'u1', title: 'Write spec', priority: 2, sortOrder: 0, durationMs: 3_600_000,
-        dueBy: '2026-01-10T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1, categoryId: null, notBefore: null,
-        status: 'pending', completedAt: null, timeLoggedMs: 0, spentMs: 0, subtasks: [], createdAt: '', updatedAt: '',
-      }] as Task[]),
-      startBlock,
-    });
+  it('hides and re-shows the right task panel', async () => {
+    const api = makeApi();
     renderWithProviders(<Planner now={() => NOW} />, { api });
     await waitFor(() => expect(screen.getByTestId('planner-task-panel')).toBeInTheDocument());
-    fireEvent.click(await screen.findByTestId('block-start'));
-    await waitFor(() => expect(startBlock).toHaveBeenCalledWith('b1'));
+    fireEvent.click(screen.getByTestId('panel-hide'));
+    expect(screen.queryByTestId('planner-task-panel')).toBeNull();
+    fireEvent.click(screen.getByTestId('panel-show'));
+    expect(screen.getByTestId('planner-task-panel')).toBeInTheDocument();
   });
 
   it('task block is tinted when its category has a color', async () => {

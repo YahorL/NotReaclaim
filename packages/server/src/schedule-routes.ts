@@ -84,7 +84,9 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
     const now = deps.now();
     const snapped = round15(now);
     const data: { pinned: boolean; startedAt: Date; startsAt?: Date } = { pinned: true, startedAt: new Date(now) };
-    if (snapped > blockRow.startsAt.getTime() && snapped < blockRow.endsAt.getTime()) {
+    // Pull the start to the snapped current time (Start always targets the upcoming task),
+    // keeping the end. The lower-bound guard is gone so a future block is pulled forward too.
+    if (snapped < blockRow.endsAt.getTime()) {
       data.startsAt = new Date(snapped);
     }
     const block = await deps.repos.scheduledBlocks.update(request.userId, id, data);

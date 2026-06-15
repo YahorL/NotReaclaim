@@ -8,9 +8,11 @@ import { relativeDayTimeLabel } from '../priorities/priorityBucket';
 interface TopBarProps {
   onNewTask: () => void;
   now?: () => number;
+  sidebarHidden?: boolean;
+  onToggleSidebar?: () => void;
 }
 
-export function TopBar({ onNewTask, now = Date.now }: TopBarProps) {
+export function TopBar({ onNewTask, now = Date.now, sidebarHidden, onToggleSidebar }: TopBarProps) {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const scheduleQ = useScheduleQuery();
@@ -23,6 +25,17 @@ export function TopBar({ onNewTask, now = Date.now }: TopBarProps) {
 
   return (
     <header className="flex h-[70px] shrink-0 items-center gap-3.5 bg-bg pl-[30px] pr-[26px]">
+      {onToggleSidebar && (
+        <button
+          type="button"
+          data-testid="toggle-sidebar"
+          aria-label={sidebarHidden ? 'Show sidebar' : 'Hide sidebar'}
+          onClick={onToggleSidebar}
+          className="rounded-[9px] p-2 text-inkSoft hover:bg-line hover:text-ink"
+        >
+          <Icons.panelLeft size={20} />
+        </button>
+      )}
       <h1 className="flex-1 text-[27px] font-extrabold tracking-[-.5px] text-ink">{routeTitle(pathname)}</h1>
 
       {nextBlock && (

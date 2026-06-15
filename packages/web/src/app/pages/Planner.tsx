@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import type { Task } from '../../api/types';
 import { ApiError } from '../../api/client';
-import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useCreateScheduledBlockMutation, useStartBlockMutation, useTasksQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation } from '../../api/queries';
-import { startOfWeek, dayColumns, addWeeks, clampToWindow, WINDOW_START_MIN, WINDOW_END_MIN } from '../planner/weekModel';
+import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation } from '../../api/queries';
+import { dayColumns, daysThatFit, shiftDays, localMidnight, clampToWindow, MS_PER_DAY, WINDOW_START_MIN, WINDOW_END_MIN } from '../planner/weekModel';
+import { useElementWidth } from '../planner/useElementWidth';
 import { WeekGrid } from '../planner/WeekGrid';
 import { PlannerTaskPanel } from '../planner/PlannerTaskPanel';
 import { TaskDrawer } from '../tasks/TaskDrawer';
@@ -10,15 +11,23 @@ import { labelBlocksWithSubtasks } from '../planner/blockLabels';
 
 function weekLabel(days: number[]): string {
   const fmt = (ms: number) => new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric' });
-  return `${fmt(days[0]!)} – ${fmt(days[6]!)}`;
+  return `${fmt(days[0]!)} – ${fmt(days[days.length - 1]!)}`;
 }
 
 export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const nowMs = now();
-  const [weekStartMs, setWeekStartMs] = useState(() => startOfWeek(nowMs));
-  const days = useMemo(() => dayColumns(weekStartMs), [weekStartMs]);
-  const fromIso = new Date(weekStartMs).toISOString();
-  const toIso = new Date(addWeeks(weekStartMs, 1)).toISOString();
+  const [viewStartMs, setViewStartMs] = useState(() => localMidnight(nowMs));
+  const [gridRef, gridWidth] = useElementWidth<HTMLDivElement>();
+  const dayCount = daysThatFit(gridWidth);
+  const days = useMemo(() => dayColumns(viewStartMs, dayCount), [viewStartMs, dayCount]);
+  const fromIso = new Date(viewStartMs).toISOString();
+  const toIso = new Date(viewStartMs + dayCount * MS_PER_DAY).toISOString();
+  const [panelHidden, setPanelHidden] = useState(() => {
+    try { return localStorage.getItem('nr.plannerPanelHidden') === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('nr.plannerPanelHidden', panelHidden ? '1' : '0'); } catch { /* ignore */ }
+  }, [panelHidden]);
 
   const schedule = useScheduleQuery(fromIso, toIso);
   const calendar = useCalendarEventsQuery(fromIso, toIso);
@@ -32,7 +41,6 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const updateTask = useUpdateTaskMutation();
   const deleteTask = useDeleteTaskMutation();
   const createBlock = useCreateScheduledBlockMutation();
-  const startBlock = useStartBlockMutation();
   const [editingId, setEditingId] = useState<string | null>(null);
   const editing = (tasksQ.data ?? []).find((t) => t.id === editingId) ?? null;
 
@@ -90,8 +98,8 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
 
   return (
     <div className="flex gap-3 p-4">
-      <div className="flex-1">
-        {isLoading && <div className="p-2 text-sm text-gray-500">Loading your week…</div>}
+      <div ref={gridRef} className="min-w-0 flex-1">
+        {isLoading && <div className="p-2 text-sm text-gray-500">Loading your days…</div>}
         <WeekGrid
           days={days}
           nowMs={nowMs}
@@ -99,27 +107,39 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           blocks={labeledBlocks}
           events={calendar.data ?? []}
           replanPending={replan.isPending}
-          onPrev={() => setWeekStartMs((ms) => addWeeks(ms, -1))}
-          onNext={() => setWeekStartMs((ms) => addWeeks(ms, 1))}
-          onToday={() => setWeekStartMs(startOfWeek(now()))}
+          onPrev={() => setViewStartMs((ms) => shiftDays(ms, -dayCount))}
+          onNext={() => setViewStartMs((ms) => shiftDays(ms, dayCount))}
+          onToday={() => setViewStartMs(localMidnight(now()))}
           onReplan={() => replan.mutate()}
           onCommit={(id, patch) => updateBlock.mutate({ id, patch })}
           onDeleteBlock={(id) => deleteBlock.mutate(id)}
           onDeleteEvent={(id) => deleteEvent.mutate(id)}
           onScheduleTaskAt={onScheduleTaskAt}
-          onStartBlock={(id) => startBlock.mutate(id)}
           accents={accents}
         />
         {replan.isError && <p className="mt-2 text-sm text-red-600">Re-plan failed. Try again.</p>}
       </div>
-      <PlannerTaskPanel
-        tasks={tasksQ.data ?? []}
-        preview={preview.data}
-        nowMs={nowMs}
-        onComplete={onCompleteTask}
-        onEdit={(t) => setEditingId(t.id)}
-        onDelete={onDeleteTask}
-      />
+      {panelHidden ? (
+        <button
+          type="button"
+          data-testid="panel-show"
+          aria-label="Show tasks panel"
+          onClick={() => setPanelHidden(false)}
+          className="h-fit shrink-0 self-start rounded-[12px] border border-line bg-card px-2 py-4 text-[13px] font-bold text-inkSoft [writing-mode:vertical-rl] hover:text-ink"
+        >
+          Tasks ‹
+        </button>
+      ) : (
+        <PlannerTaskPanel
+          tasks={tasksQ.data ?? []}
+          preview={preview.data}
+          nowMs={nowMs}
+          onComplete={onCompleteTask}
+          onEdit={(t) => setEditingId(t.id)}
+          onDelete={onDeleteTask}
+          onHide={() => setPanelHidden(true)}
+        />
+      )}
       {editing && (
         <div className="fixed right-3 top-[84px] z-40">
           <TaskDrawer

@@ -103,8 +103,8 @@ describe('WeekGrid', () => {
   it('fires nav callbacks', () => {
     const onPrev = vi.fn(); const onNext = vi.fn(); const onToday = vi.fn();
     renderGrid({ onPrev, onNext, onToday });
-    fireEvent.click(screen.getByRole('button', { name: /previous week/i }));
-    fireEvent.click(screen.getByRole('button', { name: /next week/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^previous$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^next$/i }));
     fireEvent.click(screen.getByRole('button', { name: /today/i }));
     expect(onPrev).toHaveBeenCalledTimes(1);
     expect(onNext).toHaveBeenCalledTimes(1);
@@ -171,6 +171,20 @@ describe('WeekGrid', () => {
     const col = screen.getByTestId('day-col-0');
     fireEvent.dragOver(col, { clientY: 100, dataTransfer: { types: ['text/plain'], getData: () => '', dropEffect: '' } });
     expect(screen.queryByTestId('task-drop-indicator')).toBeNull();
+  });
+
+  it('renders one column per day for a 3-day window and has no horizontal-scroll wrapper', () => {
+    const days = [
+      new Date('2026-01-07T00:00:00.000Z').getTime(),
+      new Date('2026-01-08T00:00:00.000Z').getTime(),
+      new Date('2026-01-09T00:00:00.000Z').getTime(),
+    ];
+    renderGrid({ days }); // 3-day window starting Wed 2026-01-07
+    expect(screen.getByTestId('day-col-0')).toBeInTheDocument();
+    expect(screen.getByTestId('day-col-2')).toBeInTheDocument();
+    expect(screen.queryByTestId('day-col-3')).toBeNull();
+    // day labels follow the actual dates (today-anchored), not fixed Mon-first
+    expect(screen.getByTestId('day-header-0').textContent).toMatch(/Wed/);
   });
 
 });

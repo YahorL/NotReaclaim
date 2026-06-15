@@ -113,13 +113,33 @@ describe('TopBar Next-task indicator', () => {
     await waitFor(() => expect(startBlock).toHaveBeenCalledWith('nb'));
   });
 
-  // Review 11: the sidebar hamburger was removed (sidebar is always visible).
-  it('does not render a Show sidebar hamburger', () => {
+  // Review 13: the toggle-sidebar button is present when onToggleSidebar is provided.
+  it('calls onToggleSidebar when the toggle button is clicked', () => {
+    const onToggleSidebar = vi.fn();
     const api = fakeApiClient({ getSchedule: async () => [] });
     renderWithProviders(
-      <TopBar onNewTask={() => {}} now={nowFn} />,
+      <TopBar onNewTask={() => {}} now={nowFn} onToggleSidebar={onToggleSidebar} sidebarHidden={false} />,
       { api },
     );
-    expect(screen.queryByRole('button', { name: 'Show sidebar' })).toBeNull();
+    fireEvent.click(screen.getByTestId('toggle-sidebar'));
+    expect(onToggleSidebar).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows "Show sidebar" aria-label when sidebar is hidden', () => {
+    const api = fakeApiClient({ getSchedule: async () => [] });
+    renderWithProviders(
+      <TopBar onNewTask={() => {}} now={nowFn} onToggleSidebar={() => {}} sidebarHidden={true} />,
+      { api },
+    );
+    expect(screen.getByRole('button', { name: 'Show sidebar' })).toBeInTheDocument();
+  });
+
+  it('shows "Hide sidebar" aria-label when sidebar is visible', () => {
+    const api = fakeApiClient({ getSchedule: async () => [] });
+    renderWithProviders(
+      <TopBar onNewTask={() => {}} now={nowFn} onToggleSidebar={() => {}} sidebarHidden={false} />,
+      { api },
+    );
+    expect(screen.getByRole('button', { name: 'Hide sidebar' })).toBeInTheDocument();
   });
 });
