@@ -391,20 +391,3 @@ describe('InteractiveBlock accent tinting', () => {
   });
 });
 
-describe('InteractiveBlock Start button', () => {
-  it('renders a Start button and fires onStart without starting a drag', () => {
-    const onStart = vi.fn();
-    const onCommit = vi.fn();
-    renderBlock({ onStart, onCommit, startedAt: null });
-    const btn = screen.getByTestId('block-start');
-    fireEvent.click(btn);
-    expect(onStart).toHaveBeenCalledTimes(1);
-    expect(onCommit).not.toHaveBeenCalled();
-  });
-
-  it('shows a started indicator instead of the button once started', () => {
-    renderBlock({ onStart: vi.fn(), startedAt: '2026-01-05T09:00:00.000Z' });
-    expect(screen.queryByTestId('block-start')).toBeNull();
-    expect(screen.getByTestId('block-started')).toBeInTheDocument();
-  });
-});

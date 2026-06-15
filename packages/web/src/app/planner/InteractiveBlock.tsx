@@ -23,8 +23,7 @@ export interface InteractiveBlockProps {
   onCommit: (patch: { startsAt: string; endsAt: string; pinned: boolean }) => void;
   onUnpin?: () => void;
   onDelete?: () => void;
-  onStart?: () => void;
-  startedAt?: string | null;
+  dayCount?: number;
   accent?: string;
 }
 
@@ -32,7 +31,7 @@ type DragMode = 'move' | 'resize';
 
 export function InteractiveBlock(props: InteractiveBlockProps) {
   // `id` is part of the props for the parent's onCommit binding; not read inside this component.
-  const { dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, startLabel, title, kind, pinned, onCommit, onUnpin, onDelete, onStart, startedAt, accent } = props;
+  const { dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, startLabel, title, kind, pinned, onCommit, onUnpin, onDelete, dayCount = 7, accent } = props;
   // Refs hold the authoritative drag state; mutated directly so pointer handlers always
   // see the latest values regardless of React's batching/commit schedule.
   const modeRef = useRef<DragMode | null>(null);
@@ -140,7 +139,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
   const snappedDx = (clientX: number): number => {
     const w = colWidthRef.current;
     if (w <= 0) return 0;
-    return clampDayDelta(dayIndex, Math.round((finite(clientX) - startXRef.current) / w));
+    return clampDayDelta(dayIndex, Math.round((finite(clientX) - startXRef.current) / w), dayCount - 1);
   };
 
   const onPointerMove = (e: ReactPointerEvent<HTMLElement>) => {
@@ -272,19 +271,6 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
           : <span aria-hidden="true">🔒 </span>
       )}
       <span className="font-medium">{startLabel}</span> {title}
-      {onStart && (startedAt
-        ? <span data-testid="block-started" className="ml-1 rounded bg-black/15 px-1 text-[10px] font-semibold">Started</span>
-        : (
-          <button
-            type="button"
-            data-testid="block-start"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); onStart(); }}
-            className="ml-1 rounded bg-black/25 px-1.5 text-[10px] font-bold text-white hover:bg-black/45"
-          >
-            Start
-          </button>
-        ))}
       {showDragLabel && (
         <span data-testid="drag-label" className="absolute right-1 top-0.5 rounded bg-ink/70 px-1 text-[10px] font-semibold text-white">
           {fmtTime(previewStart)} – {fmtTime(previewEnd)}
