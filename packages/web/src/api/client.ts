@@ -46,6 +46,7 @@ export interface ApiClient {
   deleteSubtask(id: string): Promise<void>;
   createCalendarEvent(body: CreateCalendarEventInput): Promise<CalendarEvent>;
   createScheduledBlock(body: CreateScheduledBlockInput): Promise<ScheduledBlock>;
+  startBlock(id: string): Promise<ScheduledBlock>;
 }
 
 export function createApiClient(config: ApiClientConfig): ApiClient {
@@ -118,5 +119,6 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
     deleteCalendarEvent: (id) => request('DELETE', `/calendar/events/${id}`),
     createCalendarEvent: (body) => request('POST', '/calendar/events', body),
     createScheduledBlock: (body) => request('POST', '/schedule', body),
+    startBlock: (id) => request('POST', `/schedule/${id}/start`),
   };
 }

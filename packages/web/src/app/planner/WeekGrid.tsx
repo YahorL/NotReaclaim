@@ -35,6 +35,7 @@ export interface WeekGridProps {
   onDeleteBlock?: (id: string) => void;
   onDeleteEvent?: (id: string) => void;
   onScheduleTaskAt?: (taskId: string, dayStartMs: number, startMin: number) => void;
+  onStartBlock?: (id: string) => void;
   accents?: Record<string, string>;
 }
 
@@ -49,6 +50,7 @@ interface Item {
   blockId: string | null;
   eventId: string | null;
   taskId: string | null;
+  startedAt: string | null;
 }
 
 function timeLabel(ms: number): string {
@@ -61,18 +63,18 @@ function toItems(blocks: ScheduledBlock[], events: CalendarEvent[]): Item[] {
     const startMs = Date.parse(b.startsAt);
     return { key: `b:${b.id}`, title: b.title, kind: cls.kind, pinned: cls.pinned,
       startMs, endMs: Date.parse(b.endsAt), startLabel: timeLabel(startMs), blockId: b.id,
-      eventId: null, taskId: b.taskId };
+      eventId: null, taskId: b.taskId, startedAt: b.startedAt ?? null };
   });
   const fromEvents = events.map((e): Item => {
     const startMs = Date.parse(e.startsAt);
     return { key: `e:${e.id}`, title: e.title, kind: 'meeting', pinned: false,
-      startMs, endMs: Date.parse(e.endsAt), startLabel: timeLabel(startMs), blockId: null, eventId: e.id, taskId: null };
+      startMs, endMs: Date.parse(e.endsAt), startLabel: timeLabel(startMs), blockId: null, eventId: e.id, taskId: null, startedAt: null };
   });
   return [...fromEvents, ...fromBlocks];
 }
 
 export function WeekGrid(props: WeekGridProps) {
-  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit, onDeleteBlock, onDeleteEvent, onScheduleTaskAt, accents = {} } = props;
+  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit, onDeleteBlock, onDeleteEvent, onScheduleTaskAt, onStartBlock, accents = {} } = props;
   const items = toItems(blocks, events);
   const [creating, setCreating] = useState<{ dayIndex: number; startMin: number } | null>(null);
   // Live drop indicator while dragging a task card from the side panel over the grid.
@@ -201,6 +203,8 @@ export function WeekGrid(props: WeekGridProps) {
                           onCommit={(patch) => onCommit(blockId, patch)}
                           onUnpin={it.pinned ? () => onCommit(blockId, { pinned: false }) : undefined}
                           onDelete={onDeleteBlock ? () => onDeleteBlock(blockId) : undefined}
+                          onStart={onStartBlock && it.taskId ? () => onStartBlock(blockId) : undefined}
+                          startedAt={it.startedAt}
                           accent={accent}
                         />
                       );

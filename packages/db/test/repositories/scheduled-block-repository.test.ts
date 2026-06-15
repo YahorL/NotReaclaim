@@ -91,6 +91,25 @@ describe('ScheduledBlockRepository', () => {
     await expect(repo.update(other.id, block.id, { pinned: false })).rejects.toBeInstanceOf(NotFoundError);
   });
 
+  it('findById returns an owned block and null across users', async () => {
+    const a = await users.create({ email: 'fbid-a@example.com' });
+    const b = await users.create({ email: 'fbid-b@example.com' });
+    const task = await tasks.create(a.id, taskInput());
+    const block = await repo.create(a.id, blockInput(task.id));
+    expect((await repo.findById(a.id, block.id))?.id).toBe(block.id);
+    expect(await repo.findById(b.id, block.id)).toBeNull();
+    expect(await repo.findById(a.id, 'missing')).toBeNull();
+  });
+
+  it('update can set startedAt', async () => {
+    const user = await users.create({ email: 'started@example.com' });
+    const task = await tasks.create(user.id, taskInput());
+    const block = await repo.create(user.id, blockInput(task.id));
+    expect(block.startedAt).toBeNull();
+    const updated = await repo.update(user.id, block.id, { startedAt: new Date('2026-01-01T10:07:00.000Z'), pinned: true });
+    expect(updated.startedAt?.toISOString()).toBe('2026-01-01T10:07:00.000Z');
+  });
+
   it('enforces unique (userId, engineKey) but allows multiple nulls', async () => {
     const user = await users.create({ email: 'key@example.com' });
     const task = await tasks.create(user.id, taskInput());

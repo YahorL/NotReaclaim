@@ -252,3 +252,15 @@ export function useCreateScheduledBlockMutation() {
     },
   });
 }
+
+export function useStartBlockMutation() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.startBlock(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.scheduleRoot });
+      void qc.invalidateQueries({ queryKey: queryKeys.tasksRoot });
+    },
+  });
+}

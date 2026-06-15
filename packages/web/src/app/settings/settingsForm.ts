@@ -16,6 +16,7 @@ export interface SettingsFormState {
   defaultMaxChunkMs: number;
   meetingBufferMs: number;
   taskBufferMs: number;
+  requireStartToTrack: boolean;
 }
 
 const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
@@ -35,6 +36,7 @@ export function toFormState(s: Settings): SettingsFormState {
     defaultMaxChunkMs: s.defaultMaxChunkMs,
     meetingBufferMs: s.meetingBufferMs ?? 0,
     taskBufferMs: s.taskBufferMs ?? 0,
+    requireStartToTrack: s.requireStartToTrack ?? false,
   };
 }
 
@@ -47,6 +49,7 @@ export function defaultFormState(timezone: string): SettingsFormState {
     defaultMaxChunkMs: 120 * 60_000,
     meetingBufferMs: 0,
     taskBufferMs: 0,
+    requireStartToTrack: false,
   };
 }
 
@@ -93,6 +96,7 @@ export function toSettingsInput(s: SettingsFormState): SettingsInput {
     defaultMaxChunkMs: s.defaultMaxChunkMs,
     meetingBufferMs: s.meetingBufferMs,
     taskBufferMs: s.taskBufferMs,
+    requireStartToTrack: s.requireStartToTrack,
   };
 }
 

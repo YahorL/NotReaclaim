@@ -3,6 +3,7 @@ import type { Task, UpdateTaskInput } from '../../api/types';
 import type { ApiError } from '../../api/client';
 import { FieldBox } from '../components/FieldBox';
 import { DurationStepper } from '../components/DurationStepper';
+import { formatDurationShort } from '../lib/duration';
 import { useClickOutside } from '../components/useClickOutside';
 import { type TaskFormState, toFormState, validateTaskForm, toUpdateInput } from './taskForm';
 import { useCategoriesQuery, useCreateSubtaskMutation, useUpdateSubtaskMutation, useDeleteSubtaskMutation } from '../../api/queries';
@@ -37,6 +38,23 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
   return (
     <aside ref={rootRef} data-testid="task-drawer" className="w-[440px] shrink-0 space-y-2.5 rounded-[14px] border border-line bg-card p-4 shadow-pop max-h-[calc(100vh-100px)] overflow-y-auto">
       <h4 className="text-[15px] font-bold text-ink">Edit task</h4>
+
+      {(() => {
+        const spent = task.spentMs ?? 0;
+        const left = Math.max(0, task.durationMs - spent);
+        const pct = task.durationMs > 0 ? Math.min(100, Math.round((spent / task.durationMs) * 100)) : 0;
+        return (
+          <div data-testid="drawer-time" className="rounded-[10px] border border-line bg-bg px-3 py-2">
+            <div className="flex items-center justify-between text-[12px] font-semibold text-inkSoft">
+              <span>Time spent</span>
+              <span data-testid="drawer-spent">{formatDurationShort(spent)} / {formatDurationShort(task.durationMs)} · {formatDurationShort(left)} left</span>
+            </div>
+            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-line">
+              <div className="h-full rounded-full bg-indigo" style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="grid grid-cols-2 gap-2.5">
         {/* Title — spans both columns */}

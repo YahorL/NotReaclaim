@@ -9,15 +9,17 @@ const START = Date.parse('2026-01-05T09:00:00.000Z');
 const END = Date.parse('2026-01-05T10:00:00.000Z');
 const PX_PER_60MIN = (60 / 960) * GRID_COLUMN_PX; // = 58
 
-function renderBlock(onCommit = vi.fn()) {
-  render(
-    <InteractiveBlock
-      id="b1" dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
-      topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
-      onCommit={onCommit}
-    />,
-  );
-  return onCommit;
+function renderBlock(onCommitOrOver: Parameters<typeof InteractiveBlock>[0]['onCommit'] | Partial<Parameters<typeof InteractiveBlock>[0]> = vi.fn()) {
+  const defaults = {
+    id: 'b1', dayStartMs: DAY, dayIndex: 0, startMs: START, endMs: END,
+    topPct: 10, heightPct: 5, startLabel: '09:00', title: 'Write spec', kind: 'task' as const, pinned: false,
+    onCommit: vi.fn(),
+  };
+  const overrides: Partial<Parameters<typeof InteractiveBlock>[0]> =
+    typeof onCommitOrOver === 'function' ? { onCommit: onCommitOrOver } : onCommitOrOver;
+  const props = { ...defaults, ...overrides };
+  render(<InteractiveBlock {...props} />);
+  return props.onCommit;
 }
 
 function renderBlockInColumn(onCommit = vi.fn(), dayIndex = 0, colWidth = 120) {
@@ -386,5 +388,23 @@ describe('InteractiveBlock accent tinting', () => {
     expect(el.style.backgroundColor).toBe('rgb(91, 98, 227)');
     expect(el.className).not.toContain('bg-low');
     expect(el.className).toContain('text-white');
+  });
+});
+
+describe('InteractiveBlock Start button', () => {
+  it('renders a Start button and fires onStart without starting a drag', () => {
+    const onStart = vi.fn();
+    const onCommit = vi.fn();
+    renderBlock({ onStart, onCommit, startedAt: null });
+    const btn = screen.getByTestId('block-start');
+    fireEvent.click(btn);
+    expect(onStart).toHaveBeenCalledTimes(1);
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('shows a started indicator instead of the button once started', () => {
+    renderBlock({ onStart: vi.fn(), startedAt: '2026-01-05T09:00:00.000Z' });
+    expect(screen.queryByTestId('block-start')).toBeNull();
+    expect(screen.getByTestId('block-started')).toBeInTheDocument();
   });
 });

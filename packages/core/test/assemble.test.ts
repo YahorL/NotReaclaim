@@ -227,6 +227,72 @@ describe('assembleScheduleInput notBefore', () => {
   });
 });
 
+describe('assembleScheduleInput spent', () => {
+  const NOW = Date.parse('2026-01-05T12:00:00.000Z'); // Monday noon UTC
+
+  it('subtracts finished-block time from a task remaining (auto mode)', async () => {
+    const input = await assembleScheduleInput(
+      fakeRepos({
+        settings: makeSettings({ workingHours: [{ weekday: 1, startMinute: 0, endMinute: 1440 }] as never }),
+        categories: [makeCategory()],
+        tasks: [makeTask({ id: 't1', durationMs: 3_600_000, minChunkMs: 900000, maxChunkMs: 1_800_000 })],
+        blocks: [makeBlock({
+          id: 'done', taskId: 't1', habitId: null, pinned: false,
+          startsAt: new Date('2026-01-05T09:00:00.000Z'), endsAt: new Date('2026-01-05T09:30:00.000Z'), // finished, 30m
+        })],
+      }),
+      'u1', NOW,
+    );
+    expect(input.tasks.find((t) => t.id === 't1')!.durationMs).toBe(1_800_000); // 1h - 30m spent
+  });
+
+  it('drops a task whose finished blocks already cover its duration', async () => {
+    const input = await assembleScheduleInput(
+      fakeRepos({
+        settings: makeSettings({ workingHours: [{ weekday: 1, startMinute: 0, endMinute: 1440 }] as never }),
+        categories: [makeCategory()],
+        tasks: [makeTask({ id: 't1', durationMs: 1_800_000 })],
+        blocks: [makeBlock({
+          id: 'done', taskId: 't1', habitId: null, pinned: false,
+          startsAt: new Date('2026-01-05T09:00:00.000Z'), endsAt: new Date('2026-01-05T09:30:00.000Z'),
+        })],
+      }),
+      'u1', NOW,
+    );
+    expect(input.tasks.find((t) => t.id === 't1')).toBeUndefined();
+  });
+
+  it('manual mode ignores an un-started finished block (work is re-planned)', async () => {
+    const input = await assembleScheduleInput(
+      fakeRepos({
+        settings: makeSettings({ requireStartToTrack: true, workingHours: [{ weekday: 1, startMinute: 0, endMinute: 1440 }] as never }),
+        categories: [makeCategory()],
+        tasks: [makeTask({ id: 't1', durationMs: 1_800_000 })],
+        blocks: [makeBlock({
+          id: 'missed', taskId: 't1', habitId: null, pinned: false, startedAt: null,
+          startsAt: new Date('2026-01-05T09:00:00.000Z'), endsAt: new Date('2026-01-05T09:30:00.000Z'),
+        })],
+      }),
+      'u1', NOW,
+    );
+    expect(input.tasks.find((t) => t.id === 't1')!.durationMs).toBe(1_800_000); // not reduced
+  });
+
+  it('excludes past pinned blocks from the engine pinnedBlocks input', async () => {
+    const input = await assembleScheduleInput(
+      fakeRepos({
+        settings: makeSettings(),
+        blocks: [
+          makeBlock({ id: 'past', pinned: true, taskId: 't1', startsAt: new Date('2026-01-05T09:00:00.000Z'), endsAt: new Date('2026-01-05T09:30:00.000Z') }),
+          makeBlock({ id: 'future', pinned: true, taskId: 't1', startsAt: new Date('2026-01-05T14:00:00.000Z'), endsAt: new Date('2026-01-05T14:30:00.000Z') }),
+        ],
+      }),
+      'u1', NOW,
+    );
+    expect(input.pinnedBlocks.map((b) => b.id)).toEqual(['future']);
+  });
+});
+
 describe('assembleScheduleInput buffers', () => {
   const NOW = Date.parse('2026-01-05T00:00:00.000Z'); // Monday, UTC
   const settings = (over = {}) => makeSettings({ workingHours: [{ weekday: 1, startMinute: 0, endMinute: 1440 }] as never, ...over });

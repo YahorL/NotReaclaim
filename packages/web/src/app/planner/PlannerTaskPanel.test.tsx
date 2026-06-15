@@ -89,6 +89,11 @@ describe('PlannerTaskPanel', () => {
     expect(screen.getByText(/no active tasks/i)).toBeInTheDocument();
   });
 
+  it('shows spent / total on a card', () => {
+    renderPanel([task({ id: 'a', title: 'Has progress', durationMs: 7_200_000, spentMs: 3_600_000 })]);
+    expect(screen.getByTestId('panel-progress')).toHaveTextContent('1h / 2h');
+  });
+
   it('task cards are draggable and seed the dataTransfer with the task id', () => {
     renderPanel([task({ id: 'drag-me', title: 'Grab me' })]);
     const card = screen.getByTestId('panel-task');

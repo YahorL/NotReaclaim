@@ -53,4 +53,18 @@ describe('settings routes', () => {
     });
     expect(res.statusCode).toBe(400);
   });
+
+  it('PUT /settings round-trips requireStartToTrack', async () => {
+    const { app } = buildTestApp({ settings: null });
+    const token = await tokenFor(app);
+    const put = await app.inject({
+      method: 'PUT', url: '/settings', headers: { authorization: `Bearer ${token}` },
+      payload: {
+        timezone: 'UTC', workingHours: [{ weekday: 1, startMinute: 540, endMinute: 1020 }],
+        defaultMinChunkMs: 1800000, defaultMaxChunkMs: 3600000, requireStartToTrack: true,
+      },
+    });
+    expect(put.statusCode).toBe(200);
+    expect(put.json().requireStartToTrack).toBe(true);
+  });
 });

@@ -97,6 +97,22 @@ describe('TopBar Next-task indicator', () => {
     await waitFor(() => expect(screen.queryByTestId('next-task')).toBeNull());
   });
 
+  it('starts the next task block via the Start button', async () => {
+    const startBlock = vi.fn(async () => ({} as never));
+    const api = fakeApiClient({
+      getSchedule: vi.fn(async () => [{
+        id: 'nb', userId: 'u1', title: 'Next thing',
+        startsAt: '2026-01-05T15:00:00.000Z', endsAt: '2026-01-05T16:00:00.000Z',
+        taskId: 't1', habitId: null, pinned: false, engineKey: null, startedAt: null,
+      }]),
+      startBlock,
+    });
+    renderWithProviders(<TopBar onNewTask={() => {}} now={() => Date.parse('2026-01-05T14:00:00.000Z')} />, { api });
+    await waitFor(() => expect(screen.getByTestId('next-task')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('next-task-start'));
+    await waitFor(() => expect(startBlock).toHaveBeenCalledWith('nb'));
+  });
+
   // Review 11: the sidebar hamburger was removed (sidebar is always visible).
   it('does not render a Show sidebar hamburger', () => {
     const api = fakeApiClient({ getSchedule: async () => [] });

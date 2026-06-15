@@ -1,9 +1,18 @@
 import type { FastifyInstance } from 'fastify';
+import { computeSpentMs } from '@notreclaim/core';
 import type { AppDeps, AfterMutation } from './app.js';
 import { createTaskSchema, updateTaskSchema, listTasksQuerySchema, idParamSchema } from './schemas.js';
 
 export function registerTaskRoutes(app: FastifyInstance, deps: AppDeps, afterMutation: AfterMutation): void {
   const guard = { onRequest: [app.authenticate] };
+
+  const attachSpent = async (userId: string, tasks: Array<{ id: string }>) => {
+    const now = deps.now();
+    const settings = await deps.repos.settings.getByUserId(userId);
+    const requireStart = settings?.requireStartToTrack ?? false;
+    const blocks = await deps.repos.scheduledBlocks.listByUserInRange(userId, new Date(0), new Date(now));
+    return tasks.map((t) => ({ ...t, spentMs: computeSpentMs(t.id, blocks, requireStart, now) }));
+  };
 
   app.post('/tasks', guard, async (request, reply) => {
     const body = createTaskSchema.parse(request.body);
@@ -21,7 +30,8 @@ export function registerTaskRoutes(app: FastifyInstance, deps: AppDeps, afterMut
     const query = listTasksQuerySchema.parse(request.query);
     const cutoff = new Date(deps.now() - 30 * 24 * 60 * 60 * 1000);
     await deps.repos.tasks.purgeCompletedBefore(request.userId, cutoff);
-    return deps.repos.tasks.listByUser(request.userId, query.status ? { status: query.status } : {});
+    const tasks = await deps.repos.tasks.listByUser(request.userId, query.status ? { status: query.status } : {});
+    return attachSpent(request.userId, tasks);
   });
 
   app.get('/tasks/:id', guard, async (request, reply) => {
@@ -31,7 +41,8 @@ export function registerTaskRoutes(app: FastifyInstance, deps: AppDeps, afterMut
       reply.code(404).send({ code: 'not_found', message: `Task ${id} not found` });
       return;
     }
-    return task;
+    const [withSpent] = await attachSpent(request.userId, [task]);
+    return withSpent;
   });
 
   app.patch('/tasks/:id', guard, async (request) => {
