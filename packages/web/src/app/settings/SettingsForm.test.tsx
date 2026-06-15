@@ -9,7 +9,7 @@ const initial = (over: Partial<SettingsFormState> = {}): SettingsFormState => ({
   timezone: 'UTC',
   days: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, enabled: weekday >= 1 && weekday <= 5, start: '09:00', end: '17:00' })),
   horizonDays: 14, defaultMinChunkMs: 1_800_000, defaultMaxChunkMs: 7_200_000,
-  meetingBufferMs: 0, taskBufferMs: 0, ...over,
+  meetingBufferMs: 0, taskBufferMs: 0, requireStartToTrack: false, ...over,
 });
 
 describe('SettingsForm', () => {
@@ -49,6 +49,14 @@ describe('SettingsForm', () => {
     fireEvent.change(screen.getByTestId('timezone'), { target: { value: 'America/New_York' } });
     fireEvent.click(screen.getByTestId('save'));
     expect((onSave.mock.calls[0]![0] as SettingsInput).timezone).toBe('America/New_York');
+  });
+
+  it('toggles requireStartToTrack and includes it on save', () => {
+    const onSave = vi.fn();
+    render(<SettingsForm initial={{ ...initial(), requireStartToTrack: false }} onSave={onSave} timezones={['UTC']} />);
+    fireEvent.click(screen.getByTestId('require-start'));
+    fireEvent.click(screen.getByTestId('save'));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ requireStartToTrack: true }));
   });
 
   it('shows ✓ Saved and surfaces an ApiError', () => {

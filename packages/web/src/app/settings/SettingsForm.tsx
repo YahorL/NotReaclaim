@@ -98,6 +98,16 @@ export function SettingsForm({ initial, onSave, saving = false, error = null, ju
           </div>
         </div>
 
+        <label className="mt-1 flex items-center gap-2 text-[14px] font-semibold text-ink">
+          <input
+            type="checkbox"
+            data-testid="require-start"
+            checked={form.requireStartToTrack}
+            onChange={(e) => setForm((f) => ({ ...f, requireStartToTrack: e.target.checked }))}
+            className="h-4 w-4 accent-indigo"
+          />
+          Only count time after I press Start
+        </label>
       </section>
 
       {error && <p data-testid="form-error" className={errCls}>{error.message}</p>}
