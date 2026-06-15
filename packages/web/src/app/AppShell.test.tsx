@@ -8,7 +8,7 @@ function makeApi() {
     getSchedule: async () => [],
     listTasks: async () => [],
     listHabits: async () => [],
-    getSettings: async () => ({ workdayStart: '08:00', workdayEnd: '23:59', buffers: [] }),
+    getSettings: async () => ({ workdayStart: '08:00', workdayEnd: '23:59', buffers: [] } as never),
     listCategories: async () => [],
     getSchedulePreview: async () => ({ blocks: [], unscheduled: [] }),
   });
