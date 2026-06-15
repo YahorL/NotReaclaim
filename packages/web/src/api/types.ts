@@ -33,6 +33,7 @@ export interface Task {
   status: TaskStatus;
   completedAt: string | null;
   timeLoggedMs: number;
+  spentMs?: number;
   subtasks?: Subtask[];
   createdAt: string;
   updatedAt: string;
@@ -90,6 +91,7 @@ export interface Settings {
   defaultMaxChunkMs: number;
   meetingBufferMs?: number;
   taskBufferMs?: number;
+  requireStartToTrack?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -104,6 +106,7 @@ export interface ScheduledBlock {
   habitId: string | null;
   pinned: boolean;
   engineKey: string | null;
+  startedAt?: string | null;
 }
 
 export interface PreviewBlock {
@@ -179,6 +182,7 @@ export interface SettingsInput {
   defaultMaxChunkMs: number;
   meetingBufferMs?: number;
   taskBufferMs?: number;
+  requireStartToTrack?: boolean;
 }
 
 export interface UpdateScheduledBlockInput {
