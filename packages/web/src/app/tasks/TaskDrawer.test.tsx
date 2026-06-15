@@ -15,6 +15,11 @@ const task = (over: Partial<Task> = {}): Task => ({
 const emptyCategories = () => fakeApiClient({ listCategories: vi.fn().mockResolvedValue([]) } as never);
 
 describe('TaskDrawer', () => {
+  it('renders spent / total / left', () => {
+    renderWithProviders(<TaskDrawer task={task({ durationMs: 7_200_000, spentMs: 1_800_000 })} onSave={vi.fn()} onCancel={vi.fn()} />, { api: emptyCategories() });
+    expect(screen.getByTestId('drawer-spent')).toHaveTextContent('30m / 2h · 1h 30m left');
+  });
+
   it('prefills from the task and saves a converted patch', () => {
     const onSave = vi.fn();
     renderWithProviders(<TaskDrawer task={task()} onSave={onSave} onCancel={vi.fn()} />, { api: emptyCategories() });
