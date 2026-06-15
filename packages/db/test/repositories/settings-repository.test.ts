@@ -30,6 +30,14 @@ describe('SettingsRepository', () => {
     expect(fetched?.timezone).toBe('Europe/Paris');
   });
 
+  it('persists requireStartToTrack through upsert', async () => {
+    const user = await users.create({ email: 'rst@example.com' });
+    const created = await repo.upsert(user.id, { ...settingsInput(), requireStartToTrack: true });
+    expect(created.requireStartToTrack).toBe(true);
+    const updated = await repo.upsert(user.id, { ...settingsInput(), requireStartToTrack: false });
+    expect(updated.requireStartToTrack).toBe(false);
+  });
+
   it('round-trips buffer settings and defaults them to 0 when omitted', async () => {
     const user = await users.create({ email: 'buf@example.com' });
     const withBuffers = await repo.upsert(user.id, { ...settingsInput(), meetingBufferMs: 900000, taskBufferMs: 600000 });

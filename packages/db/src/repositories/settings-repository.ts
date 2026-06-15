@@ -9,6 +9,7 @@ export interface UpsertSettingsInput {
   defaultMaxChunkMs: number;
   meetingBufferMs?: number;
   taskBufferMs?: number;
+  requireStartToTrack?: boolean;
 }
 
 export function createSettingsRepository(prisma: PrismaClient) {
