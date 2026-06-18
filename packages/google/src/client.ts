@@ -5,6 +5,7 @@ export interface GoogleTokens {
   expiresAt: number; // epoch ms
   googleUserId: string;
   email: string;
+  emailVerified: boolean;
 }
 
 export interface GoogleEventTime {

@@ -262,8 +262,10 @@ export function fakeInviteRepo(opts: { valid?: Set<string> } = {}) {
   const consumed: string[] = [];
   const valid = opts.valid ?? new Set<string>();
   return {
-    async validate(code: string) { return valid.has(code); },
-    async consume(code: string) { consumed.push(code); valid.delete(code); },
+    async tryConsume(code: string) {
+      if (!valid.has(code)) return false;
+      valid.delete(code); consumed.push(code); return true;
+    },
     consumed,
   };
 }
@@ -286,6 +288,7 @@ export interface TestAppOptions {
   users?: User[];
   registrationMode?: 'closed' | 'invite' | 'open';
   validInvites?: string[];
+  googleEmailVerified?: boolean;
 }
 
 export function buildTestApp(opts: TestAppOptions = {}) {
@@ -330,7 +333,7 @@ export function buildTestApp(opts: TestAppOptions = {}) {
             id: 'u1', email: 'a@example.com', googleId: 'g-1', googleRefreshToken: 'enc',
             autoScheduledCalendarId: null, createdAt: new Date(0), updatedAt: new Date(0),
           } as User),
-        exchangeCodeForLink: async () => ({ email: 'a@example.com', googleUserId: 'g-1', encryptedRefreshToken: 'enc' }),
+        exchangeCodeForLink: async () => ({ email: 'a@example.com', emailVerified: opts.googleEmailVerified ?? true, googleUserId: 'g-1', encryptedRefreshToken: 'enc' }),
         getAccessToken: async () => {
           if (!opts.accessToken) throw new Error('not connected');
           return opts.accessToken;

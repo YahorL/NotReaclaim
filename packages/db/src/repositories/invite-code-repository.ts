@@ -37,6 +37,22 @@ export function createInviteCodeRepository(prisma: PrismaClient) {
     async consume(code: string): Promise<void> {
       await prisma.inviteCode.update({ where: { code }, data: { usedCount: { increment: 1 } } });
     },
+
+    /**
+     * Atomically consume one use IFF the code is valid (exists, unexpired, not exhausted,
+     * and email matches when bound). Returns false otherwise. Single UPDATE so concurrent
+     * callers can't double-spend a single-use code (the check-then-increment race).
+     */
+    async tryConsume(code: string, email: string, now: Date): Promise<boolean> {
+      const affected = await prisma.$executeRaw`
+        UPDATE "InviteCode"
+        SET "usedCount" = "usedCount" + 1
+        WHERE "code" = ${code}
+          AND "usedCount" < "maxUses"
+          AND ("expiresAt" IS NULL OR "expiresAt" > ${now})
+          AND ("email" IS NULL OR lower("email") = lower(${email}))`;
+      return affected > 0;
+    },
   };
 }
 

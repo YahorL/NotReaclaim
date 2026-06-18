@@ -43,4 +43,19 @@ describe('InviteCodeRepository', () => {
     await repo.consume('ONE');
     expect(await repo.validate('ONE', 'a@x.com', now)).toBe(false);
   });
+
+  it('tryConsume atomically consumes once and refuses thereafter (no double-spend)', async () => {
+    const a = await admin();
+    await repo.create({ code: 'ATOMIC', createdByUserId: a.id, maxUses: 1 });
+    const now = new Date('2026-06-18T00:00:00Z');
+    expect(await repo.tryConsume('ATOMIC', 'a@x.com', now)).toBe(true);
+    expect(await repo.tryConsume('ATOMIC', 'a@x.com', now)).toBe(false); // exhausted
+    expect((await repo.findByCode('ATOMIC'))?.usedCount).toBe(1); // not over-incremented
+    expect(await repo.tryConsume('MISSING', 'a@x.com', now)).toBe(false);
+    await repo.create({ code: 'EXP', createdByUserId: a.id, expiresAt: new Date('2000-01-01T00:00:00Z') });
+    expect(await repo.tryConsume('EXP', 'a@x.com', now)).toBe(false);
+    await repo.create({ code: 'BND', createdByUserId: a.id, email: 'only@x.com' });
+    expect(await repo.tryConsume('BND', 'other@x.com', now)).toBe(false);
+    expect(await repo.tryConsume('BND', 'only@x.com', now)).toBe(true);
+  });
 });

@@ -52,6 +52,7 @@ describe('TokenService', () => {
     const out = await svc.exchangeCodeForLink('code', 'http://localhost/cb');
     expect(out.email).toBe('a@example.com');
     expect(out.googleUserId).toBe('g-123');
+    expect(out.emailVerified).toBe(true);
     expect(decryptToken(out.encryptedRefreshToken, key)).toBe('refresh-1');
     expect(await users.findByGoogleId('g-123')).toBeNull(); // no DB write
   });

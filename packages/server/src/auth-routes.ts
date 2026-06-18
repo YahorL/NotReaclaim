@@ -29,7 +29,7 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
   app.get('/auth/google/callback', async (request, reply) => {
     const { code, state: rawState } = authCallbackQuerySchema.parse(request.query);
     const state = readState(rawState);
-    const { email: googleEmail, googleUserId, encryptedRefreshToken } =
+    const { email: googleEmail, emailVerified, googleUserId, encryptedRefreshToken } =
       await deps.google.tokens.exchangeCodeForLink(code, deps.config.googleRedirectUri);
     const email = normalizeEmail(googleEmail);
     const link = (userId: string) =>
@@ -45,10 +45,13 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
       return reply.send({ token, userId });
     };
     const deny = (codeStr: string) => {
+      const message = codeStr === 'email_unverified' ? 'Your Google email is not verified'
+        : codeStr === 'invalid_invite' ? 'A valid invite code is required'
+        : 'Registration is closed';
       if (deps.config.webClientUrl) {
         return reply.redirect(302, `${deps.config.webClientUrl}/auth/callback#error=${encodeURIComponent(codeStr)}`);
       }
-      return reply.code(403).send({ code: codeStr, message: 'Registration is closed' });
+      return reply.code(403).send({ code: codeStr, message });
     };
 
     // Authenticated linking flow.
@@ -56,9 +59,11 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
       await link(state.userId);
       return finish(state.userId);
     }
-    // Branch 1: known google account.
+    // Branch 1: known google account → login.
     const byGoogle = await deps.repos.users.findByGoogleId(googleUserId);
     if (byGoogle) { await link(byGoogle.id); return finish(byGoogle.id); }
+    // Beyond here we link/create from the asserted email — only trust a Google-verified one.
+    if (!emailVerified) return deny('email_unverified');
     // Branch 2: known email → link.
     const byEmail = await deps.repos.users.findByEmail(email);
     if (byEmail) { await link(byEmail.id); return finish(byEmail.id); }
@@ -67,14 +72,13 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
     if (mode === 'closed') return deny('registration_closed');
     if (mode === 'invite') {
       const ok = state.inviteCode
-        ? await deps.repos.invites.validate(state.inviteCode, email, new Date(deps.now()))
+        ? await deps.repos.invites.tryConsume(state.inviteCode, email, new Date(deps.now()))
         : false;
       if (!ok) return deny('invalid_invite');
     }
     const created = await deps.repos.users.create({ email });
     await link(created.id);
     await ensureUserDefaults(deps.repos.settings, created.id);
-    if (mode === 'invite' && state.inviteCode) await deps.repos.invites.consume(state.inviteCode);
     return finish(created.id);
   });
 
@@ -86,20 +90,20 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
     if (mode === 'closed') {
       return reply.code(403).send({ code: 'registration_closed', message: 'Registration is closed' });
     }
-    if (mode === 'invite') {
-      const ok = body.inviteCode
-        ? await deps.repos.invites.validate(body.inviteCode, email, new Date(deps.now()))
-        : false;
-      if (!ok) return reply.code(403).send({ code: 'invalid_invite', message: 'A valid invite code is required' });
-    }
+    // Check duplicate before consuming an invite, so a dup doesn't burn a code.
     if (await deps.repos.users.findByEmail(email)) {
       return reply.code(409).send({ code: 'email_taken', message: 'That email is already registered' });
+    }
+    if (mode === 'invite') {
+      const ok = body.inviteCode
+        ? await deps.repos.invites.tryConsume(body.inviteCode, email, new Date(deps.now()))
+        : false;
+      if (!ok) return reply.code(403).send({ code: 'invalid_invite', message: 'A valid invite code is required' });
     }
 
     const passwordHash = await hashPassword(body.password);
     const user = await deps.repos.users.create({ email, passwordHash });
     await ensureUserDefaults(deps.repos.settings, user.id);
-    if (mode === 'invite' && body.inviteCode) await deps.repos.invites.consume(body.inviteCode);
 
     return { token: signSession(app, user.id), userId: user.id };
   });

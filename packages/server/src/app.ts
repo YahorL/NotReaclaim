@@ -38,7 +38,7 @@ export interface AppDeps {
     categories: CategoryRepository;
     subtasks: SubtaskRepository;
     users: Pick<UserRepository, 'findById' | 'findByEmail' | 'findByGoogleId' | 'create' | 'update'>;
-    invites: Pick<InviteCodeRepository, 'validate' | 'consume'>;
+    invites: Pick<InviteCodeRepository, 'tryConsume'>;
   };
   google: {
     client: Pick<GoogleClient, 'getConsentUrl' | 'insertEvent' | 'deleteEvent'>;

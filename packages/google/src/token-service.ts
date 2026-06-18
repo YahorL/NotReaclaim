@@ -21,7 +21,7 @@ export interface TokenService {
   exchangeCodeForLink(
     code: string,
     redirectUri: string,
-  ): Promise<{ email: string; googleUserId: string; encryptedRefreshToken: string }>;
+  ): Promise<{ email: string; emailVerified: boolean; googleUserId: string; encryptedRefreshToken: string }>;
   getAccessToken(userId: string, now: number): Promise<string>;
 }
 
@@ -47,6 +47,7 @@ export function createTokenService(deps: TokenServiceDeps): TokenService {
       const tokens = await deps.client.exchangeCode(code, redirectUri);
       return {
         email: tokens.email,
+        emailVerified: tokens.emailVerified,
         googleUserId: tokens.googleUserId,
         encryptedRefreshToken: encryptToken(tokens.refreshToken, deps.encryptionKey),
       };

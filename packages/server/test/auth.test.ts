@@ -27,6 +27,16 @@ describe('auth', () => {
     expect((await ctx.users.findById('u5'))?.googleId).toBe('g-1'); // linked
   });
 
+  it('callback refuses to link or create on an UNVERIFIED google email', async () => {
+    const ctx = buildTestApp({
+      googleEmailVerified: false,
+      users: [{ id: 'u5', email: 'a@example.com', passwordHash: 'h', isAdmin: false, googleId: null, googleRefreshToken: null, autoScheduledCalendarId: null, createdAt: new Date(0), updatedAt: new Date(0) } as never],
+    });
+    const res = await ctx.app.inject({ method: 'GET', url: '/auth/google/callback?code=abc' });
+    expect(res.statusCode).toBe(403);
+    expect((await ctx.users.findById('u5'))?.googleId).toBeNull(); // NOT linked
+  });
+
   it('callback rejects a brand-new google email when registration is closed (branch 3)', async () => {
     const ctx = buildTestApp({ registrationMode: 'closed', users: [] });
     const res = await ctx.app.inject({ method: 'GET', url: '/auth/google/callback?code=abc' });
