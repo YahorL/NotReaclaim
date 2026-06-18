@@ -1,0 +1,39 @@
+{
+	admin off
+	# TLS is terminated by Tailscale Serve on the host; Caddy serves plain HTTP.
+	auto_https off
+}
+
+:8080 {
+	encode gzip
+
+	# API-only paths (no client/SPA route collides with these) → always proxied.
+	# /auth/google/callback is here on purpose: Google redirects the BROWSER to it,
+	# so it must reach the server (it must NOT be subject to content negotiation).
+	@api path /auth/google* /auth/login /auth/register /auth/set-password /auth/email /subtasks* /schedule* /calendar* /categories* /ws*
+	handle @api {
+		reverse_proxy server:3000
+	}
+
+	# Paths that are BOTH an API route and a client (SPA) route: /tasks, /habits,
+	# /settings. Proxy to the API only for data (XHR/fetch) requests; serve the SPA
+	# for browser navigations (Accept: text/html) so a refresh or deep-link of those
+	# pages loads the app instead of raw JSON. The web client's fetch() sends
+	# Accept: */* (never text/html), so its API calls still reach the server.
+	@apiData {
+		not header Accept text/html*
+		path /tasks* /habits* /settings*
+	}
+	handle @apiData {
+		reverse_proxy server:3000
+	}
+
+	# Everything else: the SPA, with client-side-routing fallback to index.html
+	# (covers /, /signin, /register, /auth/callback, /priorities, /stats, /buffers,
+	# /hours, and browser navigations to /tasks /habits /settings).
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
