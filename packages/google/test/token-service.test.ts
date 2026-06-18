@@ -44,4 +44,15 @@ describe('TokenService', () => {
     const svc = createTokenService({ client, users, encryptionKey: key });
     await expect(svc.getAccessToken('u1', 1000)).rejects.toBeInstanceOf(GoogleNotConnectedError);
   });
+
+  it('exchangeCodeForLink returns profile + encrypted refresh token without writing a user', async () => {
+    const client = new FakeGoogleClient();
+    const users = fakeUserRepo();
+    const svc = createTokenService({ client, users, encryptionKey: key });
+    const out = await svc.exchangeCodeForLink('code', 'http://localhost/cb');
+    expect(out.email).toBe('a@example.com');
+    expect(out.googleUserId).toBe('g-123');
+    expect(decryptToken(out.encryptedRefreshToken, key)).toBe('refresh-1');
+    expect(await users.findByGoogleId('g-123')).toBeNull(); // no DB write
+  });
 });

@@ -237,6 +237,37 @@ export function fakeSubtaskRepo(seed: Subtask[] = [], taskRepo: { findById(userI
   };
 }
 
+export function fakeUserRepo(seed: User[] = []) {
+  const byId = new Map<string, User>(seed.map((u) => [u.id, u]));
+  let n = seed.length;
+  const make = (data: Partial<User>): User => ({
+    id: `u${++n}`, email: '', passwordHash: null, isAdmin: false, googleId: null,
+    googleRefreshToken: null, autoScheduledCalendarId: null,
+    createdAt: new Date(0), updatedAt: new Date(0), ...data,
+  } as User);
+  return {
+    async findById(id: string) { return byId.get(id) ?? null; },
+    async findByEmail(email: string) { return [...byId.values()].find((u) => u.email === email) ?? null; },
+    async findByGoogleId(googleId: string) { return [...byId.values()].find((u) => u.googleId === googleId) ?? null; },
+    async create(data: Partial<User>) { const u = make(data); byId.set(u.id, u); return u; },
+    async update(id: string, data: Partial<User>) {
+      const u = byId.get(id); if (!u) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`User ${id}`); }
+      Object.assign(u, data); return u;
+    },
+    _all: byId,
+  };
+}
+
+export function fakeInviteRepo(opts: { valid?: Set<string> } = {}) {
+  const consumed: string[] = [];
+  const valid = opts.valid ?? new Set<string>();
+  return {
+    async validate(code: string) { return valid.has(code); },
+    async consume(code: string) { consumed.push(code); valid.delete(code); },
+    consumed,
+  };
+}
+
 export interface TestAppOptions {
   tasks?: Task[];
   habits?: Habit[];
@@ -252,6 +283,9 @@ export interface TestAppOptions {
   accessToken?: string;
   insertEvent?: AppDeps['google']['client']['insertEvent'];
   deleteEvent?: AppDeps['google']['client']['deleteEvent'];
+  users?: User[];
+  registrationMode?: 'closed' | 'invite' | 'open';
+  validInvites?: string[];
 }
 
 export function buildTestApp(opts: TestAppOptions = {}) {
@@ -262,6 +296,11 @@ export function buildTestApp(opts: TestAppOptions = {}) {
   const scheduledBlocks = fakeScheduledBlockRepo(opts.blocks ?? []);
   const calendarEvents = fakeCalendarEventRepo(opts.calendarEvents ?? []);
   const categories = fakeCategoryRepo(opts.categories ?? []);
+  const users = fakeUserRepo(opts.users ?? [{
+    id: 'u1', email: 'a@example.com', passwordHash: null, isAdmin: false, googleId: 'g-1',
+    googleRefreshToken: 'enc', autoScheduledCalendarId: null, createdAt: new Date(0), updatedAt: new Date(0),
+  } as User]);
+  const invites = fakeInviteRepo({ valid: new Set(opts.validInvites ?? []) });
   const reconcileCalls: Array<{ userId: string; now: number }> = [];
 
   const events = createEventBus();
@@ -278,7 +317,7 @@ export function buildTestApp(opts: TestAppOptions = {}) {
   };
 
   const app = buildApp({
-    repos: { settings, tasks, habits, scheduledBlocks, calendarEvents, categories, subtasks },
+    repos: { settings, tasks, habits, scheduledBlocks, calendarEvents, categories, subtasks, users, invites },
     google: {
       client: {
         getConsentUrl: () => 'https://consent.example/auth',
@@ -291,6 +330,7 @@ export function buildTestApp(opts: TestAppOptions = {}) {
             id: 'u1', email: 'a@example.com', googleId: 'g-1', googleRefreshToken: 'enc',
             autoScheduledCalendarId: null, createdAt: new Date(0), updatedAt: new Date(0),
           } as User),
+        exchangeCodeForLink: async () => ({ email: 'a@example.com', googleUserId: 'g-1', encryptedRefreshToken: 'enc' }),
         getAccessToken: async () => {
           if (!opts.accessToken) throw new Error('not connected');
           return opts.accessToken;
@@ -303,11 +343,11 @@ export function buildTestApp(opts: TestAppOptions = {}) {
       return opts.reconcileResult ?? { created: 0, updated: 0, deleted: 0, pinned: 0, removed: 0 };
     },
     events,
-    config: { jwtSecret: 'test-secret', googleRedirectUri: 'http://localhost:3000/auth/google/callback', webClientUrl: opts.webClientUrl },
+    config: { jwtSecret: 'test-secret', googleRedirectUri: 'http://localhost:3000/auth/google/callback', webClientUrl: opts.webClientUrl, registrationMode: opts.registrationMode ?? 'open' },
     now: () => FIXED_NOW,
   });
 
-  return { app, tasks, subtasks, habits, settings, categories, reconcileCalls, emitted, events, FIXED_NOW };
+  return { app, tasks, subtasks, habits, settings, categories, users, invites, reconcileCalls, emitted, events, FIXED_NOW };
 }
 
 export async function tokenFor(app: Awaited<ReturnType<typeof buildTestApp>>['app'], userId = 'u1'): Promise<string> {

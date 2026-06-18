@@ -18,6 +18,10 @@ interface CachedToken {
 
 export interface TokenService {
   connectFromCode(code: string, redirectUri: string): Promise<User>;
+  exchangeCodeForLink(
+    code: string,
+    redirectUri: string,
+  ): Promise<{ email: string; googleUserId: string; encryptedRefreshToken: string }>;
   getAccessToken(userId: string, now: number): Promise<string>;
 }
 
@@ -37,6 +41,15 @@ export function createTokenService(deps: TokenServiceDeps): TokenService {
       }
       const created = await deps.users.create({ email: tokens.email, googleId: tokens.googleUserId });
       return deps.users.update(created.id, { googleRefreshToken: encrypted });
+    },
+
+    async exchangeCodeForLink(code, redirectUri) {
+      const tokens = await deps.client.exchangeCode(code, redirectUri);
+      return {
+        email: tokens.email,
+        googleUserId: tokens.googleUserId,
+        encryptedRefreshToken: encryptToken(tokens.refreshToken, deps.encryptionKey),
+      };
     },
 
     async getAccessToken(userId, now): Promise<string> {
