@@ -106,7 +106,7 @@ describe('humanizeMs', () => {
 describe('grid geometry', () => {
   it('exports the fixed column geometry constants', () => {
     expect(HOUR_ROW_PX).toBe(58);
-    expect(GRID_COLUMN_PX).toBe(((WINDOW_END_MIN - WINDOW_START_MIN) / 60) * 58); // 16 * 58 = 928
+    expect(GRID_COLUMN_PX).toBe(((WINDOW_END_MIN - WINDOW_START_MIN) / 60) * 58); // 24 * 58 = 1392
   });
 
   it('snapMinutes rounds to the nearest step (default 15)', () => {
@@ -118,7 +118,7 @@ describe('grid geometry', () => {
   });
 
   it('pxToMinutes maps the column height to the full window span', () => {
-    expect(pxToMinutes(GRID_COLUMN_PX)).toBe(WINDOW_END_MIN - WINDOW_START_MIN); // 928px -> 960 min
+    expect(pxToMinutes(GRID_COLUMN_PX)).toBe(WINDOW_END_MIN - WINDOW_START_MIN); // 1392px -> 1440 min
     expect(Math.round(pxToMinutes(HOUR_ROW_PX))).toBe(60); // one row -> 60 min
     expect(pxToMinutes(0)).toBe(0);
     expect(pxToMinutes(-GRID_COLUMN_PX)).toBe(-(WINDOW_END_MIN - WINDOW_START_MIN));
