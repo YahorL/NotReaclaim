@@ -29,7 +29,7 @@ export function createCalendarEventRepository(prisma: PrismaClient) {
         if (result.count === 0) {
           throw new NotFoundError(`CalendarEvent ${id}`);
         }
-        return await prisma.calendarEvent.findUniqueOrThrow({ where: { id } });
+        return await prisma.calendarEvent.findFirstOrThrow({ where: { id, userId } });
       } catch (error) {
         if (error instanceof NotFoundError) throw error;
         translatePrismaError(error);

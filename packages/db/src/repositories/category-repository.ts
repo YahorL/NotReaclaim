@@ -60,7 +60,7 @@ export function createCategoryRepository(prisma: PrismaClient) {
         if ('windows' in data) updateData.windows = data.windows === null ? Prisma.DbNull : data.windows;
         const result = await prisma.category.updateMany({ where: { id, userId }, data: updateData });
         if (result.count === 0) throw new NotFoundError(`Category ${id} not found for user`);
-        return await prisma.category.findUniqueOrThrow({ where: { id } });
+        return await prisma.category.findFirstOrThrow({ where: { id, userId } });
       } catch (error) {
         if (error instanceof NotFoundError) throw error;
         translatePrismaError(error);
