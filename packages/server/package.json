@@ -12,6 +12,7 @@
   "dependencies": {
     "@fastify/jwt": "^8.0.0",
     "@fastify/websocket": "8.3.1",
+    "@node-rs/argon2": "^2.0.2",
     "@notreclaim/core": "*",
     "@notreclaim/db": "*",
     "@notreclaim/google": "*",
