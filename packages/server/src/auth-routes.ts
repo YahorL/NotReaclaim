@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { AppDeps } from './app.js';
-import { authCallbackQuerySchema, registerSchema, loginSchema } from './schemas.js';
+import { authCallbackQuerySchema, registerSchema, loginSchema, setPasswordSchema, changeEmailSchema } from './schemas.js';
 import { hashPassword, verifyPassword } from './auth/password.js';
 import { normalizeEmail } from './auth/email.js';
 import { ensureUserDefaults } from './auth/user-defaults.js';
@@ -58,5 +58,19 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
     if (!user || !user.passwordHash) return invalid();
     if (!(await verifyPassword(user.passwordHash, body.password))) return invalid();
     return { token: signSession(app, user.id), userId: user.id };
+  });
+
+  const guard = { onRequest: [app.authenticate] };
+
+  app.post('/auth/set-password', guard, async (request, reply) => {
+    const { password } = setPasswordSchema.parse(request.body);
+    await deps.repos.users.update(request.userId, { passwordHash: await hashPassword(password) });
+    return reply.code(204).send();
+  });
+
+  app.patch('/auth/email', guard, async (request) => {
+    const { email } = changeEmailSchema.parse(request.body);
+    const user = await deps.repos.users.update(request.userId, { email: normalizeEmail(email) });
+    return { id: user.id, email: user.email };
   });
 }

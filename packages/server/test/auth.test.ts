@@ -106,4 +106,30 @@ describe('auth', () => {
     expect(missing.statusCode).toBe(401);
     expect(missing.json().message).toBe(wrong.json().message); // no user enumeration
   });
+
+  it('set-password lets a google-only user then log in with email+password', async () => {
+    const ctx = buildTestApp({
+      registrationMode: 'open',
+      users: [{ id: 'u1', email: 'g@x.com', passwordHash: null, isAdmin: false, googleId: 'g-1', googleRefreshToken: 'enc', autoScheduledCalendarId: null, createdAt: new Date(0), updatedAt: new Date(0) } as never],
+    });
+    const token = await tokenFor(ctx.app, 'u1');
+    const set = await ctx.app.inject({ method: 'POST', url: '/auth/set-password', headers: { authorization: `Bearer ${token}` }, payload: { password: 'brandnewpw1' } });
+    expect(set.statusCode).toBe(204);
+    const login = await ctx.app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'g@x.com', password: 'brandnewpw1' } });
+    expect(login.statusCode).toBe(200);
+  });
+
+  it('set-password requires auth', async () => {
+    const { app } = buildTestApp();
+    const res = await app.inject({ method: 'POST', url: '/auth/set-password', payload: { password: 'longenough1' } });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('change-email updates the account email', async () => {
+    const ctx = buildTestApp({ users: [{ id: 'u1', email: 'old@x.com', passwordHash: null, isAdmin: false, googleId: null, googleRefreshToken: null, autoScheduledCalendarId: null, createdAt: new Date(0), updatedAt: new Date(0) } as never] });
+    const token = await tokenFor(ctx.app, 'u1');
+    const res = await ctx.app.inject({ method: 'PATCH', url: '/auth/email', headers: { authorization: `Bearer ${token}` }, payload: { email: 'New@X.com' } });
+    expect(res.statusCode).toBe(200);
+    expect((await ctx.users.findById('u1'))?.email).toBe('new@x.com');
+  });
 });
