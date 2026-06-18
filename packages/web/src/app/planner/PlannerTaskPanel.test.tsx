@@ -16,7 +16,6 @@ function task(over: Partial<Task> = {}): Task {
 
 function renderPanel(tasks: Task[], preview?: SchedulePreview, handlers: Partial<{
   onComplete: (t: Task) => void; onEdit: (t: Task) => void; onDelete: (t: Task) => void;
-  onHide: () => void;
 }> = {}) {
   return render(
     <PlannerTaskPanel
@@ -26,7 +25,6 @@ function renderPanel(tasks: Task[], preview?: SchedulePreview, handlers: Partial
       onComplete={handlers.onComplete ?? vi.fn()}
       onEdit={handlers.onEdit ?? vi.fn()}
       onDelete={handlers.onDelete ?? vi.fn()}
-      onHide={handlers.onHide}
     />,
   );
 }
@@ -106,10 +104,4 @@ describe('PlannerTaskPanel', () => {
     expect(setData).toHaveBeenCalledWith('application/x-nr-task', 'drag-me');
   });
 
-  it('calls onHide when the hide button is clicked', () => {
-    const onHide = vi.fn();
-    renderPanel([], undefined, { onHide });
-    fireEvent.click(screen.getByTestId('panel-hide'));
-    expect(onHide).toHaveBeenCalledTimes(1);
-  });
 });

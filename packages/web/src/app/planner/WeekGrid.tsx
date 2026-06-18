@@ -5,6 +5,7 @@ import { InteractiveBlock } from './InteractiveBlock';
 import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY, snapClickToSlot, WINDOW_START_MIN, WINDOW_END_MIN, TIME_GUTTER_PX, GRID_COLUMN_PX, localMidnight, formatHm, weekdayLabel, dayOfMonth } from './weekModel';
 import { CreatePopover } from './CreatePopover';
 import { layoutOverlaps } from './overlapLayout';
+import { Icons } from '../shell/icons';
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i); // 00:00 → 23:00 row starts (full day)
 
@@ -37,6 +38,8 @@ export interface WeekGridProps {
   onScheduleTaskAt?: (taskId: string, dayStartMs: number, startMin: number) => void;
   accents?: Record<string, string>;
   zone?: string;
+  panelHidden?: boolean;
+  onTogglePanel?: () => void;
 }
 
 interface Item {
@@ -69,7 +72,7 @@ function toItems(blocks: ScheduledBlock[], events: CalendarEvent[], zone: string
 }
 
 export function WeekGrid(props: WeekGridProps) {
-  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit, onDeleteBlock, onDeleteEvent, onScheduleTaskAt, accents = {}, zone = 'UTC' } = props;
+  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit, onDeleteBlock, onDeleteEvent, onScheduleTaskAt, accents = {}, zone = 'UTC', panelHidden, onTogglePanel } = props;
   const gridCols = `${TIME_GUTTER_PX}px repeat(${days.length}, minmax(0, 1fr))`;
   const items = toItems(blocks, events, zone);
   const [creating, setCreating] = useState<{ dayIndex: number; startMin: number } | null>(null);
@@ -124,6 +127,17 @@ export function WeekGrid(props: WeekGridProps) {
             </span>
           ))}
         </div>
+        {onTogglePanel && (
+          <button
+            type="button"
+            data-testid={panelHidden ? 'panel-show' : 'panel-hide'}
+            aria-label={panelHidden ? 'Show tasks panel' : 'Hide tasks panel'}
+            onClick={onTogglePanel}
+            className="ml-1 shrink-0 rounded-[9px] p-2 text-inkSoft hover:bg-line hover:text-ink"
+          >
+            <Icons.panelRight size={20} />
+          </button>
+        )}
       </div>
 
       <div className="w-full">

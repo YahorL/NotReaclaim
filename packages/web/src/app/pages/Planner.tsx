@@ -127,20 +127,12 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           onDeleteEvent={(id) => deleteEvent.mutate(id)}
           onScheduleTaskAt={onScheduleTaskAt}
           accents={accents}
+          panelHidden={panelHidden}
+          onTogglePanel={() => setPanelHidden((h) => !h)}
         />
         {replan.isError && <p className="mt-2 text-sm text-red-600">Re-plan failed. Try again.</p>}
       </div>
-      {panelHidden ? (
-        <button
-          type="button"
-          data-testid="panel-show"
-          aria-label="Show tasks panel"
-          onClick={() => setPanelHidden(false)}
-          className="h-fit shrink-0 self-start rounded-[12px] border border-line bg-card px-2 py-4 text-[13px] font-bold text-inkSoft [writing-mode:vertical-rl] hover:text-ink"
-        >
-          Tasks ‹
-        </button>
-      ) : (
+      {!panelHidden && (
         <PlannerTaskPanel
           tasks={tasksQ.data ?? []}
           preview={preview.data}
@@ -148,7 +140,6 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           onComplete={onCompleteTask}
           onEdit={(t) => setEditingId(t.id)}
           onDelete={onDeleteTask}
-          onHide={() => setPanelHidden(true)}
         />
       )}
       {editing && (
