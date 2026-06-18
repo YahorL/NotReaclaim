@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ApiError } from '../../api/client';
 import { useSettingsQuery, useUpdateSettingsMutation } from '../../api/queries';
-import { toFormState, defaultFormState, toSettingsInput, type SettingsFormState } from '../settings/settingsForm';
+import { toFormState, defaultFormState, toSettingsInput, browserTimezone, type SettingsFormState } from '../settings/settingsForm';
 
 const labelCls = 'mb-0.5 block text-[10px] uppercase tracking-wide text-inkSoft';
 const errCls = 'text-[11px] text-red-600';
@@ -24,8 +24,7 @@ export function Buffers() {
     );
   }
 
-  const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const initial = settingsQ.data ? toFormState(settingsQ.data) : defaultFormState(browserTz);
+  const initial = settingsQ.data ? toFormState(settingsQ.data) : defaultFormState(browserTimezone());
 
   return <BuffersForm initial={initial} onSave={(input) => updateM.mutate(input)} saving={updateM.isPending} justSaved={updateM.isSuccess} />;
 }
