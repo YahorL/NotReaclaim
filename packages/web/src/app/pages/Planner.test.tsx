@@ -91,14 +91,14 @@ describe('Planner', () => {
     const api = makeApi({ listTasks: vi.fn(async () => [taskRow]), createScheduledBlock });
     renderWithProviders(<Planner now={() => NOW} />, { api });
     await waitFor(() => expect(screen.getByText('Deep work')).toBeInTheDocument()); // task loaded into the panel
-    const col = screen.getByTestId('day-col-0'); // today 2026-01-07 (TZ=UTC); jsdom 0-height → 06:00 slot
+    const col = screen.getByTestId('day-col-0'); // today 2026-01-07 (TZ=UTC); jsdom 0-height → 00:00 slot
     const dt = { types: ['application/x-nr-task'], getData: (t: string) => (t === 'application/x-nr-task' ? 't1' : ''), dropEffect: '' };
     fireEvent.drop(col, { clientY: 100, dataTransfer: dt });
     await waitFor(() => expect(createScheduledBlock).toHaveBeenCalledTimes(1));
     expect(createScheduledBlock).toHaveBeenCalledWith({
       taskId: 't1',
-      startsAt: '2026-01-07T06:00:00.000Z',
-      endsAt: '2026-01-07T07:00:00.000Z',
+      startsAt: '2026-01-07T00:00:00.000Z',
+      endsAt: '2026-01-07T01:00:00.000Z',
     });
   });
 

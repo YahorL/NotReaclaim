@@ -56,8 +56,9 @@ describe('WeekGrid click-to-create', () => {
     renderGridWithProviders();
     fireEvent.click(screen.getByTestId('day-col-2'), { clientY: 0 });
     expect(screen.getByTestId('create-popover')).toBeInTheDocument();
-    // jsdom: rect height 0 → fraction 0 → slot starts at the 06:00 window top
-    expect(screen.getByTestId('slot-label').textContent).toMatch(/06:00/);
+    // jsdom: rect height 0 → fraction 0 → slot starts at the 00:00 window top
+    // The slot label renders in locale 12-hour format (e.g. "12:00 AM") or 24-hour format ("00:00")
+    expect(screen.getByTestId('slot-label').textContent).toMatch(/12:00 AM|00:00/);
   });
 
   it('clicking an existing block does not open the popover', () => {
@@ -171,6 +172,17 @@ describe('WeekGrid', () => {
     const col = screen.getByTestId('day-col-0');
     fireEvent.dragOver(col, { clientY: 100, dataTransfer: { types: ['text/plain'], getData: () => '', dropEffect: '' } });
     expect(screen.queryByTestId('task-drop-indicator')).toBeNull();
+  });
+
+  it('puts the hour grid in a scroll container, below the day header', () => {
+    renderGrid();
+    const scroller = screen.getByTestId('hours-scroll');
+    expect(scroller.className).toMatch(/overflow-y-auto/);
+    // day headers are OUTSIDE the scroll container (they stay pinned)
+    expect(scroller.querySelector('[data-testid="day-header-0"]')).toBeNull();
+    expect(screen.getByTestId('day-header-0')).toBeInTheDocument();
+    // hour rows / day columns ARE inside the scroller
+    expect(scroller.querySelector('[data-testid="day-col-0"]')).not.toBeNull();
   });
 
   it('renders one column per day for a 3-day window and has no horizontal-scroll wrapper', () => {

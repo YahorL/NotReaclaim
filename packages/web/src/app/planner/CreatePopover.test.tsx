@@ -59,11 +59,11 @@ describe('CreatePopover', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('caps the duration so the slot cannot extend past the 22:00 window end', () => {
-    renderWithProviders(<CreatePopover {...baseProps} startMin={1305} />, { api: fakeApiClient() });
-    expect(screen.getByTestId('slot-label').textContent).toMatch(/09:45 PM.*10:00 PM|21:45.*22:00/); // 21:45 – 22:00 (15 min max)
+  it('caps the duration so the slot cannot extend past the 24:00 window end', () => {
+    renderWithProviders(<CreatePopover {...baseProps} startMin={1425} />, { api: fakeApiClient() });
+    expect(screen.getByTestId('slot-label').textContent).toMatch(/11:45 PM.*12:00 AM|23:45.*00:00/); // 23:45 – 24:00 (15 min max)
     fireEvent.click(screen.getByRole('button', { name: 'increase slot' }));
-    expect(screen.getByTestId('slot-label').textContent).toMatch(/09:45 PM.*10:00 PM|21:45.*22:00/); // still capped at 15 min
+    expect(screen.getByTestId('slot-label').textContent).toMatch(/11:45 PM.*12:00 AM|23:45.*00:00/); // still capped at 15 min
   });
 
   it('pins an existing task at the slot instead of creating a new one', async () => {

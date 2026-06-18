@@ -1,7 +1,7 @@
 import type { ScheduledBlock } from '../../api/types';
 
-export const WINDOW_START_MIN = 6 * 60;   // 06:00
-export const WINDOW_END_MIN = 22 * 60;    // 22:00
+export const WINDOW_START_MIN = 0;          // 00:00
+export const WINDOW_END_MIN = 24 * 60;      // 24:00 (full day)
 const MS_PER_MIN = 60_000;
 export const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -49,7 +49,7 @@ export interface BlockPosition {
 }
 
 /**
- * Position an interval within a day's 06:00-22:00 window, as top/height percentages.
+ * Position an interval within a day's 00:00-24:00 window, as top/height percentages.
  * Clamps to the window; returns null when the interval does not intersect the window
  * (outside hours, or a different day).
  */
@@ -90,7 +90,7 @@ export function humanizeMs(ms: number): string {
 
 /** One hour = 58px tall in the grid body (must match WeekGrid's h-[58px] rows). */
 export const HOUR_ROW_PX = 58;
-/** Fixed day-column pixel height: one 58px row per hour of the window (16 * 58 = 928). */
+/** Fixed day-column pixel height: one 58px row per hour of the window (24 * 58 = 1392). */
 export const GRID_COLUMN_PX = ((WINDOW_END_MIN - WINDOW_START_MIN) / 60) * HOUR_ROW_PX;
 
 /** Time-gutter width (px) — must match WeekGrid's first column. */
