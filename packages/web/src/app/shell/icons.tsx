@@ -44,6 +44,7 @@ export const Icons = {
   info: (p: IconProps) => <Ic {...p}><circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><circle cx="12" cy="8" r=".6" fill="currentColor" stroke="none" /></Ic>,
   pin: (p: IconProps) => <Ic {...p} d="M14 3l7 7-3 1-4 4-1 6-2-2-5 5 5-5-2-2 6-1 4-4 1-3z" />,
   panelLeft: (p: IconProps) => <Ic {...p}><rect x="3" y="4.5" width="18" height="15" rx="2.5" /><path d="M9 4.5v15" /><path d="M6.4 9.5 4.4 12l2 2.5" /></Ic>,
+  panelRight: (p: IconProps) => <Ic {...p}><rect x="3" y="4.5" width="18" height="15" rx="2.5" /><path d="M15 4.5v15" /><path d="M17.6 9.5 19.6 12l-2 2.5" /></Ic>,
   settings: (p: IconProps) => <Ic {...p}><circle cx="12" cy="12" r="3.2" /><path d="M19.4 13a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.6 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></Ic>,
   emoji: (p: IconProps) => <Ic {...p}><circle cx="12" cy="12" r="9" /><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0" /><circle cx="9" cy="9.5" r=".7" fill="currentColor" stroke="none" /><circle cx="15" cy="9.5" r=".7" fill="currentColor" stroke="none" /></Ic>,
 } satisfies Record<string, (p: IconProps) => ReactElement>;

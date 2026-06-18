@@ -12,7 +12,6 @@ export interface PlannerTaskPanelProps {
   onComplete: (task: Task) => void;
   onEdit: (task: Task) => void;
   onDelete: (task: Task) => void;
-  onHide?: () => void;
 }
 
 type Tab = 'priorities' | 'tasks';
@@ -80,7 +79,7 @@ function TaskCard({ task, nowMs, nextMs, atRisk, leftBorder, onComplete, onEdit,
   );
 }
 
-export function PlannerTaskPanel({ tasks, preview, nowMs, onComplete, onEdit, onDelete, onHide }: PlannerTaskPanelProps) {
+export function PlannerTaskPanel({ tasks, preview, nowMs, onComplete, onEdit, onDelete }: PlannerTaskPanelProps) {
   const [tab, setTab] = useState<Tab>('priorities');
 
   const active = useMemo(
@@ -135,17 +134,6 @@ export function PlannerTaskPanel({ tasks, preview, nowMs, onComplete, onEdit, on
             {t}
           </button>
         ))}
-        {onHide && (
-          <button
-            type="button"
-            data-testid="panel-hide"
-            aria-label="Hide tasks panel"
-            onClick={onHide}
-            className="ml-auto shrink-0 rounded-[9px] px-2 py-1.5 text-[18px] leading-none text-inkSoft hover:bg-line hover:text-ink"
-          >
-            ›
-          </button>
-        )}
       </div>
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-2.5">
