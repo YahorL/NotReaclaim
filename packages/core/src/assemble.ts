@@ -85,6 +85,13 @@ export async function assembleScheduleInput(
     .filter((b) => b.pinned && b.endsAt.getTime() > now)
     .map(toScheduledBlock);
 
+  // A task the user has Started becomes user-managed: stop auto-scheduling it (no surprise
+  // "remainder" tiles when Start shrinks its block). Its pinned/started blocks stay; apply
+  // clears its stale auto blocks since it drops out of the desired schedule.
+  const startedTaskIds = new Set(
+    blocks.filter((b) => b.startedAt != null && b.taskId != null).map((b) => b.taskId as string),
+  );
+
   // Pinned-block coverage reduces the work the engine must (re)place.
   const taskCoverageMs = new Map<string, number>();
   for (const b of pinnedBlocks) {
@@ -97,6 +104,7 @@ export async function assembleScheduleInput(
   const tasks: FlexibleTask[] = [];
   for (const t of allTasks) {
     if (!SCHEDULABLE_TASK_STATUSES.includes(t.status)) continue;
+    if (startedTaskIds.has(t.id)) continue; // started → user-managed
     const flexible = toFlexibleTask(t);
     const spent = computeSpentMs(t.id, blocks, settings.requireStartToTrack, now);
     const remaining = flexible.durationMs - (taskCoverageMs.get(t.id) ?? 0) - spent;
