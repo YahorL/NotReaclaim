@@ -199,4 +199,12 @@ describe('WeekGrid', () => {
     expect(screen.getByTestId('day-header-0').textContent).toMatch(/Wed/);
   });
 
+  it('labels a block in the provided timezone', () => {
+    const day = new Date('2026-06-18T04:00:00.000Z').getTime(); // NY midnight
+    const blocks = [block({ id: 'b1', title: 'Morning', startsAt: '2026-06-18T13:00:00.000Z', endsAt: '2026-06-18T14:00:00.000Z' })];
+    renderGrid({ days: [day], blocks, nowMs: Date.parse('2026-06-18T16:00:00.000Z'), zone: 'America/New_York' });
+    const tile = screen.getAllByTestId('event-block').find((b) => b.textContent?.includes('Morning'))!;
+    expect(tile.textContent).toMatch(/09:00 AM/); // 13:00Z = 9am EDT
+  });
+
 });

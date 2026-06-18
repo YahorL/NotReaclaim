@@ -2,11 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import type { ScheduledBlock, CalendarEvent } from '../../api/types';
 import { EventBlock, type BlockKind } from './EventBlock';
 import { InteractiveBlock } from './InteractiveBlock';
-import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY, snapClickToSlot, WINDOW_START_MIN, WINDOW_END_MIN, TIME_GUTTER_PX, GRID_COLUMN_PX, localMidnight } from './weekModel';
+import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY, snapClickToSlot, WINDOW_START_MIN, WINDOW_END_MIN, TIME_GUTTER_PX, GRID_COLUMN_PX, localMidnight, formatHm, weekdayLabel, dayOfMonth } from './weekModel';
 import { CreatePopover } from './CreatePopover';
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i); // 00:00 → 23:00 row starts (full day)
-const dayLabel = (ms: number): string => new Date(ms).toLocaleDateString([], { weekday: 'short' });
 
 const LEGEND: { label: string; swatch: string }[] = [
   { label: 'Meeting', swatch: 'bg-event' },
@@ -36,6 +35,7 @@ export interface WeekGridProps {
   onDeleteEvent?: (id: string) => void;
   onScheduleTaskAt?: (taskId: string, dayStartMs: number, startMin: number) => void;
   accents?: Record<string, string>;
+  zone?: string;
 }
 
 interface Item {
@@ -51,30 +51,26 @@ interface Item {
   taskId: string | null;
 }
 
-function timeLabel(ms: number): string {
-  return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-function toItems(blocks: ScheduledBlock[], events: CalendarEvent[]): Item[] {
+function toItems(blocks: ScheduledBlock[], events: CalendarEvent[], zone: string): Item[] {
   const fromBlocks = blocks.map((b): Item => {
     const cls = classifyBlock(b);
     const startMs = Date.parse(b.startsAt);
     return { key: `b:${b.id}`, title: b.title, kind: cls.kind, pinned: cls.pinned,
-      startMs, endMs: Date.parse(b.endsAt), startLabel: timeLabel(startMs), blockId: b.id,
+      startMs, endMs: Date.parse(b.endsAt), startLabel: formatHm(startMs, zone), blockId: b.id,
       eventId: null, taskId: b.taskId };
   });
   const fromEvents = events.map((e): Item => {
     const startMs = Date.parse(e.startsAt);
     return { key: `e:${e.id}`, title: e.title, kind: 'meeting', pinned: false,
-      startMs, endMs: Date.parse(e.endsAt), startLabel: timeLabel(startMs), blockId: null, eventId: e.id, taskId: null };
+      startMs, endMs: Date.parse(e.endsAt), startLabel: formatHm(startMs, zone), blockId: null, eventId: e.id, taskId: null };
   });
   return [...fromEvents, ...fromBlocks];
 }
 
 export function WeekGrid(props: WeekGridProps) {
-  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit, onDeleteBlock, onDeleteEvent, onScheduleTaskAt, accents = {} } = props;
+  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit, onDeleteBlock, onDeleteEvent, onScheduleTaskAt, accents = {}, zone = 'UTC' } = props;
   const gridCols = `${TIME_GUTTER_PX}px repeat(${days.length}, minmax(0, 1fr))`;
-  const items = toItems(blocks, events);
+  const items = toItems(blocks, events, zone);
   const [creating, setCreating] = useState<{ dayIndex: number; startMin: number } | null>(null);
   // Live drop indicator while dragging a task card from the side panel over the grid.
   const [taskDrop, setTaskDrop] = useState<{ dayIndex: number; startMin: number } | null>(null);
@@ -84,7 +80,7 @@ export function WeekGrid(props: WeekGridProps) {
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const minOfDay = Math.max(0, Math.min(WINDOW_END_MIN, (nowMs - localMidnight(nowMs)) / 60_000));
+    const minOfDay = Math.max(0, Math.min(WINDOW_END_MIN, (nowMs - localMidnight(nowMs, zone)) / 60_000));
     el.scrollTop = Math.max(0, (minOfDay / (WINDOW_END_MIN - WINDOW_START_MIN)) * GRID_COLUMN_PX - 64);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- scroll to "now" once on mount
   }, []);
@@ -136,7 +132,7 @@ export function WeekGrid(props: WeekGridProps) {
             <div />
             {days.map((d, i) => {
               const today = isToday(nowMs, d);
-              const date = new Date(d).getDate();
+              const date = dayOfMonth(d, zone);
               return (
                 <div
                   key={d}
@@ -144,7 +140,7 @@ export function WeekGrid(props: WeekGridProps) {
                   data-today={today}
                   className="border-l border-line py-3 text-center"
                 >
-                  <div className="text-[13px] font-bold uppercase tracking-wide text-inkSoft">{dayLabel(d)}</div>
+                  <div className="text-[13px] font-bold uppercase tracking-wide text-inkSoft">{weekdayLabel(d, zone)}</div>
                   <div className="mt-0.5 text-[21px] font-extrabold">
                     {today
                       ? <span className="rounded-[9px] bg-indigo px-[9px] py-[1px] text-white">{date}</span>
@@ -215,6 +211,7 @@ export function WeekGrid(props: WeekGridProps) {
                           onDelete={onDeleteBlock ? () => onDeleteBlock(blockId) : undefined}
                           dayCount={days.length}
                           accent={accent}
+                          zone={zone}
                         />
                       );
                     }
@@ -249,6 +246,7 @@ export function WeekGrid(props: WeekGridProps) {
                       topPct={((creating.startMin - WINDOW_START_MIN) / (WINDOW_END_MIN - WINDOW_START_MIN)) * 100}
                       onClose={() => setCreating(null)}
                       align={i <= 3 ? 'left' : 'right'}
+                      zone={zone}
                     />
                   )}
                 </div>

@@ -112,6 +112,18 @@ describe('Planner', () => {
     expect(screen.getByTestId('planner-task-panel')).toBeInTheDocument();
   });
 
+  it('renders the schedule range query for the settings timezone', async () => {
+    // with NY zone, today's column start is NY midnight (04:00Z in EDT; but NOW is Jan, so EST UTC-5 → 05:00Z)
+    const getSchedule = vi.fn(async () => blocks);
+    const api = makeApi({ getSchedule, getSettings: async () => ({ id:'s', userId:'u1', timezone:'America/New_York', workingHours:[], horizonDays:14, defaultMinChunkMs:1, defaultMaxChunkMs:1, meetingBufferMs:0, taskBufferMs:0, createdAt:'', updatedAt:'' } as never) });
+    renderWithProviders(<Planner now={() => NOW} />, { api });
+    // Wait until the planner re-anchors after settings load: the NY-zone from must be 05:00Z (EST UTC-5)
+    await waitFor(() => {
+      const calls = getSchedule.mock.calls as unknown[][];
+      expect(calls.some((c) => c[0] === '2026-01-07T05:00:00.000Z')).toBe(true);
+    });
+  });
+
   it('task block is tinted when its category has a color', async () => {
     // blocks[0] has taskId:'t1'; task has categoryId:'cat-1'; category has color:'#5b62e3'
     const task: Task = {

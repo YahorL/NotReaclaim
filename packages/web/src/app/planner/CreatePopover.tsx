@@ -3,10 +3,9 @@ import { ApiError } from '../../api/client';
 import { useCreateTaskMutation, useCreateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useCategoriesQuery } from '../../api/queries';
 import { DurationStepper } from '../components/DurationStepper';
 import { isoToLocalInput, localInputToIso } from '../lib/duration';
-import { WINDOW_END_MIN, MS_PER_DAY, localMidnight } from './weekModel';
+import { WINDOW_END_MIN, MS_PER_DAY, localMidnight, formatHm } from './weekModel';
 
 const iso = (ms: number): string => new Date(ms).toISOString();
-const fmt = (ms: number): string => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 export interface CreatePopoverProps {
   dayStartMs: number;
@@ -15,11 +14,12 @@ export interface CreatePopoverProps {
   onClose: () => void;
   align?: 'left' | 'right';
   now?: () => number;
+  zone?: string;
 }
 
 type Mode = 'event' | 'task';
 
-export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = 'left', now = () => Date.now() }: CreatePopoverProps) {
+export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = 'left', now = () => Date.now(), zone = 'UTC' }: CreatePopoverProps) {
   const [mode, setMode] = useState<Mode>('event');
   const [title, setTitle] = useState('');
   const [taskId, setTaskId] = useState('');
@@ -160,7 +160,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
       <div className="mb-1 rounded-[9px] border-[1.5px] border-line px-2.5 py-1.5">
         <DurationStepper label="slot" size={22} valueMs={durationMs} onChange={(ms) => setDurationMs(Math.max(15 * 60_000, Math.min(ms, maxDurationMs)))} />
       </div>
-      <p data-testid="slot-label" className="mb-2 text-[13px] font-semibold text-inkSoft">{fmt(startMs)} – {fmt(endMs)}</p>
+      <p data-testid="slot-label" className="mb-2 text-[13px] font-semibold text-inkSoft">{formatHm(startMs, zone)} – {formatHm(endMs, zone)}</p>
       {apiError && <p data-testid="create-error" className="mb-2 text-[11px] text-crit">{apiError.message}</p>}
       <button
         type="button"
