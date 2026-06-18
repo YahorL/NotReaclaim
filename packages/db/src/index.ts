@@ -23,6 +23,8 @@ export type { CalendarSyncStateRepository, UpsertSyncStateInput } from './reposi
 export { createSubtaskRepository } from './repositories/subtask-repository.js';
 export type { SubtaskRepository, CreateSubtaskInput, UpdateSubtaskInput } from './repositories/subtask-repository.js';
 export type { TaskWithSubtasks } from './repositories/task-repository.js';
+export { createInviteCodeRepository } from './repositories/invite-code-repository.js';
+export type { InviteCodeRepository, CreateInviteCodeInput } from './repositories/invite-code-repository.js';
 
 // Re-export Prisma model types and enums so consumers can type rows without
 // importing the Prisma client runtime.
@@ -36,6 +38,7 @@ export type {
   Habit,
   ScheduledBlock,
   CalendarSyncState,
+  InviteCode,
   TaskStatus,
   HabitStatus,
   HabitPeriod,
