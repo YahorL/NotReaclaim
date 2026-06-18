@@ -73,7 +73,7 @@ export function createTaskRepository(prisma: PrismaClient) {
         if (result.count === 0) {
           throw new NotFoundError(`Task ${id} not found for user`);
         }
-        return await prisma.task.findUniqueOrThrow({ where: { id } });
+        return await prisma.task.findFirstOrThrow({ where: { id, userId } });
       } catch (error) {
         if (error instanceof NotFoundError) throw error;
         translatePrismaError(error);

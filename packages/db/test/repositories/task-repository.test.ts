@@ -156,4 +156,21 @@ describe('TaskRepository', () => {
     const fetched = await repo.findById(user.id, t.id);
     expect(fetched!.subtasks.map((s) => s.title)).toEqual(['second', 'first']);
   });
+
+  it('update cannot touch another user\'s task and returns the caller\'s row', async () => {
+    const a = await users.create({ email: `a-${Math.random()}@x.com` });
+    const b = await users.create({ email: `b-${Math.random()}@x.com` });
+    const t = await repo.create(a.id, taskInput({ title: 'A task' }));
+    await expect(repo.update(b.id, t.id, { title: 'hijack' })).rejects.toBeInstanceOf(NotFoundError);
+    const still = await repo.findById(a.id, t.id);
+    expect(still?.title).toBe('A task');
+  });
+
+  it('a successful update returns the row scoped to the owner', async () => {
+    const a = await users.create({ email: `o-${Math.random()}@x.com` });
+    const t = await repo.create(a.id, taskInput({ title: 'Owned' }));
+    const updated = await repo.update(a.id, t.id, { title: 'Owned 2' });
+    expect(updated.userId).toBe(a.id);
+    expect(updated.title).toBe('Owned 2');
+  });
 });

@@ -48,6 +48,11 @@ export interface ApiClient {
   createScheduledBlock(body: CreateScheduledBlockInput): Promise<ScheduledBlock>;
   startBlock(id: string): Promise<ScheduledBlock>;
   stopBlock(id: string): Promise<ScheduledBlock>;
+  register(body: { email: string; password: string; inviteCode?: string }): Promise<{ token: string; userId: string }>;
+  login(body: { email: string; password: string }): Promise<{ token: string; userId: string }>;
+  setPassword(password: string): Promise<void>;
+  changeEmail(email: string): Promise<{ id: string; email: string }>;
+  getLinkGoogleUrl(): Promise<{ url: string }>;
 }
 
 export function createApiClient(config: ApiClientConfig): ApiClient {
@@ -122,5 +127,10 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
     createScheduledBlock: (body) => request('POST', '/schedule', body),
     startBlock: (id) => request('POST', `/schedule/${id}/start`),
     stopBlock: (id) => request('POST', `/schedule/${id}/stop`),
+    register: (body) => request('POST', '/auth/register', body),
+    login: (body) => request('POST', '/auth/login', body),
+    setPassword: (password) => request('POST', '/auth/set-password', { password }),
+    changeEmail: (email) => request('PATCH', '/auth/email', { email }),
+    getLinkGoogleUrl: () => request('GET', '/auth/google/link'),
   };
 }

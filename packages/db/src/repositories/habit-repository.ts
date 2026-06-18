@@ -44,7 +44,7 @@ export function createHabitRepository(prisma: PrismaClient) {
         if (result.count === 0) {
           throw new NotFoundError(`Habit ${id} not found for user`);
         }
-        return await prisma.habit.findUniqueOrThrow({ where: { id } });
+        return await prisma.habit.findFirstOrThrow({ where: { id, userId } });
       } catch (error) {
         if (error instanceof NotFoundError) throw error;
         translatePrismaError(error);

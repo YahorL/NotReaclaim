@@ -1,8 +1,11 @@
+export type RegistrationMode = 'closed' | 'invite' | 'open';
+
 export interface ServerConfig {
   port: number;
   jwtSecret: string;
   pollIntervalMs: number;
   webClientUrl?: string;
+  registrationMode: RegistrationMode;
 }
 
 /** Read and validate server-specific env (Google/encryption come from loadGoogleConfig). */
@@ -16,5 +19,9 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerCo
     throw new Error(`Invalid POLL_INTERVAL_MS: ${env.POLL_INTERVAL_MS}`);
   }
   const webClientUrl = env.WEB_CLIENT_URL ? env.WEB_CLIENT_URL.replace(/\/$/, '') : undefined;
-  return { port, jwtSecret, pollIntervalMs, webClientUrl };
+  const registrationMode = (env.REGISTRATION_MODE ?? 'closed') as RegistrationMode;
+  if (!['closed', 'invite', 'open'].includes(registrationMode)) {
+    throw new Error(`Invalid REGISTRATION_MODE: ${env.REGISTRATION_MODE}`);
+  }
+  return { port, jwtSecret, pollIntervalMs, webClientUrl, registrationMode };
 }

@@ -60,6 +60,7 @@ export function createGoogleClient(config: GoogleClientConfig): GoogleClient {
         expiresAt: tokens.expiry_date ?? 0,
         googleUserId: payload.sub,
         email: payload.email,
+        emailVerified: payload.email_verified === true,
       };
     },
 

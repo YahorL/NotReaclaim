@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { SignIn } from '../auth/SignIn';
+import { Register } from '../auth/Register';
 import { AuthCallback } from '../auth/AuthCallback';
 import { ProtectedRoute } from './ProtectedRoute';
 import { AppShell } from './AppShell';
@@ -15,6 +16,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/signin" element={<SignIn />} />
+      <Route path="/register" element={<Register />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route element={<ProtectedRoute />}>
         <Route element={<AppShell />}>

@@ -8,8 +8,11 @@ import type {
   CalendarEventRepository,
   CategoryRepository,
   SubtaskRepository,
+  UserRepository,
+  InviteCodeRepository,
 } from '@notreclaim/db';
 import type { SchedulingRepositories } from '@notreclaim/core';
+import type { RegistrationMode } from './config.js';
 import type { GoogleClient, TokenService, ReconcileResult } from '@notreclaim/google';
 import { mapDomainError } from './errors.js';
 import { registerAuthRoutes } from './auth-routes.js';
@@ -34,15 +37,17 @@ export interface AppDeps {
     calendarEvents: Pick<CalendarEventRepository, 'listByUserInRange' | 'create' | 'setGoogleIds' | 'findById' | 'delete'>;
     categories: CategoryRepository;
     subtasks: SubtaskRepository;
+    users: Pick<UserRepository, 'findById' | 'findByEmail' | 'findByGoogleId' | 'create' | 'update'>;
+    invites: Pick<InviteCodeRepository, 'tryConsume'>;
   };
   google: {
     client: Pick<GoogleClient, 'getConsentUrl' | 'insertEvent' | 'deleteEvent'>;
-    tokens: Pick<TokenService, 'connectFromCode' | 'getAccessToken'>;
+    tokens: Pick<TokenService, 'connectFromCode' | 'exchangeCodeForLink' | 'getAccessToken'>;
   };
   schedulingRepos: SchedulingRepositories;
   reconcile: (userId: string, now: number) => Promise<ReconcileResult>;
   events: EventBus;
-  config: { jwtSecret: string; googleRedirectUri: string; webClientUrl?: string };
+  config: { jwtSecret: string; googleRedirectUri: string; webClientUrl?: string; registrationMode: RegistrationMode };
   now: () => number;
 }
 

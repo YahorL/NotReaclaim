@@ -38,6 +38,11 @@ export function fakeApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     createScheduledBlock: notImplemented('createScheduledBlock'),
     startBlock: notImplemented('startBlock'),
     stopBlock: notImplemented('stopBlock'),
+    register: notImplemented('register'),
+    login: notImplemented('login'),
+    setPassword: notImplemented('setPassword'),
+    changeEmail: notImplemented('changeEmail'),
+    getLinkGoogleUrl: notImplemented('getLinkGoogleUrl'),
   } as unknown as ApiClient;
   return { ...base, ...overrides };
 }

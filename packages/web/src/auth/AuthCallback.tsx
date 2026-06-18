@@ -9,6 +9,8 @@ export function AuthCallback() {
 
   useEffect(() => {
     const params = new URLSearchParams(hash.replace(/^#/, ''));
+    const err = params.get('error');
+    if (err) { navigate(`/signin?error=${encodeURIComponent(err)}`, { replace: true }); return; }
     const token = params.get('token');
     const userId = params.get('userId');
     if (token && userId) {

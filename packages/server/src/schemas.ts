@@ -2,7 +2,8 @@ import { z } from 'zod';
 
 export const idParamSchema = z.object({ id: z.string().min(1) });
 
-export const authCallbackQuerySchema = z.object({ code: z.string().min(1) });
+export const authCallbackQuerySchema = z.object({ code: z.string().min(1), state: z.string().optional() });
+export const consentQuerySchema = z.object({ invite: z.string().min(1).optional() });
 
 export const createTaskSchema = z.object({
   title: z.string().min(1),
@@ -110,3 +111,15 @@ export const updateScheduledBlockSchema = z
   .refine((b) => !(b.startsAt && b.endsAt) || Date.parse(b.startsAt) < Date.parse(b.endsAt), {
     message: 'startsAt must be before endsAt',
   });
+
+export const registerSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(10),
+  inviteCode: z.string().min(1).optional(),
+});
+export const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+export const setPasswordSchema = z.object({ password: z.string().min(10) });
+export const changeEmailSchema = z.object({ email: z.string().email() });

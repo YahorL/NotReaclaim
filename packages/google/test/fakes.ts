@@ -31,6 +31,7 @@ export class FakeGoogleClient implements GoogleClient {
     expiresAt: 0,
     googleUserId: 'g-123',
     email: 'a@example.com',
+    emailVerified: true,
   };
   refreshResponses: Array<{ accessToken: string; expiresAt: number }> = [];
   listQueue: Array<ListEventsResult | 'GONE'> = [];

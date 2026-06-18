@@ -82,4 +82,18 @@ describe('createApiClient', () => {
     expect(JSON.parse(init.body as string)).toMatchObject({ pinned: true });
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer t');
   });
+
+  it('register POSTs credentials and returns the token', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ token: 't', userId: 'u' }));
+    vi.stubGlobal('fetch', fetchMock);
+    const api = createApiClient({ baseUrl: '', getToken: () => null });
+
+    const out = await api.register({ email: 'a@x.com', password: 'longenough1' });
+
+    expect(out).toEqual({ token: 't', userId: 'u' });
+    const calls = fetchMock.mock.calls as unknown as [[string, RequestInit]];
+    expect(calls[0][0]).toBe('/auth/register');
+    expect(calls[0][1].method).toBe('POST');
+    expect(JSON.parse(calls[0][1].body as string)).toMatchObject({ email: 'a@x.com' });
+  });
 });

@@ -30,4 +30,10 @@ describe('loadServerConfig', () => {
   it('strips a trailing slash from WEB_CLIENT_URL', () => {
     expect(loadServerConfig({ JWT_SECRET: 's', WEB_CLIENT_URL: 'http://localhost:5173/' } as NodeJS.ProcessEnv).webClientUrl).toBe('http://localhost:5173');
   });
+
+  it('defaults REGISTRATION_MODE to closed and validates the value', () => {
+    expect(loadServerConfig({ JWT_SECRET: 's' } as NodeJS.ProcessEnv).registrationMode).toBe('closed');
+    expect(loadServerConfig({ JWT_SECRET: 's', REGISTRATION_MODE: 'open' } as NodeJS.ProcessEnv).registrationMode).toBe('open');
+    expect(() => loadServerConfig({ JWT_SECRET: 's', REGISTRATION_MODE: 'bogus' } as NodeJS.ProcessEnv)).toThrow();
+  });
 });

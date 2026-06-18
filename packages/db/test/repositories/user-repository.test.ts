@@ -56,6 +56,20 @@ describe('UserRepository', () => {
     expect(ids).toHaveLength(1);
   });
 
+  it('creates a user with a passwordHash and isAdmin', async () => {
+    const user = await repo.create({ email: 'pw@example.com', passwordHash: 'argon$hash', isAdmin: true });
+    const found = await repo.findById(user.id);
+    expect(found?.passwordHash).toBe('argon$hash');
+    expect(found?.isAdmin).toBe(true);
+  });
+
+  it('sets a passwordHash on an existing user via update', async () => {
+    const user = await repo.create({ email: 'set@example.com' });
+    expect(user.passwordHash).toBeNull();
+    const updated = await repo.update(user.id, { passwordHash: 'new$hash' });
+    expect(updated.passwordHash).toBe('new$hash');
+  });
+
   it('cascade-deletes child rows when the user is deleted', async () => {
     const user = await repo.create({ email: 'cascade@example.com' });
     const task = await prisma.task.create({

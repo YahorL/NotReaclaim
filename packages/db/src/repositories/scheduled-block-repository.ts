@@ -51,7 +51,7 @@ export function createScheduledBlockRepository(prisma: PrismaClient) {
         if (result.count === 0) {
           throw new NotFoundError(`ScheduledBlock ${id} not found for user`);
         }
-        return await prisma.scheduledBlock.findUniqueOrThrow({ where: { id } });
+        return await prisma.scheduledBlock.findFirstOrThrow({ where: { id, userId } });
       } catch (error) {
         if (error instanceof NotFoundError) throw error;
         translatePrismaError(error);
@@ -64,7 +64,7 @@ export function createScheduledBlockRepository(prisma: PrismaClient) {
         if (result.count === 0) {
           throw new NotFoundError(`ScheduledBlock ${id} not found for user`);
         }
-        return await prisma.scheduledBlock.findUniqueOrThrow({ where: { id } });
+        return await prisma.scheduledBlock.findFirstOrThrow({ where: { id, userId } });
       } catch (error) {
         if (error instanceof NotFoundError) throw error;
         translatePrismaError(error);
