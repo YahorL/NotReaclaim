@@ -94,6 +94,29 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
     return block;
   });
 
+  app.post('/schedule/:id/stop', guard, async (request, reply) => {
+    const { id } = idParamSchema.parse(request.params);
+    const blockRow = await deps.repos.scheduledBlocks.findById(request.userId, id);
+    if (!blockRow) {
+      reply.code(404).send({ code: 'not_found', message: `ScheduledBlock ${id} not found` });
+      return;
+    }
+    if (!blockRow.taskId) {
+      reply.code(400).send({ code: 'bad_request', message: 'Only task blocks can be stopped' });
+      return;
+    }
+    const now = deps.now();
+    const startMs = blockRow.startsAt.getTime();
+    const endMs = blockRow.endsAt.getTime();
+    const minEnd = startMs + 15 * 60 * 1000;
+    // End the running block now: snap end to the nearest 15 min, never below start+15 min
+    // (no zero-length block) and never past the original end (Stop only shortens).
+    const newEnd = Math.min(endMs, Math.max(round15(now), minEnd));
+    const block = await deps.repos.scheduledBlocks.update(request.userId, id, { endsAt: new Date(newEnd), pinned: true });
+    afterMutation(request.userId);
+    return block;
+  });
+
   app.delete('/schedule/:id', guard, async (request, reply) => {
     const { id } = idParamSchema.parse(request.params);
     // No reconcile here: deleting a block clears it from the planner. The task (if any)

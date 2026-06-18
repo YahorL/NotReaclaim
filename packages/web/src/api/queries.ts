@@ -264,3 +264,15 @@ export function useStartBlockMutation() {
     },
   });
 }
+
+export function useStopBlockMutation() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.stopBlock(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.scheduleRoot });
+      void qc.invalidateQueries({ queryKey: queryKeys.tasksRoot });
+    },
+  });
+}

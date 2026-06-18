@@ -2,7 +2,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Icons } from './icons';
 import { routeTitle } from './routeTitle';
 import { AccountMenu } from './AccountMenu';
-import { useScheduleQuery, useStartBlockMutation } from '../../api/queries';
+import { useScheduleQuery, useStartBlockMutation, useStopBlockMutation } from '../../api/queries';
 import { relativeDayTimeLabel } from '../priorities/priorityBucket';
 
 interface TopBarProps {
@@ -17,11 +17,21 @@ export function TopBar({ onNewTask, now = Date.now, sidebarHidden, onToggleSideb
   const navigate = useNavigate();
   const scheduleQ = useScheduleQuery();
   const startBlock = useStartBlockMutation();
+  const stopBlock = useStopBlockMutation();
   const nowMs = now();
 
-  const nextBlock = (scheduleQ.data ?? [])
-    .filter((b) => b.taskId != null && Date.parse(b.startsAt) > nowMs)
-    .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))[0] ?? null;
+  const taskBlocks = (scheduleQ.data ?? []).filter((b) => b.taskId != null);
+  // "Running" = a task you've Started that hasn't ended. We don't also require start <= now:
+  // Start snaps the start to round15(now), which can land a few minutes in the future, and a
+  // started block is still the one you're working on. A block resized to end before now drops out.
+  const running = taskBlocks
+    .filter((b) => b.startedAt != null && Date.parse(b.endsAt) > nowMs)
+    .sort((a, b) => Date.parse(a.endsAt) - Date.parse(b.endsAt))[0] ?? null;
+  const nextBlock = running
+    ? null
+    : taskBlocks
+        .filter((b) => b.startedAt == null && Date.parse(b.startsAt) > nowMs)
+        .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))[0] ?? null;
 
   return (
     <header className="flex h-[70px] shrink-0 items-center gap-3.5 bg-bg pl-[30px] pr-[26px]">
@@ -38,6 +48,28 @@ export function TopBar({ onNewTask, now = Date.now, sidebarHidden, onToggleSideb
       )}
       <h1 className="flex-1 text-[27px] font-extrabold tracking-[-.5px] text-ink">{routeTitle(pathname)}</h1>
 
+      {running && (
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            data-testid="current-task"
+            onClick={() => void navigate('/')}
+            className="flex items-center gap-1.5 rounded-[9px] px-3 py-2 text-[14px] font-semibold text-ink/70 hover:bg-line"
+          >
+            <Icons.clock size={16} />
+            Now: {running.title}
+          </button>
+          <button
+            type="button"
+            data-testid="stop-task"
+            onClick={() => stopBlock.mutate(running.id)}
+            className="rounded-[9px] bg-crit px-3 py-2 text-[13px] font-bold text-white hover:opacity-90"
+          >
+            Stop
+          </button>
+        </div>
+      )}
+
       {nextBlock && (
         <div className="flex items-center gap-1.5">
           <button
@@ -49,18 +81,14 @@ export function TopBar({ onNewTask, now = Date.now, sidebarHidden, onToggleSideb
             <Icons.clock size={16} />
             Next: {nextBlock.title} · {relativeDayTimeLabel(Date.parse(nextBlock.startsAt), nowMs)}
           </button>
-          {nextBlock.startedAt
-            ? <span data-testid="next-task-started" className="text-[13px] font-semibold text-inkSoft">Started</span>
-            : (
-              <button
-                type="button"
-                data-testid="next-task-start"
-                onClick={() => startBlock.mutate(nextBlock.id)}
-                className="rounded-[9px] bg-indigo px-3 py-2 text-[13px] font-bold text-white hover:bg-indigo600"
-              >
-                Start
-              </button>
-            )}
+          <button
+            type="button"
+            data-testid="next-task-start"
+            onClick={() => startBlock.mutate(nextBlock.id)}
+            className="rounded-[9px] bg-indigo px-3 py-2 text-[13px] font-bold text-white hover:bg-indigo600"
+          >
+            Start
+          </button>
         </div>
       )}
 

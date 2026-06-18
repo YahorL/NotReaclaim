@@ -184,6 +184,48 @@ describe('POST /schedule/:id/start', () => {
   });
 });
 
+describe('POST /schedule/:id/stop', () => {
+  it('snaps the end to the nearest 15 min of now, keeping the start', async () => {
+    // block 2026-01-04T23:00 → 2026-01-05T01:00 spans FIXED_NOW (00:00); round15(00:00)=00:00
+    const b = block({ id: 'b1', startsAt: new Date('2026-01-04T23:00:00.000Z'), endsAt: new Date('2026-01-05T01:00:00.000Z') });
+    const { app } = buildTestApp({ blocks: [b], settings: settings() });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'POST', url: '/schedule/b1/stop', headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().startsAt).toBe('2026-01-04T23:00:00.000Z'); // start unchanged
+    expect(res.json().endsAt).toBe('2026-01-05T00:00:00.000Z');   // end snapped to now
+    expect(res.json().pinned).toBe(true);
+  });
+
+  it('floors the end to start + 15 min when now is at/before the start', async () => {
+    // block starts exactly at FIXED_NOW (00:00); round15(now)=00:00 ≤ start → floor to 00:15
+    const b = block({ id: 'b1', startsAt: new Date('2026-01-05T00:00:00.000Z'), endsAt: new Date('2026-01-05T02:00:00.000Z') });
+    const { app } = buildTestApp({ blocks: [b], settings: settings() });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'POST', url: '/schedule/b1/stop', headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().endsAt).toBe('2026-01-05T00:15:00.000Z');
+  });
+
+  it('never extends the end past the original end', async () => {
+    // block already ended (23:00 → 23:30, before FIXED_NOW 00:00); end must not jump to 00:00
+    const b = block({ id: 'b1', startsAt: new Date('2026-01-04T23:00:00.000Z'), endsAt: new Date('2026-01-04T23:30:00.000Z') });
+    const { app } = buildTestApp({ blocks: [b], settings: settings() });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'POST', url: '/schedule/b1/stop', headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().endsAt).toBe('2026-01-04T23:30:00.000Z'); // unchanged
+  });
+
+  it('404s an unknown block and 400s a habit block', async () => {
+    const habitBlock = block({ id: 'h1', taskId: null, habitId: 'hab1' });
+    const { app } = buildTestApp({ blocks: [habitBlock], settings: settings() });
+    const token = await tokenFor(app);
+    expect((await app.inject({ method: 'POST', url: '/schedule/none/stop', headers: { authorization: `Bearer ${token}` } })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'POST', url: '/schedule/h1/stop', headers: { authorization: `Bearer ${token}` } })).statusCode).toBe(400);
+  });
+});
+
 describe('GET /schedule discard sweep (manual mode)', () => {
   const wide = '?from=2026-01-01T00:00:00.000Z&to=2026-01-10T00:00:00.000Z';
 

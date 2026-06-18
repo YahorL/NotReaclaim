@@ -113,6 +113,18 @@ describe('TopBar Next-task indicator', () => {
     await waitFor(() => expect(startBlock).toHaveBeenCalledWith('nb'));
   });
 
+  it('treats a just-started block whose snapped start is slightly in the future as running', async () => {
+    // Start pulls the start to round15(now), which can land a few minutes ahead of now.
+    const api = fakeApiClient({
+      getSchedule: async () => [block({
+        id: 'r2', startsAt: '2026-06-11T12:15:00Z', endsAt: '2026-06-11T13:00:00Z', startedAt: '2026-06-11T12:10:00Z',
+      })],
+    });
+    renderWithProviders(<TopBar onNewTask={() => {}} now={nowFn} />, { api });
+    await waitFor(() => expect(screen.getByTestId('current-task')).toBeInTheDocument());
+    expect(screen.queryByTestId('next-task')).toBeNull();
+  });
+
   // Review 13: the toggle-sidebar button is present when onToggleSidebar is provided.
   it('calls onToggleSidebar when the toggle button is clicked', () => {
     const onToggleSidebar = vi.fn();
@@ -141,5 +153,33 @@ describe('TopBar Next-task indicator', () => {
       { api },
     );
     expect(screen.getByRole('button', { name: 'Hide sidebar' })).toBeInTheDocument();
+  });
+
+  it('shows the running (started, in-progress) task with a Stop button', async () => {
+    const stopBlock = vi.fn(async () => ({} as never));
+    const api = fakeApiClient({
+      getSchedule: async () => [block({
+        id: 'r1', title: 'Deep work',
+        startsAt: '2026-06-11T11:30:00Z', endsAt: '2026-06-11T13:00:00Z', startedAt: '2026-06-11T11:30:00Z',
+      })],
+      stopBlock,
+    });
+    renderWithProviders(<TopBar onNewTask={() => {}} now={nowFn} />, { api });
+    await waitFor(() => expect(screen.getByTestId('current-task')).toBeInTheDocument());
+    expect(screen.getByTestId('current-task').textContent).toContain('Deep work');
+    expect(screen.queryByTestId('next-task')).toBeNull();
+    fireEvent.click(screen.getByTestId('stop-task'));
+    await waitFor(() => expect(stopBlock).toHaveBeenCalledWith('r1'));
+  });
+
+  it('does not treat a started block whose end has passed as running', async () => {
+    const api = fakeApiClient({
+      getSchedule: async () => [block({
+        id: 'done', startsAt: '2026-06-11T09:00:00Z', endsAt: '2026-06-11T10:00:00Z', startedAt: '2026-06-11T09:00:00Z',
+      })],
+    });
+    renderWithProviders(<TopBar onNewTask={() => {}} now={nowFn} />, { api });
+    await waitFor(() => expect(screen.queryByTestId('current-task')).toBeNull());
+    expect(screen.queryByTestId('next-task')).toBeNull(); // ended, and no future task
   });
 });

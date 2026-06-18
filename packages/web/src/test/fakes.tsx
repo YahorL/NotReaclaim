@@ -37,6 +37,7 @@ export function fakeApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     createCalendarEvent: notImplemented('createCalendarEvent'),
     createScheduledBlock: notImplemented('createScheduledBlock'),
     startBlock: notImplemented('startBlock'),
+    stopBlock: notImplemented('stopBlock'),
   } as unknown as ApiClient;
   return { ...base, ...overrides };
 }

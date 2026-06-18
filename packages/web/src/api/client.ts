@@ -47,6 +47,7 @@ export interface ApiClient {
   createCalendarEvent(body: CreateCalendarEventInput): Promise<CalendarEvent>;
   createScheduledBlock(body: CreateScheduledBlockInput): Promise<ScheduledBlock>;
   startBlock(id: string): Promise<ScheduledBlock>;
+  stopBlock(id: string): Promise<ScheduledBlock>;
 }
 
 export function createApiClient(config: ApiClientConfig): ApiClient {
@@ -120,5 +121,6 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
     createCalendarEvent: (body) => request('POST', '/calendar/events', body),
     createScheduledBlock: (body) => request('POST', '/schedule', body),
     startBlock: (id) => request('POST', `/schedule/${id}/start`),
+    stopBlock: (id) => request('POST', `/schedule/${id}/stop`),
   };
 }
