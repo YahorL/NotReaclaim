@@ -5,7 +5,7 @@ import { InteractiveBlock } from './InteractiveBlock';
 import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY, snapClickToSlot, WINDOW_START_MIN, WINDOW_END_MIN, TIME_GUTTER_PX } from './weekModel';
 import { CreatePopover } from './CreatePopover';
 
-const HOURS = Array.from({ length: 16 }, (_, i) => 6 + i); // 06:00 → 21:00 row starts (06:00–22:00 window)
+const HOURS = Array.from({ length: 24 }, (_, i) => i); // 00:00 → 23:00 row starts (full day)
 const dayLabel = (ms: number): string => new Date(ms).toLocaleDateString([], { weekday: 'short' });
 
 const LEGEND: { label: string; swatch: string }[] = [

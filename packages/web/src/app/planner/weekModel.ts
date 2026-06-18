@@ -1,7 +1,7 @@
 import type { ScheduledBlock } from '../../api/types';
 
-export const WINDOW_START_MIN = 6 * 60;   // 06:00
-export const WINDOW_END_MIN = 22 * 60;    // 22:00
+export const WINDOW_START_MIN = 0;          // 00:00
+export const WINDOW_END_MIN = 24 * 60;      // 24:00 (full day)
 const MS_PER_MIN = 60_000;
 export const MS_PER_DAY = 24 * 60 * 60 * 1000;
 

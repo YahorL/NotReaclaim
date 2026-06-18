@@ -60,17 +60,19 @@ describe('placeInDay', () => {
       heightPct: (30 / span) * 100,
     });
   });
-  it('clamps a block that starts before the window', () => {
-    const start = Date.parse('2026-01-05T05:00:00.000Z');
-    const end = Date.parse('2026-01-05T07:00:00.000Z');
-    const pos = placeInDay(start, end, dayStart)!;
-    expect(pos.topPct).toBe(0);
-    expect(pos.heightPct).toBeCloseTo((60 / (WINDOW_END_MIN - WINDOW_START_MIN)) * 100, 5);
-  });
-  it('returns null when the interval is outside the day window', () => {
+  it('clamps a block that extends past the end of the day', () => {
     const start = Date.parse('2026-01-05T23:00:00.000Z');
-    const end = Date.parse('2026-01-05T23:30:00.000Z');
-    expect(placeInDay(start, end, dayStart)).toBeNull();
+    const end = Date.parse('2026-01-06T01:00:00.000Z'); // 25:00 → clamps to 24:00
+    const pos = placeInDay(start, end, dayStart)!;
+    const span = WINDOW_END_MIN - WINDOW_START_MIN; // 1440
+    expect(pos.topPct).toBeCloseTo((1380 / span) * 100, 5); // 23:00
+    expect(pos.heightPct).toBeCloseTo((60 / span) * 100, 5); // 23:00–24:00
+  });
+  it('places early/late same-day blocks and returns null for a different day', () => {
+    // 05:00 used to be clipped; now it places within the full-day window
+    expect(placeInDay(Date.parse('2026-01-05T05:00:00.000Z'), Date.parse('2026-01-05T05:30:00.000Z'), dayStart)).not.toBeNull();
+    expect(placeInDay(Date.parse('2026-01-05T23:00:00.000Z'), Date.parse('2026-01-05T23:30:00.000Z'), dayStart)).not.toBeNull();
+    // a different day still returns null
     expect(placeInDay(Date.parse('2026-01-06T09:00:00.000Z'), Date.parse('2026-01-06T10:00:00.000Z'), dayStart)).toBeNull();
   });
 });
@@ -124,8 +126,8 @@ describe('grid geometry', () => {
 
   it('clampToWindow floors start at the window start and shifts back on overflow', () => {
     expect(clampToWindow(540, 60)).toEqual({ startMin: 540, endMin: 600 });
-    expect(clampToWindow(300, 60)).toEqual({ startMin: WINDOW_START_MIN, endMin: WINDOW_START_MIN + 60 });
-    expect(clampToWindow(1290, 60)).toEqual({ startMin: WINDOW_END_MIN - 60, endMin: WINDOW_END_MIN });
+    expect(clampToWindow(-30, 60)).toEqual({ startMin: WINDOW_START_MIN, endMin: WINDOW_START_MIN + 60 });
+    expect(clampToWindow(1410, 60)).toEqual({ startMin: WINDOW_END_MIN - 60, endMin: WINDOW_END_MIN });
   });
 });
 
@@ -166,9 +168,9 @@ describe('clampDayDelta', () => {
 
 describe('snapClickToSlot', () => {
   it('maps a clicked offset fraction to a snapped, clamped start minute', () => {
-    expect(snapClickToSlot(0)).toBe(WINDOW_START_MIN);              // top of the window
-    expect(snapClickToSlot(0.5)).toBe(840);                          // 14:00 (06:00 + 480min)
-    expect(snapClickToSlot(0.99)).toBe(WINDOW_END_MIN - 15);        // clamped so a 15-min slot fits
+    expect(snapClickToSlot(0)).toBe(WINDOW_START_MIN);       // top of the window (00:00)
+    expect(snapClickToSlot(0.5)).toBe(720);                  // 12:00
+    expect(snapClickToSlot(0.99)).toBe(WINDOW_END_MIN - 15); // clamped so a 15-min slot fits (23:45)
     expect(snapClickToSlot(-0.2)).toBe(WINDOW_START_MIN);
   });
 });

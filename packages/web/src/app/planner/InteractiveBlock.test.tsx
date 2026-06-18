@@ -7,7 +7,7 @@ import { minutesToPx } from './weekModel';
 const DAY = Date.parse('2026-01-05T00:00:00.000Z'); // local midnight (TZ=UTC)
 const START = Date.parse('2026-01-05T09:00:00.000Z');
 const END = Date.parse('2026-01-05T10:00:00.000Z');
-const PX_PER_60MIN = (60 / 960) * GRID_COLUMN_PX; // = 58
+const PX_PER_60MIN = minutesToPx(60); // 58px/hr (was (60/960)*GRID_COLUMN_PX)
 
 function renderBlock(onCommitOrOver: Parameters<typeof InteractiveBlock>[0]['onCommit'] | Partial<Parameters<typeof InteractiveBlock>[0]> = vi.fn()) {
   const defaults = {
