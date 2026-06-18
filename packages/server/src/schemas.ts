@@ -2,7 +2,8 @@ import { z } from 'zod';
 
 export const idParamSchema = z.object({ id: z.string().min(1) });
 
-export const authCallbackQuerySchema = z.object({ code: z.string().min(1) });
+export const authCallbackQuerySchema = z.object({ code: z.string().min(1), state: z.string().optional() });
+export const consentQuerySchema = z.object({ invite: z.string().min(1).optional() });
 
 export const createTaskSchema = z.object({
   title: z.string().min(1),

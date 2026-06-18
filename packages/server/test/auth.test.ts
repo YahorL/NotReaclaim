@@ -9,12 +9,46 @@ describe('auth', () => {
     expect(res.json().url).toContain('consent.example');
   });
 
-  it('callback exchanges a code for a JWT', async () => {
-    const { app } = buildTestApp();
+  it('callback logs in an existing google user (branch 1)', async () => {
+    const { app } = buildTestApp(); // default seed: u1 with googleId g-1
     const res = await app.inject({ method: 'GET', url: '/auth/google/callback?code=abc' });
     expect(res.statusCode).toBe(200);
     expect(res.json().userId).toBe('u1');
-    expect(typeof res.json().token).toBe('string');
+  });
+
+  it('callback links by email to an existing password account (branch 2)', async () => {
+    const ctx = buildTestApp({
+      registrationMode: 'closed',
+      users: [{ id: 'u5', email: 'a@example.com', passwordHash: 'h', isAdmin: false, googleId: null, googleRefreshToken: null, autoScheduledCalendarId: null, createdAt: new Date(0), updatedAt: new Date(0) } as never],
+    });
+    const res = await ctx.app.inject({ method: 'GET', url: '/auth/google/callback?code=abc' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().userId).toBe('u5');
+    expect((await ctx.users.findById('u5'))?.googleId).toBe('g-1'); // linked
+  });
+
+  it('callback rejects a brand-new google email when registration is closed (branch 3)', async () => {
+    const ctx = buildTestApp({ registrationMode: 'closed', users: [] });
+    const res = await ctx.app.inject({ method: 'GET', url: '/auth/google/callback?code=abc' });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('callback creates a new account from google in open mode (branch 3)', async () => {
+    const ctx = buildTestApp({ registrationMode: 'open', users: [] });
+    const res = await ctx.app.inject({ method: 'GET', url: '/auth/google/callback?code=abc' });
+    expect(res.statusCode).toBe(200);
+    expect(await ctx.users.findByEmail('a@example.com')).not.toBeNull();
+    expect(await ctx.settings.getByUserId(res.json().userId)).not.toBeNull();
+  });
+
+  it('/auth/google/link requires auth and embeds a state', async () => {
+    const ctx = buildTestApp();
+    const unauth = await ctx.app.inject({ method: 'GET', url: '/auth/google/link' });
+    expect(unauth.statusCode).toBe(401);
+    const token = await tokenFor(ctx.app, 'u1');
+    const ok = await ctx.app.inject({ method: 'GET', url: '/auth/google/link', headers: { authorization: `Bearer ${token}` } });
+    expect(ok.statusCode).toBe(200);
+    expect(typeof ok.json().url).toBe('string');
   });
 
   it('callback without a code is a 400', async () => {

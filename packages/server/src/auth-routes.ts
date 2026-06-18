@@ -1,26 +1,81 @@
 import type { FastifyInstance } from 'fastify';
 import type { AppDeps } from './app.js';
-import { authCallbackQuerySchema, registerSchema, loginSchema, setPasswordSchema, changeEmailSchema } from './schemas.js';
+import { authCallbackQuerySchema, consentQuerySchema, registerSchema, loginSchema, setPasswordSchema, changeEmailSchema } from './schemas.js';
 import { hashPassword, verifyPassword } from './auth/password.js';
 import { normalizeEmail } from './auth/email.js';
 import { ensureUserDefaults } from './auth/user-defaults.js';
 import { signSession } from './auth/token.js';
 
 export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
-  app.get('/auth/google', async () => {
-    return { url: deps.google.client.getConsentUrl(deps.config.googleRedirectUri) };
+  // State is a short-lived signed JWT so we can trust its purpose/userId/inviteCode on return.
+  const signState = (data: Record<string, unknown>) => app.jwt.sign({ st: data }, { expiresIn: '10m' });
+  const readState = (raw?: string): { purpose?: string; userId?: string; inviteCode?: string } => {
+    if (!raw) return {};
+    try { return (app.jwt.verify<{ st: Record<string, unknown> }>(raw).st ?? {}) as never; }
+    catch { return {}; }
+  };
+
+  app.get('/auth/google', async (request) => {
+    const { invite } = consentQuerySchema.parse(request.query);
+    const state = signState({ purpose: 'login', ...(invite ? { inviteCode: invite } : {}) });
+    return { url: deps.google.client.getConsentUrl(deps.config.googleRedirectUri, state) };
+  });
+
+  app.get('/auth/google/link', { onRequest: [app.authenticate] }, async (request) => {
+    const state = signState({ purpose: 'link', userId: request.userId });
+    return { url: deps.google.client.getConsentUrl(deps.config.googleRedirectUri, state) };
   });
 
   app.get('/auth/google/callback', async (request, reply) => {
-    const { code } = authCallbackQuerySchema.parse(request.query);
-    const user = await deps.google.tokens.connectFromCode(code, deps.config.googleRedirectUri);
-    const token = signSession(app, user.id);
-    if (deps.config.webClientUrl) {
-      const fragment = `token=${encodeURIComponent(token)}&userId=${encodeURIComponent(user.id)}`;
-      // NOTE: Fastify v4 arg order is redirect(code, url); flip to redirect(url, code) on the v5 upgrade.
-      return reply.redirect(302, `${deps.config.webClientUrl}/auth/callback#${fragment}`);
+    const { code, state: rawState } = authCallbackQuerySchema.parse(request.query);
+    const state = readState(rawState);
+    const { email: googleEmail, googleUserId, encryptedRefreshToken } =
+      await deps.google.tokens.exchangeCodeForLink(code, deps.config.googleRedirectUri);
+    const email = normalizeEmail(googleEmail);
+    const link = (userId: string) =>
+      deps.repos.users.update(userId, { googleId: googleUserId, googleRefreshToken: encryptedRefreshToken });
+
+    const finish = (userId: string) => {
+      const token = signSession(app, userId);
+      if (deps.config.webClientUrl) {
+        const fragment = `token=${encodeURIComponent(token)}&userId=${encodeURIComponent(userId)}`;
+        // NOTE: Fastify v4 arg order is redirect(code, url); flip to redirect(url, code) on the v5 upgrade.
+        return reply.redirect(302, `${deps.config.webClientUrl}/auth/callback#${fragment}`);
+      }
+      return reply.send({ token, userId });
+    };
+    const deny = (codeStr: string) => {
+      if (deps.config.webClientUrl) {
+        return reply.redirect(302, `${deps.config.webClientUrl}/auth/callback#error=${encodeURIComponent(codeStr)}`);
+      }
+      return reply.code(403).send({ code: codeStr, message: 'Registration is closed' });
+    };
+
+    // Authenticated linking flow.
+    if (state.purpose === 'link' && state.userId) {
+      await link(state.userId);
+      return finish(state.userId);
     }
-    return { token, userId: user.id };
+    // Branch 1: known google account.
+    const byGoogle = await deps.repos.users.findByGoogleId(googleUserId);
+    if (byGoogle) { await link(byGoogle.id); return finish(byGoogle.id); }
+    // Branch 2: known email → link.
+    const byEmail = await deps.repos.users.findByEmail(email);
+    if (byEmail) { await link(byEmail.id); return finish(byEmail.id); }
+    // Branch 3: new email → gated registration.
+    const mode = deps.config.registrationMode;
+    if (mode === 'closed') return deny('registration_closed');
+    if (mode === 'invite') {
+      const ok = state.inviteCode
+        ? await deps.repos.invites.validate(state.inviteCode, email, new Date(deps.now()))
+        : false;
+      if (!ok) return deny('invalid_invite');
+    }
+    const created = await deps.repos.users.create({ email });
+    await link(created.id);
+    await ensureUserDefaults(deps.repos.settings, created.id);
+    if (mode === 'invite' && state.inviteCode) await deps.repos.invites.consume(state.inviteCode);
+    return finish(created.id);
   });
 
   app.post('/auth/register', async (request, reply) => {
