@@ -326,3 +326,40 @@ describe('assembleScheduleInput buffers', () => {
     expect(input.blockBufferMs).toBe(0);
   });
 });
+
+describe('assembleScheduleInput started tasks', () => {
+  const NOW = Date.parse('2026-01-05T12:00:00.000Z'); // Monday noon UTC
+
+  it('excludes a task that has a started block from auto-scheduling', async () => {
+    const input = await assembleScheduleInput(
+      fakeRepos({
+        settings: makeSettings({ workingHours: [{ weekday: 1, startMinute: 0, endMinute: 1440 }] as never }),
+        categories: [makeCategory()],
+        tasks: [makeTask({ id: 't1', durationMs: 7_200_000 })], // 2h, has remaining
+        blocks: [makeBlock({
+          id: 'b1', taskId: 't1', habitId: null, pinned: true,
+          startsAt: new Date('2026-01-05T12:30:00.000Z'), endsAt: new Date('2026-01-05T13:00:00.000Z'),
+          startedAt: new Date('2026-01-05T12:24:00.000Z'),
+        })],
+      }),
+      'u1', NOW,
+    );
+    expect(input.tasks.find((t) => t.id === 't1')).toBeUndefined(); // user-managed → not auto-scheduled
+  });
+
+  it('still schedules a task whose blocks are all un-started', async () => {
+    const input = await assembleScheduleInput(
+      fakeRepos({
+        settings: makeSettings({ workingHours: [{ weekday: 1, startMinute: 0, endMinute: 1440 }] as never }),
+        categories: [makeCategory()],
+        tasks: [makeTask({ id: 't1', durationMs: 3_600_000 })],
+        blocks: [makeBlock({
+          id: 'b1', taskId: 't1', habitId: null, pinned: false, startedAt: null,
+          startsAt: new Date('2026-01-05T09:00:00.000Z'), endsAt: new Date('2026-01-05T09:30:00.000Z'), // finished/past
+        })],
+      }),
+      'u1', NOW,
+    );
+    expect(input.tasks.find((t) => t.id === 't1')).toBeDefined();
+  });
+});
