@@ -21,13 +21,16 @@ export function TopBar({ onNewTask, now = Date.now, sidebarHidden, onToggleSideb
   const nowMs = now();
 
   const taskBlocks = (scheduleQ.data ?? []).filter((b) => b.taskId != null);
+  // "Running" = a task you've Started that hasn't ended. We don't also require start <= now:
+  // Start snaps the start to round15(now), which can land a few minutes in the future, and a
+  // started block is still the one you're working on. A block resized to end before now drops out.
   const running = taskBlocks
-    .filter((b) => b.startedAt != null && Date.parse(b.startsAt) <= nowMs && Date.parse(b.endsAt) > nowMs)
+    .filter((b) => b.startedAt != null && Date.parse(b.endsAt) > nowMs)
     .sort((a, b) => Date.parse(a.endsAt) - Date.parse(b.endsAt))[0] ?? null;
   const nextBlock = running
     ? null
     : taskBlocks
-        .filter((b) => Date.parse(b.startsAt) > nowMs)
+        .filter((b) => b.startedAt == null && Date.parse(b.startsAt) > nowMs)
         .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))[0] ?? null;
 
   return (

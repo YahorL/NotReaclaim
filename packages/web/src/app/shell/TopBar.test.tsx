@@ -113,6 +113,18 @@ describe('TopBar Next-task indicator', () => {
     await waitFor(() => expect(startBlock).toHaveBeenCalledWith('nb'));
   });
 
+  it('treats a just-started block whose snapped start is slightly in the future as running', async () => {
+    // Start pulls the start to round15(now), which can land a few minutes ahead of now.
+    const api = fakeApiClient({
+      getSchedule: async () => [block({
+        id: 'r2', startsAt: '2026-06-11T12:15:00Z', endsAt: '2026-06-11T13:00:00Z', startedAt: '2026-06-11T12:10:00Z',
+      })],
+    });
+    renderWithProviders(<TopBar onNewTask={() => {}} now={nowFn} />, { api });
+    await waitFor(() => expect(screen.getByTestId('current-task')).toBeInTheDocument());
+    expect(screen.queryByTestId('next-task')).toBeNull();
+  });
+
   // Review 13: the toggle-sidebar button is present when onToggleSidebar is provided.
   it('calls onToggleSidebar when the toggle button is clicked', () => {
     const onToggleSidebar = vi.fn();
