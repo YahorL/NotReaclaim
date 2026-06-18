@@ -4,6 +4,8 @@ import { NotFoundError, translatePrismaError } from '../errors.js';
 export interface CreateUserInput {
   email: string;
   googleId?: string | null;
+  passwordHash?: string | null;
+  isAdmin?: boolean;
 }
 
 export interface UpdateUserInput {
@@ -11,6 +13,8 @@ export interface UpdateUserInput {
   googleId?: string | null;
   googleRefreshToken?: string | null;
   autoScheduledCalendarId?: string | null;
+  passwordHash?: string | null;
+  isAdmin?: boolean;
 }
 
 export function createUserRepository(prisma: PrismaClient) {
