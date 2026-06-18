@@ -207,4 +207,16 @@ describe('WeekGrid', () => {
     expect(tile.textContent).toMatch(/09:00 AM/); // 13:00Z = 9am EDT
   });
 
+  it('renders two overlapping blocks side-by-side at half width', () => {
+    const day = new Date('2026-01-05T00:00:00.000Z').getTime();
+    const blocks = [
+      block({ id: 'o1', title: 'A', startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T11:00:00.000Z' }),
+      block({ id: 'o2', title: 'B', startsAt: '2026-01-05T10:00:00.000Z', endsAt: '2026-01-05T12:00:00.000Z' }),
+    ];
+    renderGrid({ days: [day], blocks, events: [], nowMs: Date.parse('2026-01-05T08:00:00.000Z') });
+    const tiles = screen.getAllByTestId('event-block');
+    expect(tiles).toHaveLength(2);
+    expect(tiles.every((t) => /width:\s*calc\(50%/.test(t.getAttribute('style') || ''))).toBe(true);
+  });
+
 });

@@ -1,6 +1,6 @@
 export type BlockKind = 'meeting' | 'task' | 'habit';
 
-export const BASE = 'absolute left-0.5 right-0.5 overflow-hidden rounded-[6px] px-[7px] py-1 text-[12.5px] font-bold leading-tight';
+export const BASE = 'absolute overflow-hidden rounded-[6px] px-[7px] py-1 text-[12.5px] font-bold leading-tight';
 
 /** Color by state, Google-Calendar-style: meeting=blue, locked task/habit=green+lock, movable=transparent dashed green. */
 export function variantClass(kind: BlockKind, pinned: boolean, accent?: string): string {
@@ -21,13 +21,15 @@ export interface EventBlockProps {
   kind: BlockKind;
   topPct: number;
   heightPct: number;
+  leftPct?: number;
+  widthPct?: number;
   startLabel: string;
   pinned?: boolean;
   accent?: string;
   onDelete?: () => void;
 }
 
-export function EventBlock({ title, kind, topPct, heightPct, startLabel, pinned = false, accent, onDelete }: EventBlockProps) {
+export function EventBlock({ title, kind, topPct, heightPct, leftPct = 0, widthPct = 100, startLabel, pinned = false, accent, onDelete }: EventBlockProps) {
   const locked = kind !== 'meeting' && pinned;
   const accentStyles = accent && kind !== 'meeting'
     ? pinned
@@ -41,7 +43,7 @@ export function EventBlock({ title, kind, topPct, heightPct, startLabel, pinned 
       data-pinned={pinned}
       title={`${startLabel} ${title}`}
       className={`group ${BASE} ${variantClass(kind, pinned, accent)} transition-[top,height] duration-300 ease-out`}
-      style={{ top: `${topPct}%`, height: `${heightPct}%`, ...accentStyles }}
+      style={{ top: `${topPct}%`, height: `${heightPct}%`, left: `calc(${leftPct}% + 2px)`, width: `calc(${widthPct}% - 4px)`, ...accentStyles }}
     >
       {onDelete && (
         <button
