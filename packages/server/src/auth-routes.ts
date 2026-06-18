@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { AppDeps } from './app.js';
-import { authCallbackQuerySchema, registerSchema } from './schemas.js';
-import { hashPassword } from './auth/password.js';
+import { authCallbackQuerySchema, registerSchema, loginSchema } from './schemas.js';
+import { hashPassword, verifyPassword } from './auth/password.js';
 import { normalizeEmail } from './auth/email.js';
 import { ensureUserDefaults } from './auth/user-defaults.js';
 import { signSession } from './auth/token.js';
@@ -46,6 +46,17 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
     await ensureUserDefaults(deps.repos.settings, user.id);
     if (mode === 'invite' && body.inviteCode) await deps.repos.invites.consume(body.inviteCode);
 
+    return { token: signSession(app, user.id), userId: user.id };
+  });
+
+  app.post('/auth/login', async (request, reply) => {
+    const body = loginSchema.parse(request.body);
+    const email = normalizeEmail(body.email);
+    const invalid = () => reply.code(401).send({ code: 'invalid_credentials', message: 'Invalid email or password' });
+
+    const user = await deps.repos.users.findByEmail(email);
+    if (!user || !user.passwordHash) return invalid();
+    if (!(await verifyPassword(user.passwordHash, body.password))) return invalid();
     return { token: signSession(app, user.id), userId: user.id };
   });
 }

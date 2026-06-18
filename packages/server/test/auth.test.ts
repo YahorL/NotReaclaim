@@ -90,4 +90,20 @@ describe('auth', () => {
     const res = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'dup@x.com', password: 'longenough1' } });
     expect(res.statusCode).toBe(409);
   });
+
+  it('login succeeds with correct credentials and fails generically otherwise', async () => {
+    // Register first (open mode) so a passwordHash exists.
+    const ctx = buildTestApp({ registrationMode: 'open', users: [] });
+    await ctx.app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'log@x.com', password: 'longenough1' } });
+
+    const ok = await ctx.app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'log@x.com', password: 'longenough1' } });
+    expect(ok.statusCode).toBe(200);
+    expect(typeof ok.json().token).toBe('string');
+
+    const wrong = await ctx.app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'log@x.com', password: 'nope' } });
+    expect(wrong.statusCode).toBe(401);
+    const missing = await ctx.app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'ghost@x.com', password: 'whatever' } });
+    expect(missing.statusCode).toBe(401);
+    expect(missing.json().message).toBe(wrong.json().message); // no user enumeration
+  });
 });
