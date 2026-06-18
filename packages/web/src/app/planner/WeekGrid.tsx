@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ScheduledBlock, CalendarEvent } from '../../api/types';
 import { EventBlock, type BlockKind } from './EventBlock';
 import { InteractiveBlock } from './InteractiveBlock';
-import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY, snapClickToSlot, WINDOW_START_MIN, WINDOW_END_MIN, TIME_GUTTER_PX } from './weekModel';
+import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY, snapClickToSlot, WINDOW_START_MIN, WINDOW_END_MIN, TIME_GUTTER_PX, GRID_COLUMN_PX, localMidnight } from './weekModel';
 import { CreatePopover } from './CreatePopover';
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i); // 00:00 → 23:00 row starts (full day)
@@ -79,6 +79,16 @@ export function WeekGrid(props: WeekGridProps) {
   // Live drop indicator while dragging a task card from the side panel over the grid.
   const [taskDrop, setTaskDrop] = useState<{ dayIndex: number; startMin: number } | null>(null);
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // On mount, scroll so the current time-of-day sits near the top (a little context above).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const minOfDay = Math.max(0, Math.min(WINDOW_END_MIN, (nowMs - localMidnight(nowMs)) / 60_000));
+    el.scrollTop = Math.max(0, (minOfDay / (WINDOW_END_MIN - WINDOW_START_MIN)) * GRID_COLUMN_PX - 64);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- scroll to "now" once on mount
+  }, []);
+
   // Always clear the drop indicator when any drag ends — covers ESC-cancel and drops that
   // land off the grid, where no column `dragleave`/`drop` fires (dragend fires on the source).
   useEffect(() => {
@@ -145,7 +155,8 @@ export function WeekGrid(props: WeekGridProps) {
             })}
           </div>
 
-          {/* body grid */}
+          {/* body grid (scrolls vertically; the day header above stays pinned) */}
+          <div ref={scrollRef} data-testid="hours-scroll" className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 230px)' }}>
           <div className="grid" style={{ gridTemplateColumns: gridCols }}>
             <div>
               {HOURS.map((h) => (
@@ -243,6 +254,7 @@ export function WeekGrid(props: WeekGridProps) {
                 </div>
               );
             })}
+          </div>
           </div>
         </div>
       </div>

@@ -174,6 +174,17 @@ describe('WeekGrid', () => {
     expect(screen.queryByTestId('task-drop-indicator')).toBeNull();
   });
 
+  it('puts the hour grid in a scroll container, below the day header', () => {
+    renderGrid();
+    const scroller = screen.getByTestId('hours-scroll');
+    expect(scroller.className).toMatch(/overflow-y-auto/);
+    // day headers are OUTSIDE the scroll container (they stay pinned)
+    expect(scroller.querySelector('[data-testid="day-header-0"]')).toBeNull();
+    expect(screen.getByTestId('day-header-0')).toBeInTheDocument();
+    // hour rows / day columns ARE inside the scroller
+    expect(scroller.querySelector('[data-testid="day-col-0"]')).not.toBeNull();
+  });
+
   it('renders one column per day for a 3-day window and has no horizontal-scroll wrapper', () => {
     const days = [
       new Date('2026-01-07T00:00:00.000Z').getTime(),
