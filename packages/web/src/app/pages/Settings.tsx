@@ -1,7 +1,7 @@
 import { ApiError } from '../../api/client';
 import { useSettingsQuery, useUpdateSettingsMutation } from '../../api/queries';
 import { SettingsForm } from '../settings/SettingsForm';
-import { toFormState, defaultFormState } from '../settings/settingsForm';
+import { toFormState, defaultFormState, browserTimezone } from '../settings/settingsForm';
 
 export function Settings() {
   const settingsQ = useSettingsQuery();
@@ -21,8 +21,7 @@ export function Settings() {
     );
   }
 
-  const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const initial = settingsQ.data ? toFormState(settingsQ.data) : defaultFormState(browserTz);
+  const initial = settingsQ.data ? toFormState(settingsQ.data) : defaultFormState(browserTimezone());
 
   return (
     <div className="p-4">

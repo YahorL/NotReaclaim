@@ -1,11 +1,10 @@
 import { useState, useRef, useEffect, useLayoutEffect, type PointerEvent as ReactPointerEvent } from 'react';
 import { BASE, variantClass, type BlockKind } from './EventBlock';
-import { WINDOW_END_MIN, snapMinutes, pxToMinutes, minutesToPx, clampToWindow, shiftDays, clampDayDelta } from './weekModel';
+import { WINDOW_END_MIN, snapMinutes, pxToMinutes, minutesToPx, clampToWindow, shiftDays, clampDayDelta, formatHm } from './weekModel';
 
 const MIN_DURATION_MIN = 15;
 const HELD_TIMEOUT_MS = 1500;
 const iso = (ms: number): string => new Date(ms).toISOString();
-const fmtTime = (ms: number): string => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const finite = (n: number): number => (Number.isFinite(n) ? n : 0);
 
 export interface InteractiveBlockProps {
@@ -25,13 +24,14 @@ export interface InteractiveBlockProps {
   onDelete?: () => void;
   dayCount?: number;
   accent?: string;
+  zone?: string;
 }
 
 type DragMode = 'move' | 'resize';
 
 export function InteractiveBlock(props: InteractiveBlockProps) {
   // `id` is part of the props for the parent's onCommit binding; not read inside this component.
-  const { dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, startLabel, title, kind, pinned, onCommit, onUnpin, onDelete, dayCount = 7, accent } = props;
+  const { dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, startLabel, title, kind, pinned, onCommit, onUnpin, onDelete, dayCount = 7, accent, zone = 'UTC' } = props;
   // Refs hold the authoritative drag state; mutated directly so pointer handlers always
   // see the latest values regardless of React's batching/commit schedule.
   const modeRef = useRef<DragMode | null>(null);
@@ -273,7 +273,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
       <span className="font-medium">{startLabel}</span> {title}
       {showDragLabel && (
         <span data-testid="drag-label" className="absolute right-1 top-0.5 rounded bg-ink/70 px-1 text-[10px] font-semibold text-white">
-          {fmtTime(previewStart)} – {fmtTime(previewEnd)}
+          {formatHm(previewStart, zone)} – {formatHm(previewEnd, zone)}
         </span>
       )}
       <span

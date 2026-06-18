@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Settings } from '../../api/types';
 import {
-  toFormState, defaultFormState, validateSettingsForm, toSettingsInput, type SettingsFormState,
+  toFormState, defaultFormState, validateSettingsForm, toSettingsInput, browserTimezone, type SettingsFormState,
 } from './settingsForm';
 
 const settings = (over: Partial<Settings> = {}): Settings => ({
@@ -68,5 +68,17 @@ describe('settingsForm', () => {
     const out = toSettingsInput({ ...base, meetingBufferMs: 900000, taskBufferMs: 600000 });
     expect(out).toMatchObject({ meetingBufferMs: 900000, taskBufferMs: 600000 });
     expect(validateSettingsForm({ ...base, meetingBufferMs: -60000 }).ok).toBe(false);
+  });
+
+  it('browserTimezone() returns a non-empty string and defaultFormState uses it as the default', () => {
+    const tz = browserTimezone();
+    expect(typeof tz).toBe('string');
+    expect(tz.length).toBeGreaterThan(0);
+    // The Settings page default path: defaultFormState(browserTimezone())
+    // Under TZ=UTC the browser zone resolves to 'UTC'
+    expect(defaultFormState(tz).timezone).toBe(tz);
+    // browserTimezone() must match what Intl reports (or 'UTC' on failure)
+    const intlZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    expect(tz).toBe(intlZone);
   });
 });

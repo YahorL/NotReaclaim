@@ -106,3 +106,8 @@ export function supportedTimezones(): string[] {
   const intl = Intl as { supportedValuesOf?: (key: string) => string[] };
   return intl.supportedValuesOf?.('timeZone') ?? [];
 }
+
+/** Returns the browser's detected IANA timezone, or 'UTC' if it cannot be determined. */
+export function browserTimezone(): string {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; }
+}

@@ -1,3 +1,4 @@
+import { DateTime } from 'luxon';
 import type { ScheduledBlock } from '../../api/types';
 
 export const WINDOW_START_MIN = 0;          // 00:00
@@ -5,33 +6,20 @@ export const WINDOW_END_MIN = 24 * 60;      // 24:00 (full day)
 const MS_PER_MIN = 60_000;
 export const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-/** Monday 00:00 (local) of the week containing `now`. */
-export function startOfWeek(now: number): number {
-  const d = new Date(now);
-  d.setHours(0, 0, 0, 0);
-  const daysSinceMonday = (d.getDay() + 6) % 7; // getDay: 0=Sun..6=Sat
-  d.setDate(d.getDate() - daysSinceMonday);
-  return d.getTime();
+/** Monday 00:00 of the week containing `now`, in `zone`. */
+export function startOfWeek(now: number, zone = 'UTC'): number {
+  return DateTime.fromMillis(now, { zone }).startOf('week').toMillis(); // luxon weeks start Monday
 }
 
-/** `count` consecutive local-midnight timestamps starting at `startMs` (default 7). */
-export function dayColumns(startMs: number, count = 7): number[] {
-  const out: number[] = [];
-  for (let i = 0; i < count; i++) {
-    const d = new Date(startMs);
-    d.setDate(d.getDate() + i);
-    d.setHours(0, 0, 0, 0);
-    out.push(d.getTime());
-  }
-  return out;
+/** `count` consecutive zone-midnight timestamps starting at `startMs` (default 7). */
+export function dayColumns(startMs: number, count = 7, zone = 'UTC'): number[] {
+  const base = DateTime.fromMillis(startMs, { zone });
+  return Array.from({ length: count }, (_, i) => base.plus({ days: i }).startOf('day').toMillis());
 }
 
-/** The Monday-midnight `weeks` weeks from `weekStartMs` (DST-safe local arithmetic). */
-export function addWeeks(weekStartMs: number, weeks: number): number {
-  const d = new Date(weekStartMs);
-  d.setDate(d.getDate() + weeks * 7);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
+/** The zone-midnight `weeks` weeks from `weekStartMs`. */
+export function addWeeks(weekStartMs: number, weeks: number, zone = 'UTC'): number {
+  return DateTime.fromMillis(weekStartMs, { zone }).plus({ weeks }).startOf('day').toMillis();
 }
 
 export interface BlockClass {
@@ -121,19 +109,30 @@ export function minutesToPx(min: number): number {
   return (min / (WINDOW_END_MIN - WINDOW_START_MIN)) * GRID_COLUMN_PX;
 }
 
-/** Local midnight (00:00:00.000) of the day containing `ms`. */
-export function localMidnight(ms: number): number {
-  const d = new Date(ms);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
+/** Zone midnight (00:00) of the day containing `ms`. */
+export function localMidnight(ms: number, zone = 'UTC'): number {
+  return DateTime.fromMillis(ms, { zone }).startOf('day').toMillis();
 }
 
-/** Shift a timestamp by whole days via local-date arithmetic (DST-safe; preserves wall-clock time). */
-export function shiftDays(ms: number, days: number): number {
+/** Shift a timestamp by whole days in `zone` (DST-safe; preserves wall-clock time). */
+export function shiftDays(ms: number, days: number, zone = 'UTC'): number {
   if (days === 0) return ms;
-  const d = new Date(ms);
-  d.setDate(d.getDate() + days);
-  return d.getTime();
+  return DateTime.fromMillis(ms, { zone }).plus({ days }).toMillis();
+}
+
+/** Time-of-day label (e.g. "09:00 AM") of `ms` rendered in `zone`. */
+export function formatHm(ms: number, zone = 'UTC'): string {
+  return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: zone });
+}
+
+/** 3-letter weekday (e.g. "Mon") of `ms` in `zone`. */
+export function weekdayLabel(ms: number, zone = 'UTC'): string {
+  return new Date(ms).toLocaleDateString([], { weekday: 'short', timeZone: zone });
+}
+
+/** Day-of-month number of `ms` in `zone`. */
+export function dayOfMonth(ms: number, zone = 'UTC'): number {
+  return Number(new Date(ms).toLocaleDateString('en-US', { day: 'numeric', timeZone: zone }));
 }
 
 /** Map a click's fractional position within a day column (0..1) to a snapped start minute with room for a 15-min slot. */

@@ -5,7 +5,7 @@ import {
   WINDOW_START_MIN, WINDOW_END_MIN,
   HOUR_ROW_PX, GRID_COLUMN_PX, snapMinutes, pxToMinutes, clampToWindow,
   minutesToPx, shiftDays, clampDayDelta, snapClickToSlot, localMidnight,
-  daysThatFit,
+  daysThatFit, formatHm, weekdayLabel, dayOfMonth,
 } from './weekModel';
 
 const MON = Date.parse('2026-01-05T00:00:00.000Z'); // Monday 00:00 UTC
@@ -214,5 +214,32 @@ describe('daysThatFit', () => {
     expect(daysThatFit(64 + 120 * 3 + 10)).toBe(3);
     expect(daysThatFit(64 + 120 * 20)).toBe(7);
     expect(daysThatFit(100)).toBe(1);
+  });
+});
+
+describe('weekModel timezone-aware (America/New_York)', () => {
+  const Z = 'America/New_York';
+  const noonZ = Date.parse('2026-06-18T16:00:00.000Z'); // 12:00 EDT (UTC-4)
+
+  it('localMidnight returns the zone midnight (04:00Z in summer EDT)', () => {
+    expect(localMidnight(noonZ, Z)).toBe(Date.parse('2026-06-18T04:00:00.000Z'));
+  });
+  it('dayColumns steps zone days', () => {
+    const cols = dayColumns(localMidnight(noonZ, Z), 2, Z);
+    expect(cols[0]).toBe(Date.parse('2026-06-18T04:00:00.000Z'));
+    expect(cols[1]).toBe(Date.parse('2026-06-19T04:00:00.000Z'));
+  });
+  it('shiftDays preserves wall-clock in the zone', () => {
+    expect(shiftDays(noonZ, 1, Z)).toBe(Date.parse('2026-06-19T16:00:00.000Z'));
+  });
+  it('formats labels in the zone', () => {
+    expect(formatHm(Date.parse('2026-06-18T13:00:00.000Z'), Z)).toBe('09:00 AM'); // 13:00Z = 9am EDT
+    expect(weekdayLabel(Date.parse('2026-06-18T13:00:00.000Z'), Z)).toBe('Thu');
+    expect(dayOfMonth(Date.parse('2026-06-18T13:00:00.000Z'), Z)).toBe(18);
+  });
+  it('places a 09:00-EDT block against the zone midnight at 540/1440', () => {
+    const dayStart = localMidnight(noonZ, Z);
+    const pos = placeInDay(Date.parse('2026-06-18T13:00:00.000Z'), Date.parse('2026-06-18T14:00:00.000Z'), dayStart)!;
+    expect(pos.topPct).toBeCloseTo((540 / (WINDOW_END_MIN - WINDOW_START_MIN)) * 100, 5);
   });
 });

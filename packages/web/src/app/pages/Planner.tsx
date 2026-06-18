@@ -1,7 +1,7 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import type { Task } from '../../api/types';
 import { ApiError } from '../../api/client';
-import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation } from '../../api/queries';
+import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation, useSettingsQuery } from '../../api/queries';
 import { dayColumns, daysThatFit, shiftDays, localMidnight, clampToWindow, MS_PER_DAY, WINDOW_START_MIN, WINDOW_END_MIN } from '../planner/weekModel';
 import { useElementWidth } from '../planner/useElementWidth';
 import { WeekGrid } from '../planner/WeekGrid';
@@ -9,19 +9,29 @@ import { PlannerTaskPanel } from '../planner/PlannerTaskPanel';
 import { TaskDrawer } from '../tasks/TaskDrawer';
 import { labelBlocksWithSubtasks } from '../planner/blockLabels';
 
-function weekLabel(days: number[]): string {
-  const fmt = (ms: number) => new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric' });
+function weekLabel(days: number[], zone = 'UTC'): string {
+  const fmt = (ms: number) => new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric', timeZone: zone });
   return `${fmt(days[0]!)} – ${fmt(days[days.length - 1]!)}`;
 }
 
 export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const nowMs = now();
-  const [viewStartMs, setViewStartMs] = useState(() => localMidnight(nowMs));
+  const settingsQ = useSettingsQuery();
+  const zone = settingsQ.data?.timezone ?? (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
+  const [viewStartMs, setViewStartMs] = useState(() => localMidnight(nowMs, zone));
   const [gridRef, gridWidth] = useElementWidth<HTMLDivElement>();
   const dayCount = daysThatFit(gridWidth);
-  const days = useMemo(() => dayColumns(viewStartMs, dayCount), [viewStartMs, dayCount]);
+  const days = useMemo(() => dayColumns(viewStartMs, dayCount, zone), [viewStartMs, dayCount, zone]);
   const fromIso = new Date(viewStartMs).toISOString();
   const toIso = new Date(viewStartMs + dayCount * MS_PER_DAY).toISOString();
+  const prevZoneRef = useRef(zone);
+  useEffect(() => {
+    if (zone !== prevZoneRef.current) {
+      prevZoneRef.current = zone;
+      setViewStartMs(localMidnight(now(), zone));
+    }
+  }, [zone, now]);
+
   const [panelHidden, setPanelHidden] = useState(() => {
     try { return localStorage.getItem('nr.plannerPanelHidden') === '1'; } catch { return false; }
   });
@@ -103,13 +113,14 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
         <WeekGrid
           days={days}
           nowMs={nowMs}
-          weekLabel={weekLabel(days)}
+          weekLabel={weekLabel(days, zone)}
           blocks={labeledBlocks}
           events={calendar.data ?? []}
           replanPending={replan.isPending}
-          onPrev={() => setViewStartMs((ms) => shiftDays(ms, -dayCount))}
-          onNext={() => setViewStartMs((ms) => shiftDays(ms, dayCount))}
-          onToday={() => setViewStartMs(localMidnight(now()))}
+          onPrev={() => setViewStartMs((ms) => shiftDays(ms, -dayCount, zone))}
+          onNext={() => setViewStartMs((ms) => shiftDays(ms, dayCount, zone))}
+          onToday={() => setViewStartMs(localMidnight(now(), zone))}
+          zone={zone}
           onReplan={() => replan.mutate()}
           onCommit={(id, patch) => updateBlock.mutate({ id, patch })}
           onDeleteBlock={(id) => deleteBlock.mutate(id)}
