@@ -1,6 +1,7 @@
 import { ApiError } from '../../api/client';
 import { useSettingsQuery, useUpdateSettingsMutation } from '../../api/queries';
 import { SettingsForm } from '../settings/SettingsForm';
+import { AccountSection } from '../settings/AccountSection';
 import { toFormState, defaultFormState, browserTimezone } from '../settings/settingsForm';
 
 export function Settings() {
@@ -33,6 +34,7 @@ export function Settings() {
           error={updateM.error instanceof ApiError ? updateM.error : null}
           onSave={(input) => updateM.mutate(input)}
         />
+        <AccountSection />
       </div>
     </div>
   );
