@@ -58,4 +58,36 @@ describe('auth', () => {
     const res = await app.inject({ method: 'GET', url: '/tasks', headers: { authorization: `Bearer ${noSub}` } });
     expect(res.statusCode).toBe(401);
   });
+
+  it('register is rejected in closed mode', async () => {
+    const { app } = buildTestApp({ registrationMode: 'closed', users: [] });
+    const res = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'new@x.com', password: 'longenough1' } });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('register creates a user, default settings, and returns a token in open mode', async () => {
+    const { app, users, settings } = buildTestApp({ registrationMode: 'open', users: [] });
+    const res = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'New@X.com', password: 'longenough1' } });
+    expect(res.statusCode).toBe(200);
+    expect(typeof res.json().token).toBe('string');
+    const uid = res.json().userId;
+    expect(await users.findByEmail('new@x.com')).toMatchObject({ id: uid }); // normalized
+    expect(await settings.getByUserId(uid)).not.toBeNull();
+  });
+
+  it('register requires a valid invite in invite mode', async () => {
+    const bad = buildTestApp({ registrationMode: 'invite', users: [], validInvites: [] });
+    const r1 = await bad.app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'a@x.com', password: 'longenough1', inviteCode: 'NOPE' } });
+    expect(r1.statusCode).toBe(403);
+    const good = buildTestApp({ registrationMode: 'invite', users: [], validInvites: ['GOOD'] });
+    const r2 = await good.app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'a@x.com', password: 'longenough1', inviteCode: 'GOOD' } });
+    expect(r2.statusCode).toBe(200);
+    expect(good.invites.consumed).toContain('GOOD');
+  });
+
+  it('register rejects a duplicate email', async () => {
+    const { app } = buildTestApp({ registrationMode: 'open', users: [{ id: 'u9', email: 'dup@x.com', passwordHash: null, isAdmin: false, googleId: null, googleRefreshToken: null, autoScheduledCalendarId: null, createdAt: new Date(0), updatedAt: new Date(0) } as never] });
+    const res = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'dup@x.com', password: 'longenough1' } });
+    expect(res.statusCode).toBe(409);
+  });
 });

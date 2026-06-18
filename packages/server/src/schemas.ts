@@ -110,3 +110,15 @@ export const updateScheduledBlockSchema = z
   .refine((b) => !(b.startsAt && b.endsAt) || Date.parse(b.startsAt) < Date.parse(b.endsAt), {
     message: 'startsAt must be before endsAt',
   });
+
+export const registerSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(10),
+  inviteCode: z.string().min(1).optional(),
+});
+export const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+export const setPasswordSchema = z.object({ password: z.string().min(10) });
+export const changeEmailSchema = z.object({ email: z.string().email() });
