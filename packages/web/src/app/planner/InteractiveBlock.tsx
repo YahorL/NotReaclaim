@@ -15,6 +15,8 @@ export interface InteractiveBlockProps {
   endMs: number;
   topPct: number;
   heightPct: number;
+  leftPct?: number;
+  widthPct?: number;
   startLabel: string;
   title: string;
   kind: BlockKind;
@@ -31,7 +33,7 @@ type DragMode = 'move' | 'resize';
 
 export function InteractiveBlock(props: InteractiveBlockProps) {
   // `id` is part of the props for the parent's onCommit binding; not read inside this component.
-  const { dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, startLabel, title, kind, pinned, onCommit, onUnpin, onDelete, dayCount = 7, accent, zone = 'UTC' } = props;
+  const { dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, leftPct = 0, widthPct = 100, startLabel, title, kind, pinned, onCommit, onUnpin, onDelete, dayCount = 7, accent, zone = 'UTC' } = props;
   // Refs hold the authoritative drag state; mutated directly so pointer handlers always
   // see the latest values regardless of React's batching/commit schedule.
   const modeRef = useRef<DragMode | null>(null);
@@ -240,7 +242,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
       className={`group ${BASE} ${activeDrag ? 'cursor-grabbing' : 'cursor-grab'} select-none ${variantClass(kind, pinned, accent)} ${transitionClass}`}
-      style={{ top: `${topPct}%`, height: `calc(${heightPct}% + ${heightDelta}px)`, transform: `translate(${transformX}px, ${transformY}px)`, ...accentStyles }}
+      style={{ top: `${topPct}%`, height: `calc(${heightPct}% + ${heightDelta}px)`, left: `calc(${leftPct}% + 2px)`, width: `calc(${widthPct}% - 4px)`, transform: `translate(${transformX}px, ${transformY}px)`, ...accentStyles }}
     >
       {onDelete && !activeDrag && (
         <button

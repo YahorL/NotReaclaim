@@ -4,6 +4,7 @@ import { EventBlock, type BlockKind } from './EventBlock';
 import { InteractiveBlock } from './InteractiveBlock';
 import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY, snapClickToSlot, WINDOW_START_MIN, WINDOW_END_MIN, TIME_GUTTER_PX, GRID_COLUMN_PX, localMidnight, formatHm, weekdayLabel, dayOfMonth } from './weekModel';
 import { CreatePopover } from './CreatePopover';
+import { layoutOverlaps } from './overlapLayout';
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i); // 00:00 → 23:00 row starts (full day)
 
@@ -163,6 +164,7 @@ export function WeekGrid(props: WeekGridProps) {
             </div>
             {days.map((d, i) => {
               const dayItems = items.filter((it) => it.startMs >= d && it.startMs < d + MS_PER_DAY);
+              const lanes = layoutOverlaps(dayItems.map((it) => ({ key: it.key, startMs: it.startMs, endMs: it.endMs })));
               const line = nowLine(nowMs, d);
               return (
                 <div key={d} data-testid={`day-col-${i}`}
@@ -199,12 +201,16 @@ export function WeekGrid(props: WeekGridProps) {
                     const blockId = it.blockId;
                     // Resolve accent: task blocks with a taskId that has a colored category
                     const accent = it.taskId ? accents[it.taskId] : undefined;
+                    const ln = lanes.get(it.key) ?? { lane: 0, lanes: 1 };
+                    const leftPct = (ln.lane / ln.lanes) * 100;
+                    const widthPct = (1 / ln.lanes) * 100;
                     if (it.kind !== 'meeting' && blockId) {
                       return (
                         <InteractiveBlock
                           key={it.key} id={blockId} dayStartMs={d} dayIndex={i}
                           startMs={it.startMs} endMs={it.endMs}
                           topPct={pos.topPct} heightPct={pos.heightPct}
+                          leftPct={leftPct} widthPct={widthPct}
                           startLabel={it.startLabel} title={it.title} kind={it.kind} pinned={it.pinned}
                           onCommit={(patch) => onCommit(blockId, patch)}
                           onUnpin={it.pinned ? () => onCommit(blockId, { pinned: false }) : undefined}
@@ -223,6 +229,8 @@ export function WeekGrid(props: WeekGridProps) {
                         pinned={it.pinned}
                         topPct={pos.topPct}
                         heightPct={pos.heightPct}
+                        leftPct={leftPct}
+                        widthPct={widthPct}
                         startLabel={it.startLabel}
                         accent={accent}
                         onDelete={it.eventId && onDeleteEvent ? () => onDeleteEvent(it.eventId!) : undefined}
