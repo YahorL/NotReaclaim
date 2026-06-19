@@ -1,0 +1,13 @@
+[Unit]
+Description=NotReclaim auto-deploy (pull main, docker compose up --build)
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# Adjust to wherever you cloned the repo on the host:
+WorkingDirectory=/opt/notreclaim
+ExecStart=/opt/notreclaim/deploy/auto-deploy.sh
+# Don't let a transient failure (e.g. GitHub unreachable) spam alerts:
+TimeoutStartSec=900

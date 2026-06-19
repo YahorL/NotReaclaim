@@ -1,0 +1,12 @@
+[Unit]
+Description=Poll GitHub and auto-deploy NotReclaim every few minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=3min
+# Don't pile up runs if a deploy takes longer than the interval:
+Persistent=false
+Unit=notreclaim-deploy.service
+
+[Install]
+WantedBy=timers.target
