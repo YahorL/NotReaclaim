@@ -47,7 +47,13 @@ export function expandHabit(
   let day = DateTime.fromMillis(now, { zone: timezone }).startOf('day');
   while (day.toMillis() < horizonEnd) {
     if (eligible.has(day.weekday % 7)) {
-      const dayStart = Math.max(day.toMillis(), now);
+      // Window STARTS are wall-clock anchors, never clipped to `now`: the engine keys a
+      // capped habit occurrence by the allowed-window day it consumed, so clipping would
+      // make today's key churn on every replan (deleting + recreating the row and its
+      // mirrored Google event). Nothing is placed in the past regardless — the free
+      // timeline these windows are intersected with is already clipped to `now` by
+      // `expandWorkingWindows`, and `periods[0]` starts at `now`.
+      const dayStart = day.toMillis();
       const dayEnd = Math.min(day.plus({ days: 1 }).toMillis(), horizonEnd);
       if (dayEnd > dayStart) allowedWindows.push({ start: dayStart, end: dayEnd });
 
@@ -57,10 +63,10 @@ export function expandHabit(
         const startMin = habit.preferredStartMinute! % 60;
         const endHour = Math.floor(habit.preferredEndMinute! / 60);
         const endMin = habit.preferredEndMinute! % 60;
-        const ps = Math.max(
-          day.set({ hour: startHour, minute: startMin, second: 0, millisecond: 0 }).toMillis(),
-          now,
-        );
+        // Same wall-clock anchoring as above (soft windows, but kept consistent): an
+        // already-passed preferred window simply finds no free room and the engine
+        // falls back to the day's allowed window, exactly as before.
+        const ps = day.set({ hour: startHour, minute: startMin, second: 0, millisecond: 0 }).toMillis();
         const pe = Math.min(
           day.set({ hour: endHour, minute: endMin, second: 0, millisecond: 0 }).toMillis(),
           horizonEnd,

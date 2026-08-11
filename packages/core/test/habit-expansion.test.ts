@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { DateTime } from 'luxon';
+import { scheduleHabit } from '@notreclaim/scheduler';
 import type { Habit } from '@notreclaim/db';
 import { expandHabit } from '../src/habit-expansion.js';
 import { InvalidTimezoneError } from '../src/errors.js';
@@ -91,5 +92,44 @@ describe('expandHabit', () => {
     const h = expandHabit(dbHabit(), 'utc', now, 10); // horizon end = Jan 15
     expect(h.periods).toHaveLength(2);
     expect(h.periods[h.periods.length - 1]!.end).toBe(utc('2026-01-15T00:00:00'));
+  });
+});
+
+// The engine keys a capped habit occurrence by the START of the allowed-window day
+// it consumed. That start must therefore be a stable wall-clock anchor (midnight),
+// never `now` — otherwise today's key churns on every replan and the persisted row
+// (plus its mirrored Google event) is deleted and recreated each time.
+describe('expandHabit day anchoring (replan stability)', () => {
+  it("anchors today's allowedWindows entry to midnight, not to `now`", () => {
+    const morning = utc('2026-01-05T08:00:00'); // Monday
+    const afternoon = utc('2026-01-05T14:30:00'); // same Monday, later
+    const a = expandHabit(dbHabit(), 'utc', morning, 7);
+    const b = expandHabit(dbHabit(), 'utc', afternoon, 7);
+
+    expect(a.allowedWindows[0]!.start).toBe(utc('2026-01-05T00:00:00'));
+    expect(a.allowedWindows.map((w) => w.start)).toEqual(b.allowedWindows.map((w) => w.start));
+  });
+
+  it('anchors preferredWindows to the wall clock even when the window already passed', () => {
+    const afternoon = utc('2026-01-05T14:30:00');
+    const h = expandHabit(
+      dbHabit({ eligibleDays: [1], preferredStartMinute: 540, preferredEndMinute: 660 }),
+      'utc', afternoon, 7,
+    );
+    expect(h.preferredWindows![0]).toEqual({
+      start: utc('2026-01-05T09:00:00'),
+      end: utc('2026-01-05T11:00:00'),
+    });
+  });
+
+  it('keeps habit occurrence ids stable when only `now` advances', () => {
+    const free = [{ start: utc('2026-01-05T09:00:00'), end: utc('2026-01-05T17:00:00') }];
+    const habit = dbHabit({ eligibleDays: [1], perPeriod: 1 });
+    const early = scheduleHabit(free, expandHabit(habit, 'utc', utc('2026-01-05T08:00:00'), 1));
+    const late = scheduleHabit(free, expandHabit(habit, 'utc', utc('2026-01-05T08:30:00'), 1));
+
+    expect(early.blocks).toHaveLength(1);
+    expect(early.blocks.map((b) => b.id)).toEqual(late.blocks.map((b) => b.id));
+    expect(early.blocks[0]!.id).toBe(`habit:h1:${utc('2026-01-05T00:00:00')}`);
   });
 });

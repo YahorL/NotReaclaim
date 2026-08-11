@@ -3,6 +3,7 @@ import type { ScheduledBlock as DbScheduledBlock } from '@notreclaim/db';
 import type { ScheduleResult } from '@notreclaim/scheduler';
 import { applyDesiredSchedule, planLocally, type ScheduleMirror } from '../src/apply.js';
 import { SettingsRequiredError } from '../src/errors.js';
+import { fakeRepos, makeSettings, makeHabit } from './fakes.js';
 
 const NOW = Date.parse('2026-01-05T00:00:00.000Z');
 const HORIZON = NOW + 24 * 60 * 60 * 1000;
@@ -165,5 +166,32 @@ describe('applyDesiredSchedule across time (stale past blocks)', () => {
     const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: LATER, horizonEnd: LATER_HORIZON });
     expect(res).toEqual({ created: 0, updated: 0, deleted: 0 });
     expect(repo.delete).not.toHaveBeenCalled();
+  });
+});
+
+describe('replan idempotence across a moving `now`', () => {
+  // Regression: today's habit allowed-window used to start at `now`, and the engine keys
+  // a capped occurrence by that start — so every replan (including the 5-minute poll)
+  // reissued a fresh key and churned the row plus its mirrored Google event.
+  it('re-planning unchanged data a few minutes later is a complete no-op', async () => {
+    const T0 = Date.parse('2026-01-05T08:00:00.000Z'); // Monday, an hour before working hours
+    const T1 = Date.parse('2026-01-05T08:30:00.000Z'); // same day, placement still in the future
+
+    const blocks = fakeRepo([]);
+    const repos = {
+      ...fakeRepos({
+        settings: makeSettings({ horizonDays: 1 }),
+        habits: [makeHabit({ eligibleDays: [1], perPeriod: 1 })], // Mondays, once a week
+      }),
+      // The block store is the live one, so the second plan sees what the first wrote.
+      scheduledBlocks: { listByUserInRange: async () => blocks.rows() },
+    };
+
+    const first = await planLocally(repos, blocks, 'u1', T0);
+    expect(first).toMatchObject({ created: 1, updated: 0, deleted: 0 });
+
+    const second = await planLocally(repos, blocks, 'u1', T1);
+    expect(second).toMatchObject({ created: 0, updated: 0, deleted: 0 });
+    expect(blocks.rows()).toHaveLength(1);
   });
 });
