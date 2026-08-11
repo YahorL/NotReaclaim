@@ -7,6 +7,7 @@
 # @node-rs/argon2 *-linux-x64-gnu prebuilt binary both load without a toolchain.
 ###############################################################################
 FROM node:20-bookworm-slim AS build
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 # Copy manifests first so `npm ci` is cached until a package.json changes.
@@ -26,10 +27,10 @@ COPY . .
 RUN npm run prisma:generate -w @notreclaim/db
 
 # Compile in dependency order, then build the SPA (outputs packages/web/dist).
-RUN npm run build -w @notreclaim/core \
- && npm run build -w @notreclaim/scheduler \
- && npm run build -w @notreclaim/google \
+RUN npm run build -w @notreclaim/scheduler \
  && npm run build -w @notreclaim/db \
+ && npm run build -w @notreclaim/core \
+ && npm run build -w @notreclaim/google \
  && npm run build -w @notreclaim/server \
  && npm run build -w @notreclaim/web
 
@@ -38,6 +39,7 @@ RUN npm run build -w @notreclaim/core \
 # (incl. the Prisma CLI) so the entrypoint can run `prisma migrate deploy`.
 ###############################################################################
 FROM node:20-bookworm-slim AS server
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /app/node_modules ./node_modules
