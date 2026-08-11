@@ -59,7 +59,7 @@ export interface Habit {
    */
   allowedWindows?: Interval[];
   /**
-   * Optional prior placements of this habit (sorted by `start`). The engine keeps
+   * Optional prior placements of this habit, in any order. The engine keeps
    * each slot verbatim when it is still valid — `chunkMs` long, inside its period
    * and its allowed window, and still free — so a replan does not shuffle habits
    * the user has already seen. Kept slots count toward the period target, reserve their free
@@ -70,6 +70,8 @@ export interface Habit {
    * Optional start times of user-pinned occurrences of this habit. Their days are
    * consumed (so no auto occurrence lands on the same day) but the blocks
    * themselves are NOT emitted here — they arrive via `ScheduleInput.pinnedBlocks`.
+   * Only meaningful together with `allowedWindows`: habits without them are exempt
+   * from the one-per-day cap, so there is no day to consume and this is a no-op.
    */
   pinnedSlotTimes?: number[];
   /**
@@ -82,7 +84,11 @@ export interface Habit {
 
 /** Engine output: a concrete placement bound to a task or habit. */
 export interface ScheduledBlock {
-  /** Deterministic id, e.g. "task:<id>:<index>" or "habit:<id>:<index>". */
+  /**
+   * Deterministic id, e.g. "task:<id>:<index>" or "habit:<id>:<index>". Habits with
+   * `allowedWindows` key on the day instead — "habit:<id>:<allowedWindowStart>" —
+   * so an occurrence keeps its id across replans even when others come and go.
+   */
   id: string;
   sourceType: 'task' | 'habit';
   sourceId: string;

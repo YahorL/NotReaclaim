@@ -112,7 +112,8 @@ describe('scheduleHabit with allowedWindows (hard restriction)', () => {
       preferredWindows: [{ start: 150, end: 300 }],
     }));
     expect(result.blocks).toEqual([
-      { id: 'habit:h1:0', sourceType: 'habit', sourceId: 'h1', title: 'Exercise', start: 150, end: 180 },
+      // Capped habits key on the allowed-window (day) start, not the ordinal.
+      { id: 'habit:h1:100', sourceType: 'habit', sourceId: 'h1', title: 'Exercise', start: 150, end: 180 },
     ]);
   });
 
@@ -291,13 +292,69 @@ describe('scheduleHabit existingSlots (sticky placements)', () => {
     expect(res.unscheduled).toEqual([]);
   });
 
-  it('emits kept slots first so their engineKeys stay stable', () => {
+  it('ids capped occurrences by day, so a kept slot re-emits its previous id', () => {
     const h = stickyHabit({ existingSlots: [{ start: 1 * D + 13 * H, end: 1 * D + 14 * H }] });
     const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    // The kept slot's id is its day's allowed-window start — the same id the run
+    // that first placed it produced, regardless of emission order.
     expect(res.blocks[0]).toMatchObject({
-      id: 'habit:h:0', start: 1 * D + 13 * H, end: 1 * D + 14 * H,
+      id: `habit:h:${1 * D + 9 * H}`, start: 1 * D + 13 * H, end: 1 * D + 14 * H,
     });
-    expect(res.blocks[1]!.id).toBe('habit:h:1');
+    expect(res.blocks[1]!.id).toBe(`habit:h:${0 * D + 9 * H}`);
+  });
+
+  it('does not shift later occurrence ids when an earlier slot is invalidated', () => {
+    const slots = [
+      { start: 0 * D + 13 * H, end: 0 * D + 14 * H },
+      { start: 2 * D + 13 * H, end: 2 * D + 14 * H },
+    ];
+    const both = scheduleHabit([{ start: 0, end: 7 * D }], stickyHabit({ existingSlots: slots }), 0);
+    // Day 0 is fully busy → its slot is stale, but day 2's id must not move.
+    const dayZeroGone = scheduleHabit(
+      [{ start: 1 * D, end: 7 * D }],
+      stickyHabit({ existingSlots: slots }),
+      0,
+    );
+    const idOf = (res: { blocks: { id: string; start: number }[] }, start: number) =>
+      res.blocks.find((b) => b.start === start)!.id;
+    expect(idOf(both, 2 * D + 13 * H)).toBe(`habit:h:${2 * D + 9 * H}`);
+    expect(idOf(dayZeroGone, 2 * D + 13 * H)).toBe(`habit:h:${2 * D + 9 * H}`);
+  });
+
+  it('keeps slots across multiple periods with their day-based ids', () => {
+    const h = stickyHabit({
+      perPeriod: 1,
+      periods: [{ start: 0, end: 3 * D }, { start: 3 * D, end: 7 * D }],
+      allowedWindows: dayWindows([0, 1, 2, 3, 4, 5, 6]),
+      existingSlots: [
+        { start: 1 * D + 13 * H, end: 1 * D + 14 * H },
+        { start: 4 * D + 13 * H, end: 4 * D + 14 * H },
+      ],
+    });
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    expect(res.blocks.map((b) => ({ id: b.id, start: b.start, end: b.end }))).toEqual([
+      { id: `habit:h:${1 * D + 9 * H}`, start: 1 * D + 13 * H, end: 1 * D + 14 * H },
+      { id: `habit:h:${4 * D + 9 * H}`, start: 4 * D + 13 * H, end: 4 * D + 14 * H },
+    ]);
+  });
+
+  it("keeps a later period's slot (with its id) when the earlier period's slot is stale", () => {
+    const h = stickyHabit({
+      perPeriod: 1,
+      periods: [{ start: 0, end: 3 * D }, { start: 3 * D, end: 7 * D }],
+      allowedWindows: dayWindows([0, 1, 2, 3, 4, 5, 6]),
+      existingSlots: [
+        { start: 1 * D + 13 * H, end: 1 * D + 14 * H },
+        { start: 4 * D + 13 * H, end: 4 * D + 14 * H },
+      ],
+    });
+    // Day 1 is occupied → period 1's slot is re-placed on day 0; period 2's slot
+    // is still kept, and its id is unchanged by that re-placement.
+    const res = scheduleHabit([{ start: 0, end: 1 * D }, { start: 2 * D, end: 7 * D }], h, 0);
+    expect(res.blocks.map((b) => ({ id: b.id, start: b.start, end: b.end }))).toEqual([
+      { id: `habit:h:${0 * D + 9 * H}`, start: 0 * D + 9 * H, end: 0 * D + 10 * H },
+      { id: `habit:h:${4 * D + 9 * H}`, start: 4 * D + 13 * H, end: 4 * D + 14 * H },
+    ]);
   });
 
   it('re-places a slot that no longer fits in free time', () => {
@@ -335,6 +392,8 @@ describe('scheduleHabit existingSlots (sticky placements)', () => {
     ]);
   });
 
+  // Slots are listed out of start order on purpose: day-based ids make the
+  // engine indifferent to the order they arrive in.
   it('ignores slots outside the period and beyond the period target', () => {
     const h = stickyHabit({
       perPeriod: 1,

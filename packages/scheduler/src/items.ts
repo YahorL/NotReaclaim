@@ -62,15 +62,35 @@ interface HabitWindowBudget {
  * Entries are day-granular by construction — core's `expandHabit` emits one per
  * eligible day — so consuming the containing entry is exactly "one per calendar
  * day" without any timezone logic in the engine.
+ *
+ * Returns the consumed entry (used as the occurrence's stable day identity), or
+ * `undefined` when the habit is uncapped or the day was already consumed.
  */
-function consumeWindowContaining(budget: HabitWindowBudget, time: number): void {
-  if (!budget.allowed) return;
+function consumeWindowContaining(
+  budget: HabitWindowBudget,
+  time: number,
+): Interval | undefined {
+  if (!budget.allowed) return undefined;
   const day = budget.allowed.find((w) => time >= w.start && time < w.end);
-  if (!day) return;
+  if (!day) return undefined;
   budget.allowed = budget.allowed.filter((w) => w !== day);
   if (budget.preferred) {
     budget.preferred = subtractIntervals(budget.preferred, [day]);
   }
+  return day;
+}
+
+/**
+ * Stable id for one habit occurrence.
+ *
+ * Capped habits (those with `allowedWindows`) key on the allowed entry the
+ * occurrence's day was consumed from: the one-per-day cap makes that day unique
+ * within a run, so an occurrence keeps its id across replans no matter how many
+ * other occurrences appear, move or disappear — no index shifting exists.
+ * Uncapped habits have no day identity and fall back to the ordinal.
+ */
+function occurrenceId(habitId: string, day: Interval | undefined, index: number): string {
+  return `habit:${habitId}:${day ? day.start : index}`;
 }
 
 /** True when `time` still falls in an unconsumed allowed entry (always for uncapped habits). */
@@ -104,8 +124,8 @@ export function scheduleHabit(free: Interval[], habit: Habit, gapMs = 0): Schedu
     const periodWindow: Interval[] = [period];
     let placed = 0;
 
-    // Sticky slots first: keep prior placements that are still valid, in start
-    // order, so their engineKeys (habit:<id>:<index>) stay stable across replans.
+    // Sticky slots first: keep prior placements that are still valid, so a
+    // replan does not move habits the user has already seen.
     for (const slot of habit.existingSlots ?? []) {
       if (placed >= target) break;
       // A length mismatch means the user changed the habit's duration since the
@@ -124,9 +144,9 @@ export function scheduleHabit(free: Interval[], habit: Habit, gapMs = 0): Schedu
       remainingFree = subtractIntervals(remainingFree, [
         { start: slot.start - gapMs, end: slot.end + gapMs },
       ]);
-      consumeWindowContaining(budget, slot.start);
+      const day = consumeWindowContaining(budget, slot.start);
       blocks.push({
-        id: `habit:${habit.id}:${index}`,
+        id: occurrenceId(habit.id, day, index),
         sourceType: 'habit',
         sourceId: habit.id,
         title: habit.title,
@@ -159,9 +179,9 @@ export function scheduleHabit(free: Interval[], habit: Habit, gapMs = 0): Schedu
 
       remainingFree = res.free;
       const p = res.placements[0]!;
-      consumeWindowContaining(budget, p.start);
+      const day = consumeWindowContaining(budget, p.start);
       blocks.push({
-        id: `habit:${habit.id}:${index}`,
+        id: occurrenceId(habit.id, day, index),
         sourceType: 'habit',
         sourceId: habit.id,
         title: habit.title,
