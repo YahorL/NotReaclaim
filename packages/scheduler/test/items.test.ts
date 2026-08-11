@@ -156,6 +156,92 @@ describe('scheduleHabit with allowedWindows (hard restriction)', () => {
   });
 });
 
+describe('scheduleHabit one occurrence per allowed-window day', () => {
+  const D = 86_400_000;
+  const H = 3_600_000;
+
+  const dayWindows = (days: number[], fromH = 9, toH = 17) =>
+    days.map((d) => ({ start: d * D + fromH * H, end: d * D + toH * H }));
+
+  it('places at most one occurrence per allowed-window day', () => {
+    const h: Habit = {
+      id: 'h', title: 'H', priority: 1, chunkMs: H, perPeriod: 3,
+      periods: [{ start: 0, end: 7 * D }],
+      allowedWindows: dayWindows([0, 1, 2, 3, 4]),
+    };
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    const days = res.blocks.map((b) => Math.floor(b.start / D));
+    expect(res.blocks).toHaveLength(3);
+    expect(new Set(days).size).toBe(3);
+    expect(days).toEqual([0, 1, 2]);
+    expect(res.unscheduled).toEqual([]);
+  });
+
+  it('reports surplus occurrences as missed when eligible days run out', () => {
+    const h: Habit = {
+      id: 'h', title: 'H', priority: 1, chunkMs: H, perPeriod: 3,
+      periods: [{ start: 0, end: 7 * D }],
+      allowedWindows: dayWindows([0, 1]),
+    };
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    expect(res.blocks).toHaveLength(2);
+    expect(res.unscheduled).toEqual([
+      {
+        sourceType: 'habit',
+        sourceId: 'h',
+        title: 'H',
+        reason: 'could not place all habit occurrences in free time',
+        remainingMs: H,
+      },
+    ]);
+  });
+
+  it('does not reuse a day consumed via a preferred window', () => {
+    const h: Habit = {
+      id: 'h', title: 'H', priority: 1, chunkMs: H, perPeriod: 2,
+      periods: [{ start: 0, end: 7 * D }],
+      allowedWindows: dayWindows([0, 1]),
+      // Day 0 has a wide preferred window; day 1 has none.
+      preferredWindows: [{ start: 9 * H, end: 17 * H }],
+    };
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    expect(res.blocks.map((b) => Math.floor(b.start / D))).toEqual([0, 1]);
+  });
+
+  it('consumes the day even when placed via the bound fallback', () => {
+    const h: Habit = {
+      id: 'h', title: 'H', priority: 1, chunkMs: H, perPeriod: 2,
+      periods: [{ start: 0, end: 7 * D }],
+      allowedWindows: dayWindows([0, 1]),
+      // Preferred windows never fit (too short), so both placements use `bound`.
+      preferredWindows: [0, 1].map((d) => ({ start: d * D + 9 * H, end: d * D + 9 * H + 60_000 })),
+    };
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    expect(res.blocks.map((b) => Math.floor(b.start / D))).toEqual([0, 1]);
+  });
+
+  it('carries consumed days across periods', () => {
+    const h: Habit = {
+      id: 'h', title: 'H', priority: 1, chunkMs: H, perPeriod: 1,
+      periods: [{ start: 0, end: 7 * D }, { start: 7 * D, end: 14 * D }],
+      allowedWindows: dayWindows([0, 7]),
+    };
+    const res = scheduleHabit([{ start: 0, end: 14 * D }], h, 0);
+    expect(res.blocks.map((b) => Math.floor(b.start / D))).toEqual([0, 7]);
+  });
+
+  it('leaves habits without allowedWindows uncapped (regression)', () => {
+    const h: Habit = {
+      id: 'h', title: 'H', priority: 1, chunkMs: H, perPeriod: 3,
+      periods: [{ start: 0, end: 7 * D }],
+    };
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    expect(res.blocks.map((b) => [b.start, b.end])).toEqual([
+      [0, H], [H, 2 * H], [2 * H, 3 * H],
+    ]);
+  });
+});
+
 describe('scheduleHabit with periodTargets (per-period counts)', () => {
   it("uses periodTargets[i] as each period's occurrence count", () => {
     const free = [{ start: 0, end: 1000 }];
