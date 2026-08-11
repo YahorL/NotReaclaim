@@ -1,10 +1,12 @@
-import type { PrismaClient, CalendarEvent } from '@prisma/client';
+import type { PrismaClient, CalendarEvent, CalendarEventKind } from '@prisma/client';
 import { NotFoundError, translatePrismaError } from '../errors.js';
 
 export interface CreateCalendarEventInput {
   title: string;
   startsAt: Date;
   endsAt: Date;
+  /** `blocked` = local busy time, never mirrored to Google. Defaults to `event`. */
+  kind?: CalendarEventKind;
 }
 
 export interface UpsertCalendarEventInput {
