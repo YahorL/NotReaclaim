@@ -356,6 +356,46 @@ describe('InteractiveBlock unpin button', () => {
   });
 });
 
+describe('InteractiveBlock click (drag/click discrimination)', () => {
+  it('a zero-delta press calls onClick and commits nothing', () => {
+    const onClick = vi.fn();
+    const onCommit = renderBlock({ onClick });
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('a real drag commits and does NOT call onClick', () => {
+    const onClick = vi.fn();
+    const onCommit = renderBlock({ onClick });
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('clicking the delete button does not trigger onClick', () => {
+    const onClick = vi.fn();
+    const onDelete = vi.fn();
+    renderBlock({ onClick, onDelete });
+    const btn = screen.getByRole('button', { name: /delete block/i, hidden: true });
+    fireEvent.pointerDown(btn, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerUp(btn, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.click(btn);
+    expect(onDelete).toHaveBeenCalledTimes(1);
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('deleteLabel renames the delete button', () => {
+    renderBlock({ onDelete: vi.fn(), deleteLabel: 'Delete event' });
+    expect(screen.getByRole('button', { name: /delete event/i, hidden: true })).toBeInTheDocument();
+  });
+});
+
 describe('InteractiveBlock accent tinting', () => {
   const ACCENT = '#5b62e3';
 

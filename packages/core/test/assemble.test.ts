@@ -327,6 +327,119 @@ describe('assembleScheduleInput buffers', () => {
   });
 });
 
+describe('assembleScheduleInput habit slots', () => {
+  const NOW = Date.parse('2026-01-05T12:00:00.000Z'); // Monday noon UTC
+  const at = (iso: string) => Date.parse(iso);
+
+  it('threads non-pinned future habit blocks into the engine habit as existingSlots', async () => {
+    const input = await assembleScheduleInput(
+      fakeRepos({
+        settings: makeSettings({ horizonDays: 7 }),
+        categories: [makeCategory()],
+        habits: [makeHabit({ id: 'h1', eligibleDays: [1, 2, 3, 4, 5] })],
+        blocks: [
+          // Out of order on purpose: the engine's slot selection is array-order dependent.
+          makeBlock({
+            id: 'auto-wed', taskId: null, habitId: 'h1', pinned: false,
+            startsAt: new Date(at('2026-01-07T09:00:00.000Z')), endsAt: new Date(at('2026-01-07T09:30:00.000Z')),
+          }),
+          makeBlock({
+            id: 'auto-tue', taskId: null, habitId: 'h1', pinned: false,
+            startsAt: new Date(at('2026-01-06T09:00:00.000Z')), endsAt: new Date(at('2026-01-06T09:30:00.000Z')),
+          }),
+          // Pinned → arrives via pinnedBlocks, not existingSlots.
+          makeBlock({
+            id: 'pinned-thu', taskId: null, habitId: 'h1', pinned: true,
+            startsAt: new Date(at('2026-01-08T09:00:00.000Z')), endsAt: new Date(at('2026-01-08T09:30:00.000Z')),
+          }),
+          // Past → already happened, nothing to keep stable.
+          makeBlock({
+            id: 'past', taskId: null, habitId: 'h1', pinned: false,
+            startsAt: new Date(at('2026-01-05T09:00:00.000Z')), endsAt: new Date(at('2026-01-05T09:30:00.000Z')),
+          }),
+          // Started → user-managed.
+          makeBlock({
+            id: 'started', taskId: null, habitId: 'h1', pinned: false,
+            startsAt: new Date(at('2026-01-05T14:00:00.000Z')), endsAt: new Date(at('2026-01-05T14:30:00.000Z')),
+            startedAt: new Date(at('2026-01-05T11:55:00.000Z')),
+          }),
+          // Another habit's block.
+          makeBlock({
+            id: 'other-habit', taskId: null, habitId: 'h2', pinned: false,
+            startsAt: new Date(at('2026-01-06T15:00:00.000Z')), endsAt: new Date(at('2026-01-06T15:30:00.000Z')),
+          }),
+          // A task block.
+          makeBlock({
+            id: 'task-block', taskId: 't1', habitId: null, pinned: false,
+            startsAt: new Date(at('2026-01-06T16:00:00.000Z')), endsAt: new Date(at('2026-01-06T16:30:00.000Z')),
+          }),
+        ],
+      }),
+      'u1', NOW,
+    );
+    expect(input.habits.find((h) => h.id === 'h1')!.existingSlots).toEqual([
+      { start: at('2026-01-06T09:00:00.000Z'), end: at('2026-01-06T09:30:00.000Z') },
+      { start: at('2026-01-07T09:00:00.000Z'), end: at('2026-01-07T09:30:00.000Z') },
+    ]);
+  });
+
+  it('leaves existingSlots undefined when the habit has no reusable blocks', async () => {
+    const input = await assembleScheduleInput(
+      fakeRepos({
+        settings: makeSettings({ horizonDays: 7 }),
+        categories: [makeCategory()],
+        habits: [makeHabit({ id: 'h1', eligibleDays: [1, 2, 3, 4, 5] })],
+      }),
+      'u1', NOW,
+    );
+    expect(input.habits.find((h) => h.id === 'h1')!.existingSlots).toBeUndefined();
+  });
+
+  it('threads pinned habit block start times as pinnedSlotTimes', async () => {
+    const input = await assembleScheduleInput(
+      fakeRepos({
+        settings: makeSettings({ horizonDays: 7 }),
+        categories: [makeCategory()],
+        habits: [makeHabit({ id: 'h1', perPeriod: 3, eligibleDays: [1, 2, 3, 4, 5] })],
+        blocks: [
+          makeBlock({
+            id: 'pinned-thu', taskId: null, habitId: 'h1', pinned: true,
+            startsAt: new Date(at('2026-01-08T09:00:00.000Z')), endsAt: new Date(at('2026-01-08T09:30:00.000Z')),
+          }),
+          makeBlock({
+            id: 'pinned-tue', taskId: null, habitId: 'h1', pinned: true,
+            startsAt: new Date(at('2026-01-06T09:00:00.000Z')), endsAt: new Date(at('2026-01-06T09:30:00.000Z')),
+          }),
+          makeBlock({
+            id: 'auto-wed', taskId: null, habitId: 'h1', pinned: false,
+            startsAt: new Date(at('2026-01-07T09:00:00.000Z')), endsAt: new Date(at('2026-01-07T09:30:00.000Z')),
+          }),
+        ],
+      }),
+      'u1', NOW,
+    );
+    const h1 = input.habits.find((h) => h.id === 'h1')!;
+    expect(h1.pinnedSlotTimes).toEqual([at('2026-01-06T09:00:00.000Z'), at('2026-01-08T09:00:00.000Z')]);
+    expect(h1.periodTargets![0]).toBe(1); // 3 per period - 2 pinned
+  });
+
+  it('leaves pinnedSlotTimes undefined when the habit has no pinned blocks', async () => {
+    const input = await assembleScheduleInput(
+      fakeRepos({
+        settings: makeSettings({ horizonDays: 7 }),
+        categories: [makeCategory()],
+        habits: [makeHabit({ id: 'h1', eligibleDays: [1, 2, 3, 4, 5] })],
+        blocks: [makeBlock({
+          id: 'auto-wed', taskId: null, habitId: 'h1', pinned: false,
+          startsAt: new Date(at('2026-01-07T09:00:00.000Z')), endsAt: new Date(at('2026-01-07T09:30:00.000Z')),
+        })],
+      }),
+      'u1', NOW,
+    );
+    expect(input.habits.find((h) => h.id === 'h1')!.pinnedSlotTimes).toBeUndefined();
+  });
+});
+
 describe('assembleScheduleInput started tasks', () => {
   const NOW = Date.parse('2026-01-05T12:00:00.000Z'); // Monday noon UTC
 

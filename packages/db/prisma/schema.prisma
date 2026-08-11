@@ -63,6 +63,11 @@ model Settings {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+enum CalendarEventSource {
+  app
+  google
+}
+
 model CalendarEvent {
   id               String   @id @default(uuid())
   userId           String
@@ -71,6 +76,7 @@ model CalendarEvent {
   title            String
   startsAt         DateTime @db.Timestamptz
   endsAt           DateTime @db.Timestamptz
+  source           CalendarEventSource @default(google)
   createdAt        DateTime @default(now()) @db.Timestamptz
   updatedAt        DateTime @updatedAt @db.Timestamptz
 

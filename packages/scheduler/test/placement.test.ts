@@ -74,4 +74,27 @@ describe('placeItem gapMs', () => {
     const res = placeItem([{ start: 0, end: 100 }], [20, 20], 100);
     expect(res.placements).toEqual([{ start: 0, end: 20 }, { start: 20, end: 40 }]);
   });
+
+  it('reserves the gap on both sides of a placement', () => {
+    const H = 3_600_000;
+    const G = 900_000;
+    const free = [{ start: 9 * H, end: 18 * H }];
+    const res = placeItem(free, [H], 24 * H, undefined, G);
+    expect(res.placements).toEqual([{ start: 9 * H, end: 10 * H }]);
+    // leading side is clipped by the interval edge; trailing side reserved:
+    expect(res.free).toEqual([{ start: 10 * H + G, end: 18 * H }]);
+  });
+
+  it('keeps a later placement from touching an earlier one from the left', () => {
+    const H = 3_600_000;
+    const G = 900_000;
+    const free = [{ start: 9 * H, end: 18 * H }];
+    // First: confined to 12:00+ via candidate window.
+    const first = placeItem(free, [H], 24 * H, [{ start: 12 * H, end: 18 * H }], G);
+    expect(first.placements[0]).toEqual({ start: 12 * H, end: 13 * H });
+    // Second: unconstrained — earliest slot must END by 12:00 − 15m.
+    const second = placeItem(first.free, [2 * H], 24 * H, undefined, G);
+    expect(second.placements[0]).toEqual({ start: 9 * H, end: 11 * H });
+    expect(first.free[0]!.end).toBe(12 * H - G); // leading gap reserved
+  });
 });

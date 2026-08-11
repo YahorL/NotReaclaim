@@ -5,7 +5,7 @@ import { buildTestApp, tokenFor } from './fakes.js';
 function event(over: Partial<CalendarEvent> = {}): CalendarEvent {
   return {
     id: 'e1', userId: 'u1', googleCalendarId: 'primary', googleEventId: 'g1',
-    title: 'Standup',
+    title: 'Standup', source: 'app',
     startsAt: new Date('2026-01-05T10:00:00.000Z'),
     endsAt: new Date('2026-01-05T10:30:00.000Z'),
     createdAt: new Date(0), updatedAt: new Date(0), ...over,
@@ -112,6 +112,146 @@ describe('POST /calendar/events', () => {
     const token = await tokenFor(app);
     const res = await app.inject({ method: 'POST', url: '/calendar/events', headers: { authorization: `Bearer ${token}` }, payload: { ...body, endsAt: '2026-01-06T08:00:00.000Z' } });
     expect(res.statusCode).toBe(400);
+  });
+});
+
+describe('PATCH /calendar/events/:id', () => {
+  const auth = (token: string) => ({ authorization: `Bearer ${token}` });
+
+  it('retimes an app event, reflows, returns the updated row', async () => {
+    const { app, reconcileCalls } = buildTestApp({
+      settings: settings(),
+      calendarEvents: [event({ googleEventId: null, googleCalendarId: null })],
+    });
+    const token = await tokenFor(app);
+    const before = reconcileCalls.length;
+    const res = await app.inject({
+      method: 'PATCH', url: '/calendar/events/e1', headers: auth(token),
+      payload: { startsAt: '2026-01-05T14:00:00.000Z', endsAt: '2026-01-05T15:00:00.000Z' },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as CalendarEvent;
+    expect(body.startsAt).toBe('2026-01-05T14:00:00.000Z');
+    expect(body.endsAt).toBe('2026-01-05T15:00:00.000Z');
+    expect(body.title).toBe('Standup');
+    expect(reconcileCalls.length).toBe(before + 1);
+  });
+
+  it('renames without touching the times', async () => {
+    const { app } = buildTestApp({
+      settings: settings(),
+      calendarEvents: [event({ googleEventId: null, googleCalendarId: null })],
+    });
+    const token = await tokenFor(app);
+    const res = await app.inject({
+      method: 'PATCH', url: '/calendar/events/e1', headers: auth(token), payload: { title: 'Renamed' },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as CalendarEvent;
+    expect(body.title).toBe('Renamed');
+    expect(body.startsAt).toBe('2026-01-05T10:00:00.000Z');
+    expect(body.endsAt).toBe('2026-01-05T10:30:00.000Z');
+  });
+
+  it('404s for a Google-sourced event without reflowing', async () => {
+    const { app, reconcileCalls } = buildTestApp({ settings: settings(), calendarEvents: [event({ source: 'google' })] });
+    const token = await tokenFor(app);
+    const before = reconcileCalls.length;
+    const res = await app.inject({
+      method: 'PATCH', url: '/calendar/events/e1', headers: auth(token), payload: { title: 'Nope' },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(reconcileCalls.length).toBe(before);
+  });
+
+  it("404s for another user's event and for an unknown id", async () => {
+    const { app } = buildTestApp({ settings: settings(), calendarEvents: [event({ userId: 'u2' })] });
+    const token = await tokenFor(app);
+    const foreign = await app.inject({
+      method: 'PATCH', url: '/calendar/events/e1', headers: auth(token), payload: { title: 'Nope' },
+    });
+    expect(foreign.statusCode).toBe(404);
+    const missing = await app.inject({
+      method: 'PATCH', url: '/calendar/events/nope', headers: auth(token), payload: { title: 'Nope' },
+    });
+    expect(missing.statusCode).toBe(404);
+  });
+
+  it('400s when the merged range inverts, without reflowing', async () => {
+    const { app, reconcileCalls } = buildTestApp({
+      settings: settings(),
+      calendarEvents: [event({ googleEventId: null, googleCalendarId: null })],
+    });
+    const token = await tokenFor(app);
+    const before = reconcileCalls.length;
+    const res = await app.inject({
+      method: 'PATCH', url: '/calendar/events/e1', headers: auth(token),
+      payload: { startsAt: '2026-01-05T11:00:00.000Z' }, // past the existing 10:30 end
+    });
+    expect(res.statusCode).toBe(400);
+    expect(reconcileCalls.length).toBe(before);
+  });
+
+  it('400s on an empty update body', async () => {
+    const { app } = buildTestApp({ settings: settings(), calendarEvents: [event()] });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'PATCH', url: '/calendar/events/e1', headers: auth(token), payload: {} });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('writes the edit back to Google when the row carries Google ids', async () => {
+    const patches: Array<{ calendarId: string; googleEventId: string; summary: string; startDateTime: string; endDateTime: string }> = [];
+    const { app } = buildTestApp({
+      settings: settings(),
+      calendarEvents: [event()], // googleCalendarId 'primary', googleEventId 'g1'
+      accessToken: 'at-1',
+      patchEvent: async (_t, calendarId, googleEventId, ev) => {
+        patches.push({ calendarId, googleEventId, summary: ev.summary, startDateTime: ev.startDateTime, endDateTime: ev.endDateTime });
+      },
+    });
+    const token = await tokenFor(app);
+    const res = await app.inject({
+      method: 'PATCH', url: '/calendar/events/e1', headers: auth(token),
+      payload: { title: 'Renamed', startsAt: '2026-01-05T14:00:00.000Z', endsAt: '2026-01-05T15:00:00.000Z' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(patches).toEqual([{
+      calendarId: 'primary', googleEventId: 'g1', summary: 'Renamed',
+      startDateTime: '2026-01-05T14:00:00.000Z', endDateTime: '2026-01-05T15:00:00.000Z',
+    }]);
+  });
+
+  it('skips the Google write-back for a row with no Google ids, even when connected', async () => {
+    let patchCalls = 0;
+    const { app } = buildTestApp({
+      settings: settings(),
+      calendarEvents: [event({ googleEventId: null, googleCalendarId: null })],
+      accessToken: 'at-1', // connected, so only the id guard can stop the call
+      patchEvent: async () => { patchCalls += 1; },
+    });
+    const token = await tokenFor(app);
+    const res = await app.inject({
+      method: 'PATCH', url: '/calendar/events/e1', headers: auth(token), payload: { title: 'Renamed' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(patchCalls).toBe(0);
+  });
+
+  it('still updates locally when the Google write-back fails', async () => {
+    const { app } = buildTestApp({
+      settings: settings(),
+      calendarEvents: [event()],
+      accessToken: 'at-1',
+      patchEvent: async () => { throw new Error('google down'); },
+    });
+    const token = await tokenFor(app);
+    const res = await app.inject({
+      method: 'PATCH', url: '/calendar/events/e1', headers: auth(token), payload: { title: 'Renamed' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as CalendarEvent).title).toBe('Renamed');
+    const list = await app.inject({ method: 'GET', url: '/calendar/events', headers: auth(token) });
+    expect((list.json() as CalendarEvent[])[0]!.title).toBe('Renamed');
   });
 });
 

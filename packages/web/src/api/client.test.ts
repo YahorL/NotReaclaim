@@ -83,6 +83,20 @@ describe('createApiClient', () => {
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer t');
   });
 
+  it('updateCalendarEvent sends a PATCH to /calendar/events/:id with the patch body', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ id: 'e1', title: 'Standup' }));
+    vi.stubGlobal('fetch', fetchMock);
+    const api = createApiClient({ baseUrl: '', getToken: () => 't' });
+
+    await api.updateCalendarEvent('e1', { startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T10:00:00.000Z' });
+
+    const calls = fetchMock.mock.calls as unknown as [[string, RequestInit]];
+    const [url, init] = calls[0];
+    expect(url).toBe('/calendar/events/e1');
+    expect(init.method).toBe('PATCH');
+    expect(JSON.parse(init.body as string)).toMatchObject({ startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T10:00:00.000Z' });
+  });
+
   it('register POSTs credentials and returns the token', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ token: 't', userId: 'u' }));
     vi.stubGlobal('fetch', fetchMock);

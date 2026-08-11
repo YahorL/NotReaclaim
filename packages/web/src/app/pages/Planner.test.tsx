@@ -14,7 +14,7 @@ const blocks: ScheduledBlock[] = [{
 const events: CalendarEvent[] = [{
   id: 'e1', userId: 'u1', title: 'Standup',
   startsAt: '2026-01-07T10:00:00.000Z', endsAt: '2026-01-07T10:30:00.000Z',
-  googleCalendarId: 'primary', googleEventId: 'g1',
+  googleCalendarId: 'primary', googleEventId: 'g1', source: 'google',
 }];
 const preview: SchedulePreview = {
   blocks: [],
@@ -110,6 +110,47 @@ describe('Planner', () => {
     expect(screen.queryByTestId('planner-task-panel')).toBeNull();
     fireEvent.click(screen.getByTestId('panel-show'));
     expect(screen.getByTestId('planner-task-panel')).toBeInTheDocument();
+  });
+
+  it('clicking an app-created event opens the event edit drawer, prefilled', async () => {
+    const appEvent: CalendarEvent = {
+      id: 'e9', userId: 'u1', title: 'Coffee',
+      startsAt: '2026-01-07T15:00:00.000Z', endsAt: '2026-01-07T15:30:00.000Z',
+      googleCalendarId: null, googleEventId: null, source: 'app',
+    };
+    const api = makeApi({ getCalendarEvents: vi.fn(async () => [appEvent]) });
+    renderWithProviders(<Planner now={() => NOW} />, { api });
+    await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument());
+    expect(screen.queryByTestId('event-drawer')).toBeNull();
+    const tile = screen.getAllByTestId('event-block').find((b) => b.textContent?.includes('Coffee'))!;
+    fireEvent.pointerDown(tile, { clientX: 40, clientY: 80, pointerId: 1 });
+    fireEvent.pointerUp(tile, { clientX: 40, clientY: 80, pointerId: 1 });
+    expect(screen.getByTestId('event-drawer')).toBeInTheDocument();
+    expect(screen.getByTestId('event-title')).toHaveValue('Coffee');
+    expect(screen.getByTestId('event-start')).toHaveValue('2026-01-07T15:00'); // TZ=UTC settings default
+  });
+
+  it('saving a time edit from the event drawer PATCHes the new start and closes the drawer', async () => {
+    // Regression: the drawer is keyed on the event's times, and the update mutation patches the
+    // cached event optimistically — so closing on the mutation's onSuccess never fired (the key
+    // change unmounted the drawer, and its mutation observer, first). Save closes synchronously.
+    const appEvent: CalendarEvent = {
+      id: 'e9', userId: 'u1', title: 'Coffee',
+      startsAt: '2026-01-07T15:00:00.000Z', endsAt: '2026-01-07T15:30:00.000Z',
+      googleCalendarId: null, googleEventId: null, source: 'app',
+    };
+    const updateCalendarEvent = vi.fn(async () => appEvent);
+    const api = makeApi({ getCalendarEvents: vi.fn(async () => [appEvent]), updateCalendarEvent });
+    renderWithProviders(<Planner now={() => NOW} />, { api });
+    await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument());
+    const tile = screen.getAllByTestId('event-block').find((b) => b.textContent?.includes('Coffee'))!;
+    fireEvent.pointerDown(tile, { clientX: 40, clientY: 80, pointerId: 1 });
+    fireEvent.pointerUp(tile, { clientX: 40, clientY: 80, pointerId: 1 });
+    // pull the start earlier (the end stays 15:30, so the range stays valid and Save is enabled)
+    fireEvent.change(screen.getByTestId('event-start'), { target: { value: '2026-01-07T14:00' } });
+    fireEvent.click(screen.getByTestId('event-save'));
+    expect(screen.queryByTestId('event-drawer')).toBeNull();
+    await waitFor(() => expect(updateCalendarEvent).toHaveBeenCalledWith('e9', { startsAt: '2026-01-07T14:00:00.000Z' }));
   });
 
   it('renders the schedule range query for the settings timezone', async () => {

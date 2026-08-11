@@ -142,11 +142,17 @@ export function fakeCalendarEventRepo(seed: CalendarEvent[] = []) {
     async create(userId: string, data: Record<string, unknown>): Promise<CalendarEvent> {
       const row: CalendarEvent = {
         id: `cal-${++n}`, userId, googleCalendarId: null, googleEventId: null,
-        title: '', startsAt: new Date(0), endsAt: new Date(0),
+        title: '', source: 'app', startsAt: new Date(0), endsAt: new Date(0),
         createdAt: new Date(0), updatedAt: new Date(0),
         ...data,
-      } as CalendarEvent;
+      };
       rows.push(row);
+      return row;
+    },
+    async update(userId: string, id: string, data: Record<string, unknown>): Promise<CalendarEvent> {
+      const row = rows.find((r) => r.id === id && r.userId === userId);
+      if (!row) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`CalendarEvent ${id}`); }
+      Object.assign(row, data);
       return row;
     },
     async setGoogleIds(userId: string, id: string, googleCalendarId: string, googleEventId: string): Promise<CalendarEvent> {
@@ -285,6 +291,7 @@ export interface TestAppOptions {
   accessToken?: string;
   insertEvent?: AppDeps['google']['client']['insertEvent'];
   deleteEvent?: AppDeps['google']['client']['deleteEvent'];
+  patchEvent?: AppDeps['google']['client']['patchEvent'];
   users?: User[];
   registrationMode?: 'closed' | 'invite' | 'open';
   validInvites?: string[];
@@ -326,6 +333,7 @@ export function buildTestApp(opts: TestAppOptions = {}) {
         getConsentUrl: () => 'https://consent.example/auth',
         insertEvent: opts.insertEvent ?? (async () => { throw new Error('not connected'); }),
         deleteEvent: opts.deleteEvent ?? (async () => { throw new Error('not connected'); }),
+        patchEvent: opts.patchEvent ?? (async () => { throw new Error('not connected'); }),
       },
       tokens: {
         connectFromCode: async () =>

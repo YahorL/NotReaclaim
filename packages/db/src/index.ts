@@ -9,7 +9,7 @@ export type { UserRepository, CreateUserInput, UpdateUserInput } from './reposit
 export { createSettingsRepository } from './repositories/settings-repository.js';
 export type { SettingsRepository, UpsertSettingsInput } from './repositories/settings-repository.js';
 export { createCalendarEventRepository } from './repositories/calendar-event-repository.js';
-export type { CalendarEventRepository, CreateCalendarEventInput, UpsertCalendarEventInput } from './repositories/calendar-event-repository.js';
+export type { CalendarEventRepository, CreateCalendarEventInput, UpsertCalendarEventInput, UpdateCalendarEventInput } from './repositories/calendar-event-repository.js';
 export { createTaskRepository } from './repositories/task-repository.js';
 export type { TaskRepository, CreateTaskInput, UpdateTaskInput } from './repositories/task-repository.js';
 export { createCategoryRepository } from './repositories/category-repository.js';
@@ -39,6 +39,7 @@ export type {
   ScheduledBlock,
   CalendarSyncState,
   InviteCode,
+  CalendarEventSource,
   TaskStatus,
   HabitStatus,
   HabitPeriod,

@@ -82,4 +82,113 @@ describe('blockBufferMs', () => {
     const b = res.blocks.find((b) => b.sourceId === 'b')!;
     expect(b.start - a.end).toBe(10);
   });
+
+  it('keeps blockBufferMs distance on both sides of a pinned block', () => {
+    const H = 3_600_000;
+    const G = 900_000;
+    const res = schedule({
+      workingWindows: [{ start: 9 * H, end: 18 * H }],
+      fixedEvents: [],
+      pinnedBlocks: [
+        { id: 'pin', sourceType: 'task', sourceId: 'p', title: 'P', start: 11 * H, end: 12 * H },
+      ],
+      tasks: [
+        { id: 'a', title: 'A', priority: 1, durationMs: 2 * H, dueBy: 24 * H, minChunkMs: 2 * H, maxChunkMs: 2 * H },
+        { id: 'b', title: 'B', priority: 2, durationMs: 4 * H, dueBy: 24 * H, minChunkMs: 4 * H, maxChunkMs: 4 * H },
+      ],
+      habits: [],
+      blockBufferMs: G,
+    });
+    const auto = res.blocks.filter((b) => b.id !== 'pin');
+    expect(auto.length).toBeGreaterThan(0);
+    for (const b of auto) {
+      expect(b.end <= 11 * H - G || b.start >= 12 * H + G).toBe(true);
+    }
+  });
+
+  // The two-sided assertion above still passes if only TRAILING padding is applied,
+  // because the task can flee to the right of the pinned block. Pin the LEADING pad
+  // specifically: the working window ends exactly where the pinned block starts, so
+  // 9:00-11:00 is the only candidate and without a leading pad the task lands flush.
+  it('refuses a task that would butt up against a pinned block from the left', () => {
+    const H = 3_600_000;
+    const G = 900_000;
+    const res = schedule({
+      workingWindows: [{ start: 9 * H, end: 11 * H }],
+      fixedEvents: [],
+      pinnedBlocks: [
+        { id: 'pin', sourceType: 'task', sourceId: 'p', title: 'P', start: 11 * H, end: 12 * H },
+      ],
+      tasks: [
+        { id: 'a', title: 'A', priority: 1, durationMs: 2 * H, dueBy: 24 * H, minChunkMs: 2 * H, maxChunkMs: 2 * H },
+      ],
+      habits: [],
+      blockBufferMs: G,
+    });
+    expect(res.blocks.map((b) => b.id)).toEqual(['pin']);
+    expect(res.unscheduled).toHaveLength(1);
+    expect(res.unscheduled[0]!.sourceId).toBe('a');
+  });
+
+  it('keeps blockBufferMs distance between an auto task and an auto habit', () => {
+    const H = 3_600_000;
+    const G = 900_000;
+    const DAY = { start: 9 * H, end: 18 * H };
+    const res = schedule({
+      workingWindows: [DAY],
+      fixedEvents: [],
+      pinnedBlocks: [],
+      tasks: [
+        { id: 'a', title: 'A', priority: 1, durationMs: 2 * H, dueBy: 24 * H, minChunkMs: 2 * H, maxChunkMs: 2 * H },
+      ],
+      habits: [
+        {
+          id: 'h', title: 'H', priority: 2, chunkMs: H, perPeriod: 1,
+          periods: [{ start: 0, end: 24 * H }],
+          allowedWindows: [{ start: 0, end: 24 * H }],
+        },
+      ],
+      blockBufferMs: G,
+    });
+    const task = res.blocks.find((b) => b.sourceType === 'task')!;
+    const habit = res.blocks.find((b) => b.sourceType === 'habit')!;
+    expect(habit).toBeDefined();
+    const distance = habit.start >= task.end ? habit.start - task.end : task.start - habit.end;
+    expect(distance).toBeGreaterThanOrEqual(G);
+  });
+
+  it('echoes pinned blocks with their verbatim (unpadded) geometry', () => {
+    const H = 3_600_000;
+    const G = 900_000;
+    const res = schedule({
+      workingWindows: [{ start: 9 * H, end: 18 * H }],
+      fixedEvents: [],
+      pinnedBlocks: [
+        { id: 'pin', sourceType: 'task', sourceId: 'p', title: 'P', start: 11 * H, end: 12 * H },
+      ],
+      tasks: [],
+      habits: [],
+      blockBufferMs: G,
+    });
+    expect(res.blocks).toEqual([
+      { id: 'pin', sourceType: 'task', sourceId: 'p', title: 'P', start: 11 * H, end: 12 * H },
+    ]);
+  });
+
+  it('does not apply blockBufferMs to fixed events', () => {
+    const H = 3_600_000;
+    const G = 900_000;
+    const res = schedule({
+      workingWindows: [{ start: 9 * H, end: 18 * H }],
+      fixedEvents: [{ id: 'e', start: 11 * H, end: 12 * H }],
+      pinnedBlocks: [],
+      tasks: [
+        { id: 'a', title: 'A', priority: 1, durationMs: 2 * H, dueBy: 24 * H, minChunkMs: 2 * H, maxChunkMs: 2 * H },
+      ],
+      habits: [],
+      blockBufferMs: G,
+    });
+    // flush against a fixed event is allowed: meeting padding is meetingBufferMs' job in core.
+    expect(res.blocks[0]).toMatchObject({ start: 9 * H, end: 11 * H });
+  });
 });

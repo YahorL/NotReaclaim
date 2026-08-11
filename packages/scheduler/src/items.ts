@@ -5,7 +5,7 @@ import type {
   ScheduledBlock,
   UnscheduledItem,
 } from './types.js';
-import { intersectIntervals } from './intervals.js';
+import { intersectIntervals, subtractIntervals } from './intervals.js';
 import { placeItem, splitDuration } from './placement.js';
 
 export interface ScheduleItemResult {
@@ -45,24 +45,127 @@ export function scheduleTask(free: Interval[], task: FlexibleTask, gapMs = 0): S
   return { blocks, free: result.free, unscheduled };
 }
 
+/**
+ * Cap state for "one habit occurrence per allowed-window day": the allowed (and
+ * matching preferred) windows a habit may still be placed into. `allowed` stays
+ * `undefined` for habits without `allowedWindows`, which are exempt from the cap.
+ */
+interface HabitWindowBudget {
+  allowed: Interval[] | undefined;
+  preferred: Interval[] | undefined;
+}
+
+/**
+ * Drop the `allowed` entry containing `time` from the budget (and subtract it
+ * from `preferred`), so no further occurrence can land on that day.
+ *
+ * Entries are day-granular by construction — core's `expandHabit` emits one per
+ * eligible day — so consuming the containing entry is exactly "one per calendar
+ * day" without any timezone logic in the engine.
+ *
+ * Returns the consumed entry (used as the occurrence's stable day identity), or
+ * `undefined` when the habit is uncapped or the day was already consumed.
+ */
+function consumeWindowContaining(
+  budget: HabitWindowBudget,
+  time: number,
+): Interval | undefined {
+  if (!budget.allowed) return undefined;
+  const day = budget.allowed.find((w) => time >= w.start && time < w.end);
+  if (!day) return undefined;
+  budget.allowed = budget.allowed.filter((w) => w !== day);
+  if (budget.preferred) {
+    budget.preferred = subtractIntervals(budget.preferred, [day]);
+  }
+  return day;
+}
+
+/**
+ * Stable id for one habit occurrence.
+ *
+ * Capped habits (those with `allowedWindows`) key on the allowed entry the
+ * occurrence's day was consumed from: the one-per-day cap makes that day unique
+ * within a run, so an occurrence keeps its id across replans no matter how many
+ * other occurrences appear, move or disappear — no index shifting exists.
+ * Uncapped habits have no day identity and fall back to the ordinal.
+ */
+function occurrenceId(habitId: string, day: Interval | undefined, index: number): string {
+  return `habit:${habitId}:${day ? day.start : index}`;
+}
+
+/** True when `time` still falls in an unconsumed allowed entry (always for uncapped habits). */
+function dayAvailable(budget: HabitWindowBudget, time: number): boolean {
+  if (!budget.allowed) return true;
+  return budget.allowed.some((w) => time >= w.start && time < w.end);
+}
+
 export function scheduleHabit(free: Interval[], habit: Habit, gapMs = 0): ScheduleItemResult {
   let remainingFree = free;
   const blocks: ScheduledBlock[] = [];
   let missed = 0;
   let index = 0;
 
+  // Shared across the preferred-first attempt, the bound fallback and all
+  // periods (allowed entries are period-disjoint anyway).
+  const budget: HabitWindowBudget = {
+    allowed: habit.allowedWindows,
+    preferred: habit.preferredWindows,
+  };
+
+  // User-pinned occurrences are emitted by the caller (pinnedBlocks), but their
+  // days are off-limits here so an auto occurrence cannot double up on them.
+  for (const time of habit.pinnedSlotTimes ?? []) {
+    consumeWindowContaining(budget, time);
+  }
+
   for (let i = 0; i < habit.periods.length; i++) {
     const period = habit.periods[i]!;
     const target = habit.periodTargets?.[i] ?? habit.perPeriod;
     const periodWindow: Interval[] = [period];
-    const bound = habit.allowedWindows
-      ? intersectIntervals(habit.allowedWindows, periodWindow)
-      : periodWindow;
-    const preferred = habit.preferredWindows
-      ? intersectIntervals(habit.preferredWindows, bound)
-      : undefined;
+    let placed = 0;
 
-    for (let k = 0; k < target; k++) {
+    // Sticky slots first: keep prior placements that are still valid, so a
+    // replan does not move habits the user has already seen.
+    for (const slot of habit.existingSlots ?? []) {
+      if (placed >= target) break;
+      // A length mismatch means the user changed the habit's duration since the
+      // slot was placed — re-place it at the new chunkMs instead of keeping it.
+      if (slot.end - slot.start !== habit.chunkMs) continue;
+      if (slot.start < period.start || slot.end > period.end) continue;
+      if (!dayAvailable(budget, slot.start)) continue;
+
+      const bound = budget.allowed
+        ? intersectIntervals(budget.allowed, periodWindow)
+        : periodWindow;
+      const room = intersectIntervals(remainingFree, bound);
+      const fits = room.some((iv) => iv.start <= slot.start && iv.end >= slot.end);
+      if (!fits) continue;
+
+      remainingFree = subtractIntervals(remainingFree, [
+        { start: slot.start - gapMs, end: slot.end + gapMs },
+      ]);
+      const day = consumeWindowContaining(budget, slot.start);
+      blocks.push({
+        id: occurrenceId(habit.id, day, index),
+        sourceType: 'habit',
+        sourceId: habit.id,
+        title: habit.title,
+        start: slot.start,
+        end: slot.end,
+      });
+      index++;
+      placed++;
+    }
+
+    for (let k = placed; k < target; k++) {
+      // Recomputed per occurrence: consumed days shrink the budget as we go.
+      const bound = budget.allowed
+        ? intersectIntervals(budget.allowed, periodWindow)
+        : periodWindow;
+      const preferred = budget.preferred
+        ? intersectIntervals(budget.preferred, bound)
+        : undefined;
+
       const primaryWindow = preferred && preferred.length > 0 ? preferred : bound;
       let res = placeItem(remainingFree, [habit.chunkMs], period.end, primaryWindow, gapMs);
       if (res.placements.length === 0 && primaryWindow !== bound) {
@@ -76,8 +179,9 @@ export function scheduleHabit(free: Interval[], habit: Habit, gapMs = 0): Schedu
 
       remainingFree = res.free;
       const p = res.placements[0]!;
+      const day = consumeWindowContaining(budget, p.start);
       blocks.push({
-        id: `habit:${habit.id}:${index}`,
+        id: occurrenceId(habit.id, day, index),
         sourceType: 'habit',
         sourceId: habit.id,
         title: habit.title,

@@ -28,6 +28,26 @@ function mapEvent(item: RawGoogleEvent): GoogleEvent {
   };
 }
 
+async function writeEvent(
+  method: 'PUT' | 'PATCH',
+  accessToken: string,
+  calendarId: string,
+  googleEventId: string,
+  event: GoogleEventWrite,
+): Promise<void> {
+  const body = {
+    summary: event.summary,
+    start: { dateTime: event.startDateTime },
+    end: { dateTime: event.endDateTime },
+  };
+  const res = await fetch(`${CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(googleEventId)}`, {
+    method,
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new GoogleApiError(res.status, await res.text());
+}
+
 /** Real GoogleClient backed by google-auth-library (OAuth) and fetch (Calendar REST). */
 export function createGoogleClient(config: GoogleClientConfig): GoogleClient {
   const oauth = (redirectUri?: string) =>
@@ -131,18 +151,17 @@ export function createGoogleClient(config: GoogleClientConfig): GoogleClient {
       return { googleEventId: data.id };
     },
 
-    async updateEvent(accessToken, calendarId, googleEventId, event: GoogleEventWrite) {
-      const body = {
-        summary: event.summary,
-        start: { dateTime: event.startDateTime },
-        end: { dateTime: event.endDateTime },
-      };
-      const res = await fetch(`${CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(googleEventId)}`, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new GoogleApiError(res.status, await res.text());
+    /** Full replace (PUT): only for events NotReclaim wholly owns, e.g. scheduled blocks. */
+    updateEvent(accessToken, calendarId, googleEventId, event: GoogleEventWrite) {
+      return writeEvent('PUT', accessToken, calendarId, googleEventId, event);
+    },
+
+    /**
+     * Merge (PATCH): leaves Google-side fields we never send — description, location,
+     * attendees, reminders — intact. Use this for events the user can also edit in Google.
+     */
+    patchEvent(accessToken, calendarId, googleEventId, event: GoogleEventWrite) {
+      return writeEvent('PATCH', accessToken, calendarId, googleEventId, event);
     },
 
     async deleteEvent(accessToken, calendarId, googleEventId) {

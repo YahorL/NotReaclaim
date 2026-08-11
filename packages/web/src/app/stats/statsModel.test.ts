@@ -21,7 +21,7 @@ const preview = (over: Partial<SchedulePreview> = {}): SchedulePreview => ({
 const event = (over: Partial<CalendarEvent> = {}): CalendarEvent => ({
   id: 'e1', userId: 'u1', title: 'Standup',
   startsAt: '2026-01-07T10:00:00.000Z', endsAt: '2026-01-07T10:30:00.000Z', // Wed, 30m meeting
-  googleCalendarId: 'primary', googleEventId: 'g1', ...over,
+  googleCalendarId: 'primary', googleEventId: 'g1', source: 'google', ...over,
 });
 
 const task = (over: Partial<Task> = {}): Task => ({

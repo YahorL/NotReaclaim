@@ -16,12 +16,16 @@ const allDay = (id: string, date: string) => ({
 });
 const cancelled = (id: string) => ({ id, status: 'cancelled', summary: null, start: null, end: null });
 
-function deps(client: FakeGoogleClient, state: ReturnType<typeof makeSyncState> | null = null) {
+function deps(
+  client: FakeGoogleClient,
+  state: ReturnType<typeof makeSyncState> | null = null,
+  events = fakeEventsRepo(),
+) {
   return {
     client,
     tokens: fakeTokenProvider(),
     syncState: fakeSyncStateRepo(state),
-    events: fakeEventsRepo(),
+    events,
   };
 }
 
@@ -90,12 +94,37 @@ describe('syncPrimaryCalendar', () => {
     expect(d.syncState.upserts[0]).toMatchObject({ syncToken: 'tok-fresh' });
   });
 
-  it('full resync clears the calendar wholesale before upserting', async () => {
+  it('full resync purges the mirrored rows of the calendar before upserting', async () => {
     const client = new FakeGoogleClient();
     client.listQueue = [{ events: [timed('e1', '2026-01-05T09:00:00Z', '2026-01-05T10:00:00Z')], nextSyncToken: 'tok' }];
     const d = deps(client); // no prior syncToken -> full sync
     await syncPrimaryCalendar(d, 'u1', 1000);
     expect(d.events.clearedCalendars).toEqual(['primary']);
+  });
+
+  it('full resync keeps app-created events that were written back to Google', async () => {
+    const client = new FakeGoogleClient();
+    client.listQueue = [{
+      events: [
+        timed('g-app', '2026-01-05T09:00:00Z', '2026-01-05T09:30:00Z'), // our own event, mirrored back
+        timed('g-other', '2026-01-05T11:00:00Z', '2026-01-05T12:00:00Z'),
+      ],
+      nextSyncToken: 'tok',
+    }];
+    const events = fakeEventsRepo([
+      { googleCalendarId: 'primary', googleEventId: 'g-app', title: 'Standup', source: 'app',
+        startsAt: new Date('2026-01-05T09:00:00Z'), endsAt: new Date('2026-01-05T09:30:00Z') },
+      { googleCalendarId: 'primary', googleEventId: 'g-stale', title: 'Stale mirror', source: 'google',
+        startsAt: new Date('2026-01-04T09:00:00Z'), endsAt: new Date('2026-01-04T10:00:00Z') },
+    ]);
+    const d = deps(client, null, events);
+    await syncPrimaryCalendar(d, 'u1', 1000);
+
+    const after = d.events.all();
+    // The app-owned row survives the purge and keeps its identity (source 'app');
+    // the stale mirror is gone and the remote-only event is mirrored in.
+    expect(after.map((r) => `${r.googleEventId}:${r.source}`).sort())
+      .toEqual(['g-app:app', 'g-other:google']);
   });
 
   it('incremental sync does NOT clear the calendar', async () => {

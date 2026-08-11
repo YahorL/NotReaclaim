@@ -65,6 +65,7 @@ export class FakeGoogleClient implements GoogleClient {
   createCalendarResult = { calendarId: 'cal-auto' };
   insertedEvents: Array<{ calendarId: string; event: GoogleEventWrite }> = [];
   updatedEvents: Array<{ calendarId: string; googleEventId: string; event: GoogleEventWrite }> = [];
+  patchedEvents: Array<{ calendarId: string; googleEventId: string; event: GoogleEventWrite }> = [];
   deletedEvents: Array<{ calendarId: string; googleEventId: string }> = [];
   private insertCount = 0;
 
@@ -81,6 +82,10 @@ export class FakeGoogleClient implements GoogleClient {
 
   async updateEvent(_accessToken: string, calendarId: string, googleEventId: string, event: GoogleEventWrite): Promise<void> {
     this.updatedEvents.push({ calendarId, googleEventId, event });
+  }
+
+  async patchEvent(_accessToken: string, calendarId: string, googleEventId: string, event: GoogleEventWrite): Promise<void> {
+    this.patchedEvents.push({ calendarId, googleEventId, event });
   }
 
   async deleteEvent(_accessToken: string, calendarId: string, googleEventId: string): Promise<void> {
@@ -146,19 +151,43 @@ export function fakeSyncStateRepo(initial: CalendarSyncState | null = null) {
   };
 }
 
-export function fakeEventsRepo() {
+/** A stored calendar row, reduced to what the sync engine can observe. */
+interface FakeCalendarRow extends UpsertCalendarEventInput {
+  source: 'app' | 'google';
+}
+
+/**
+ * In-memory CalendarEventRepository fake. Rows carry `source` and follow the real
+ * repository's contract: an upsert onto an existing row keeps that row's source
+ * (an app event written back to Google stays 'app'), and the mirrored purge only
+ * removes 'google' rows.
+ */
+export function fakeEventsRepo(seed: FakeCalendarRow[] = []) {
+  let rows: FakeCalendarRow[] = [...seed];
   const upserted: UpsertCalendarEventInput[][] = [];
   const deleted: string[][] = [];
   const clearedCalendars: string[] = [];
   return {
     async upsertMany(_userId: string, events: UpsertCalendarEventInput[]): Promise<void> {
       upserted.push(events);
+      for (const e of events) {
+        const existing = rows.find(
+          (r) => r.googleCalendarId === e.googleCalendarId && r.googleEventId === e.googleEventId,
+        );
+        if (existing) Object.assign(existing, e); // never touches `source`
+        else rows.push({ ...e, source: 'google' });
+      }
     },
-    async deleteByGoogleEventIds(_userId: string, _googleCalendarId: string, ids: string[]): Promise<void> {
+    async deleteByGoogleEventIds(_userId: string, googleCalendarId: string, ids: string[]): Promise<void> {
       deleted.push(ids);
+      rows = rows.filter((r) => !(r.googleCalendarId === googleCalendarId && ids.includes(r.googleEventId)));
     },
-    async deleteByCalendar(_userId: string, googleCalendarId: string): Promise<void> {
+    async deleteMirroredByCalendar(_userId: string, googleCalendarId: string): Promise<void> {
       clearedCalendars.push(googleCalendarId);
+      rows = rows.filter((r) => !(r.googleCalendarId === googleCalendarId && r.source === 'google'));
+    },
+    all(): FakeCalendarRow[] {
+      return [...rows];
     },
     upserted,
     deleted,

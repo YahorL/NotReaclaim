@@ -112,7 +112,8 @@ describe('scheduleHabit with allowedWindows (hard restriction)', () => {
       preferredWindows: [{ start: 150, end: 300 }],
     }));
     expect(result.blocks).toEqual([
-      { id: 'habit:h1:0', sourceType: 'habit', sourceId: 'h1', title: 'Exercise', start: 150, end: 180 },
+      // Capped habits key on the allowed-window (day) start, not the ordinal.
+      { id: 'habit:h1:100', sourceType: 'habit', sourceId: 'h1', title: 'Exercise', start: 150, end: 180 },
     ]);
   });
 
@@ -141,7 +142,9 @@ describe('scheduleHabit with allowedWindows (hard restriction)', () => {
     const free = [{ start: 0, end: 1000 }];
     const result = scheduleHabit(free, habit({
       perPeriod: 2,
-      allowedWindows: [{ start: 0, end: 40 }],
+      // Two windows, so the one-per-day cap is not what blocks the second
+      // occurrence: the remaining window is simply too short for a 30ms chunk.
+      allowedWindows: [{ start: 0, end: 40 }, { start: 100, end: 120 }],
     }));
     expect(result.blocks).toHaveLength(1);
     expect(result.blocks[0]).toMatchObject({ start: 0, end: 30 });
@@ -153,6 +156,295 @@ describe('scheduleHabit with allowedWindows (hard restriction)', () => {
     const result = scheduleHabit(free, habit({ perPeriod: 1, allowedWindows: [] }));
     expect(result.blocks).toHaveLength(0);
     expect(result.unscheduled[0]).toMatchObject({ sourceId: 'h1', remainingMs: 30 });
+  });
+});
+
+describe('scheduleHabit one occurrence per allowed-window day', () => {
+  const D = 86_400_000;
+  const H = 3_600_000;
+
+  const dayWindows = (days: number[], fromH = 9, toH = 17) =>
+    days.map((d) => ({ start: d * D + fromH * H, end: d * D + toH * H }));
+
+  it('places at most one occurrence per allowed-window day', () => {
+    const h: Habit = {
+      id: 'h', title: 'H', priority: 1, chunkMs: H, perPeriod: 3,
+      periods: [{ start: 0, end: 7 * D }],
+      allowedWindows: dayWindows([0, 1, 2, 3, 4]),
+    };
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    const days = res.blocks.map((b) => Math.floor(b.start / D));
+    expect(res.blocks).toHaveLength(3);
+    expect(new Set(days).size).toBe(3);
+    expect(days).toEqual([0, 1, 2]);
+    expect(res.unscheduled).toEqual([]);
+  });
+
+  it('reports surplus occurrences as missed when eligible days run out', () => {
+    const h: Habit = {
+      id: 'h', title: 'H', priority: 1, chunkMs: H, perPeriod: 3,
+      periods: [{ start: 0, end: 7 * D }],
+      allowedWindows: dayWindows([0, 1]),
+    };
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    expect(res.blocks).toHaveLength(2);
+    expect(res.unscheduled).toEqual([
+      {
+        sourceType: 'habit',
+        sourceId: 'h',
+        title: 'H',
+        reason: 'could not place all habit occurrences in free time',
+        remainingMs: H,
+      },
+    ]);
+  });
+
+  it('does not reuse a day consumed via a preferred window', () => {
+    const h: Habit = {
+      id: 'h', title: 'H', priority: 1, chunkMs: H, perPeriod: 2,
+      periods: [{ start: 0, end: 7 * D }],
+      allowedWindows: dayWindows([0, 1]),
+      // Day 0 has a wide preferred window; day 1 has none.
+      preferredWindows: [{ start: 9 * H, end: 17 * H }],
+    };
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    expect(res.blocks.map((b) => Math.floor(b.start / D))).toEqual([0, 1]);
+  });
+
+  it('consumes the day even when placed via the bound fallback', () => {
+    const h: Habit = {
+      id: 'h', title: 'H', priority: 1, chunkMs: H, perPeriod: 2,
+      periods: [{ start: 0, end: 7 * D }],
+      allowedWindows: dayWindows([0, 1]),
+      // Preferred windows never fit (too short), so both placements use `bound`.
+      preferredWindows: [0, 1].map((d) => ({ start: d * D + 9 * H, end: d * D + 9 * H + 60_000 })),
+    };
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    expect(res.blocks.map((b) => Math.floor(b.start / D))).toEqual([0, 1]);
+  });
+
+  it('carries consumed days across periods', () => {
+    const h: Habit = {
+      id: 'h', title: 'H', priority: 1, chunkMs: H, perPeriod: 1,
+      periods: [{ start: 0, end: 7 * D }, { start: 7 * D, end: 14 * D }],
+      // A single allowed entry straddling the period boundary: period 1 consumes
+      // it, so period 2 has nothing left. A per-period budget would place twice.
+      allowedWindows: [{ start: 7 * D - 4 * H, end: 7 * D + 4 * H }],
+    };
+    const res = scheduleHabit([{ start: 0, end: 14 * D }], h, 0);
+    expect(res.blocks.map((b) => [b.start, b.end])).toEqual([[7 * D - 4 * H, 7 * D - 3 * H]]);
+    expect(res.unscheduled).toEqual([
+      {
+        sourceType: 'habit',
+        sourceId: 'h',
+        title: 'H',
+        reason: 'could not place all habit occurrences in free time',
+        remainingMs: H,
+      },
+    ]);
+  });
+
+  it('still places once per period when each period has its own eligible day', () => {
+    const h: Habit = {
+      id: 'h', title: 'H', priority: 1, chunkMs: H, perPeriod: 1,
+      periods: [{ start: 0, end: 7 * D }, { start: 7 * D, end: 14 * D }],
+      allowedWindows: dayWindows([0, 7]),
+    };
+    const res = scheduleHabit([{ start: 0, end: 14 * D }], h, 0);
+    expect(res.blocks.map((b) => Math.floor(b.start / D))).toEqual([0, 7]);
+    expect(res.unscheduled).toEqual([]);
+  });
+
+  it('leaves habits without allowedWindows uncapped (regression)', () => {
+    const h: Habit = {
+      id: 'h', title: 'H', priority: 1, chunkMs: H, perPeriod: 3,
+      periods: [{ start: 0, end: 7 * D }],
+    };
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    expect(res.blocks.map((b) => [b.start, b.end])).toEqual([
+      [0, H], [H, 2 * H], [2 * H, 3 * H],
+    ]);
+  });
+});
+
+describe('scheduleHabit existingSlots (sticky placements)', () => {
+  const D = 86_400_000;
+  const H = 3_600_000;
+
+  const dayWindows = (days: number[], fromH = 9, toH = 17) =>
+    days.map((d) => ({ start: d * D + fromH * H, end: d * D + toH * H }));
+
+  const stickyHabit = (over: Partial<Habit> = {}): Habit => ({
+    id: 'h', title: 'H', priority: 1, chunkMs: H, perPeriod: 2,
+    periods: [{ start: 0, end: 7 * D }],
+    allowedWindows: dayWindows([0, 1, 2, 3, 4]),
+    ...over,
+  });
+
+  const spans = (res: { blocks: { start: number; end: number }[] }) =>
+    res.blocks.map((b) => ({ start: b.start, end: b.end }));
+
+  it('keeps a valid existing slot verbatim', () => {
+    const h = stickyHabit({ existingSlots: [{ start: 1 * D + 13 * H, end: 1 * D + 14 * H }] });
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    expect(spans(res)).toContainEqual({ start: 1 * D + 13 * H, end: 1 * D + 14 * H });
+    expect(res.blocks).toHaveLength(2); // kept slot counts toward perPeriod
+    expect(res.unscheduled).toEqual([]);
+  });
+
+  it('ids capped occurrences by day, so a kept slot re-emits its previous id', () => {
+    const h = stickyHabit({ existingSlots: [{ start: 1 * D + 13 * H, end: 1 * D + 14 * H }] });
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    // The kept slot's id is its day's allowed-window start — the same id the run
+    // that first placed it produced, regardless of emission order.
+    expect(res.blocks[0]).toMatchObject({
+      id: `habit:h:${1 * D + 9 * H}`, start: 1 * D + 13 * H, end: 1 * D + 14 * H,
+    });
+    expect(res.blocks[1]!.id).toBe(`habit:h:${0 * D + 9 * H}`);
+  });
+
+  it('does not shift later occurrence ids when an earlier slot is invalidated', () => {
+    const slots = [
+      { start: 0 * D + 13 * H, end: 0 * D + 14 * H },
+      { start: 2 * D + 13 * H, end: 2 * D + 14 * H },
+    ];
+    const both = scheduleHabit([{ start: 0, end: 7 * D }], stickyHabit({ existingSlots: slots }), 0);
+    // Day 0 is fully busy → its slot is stale, but day 2's id must not move.
+    const dayZeroGone = scheduleHabit(
+      [{ start: 1 * D, end: 7 * D }],
+      stickyHabit({ existingSlots: slots }),
+      0,
+    );
+    const idOf = (res: { blocks: { id: string; start: number }[] }, start: number) =>
+      res.blocks.find((b) => b.start === start)!.id;
+    expect(idOf(both, 2 * D + 13 * H)).toBe(`habit:h:${2 * D + 9 * H}`);
+    expect(idOf(dayZeroGone, 2 * D + 13 * H)).toBe(`habit:h:${2 * D + 9 * H}`);
+  });
+
+  it('keeps slots across multiple periods with their day-based ids', () => {
+    const h = stickyHabit({
+      perPeriod: 1,
+      periods: [{ start: 0, end: 3 * D }, { start: 3 * D, end: 7 * D }],
+      allowedWindows: dayWindows([0, 1, 2, 3, 4, 5, 6]),
+      existingSlots: [
+        { start: 1 * D + 13 * H, end: 1 * D + 14 * H },
+        { start: 4 * D + 13 * H, end: 4 * D + 14 * H },
+      ],
+    });
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    expect(res.blocks.map((b) => ({ id: b.id, start: b.start, end: b.end }))).toEqual([
+      { id: `habit:h:${1 * D + 9 * H}`, start: 1 * D + 13 * H, end: 1 * D + 14 * H },
+      { id: `habit:h:${4 * D + 9 * H}`, start: 4 * D + 13 * H, end: 4 * D + 14 * H },
+    ]);
+  });
+
+  it("keeps a later period's slot (with its id) when the earlier period's slot is stale", () => {
+    const h = stickyHabit({
+      perPeriod: 1,
+      periods: [{ start: 0, end: 3 * D }, { start: 3 * D, end: 7 * D }],
+      allowedWindows: dayWindows([0, 1, 2, 3, 4, 5, 6]),
+      existingSlots: [
+        { start: 1 * D + 13 * H, end: 1 * D + 14 * H },
+        { start: 4 * D + 13 * H, end: 4 * D + 14 * H },
+      ],
+    });
+    // Day 1 is occupied → period 1's slot is re-placed on day 0; period 2's slot
+    // is still kept, and its id is unchanged by that re-placement.
+    const res = scheduleHabit([{ start: 0, end: 1 * D }, { start: 2 * D, end: 7 * D }], h, 0);
+    expect(res.blocks.map((b) => ({ id: b.id, start: b.start, end: b.end }))).toEqual([
+      { id: `habit:h:${0 * D + 9 * H}`, start: 0 * D + 9 * H, end: 0 * D + 10 * H },
+      { id: `habit:h:${4 * D + 9 * H}`, start: 4 * D + 13 * H, end: 4 * D + 14 * H },
+    ]);
+  });
+
+  it('re-places a slot that no longer fits in free time', () => {
+    const slot = { start: 1 * D + 13 * H, end: 1 * D + 14 * H };
+    const h = stickyHabit({ existingSlots: [slot] });
+    // Day 1 is entirely busy, so the stale slot cannot be kept.
+    const res = scheduleHabit([{ start: 0, end: 1 * D }, { start: 2 * D, end: 7 * D }], h, 0);
+    expect(res.blocks).toHaveLength(2);
+    expect(spans(res)).not.toContainEqual(slot);
+    expect(res.blocks.map((b) => Math.floor(b.start / D))).toEqual([0, 2]);
+  });
+
+  it('kept slot consumes its day (no second occurrence that day)', () => {
+    const h = stickyHabit({ existingSlots: [{ start: 1 * D + 13 * H, end: 1 * D + 14 * H }] });
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    const autoDays = res.blocks
+      .filter((b) => b.start !== 1 * D + 13 * H)
+      .map((b) => Math.floor(b.start / D));
+    expect(autoDays).toEqual([0]);
+  });
+
+  it('reserves the gap around a kept slot', () => {
+    const h = stickyHabit({
+      perPeriod: 2,
+      allowedWindows: [{ start: 0, end: 4 * H }],
+      existingSlots: [{ start: 2 * H, end: 3 * H }],
+    });
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 30 * 60_000);
+    // Day consumed by the kept slot → only one block, and the free time it
+    // released must exclude [slot.start − gap, slot.end + gap].
+    expect(spans(res)).toEqual([{ start: 2 * H, end: 3 * H }]);
+    expect(res.free).toEqual([
+      { start: 0, end: 1.5 * H },
+      { start: 3.5 * H, end: 7 * D },
+    ]);
+  });
+
+  // Slots are listed out of start order on purpose: day-based ids make the
+  // engine indifferent to the order they arrive in.
+  it('ignores slots outside the period and beyond the period target', () => {
+    const h = stickyHabit({
+      perPeriod: 1,
+      periods: [{ start: 0, end: 3 * D }],
+      existingSlots: [
+        { start: 4 * D + 13 * H, end: 4 * D + 14 * H }, // outside the period
+        { start: 1 * D + 13 * H, end: 1 * D + 14 * H },
+        { start: 2 * D + 13 * H, end: 2 * D + 14 * H }, // beyond target 1
+      ],
+    });
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    expect(spans(res)).toEqual([{ start: 1 * D + 13 * H, end: 1 * D + 14 * H }]);
+  });
+
+  it('skips a slot whose length no longer matches chunkMs', () => {
+    const h = stickyHabit({
+      perPeriod: 1,
+      chunkMs: 2 * H,
+      // Placed when the habit was 1h long; the user has since made it 2h.
+      existingSlots: [{ start: 1 * D + 13 * H, end: 1 * D + 14 * H }],
+    });
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    expect(spans(res)).toEqual([{ start: 0 * D + 9 * H, end: 0 * D + 11 * H }]);
+  });
+
+  it('skips a slot that falls outside the allowed windows', () => {
+    const h = stickyHabit({
+      perPeriod: 1,
+      existingSlots: [{ start: 1 * D + 3 * H, end: 1 * D + 4 * H }], // 03:00, outside 09–17
+    });
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    expect(spans(res)).toEqual([{ start: 0 * D + 9 * H, end: 0 * D + 10 * H }]);
+  });
+});
+
+describe('scheduleHabit pinnedSlotTimes', () => {
+  const D = 86_400_000;
+  const H = 3_600_000;
+
+  const dayWindows = (days: number[], fromH = 9, toH = 17) =>
+    days.map((d) => ({ start: d * D + fromH * H, end: d * D + toH * H }));
+
+  it('consumes the day of a pinned occurrence without emitting it', () => {
+    const h: Habit = {
+      id: 'h', title: 'H', priority: 1, chunkMs: H, perPeriod: 2,
+      periods: [{ start: 0, end: 7 * D }],
+      allowedWindows: dayWindows([0, 1, 2]),
+      pinnedSlotTimes: [1 * D + 13 * H],
+    };
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    expect(res.blocks.map((b) => Math.floor(b.start / D))).toEqual([0, 2]);
   });
 });
 

@@ -55,19 +55,40 @@ describe('CalendarEventRepository', () => {
       .toEqual(['other:g1', 'primary:g2']);
   });
 
-  it('deleteByCalendar removes all events for one calendar, scoped by calendar id', async () => {
+  it('deleteMirroredByCalendar removes mirrored events for one calendar, scoped by calendar id', async () => {
     const user = await users.create({ email: 'cbycal@example.com' });
     await repo.upsertMany(user.id, [
       event({ googleCalendarId: 'primary', googleEventId: 'p1' }),
       event({ googleCalendarId: 'other', googleEventId: 'o1' }),
     ]);
-    await repo.deleteByCalendar(user.id, 'primary');
+    await repo.deleteMirroredByCalendar(user.id, 'primary');
     const remaining = await repo.listByUserInRange(
       user.id,
       new Date('2026-01-01T00:00:00.000Z'),
       new Date('2026-01-02T00:00:00.000Z'),
     );
     expect(remaining.map((e) => e.googleCalendarId)).toEqual(['other']);
+  });
+
+  it('deleteMirroredByCalendar spares app-created events that were written back to Google', async () => {
+    const user = await users.create({ email: 'cbycal2@example.com' });
+    const ours = await repo.create(user.id, {
+      title: 'Standup',
+      startsAt: new Date('2026-01-01T09:00:00.000Z'),
+      endsAt: new Date('2026-01-01T09:30:00.000Z'),
+    });
+    await repo.setGoogleIds(user.id, ours.id, 'primary', 'g-app');
+    await repo.upsertMany(user.id, [event({ googleCalendarId: 'primary', googleEventId: 'g-mirror' })]);
+
+    await repo.deleteMirroredByCalendar(user.id, 'primary');
+
+    const remaining = await repo.listByUserInRange(
+      user.id,
+      new Date('2026-01-01T00:00:00.000Z'),
+      new Date('2026-01-02T00:00:00.000Z'),
+    );
+    expect(remaining.map((e) => e.googleEventId)).toEqual(['g-app']);
+    expect(remaining[0]?.source).toBe('app');
   });
 
   it('creates a local event with null google ids', async () => {
@@ -91,6 +112,62 @@ describe('CalendarEventRepository', () => {
     const updated = await repo.setGoogleIds(user.id, created.id, 'primary', 'g-x');
     expect(updated.googleCalendarId).toBe('primary');
     expect(updated.googleEventId).toBe('g-x');
+  });
+
+  it("create marks the event as app-created (source 'app')", async () => {
+    const user = await users.create({ email: 'csrc1@example.com' });
+    const created = await repo.create(user.id, {
+      title: 'Standup', startsAt: new Date('2026-01-03T09:00:00.000Z'), endsAt: new Date('2026-01-03T09:30:00.000Z'),
+    });
+    expect(created.source).toBe('app');
+  });
+
+  it("upsertMany marks mirrored events as google-sourced (source 'google')", async () => {
+    const user = await users.create({ email: 'csrc2@example.com' });
+    await repo.upsertMany(user.id, [event()]);
+    const [mirrored] = await repo.listByUserInRange(
+      user.id, new Date('2026-01-01T00:00:00.000Z'), new Date('2026-01-02T00:00:00.000Z'),
+    );
+    expect(mirrored?.source).toBe('google');
+  });
+
+  it('upsertMany never downgrades an app-created event that was written back', async () => {
+    const user = await users.create({ email: 'csrc3@example.com' });
+    const created = await repo.create(user.id, {
+      title: 'Standup', startsAt: new Date('2026-01-01T09:00:00.000Z'), endsAt: new Date('2026-01-01T09:30:00.000Z'),
+    });
+    await repo.setGoogleIds(user.id, created.id, 'primary', 'g1');
+    await repo.upsertMany(user.id, [event({ title: 'Standup (mirrored)' })]);
+    const after = await repo.findById(user.id, created.id);
+    expect(after?.title).toBe('Standup (mirrored)');
+    expect(after?.source).toBe('app');
+  });
+
+  it('update changes fields, scoped to the user, leaving source and google ids alone', async () => {
+    const user = await users.create({ email: 'cupd1@example.com' });
+    const other = await users.create({ email: 'cupd2@example.com' });
+    const created = await repo.create(user.id, {
+      title: 'Standup', startsAt: new Date('2026-01-03T09:00:00.000Z'), endsAt: new Date('2026-01-03T09:30:00.000Z'),
+    });
+    await repo.setGoogleIds(user.id, created.id, 'primary', 'g-upd');
+
+    await expect(repo.update(other.id, created.id, { title: 'Hijacked' })).rejects.toThrow();
+
+    const updated = await repo.update(user.id, created.id, {
+      title: 'Standup (moved)',
+      startsAt: new Date('2026-01-03T10:00:00.000Z'),
+      endsAt: new Date('2026-01-03T10:45:00.000Z'),
+    });
+    expect(updated.title).toBe('Standup (moved)');
+    expect(updated.startsAt.toISOString()).toBe('2026-01-03T10:00:00.000Z');
+    expect(updated.endsAt.toISOString()).toBe('2026-01-03T10:45:00.000Z');
+    expect(updated.source).toBe('app');
+    expect(updated.googleCalendarId).toBe('primary');
+    expect(updated.googleEventId).toBe('g-upd');
+
+    const partial = await repo.update(user.id, created.id, { title: 'Renamed only' });
+    expect(partial.title).toBe('Renamed only');
+    expect(partial.startsAt.toISOString()).toBe('2026-01-03T10:00:00.000Z');
   });
 
   it('findById returns an owned event and null for another user', async () => {
