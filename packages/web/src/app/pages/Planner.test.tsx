@@ -165,6 +165,26 @@ describe('Planner', () => {
     });
   });
 
+  it('anchors the planner to the configured day start (01:30 sits on the previous date column)', async () => {
+    const LATE = Date.parse('2026-01-07T01:30:00.000Z');
+    const getSchedule = vi.fn(async () => [] as ScheduledBlock[]);
+    const api = makeApi({
+      getSchedule,
+      getCalendarEvents: vi.fn(async () => [] as CalendarEvent[]),
+      getSettings: async () => ({ id: 's', userId: 'u1', timezone: 'UTC', workingHours: [], horizonDays: 14, defaultMinChunkMs: 1, defaultMaxChunkMs: 1, meetingBufferMs: 0, taskBufferMs: 0, dayStartMinute: 180, createdAt: '', updatedAt: '' } as never),
+    });
+    renderWithProviders(<Planner now={() => LATE} />, { api });
+    await waitFor(() => {
+      const calls = getSchedule.mock.calls as unknown[][];
+      expect(calls.some((c) => c[0] === '2026-01-06T03:00:00.000Z' && c[1] === '2026-01-13T03:00:00.000Z')).toBe(true);
+    });
+    // the first column is Jan 6 (yesterday's date) and it is "today" at 01:30
+    expect(screen.getByTestId('day-header-0').dataset.today).toBe('true');
+    expect(screen.getByTestId('day-header-0').textContent).toMatch(/6/);
+    // and the hour gutter starts at the day-start hour
+    expect(screen.getByTestId('hour-gutter').textContent!.startsWith('3a')).toBe(true);
+  });
+
   it('task block is tinted when its category has a color', async () => {
     // blocks[0] has taskId:'t1'; task has categoryId:'cat-1'; category has color:'#5b62e3'
     const task: Task = {

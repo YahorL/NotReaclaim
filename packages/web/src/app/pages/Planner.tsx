@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect, useRef } from 'react';
 import type { CalendarEvent, Task } from '../../api/types';
 import { ApiError } from '../../api/client';
 import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation, useSettingsQuery } from '../../api/queries';
-import { dayColumns, daysThatFit, shiftDays, localMidnight, clampToWindow, MS_PER_DAY, WINDOW_START_MIN, WINDOW_END_MIN } from '../planner/weekModel';
+import { dayColumns, daysThatFit, shiftDays, dayAnchor, clampToWindow, MS_PER_DAY, WINDOW_START_MIN, WINDOW_END_MIN } from '../planner/weekModel';
 import { useElementWidth } from '../planner/useElementWidth';
 import { WeekGrid } from '../planner/WeekGrid';
 import { PlannerTaskPanel } from '../planner/PlannerTaskPanel';
@@ -19,19 +19,24 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const nowMs = now();
   const settingsQ = useSettingsQuery();
   const zone = settingsQ.data?.timezone ?? (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
-  const [viewStartMs, setViewStartMs] = useState(() => localMidnight(nowMs, zone));
+  // Visual day boundary: with 180 a column runs 03:00 → 03:00, so 01:30 still shows as "today".
+  const dayStartMinute = settingsQ.data?.dayStartMinute ?? 0;
+  const [viewStartMs, setViewStartMs] = useState(() => dayAnchor(nowMs, zone, dayStartMinute));
   const [gridRef, gridWidth] = useElementWidth<HTMLDivElement>();
   const dayCount = daysThatFit(gridWidth);
-  const days = useMemo(() => dayColumns(viewStartMs, dayCount, zone), [viewStartMs, dayCount, zone]);
+  const days = useMemo(() => dayColumns(viewStartMs, dayCount, zone, dayStartMinute), [viewStartMs, dayCount, zone, dayStartMinute]);
   const fromIso = new Date(viewStartMs).toISOString();
   const toIso = new Date(viewStartMs + dayCount * MS_PER_DAY).toISOString();
-  const prevZoneRef = useRef(zone);
+  // Settings land after the first render — re-anchor the view when the zone or the day start
+  // arrives (or the user changes either), otherwise the columns keep the pre-settings anchor.
+  const prevAnchorRef = useRef(`${zone}|${dayStartMinute}`);
   useEffect(() => {
-    if (zone !== prevZoneRef.current) {
-      prevZoneRef.current = zone;
-      setViewStartMs(localMidnight(now(), zone));
+    const key = `${zone}|${dayStartMinute}`;
+    if (key !== prevAnchorRef.current) {
+      prevAnchorRef.current = key;
+      setViewStartMs(dayAnchor(now(), zone, dayStartMinute));
     }
-  }, [zone, now]);
+  }, [zone, dayStartMinute, now]);
 
   const [panelHidden, setPanelHidden] = useState(() => {
     try { return localStorage.getItem('nr.plannerPanelHidden') === '1'; } catch { return false; }
@@ -127,8 +132,9 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           replanPending={replan.isPending}
           onPrev={() => setViewStartMs((ms) => shiftDays(ms, -dayCount, zone))}
           onNext={() => setViewStartMs((ms) => shiftDays(ms, dayCount, zone))}
-          onToday={() => setViewStartMs(localMidnight(now(), zone))}
+          onToday={() => setViewStartMs(dayAnchor(now(), zone, dayStartMinute))}
           zone={zone}
+          dayStartMinute={dayStartMinute}
           onReplan={() => replan.mutate()}
           onCommit={(id, patch) => updateBlock.mutate({ id, patch })}
           onDeleteBlock={(id) => deleteBlock.mutate(id)}

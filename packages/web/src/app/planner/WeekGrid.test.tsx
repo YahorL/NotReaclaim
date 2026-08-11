@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import type { ScheduledBlock, CalendarEvent } from '../../api/types';
 import { startOfWeek, dayColumns, minutesToPx } from './weekModel';
+import { within } from '@testing-library/react';
 import { WeekGrid, type WeekGridProps } from './WeekGrid';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 
@@ -197,6 +198,27 @@ describe('WeekGrid', () => {
     expect(screen.queryByTestId('day-col-3')).toBeNull();
     // day labels follow the actual dates (today-anchored), not fixed Mon-first
     expect(screen.getByTestId('day-header-0').textContent).toMatch(/Wed/);
+  });
+
+  it('rotates the hour gutter and keeps late-night work on the previous date column (day start 03:00)', () => {
+    const cols = dayColumns(Date.parse('2026-01-05T12:00:00.000Z'), 3, 'UTC', 180); // Jan 5/6/7 at 03:00
+    const lateNight = block({ id: 'ln', title: 'Late night', startsAt: '2026-01-07T01:00:00.000Z', endsAt: '2026-01-07T02:00:00.000Z' });
+    renderGrid({
+      days: cols, dayStartMinute: 180, blocks: [lateNight], events: [],
+      nowMs: Date.parse('2026-01-07T01:30:00.000Z'),
+    });
+    // gutter runs 3a → 2a
+    const gutter = screen.getByTestId('hour-gutter').textContent!;
+    expect(gutter.startsWith('3a4a5a')).toBe(true);
+    expect(gutter.endsWith('1a2a')).toBe(true);
+    // 01:00 on the 7th belongs to the 6th's column, 22h down
+    const tile = within(screen.getByTestId('day-col-1')).getByTestId('event-block');
+    expect(tile.textContent).toMatch(/Late night/);
+    expect(tile.style.top).toBe(`${(22 * 60 / 1440) * 100}%`);
+    // ...and that column is "today" at 01:30
+    expect(screen.getByTestId('day-header-1').dataset.today).toBe('true');
+    expect(screen.getByTestId('day-header-1').textContent).toMatch(/6/);
+    expect(within(screen.getByTestId('day-col-1')).getByTestId('now-line')).toBeInTheDocument();
   });
 
   it('labels a block in the provided timezone', () => {
