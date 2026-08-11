@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react';
 import { DateTime } from 'luxon';
 import type { CalendarEvent, UpdateCalendarEventInput } from '../../api/types';
-import { ApiError } from '../../api/client';
 import { FieldBox } from '../components/FieldBox';
 import { useClickOutside } from '../components/useClickOutside';
 import { useUpdateCalendarEventMutation, useDeleteCalendarEventMutation } from '../../api/queries';
@@ -46,11 +45,15 @@ export function EventDrawer({ event, onClose, zone = 'UTC' }: EventDrawerProps) 
   const titleOk = title.trim().length > 0;
   const ok = rangeOk && titleOk;
   const pending = updateM.isPending || deleteM.isPending;
-  const apiError = [updateM.error, deleteM.error].find((e) => e instanceof ApiError) as ApiError | undefined;
 
   const ctl = 'w-full bg-transparent text-[16px] font-bold text-ink outline-none';
   const errCls = 'mt-0.5 text-[11px] text-crit';
 
+  // Saving/deleting closes the drawer synchronously rather than on the mutation's success:
+  // both mutations patch the cached event optimistically, and the drawer is keyed on that
+  // event's times, so an onSuccess close would race a remount that drops the mutation
+  // observer (and its callbacks) first. Fire-and-forget matches the drag-commit path —
+  // the mutation rolls the cache back if the request fails.
   const save = () => {
     if (!ok || pending) return;
     // Only changed fields travel: the PATCH merges into the Google event, so untouched
@@ -62,8 +65,14 @@ export function EventDrawer({ event, onClose, zone = 'UTC' }: EventDrawerProps) 
     if (title.trim() !== event.title) patch.title = title.trim();
     if (startLocal !== seededStart && startIso !== null) patch.startsAt = startIso;
     if (endLocal !== seededEnd && endIso !== null) patch.endsAt = endIso;
-    if (Object.keys(patch).length === 0) { onClose(); return; }
-    updateM.mutate({ id: event.id, ...patch }, { onSuccess: onClose });
+    if (Object.keys(patch).length > 0) updateM.mutate({ id: event.id, ...patch });
+    onClose();
+  };
+
+  const remove = () => {
+    if (pending) return;
+    deleteM.mutate(event.id);
+    onClose();
   };
 
   if (event.source !== 'app') return null;
@@ -99,8 +108,6 @@ export function EventDrawer({ event, onClose, zone = 'UTC' }: EventDrawerProps) 
         </div>
       </div>
 
-      {apiError && <p data-testid="event-drawer-error" className={errCls}>{apiError.message}</p>}
-
       <div className="flex items-center gap-2 pt-1">
         <button
           type="button" data-testid="event-save" disabled={!ok || pending} onClick={save}
@@ -111,8 +118,7 @@ export function EventDrawer({ event, onClose, zone = 'UTC' }: EventDrawerProps) 
           className="rounded-[30px] border border-line px-5 py-2 text-[14px] font-bold text-inkSoft hover:bg-bg"
         >Cancel</button>
         <button
-          type="button" data-testid="event-delete" disabled={pending}
-          onClick={() => deleteM.mutate(event.id, { onSuccess: onClose })}
+          type="button" data-testid="event-delete" disabled={pending} onClick={remove}
           className="ml-auto rounded-[30px] border border-line px-4 py-2 text-[14px] font-bold text-crit hover:bg-bg disabled:opacity-50"
         >Delete</button>
       </div>
