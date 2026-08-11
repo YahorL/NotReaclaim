@@ -141,7 +141,9 @@ describe('scheduleHabit with allowedWindows (hard restriction)', () => {
     const free = [{ start: 0, end: 1000 }];
     const result = scheduleHabit(free, habit({
       perPeriod: 2,
-      allowedWindows: [{ start: 0, end: 40 }],
+      // Two windows, so the one-per-day cap is not what blocks the second
+      // occurrence: the remaining window is simply too short for a 30ms chunk.
+      allowedWindows: [{ start: 0, end: 40 }, { start: 100, end: 120 }],
     }));
     expect(result.blocks).toHaveLength(1);
     expect(result.blocks[0]).toMatchObject({ start: 0, end: 30 });
@@ -224,10 +226,32 @@ describe('scheduleHabit one occurrence per allowed-window day', () => {
     const h: Habit = {
       id: 'h', title: 'H', priority: 1, chunkMs: H, perPeriod: 1,
       periods: [{ start: 0, end: 7 * D }, { start: 7 * D, end: 14 * D }],
+      // A single allowed entry straddling the period boundary: period 1 consumes
+      // it, so period 2 has nothing left. A per-period budget would place twice.
+      allowedWindows: [{ start: 7 * D - 4 * H, end: 7 * D + 4 * H }],
+    };
+    const res = scheduleHabit([{ start: 0, end: 14 * D }], h, 0);
+    expect(res.blocks.map((b) => [b.start, b.end])).toEqual([[7 * D - 4 * H, 7 * D - 3 * H]]);
+    expect(res.unscheduled).toEqual([
+      {
+        sourceType: 'habit',
+        sourceId: 'h',
+        title: 'H',
+        reason: 'could not place all habit occurrences in free time',
+        remainingMs: H,
+      },
+    ]);
+  });
+
+  it('still places once per period when each period has its own eligible day', () => {
+    const h: Habit = {
+      id: 'h', title: 'H', priority: 1, chunkMs: H, perPeriod: 1,
+      periods: [{ start: 0, end: 7 * D }, { start: 7 * D, end: 14 * D }],
       allowedWindows: dayWindows([0, 7]),
     };
     const res = scheduleHabit([{ start: 0, end: 14 * D }], h, 0);
     expect(res.blocks.map((b) => Math.floor(b.start / D))).toEqual([0, 7]);
+    expect(res.unscheduled).toEqual([]);
   });
 
   it('leaves habits without allowedWindows uncapped (regression)', () => {
