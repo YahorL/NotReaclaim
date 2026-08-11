@@ -14,6 +14,7 @@ export interface CreateScheduledBlockInput {
 }
 
 export interface UpdateScheduledBlockInput {
+  title?: string;
   startsAt?: Date;
   endsAt?: Date;
   pinned?: boolean;

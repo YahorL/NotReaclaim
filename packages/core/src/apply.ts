@@ -58,9 +58,15 @@ export async function applyDesiredSchedule(
     seenKeys.add(block.id);
     const match = existingByKey.get(block.id);
     if (match) {
-      if (match.startsAt.getTime() !== block.start || match.endsAt.getTime() !== block.end) {
+      const timesDiffer = match.startsAt.getTime() !== block.start || match.endsAt.getTime() !== block.end;
+      // The title must be diffed too: renaming a task/habit leaves its kept slots byte-identical
+      // in time, so a times-only diff would let the stale title persist here and on Google forever.
+      const changed = timesDiffer || match.title !== block.title;
+      if (changed) {
         await mirror?.update(block, match);
-        await scheduledBlocks.update(userId, match.id, { startsAt: new Date(block.start), endsAt: new Date(block.end) });
+        await scheduledBlocks.update(userId, match.id, {
+          startsAt: new Date(block.start), endsAt: new Date(block.end), title: block.title,
+        });
         updated += 1;
       }
       continue;

@@ -56,6 +56,41 @@ describe('applyDesiredSchedule (local, no mirror)', () => {
     expect(res).toEqual({ created: 0, updated: 1, deleted: 0 });
   });
 
+  it('updates a keyed block whose title changed even when its times are identical', async () => {
+    // e.g. renaming a habit: Review 17 made kept slots byte-identical, so times never differ
+    const repo = fakeRepo([dbBlock({ title: 'Old name' })]);
+    const renamed = eBlock({ title: 'New name' });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([renamed]), { now: NOW, horizonEnd: HORIZON });
+    expect(res).toEqual({ created: 0, updated: 1, deleted: 0 });
+    expect(repo.update).toHaveBeenCalledWith('u1', 'b1', expect.objectContaining({ title: 'New name' }));
+    expect(repo.rows()[0].title).toBe('New name');
+  });
+
+  it('writes title and times in a single update when both changed', async () => {
+    const repo = fakeRepo([dbBlock({ title: 'Old name' })]);
+    const moved = eBlock({
+      title: 'New name',
+      start: Date.parse('2026-01-05T11:00:00.000Z'), end: Date.parse('2026-01-05T12:00:00.000Z'),
+    });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([moved]), { now: NOW, horizonEnd: HORIZON });
+    expect(res).toEqual({ created: 0, updated: 1, deleted: 0 });
+    expect(repo.update).toHaveBeenCalledTimes(1);
+    expect(repo.update).toHaveBeenCalledWith('u1', 'b1', {
+      startsAt: new Date('2026-01-05T11:00:00.000Z'),
+      endsAt: new Date('2026-01-05T12:00:00.000Z'),
+      title: 'New name',
+    });
+  });
+
+  it('is a complete no-op when title and times are unchanged', async () => {
+    const repo = fakeRepo([dbBlock()]);
+    const res = await applyDesiredSchedule(repo, 'u1', desired([eBlock()]), { now: NOW, horizonEnd: HORIZON });
+    expect(res).toEqual({ created: 0, updated: 0, deleted: 0 });
+    expect(repo.update).not.toHaveBeenCalled();
+    expect(repo.create).not.toHaveBeenCalled();
+    expect(repo.delete).not.toHaveBeenCalled();
+  });
+
   it('deletes a keyed block no longer desired, and leaves pinned blocks untouched', async () => {
     const repo = fakeRepo([dbBlock(), dbBlock({ id: 'b2', engineKey: 'task:t9:0' }), dbBlock({ id: 'p1', pinned: true, engineKey: null })]);
     const res = await applyDesiredSchedule(repo, 'u1', desired([eBlock()]), { now: NOW, horizonEnd: HORIZON });
@@ -90,6 +125,25 @@ describe('applyDesiredSchedule (with mirror)', () => {
     expect(mirror.update).toHaveBeenCalledTimes(1);
     expect(mirror.delete).toHaveBeenCalledTimes(1);
     expect(mirror.create).not.toHaveBeenCalled();
+  });
+
+  it('calls mirror.update once with the renamed block when only the title changed', async () => {
+    const repo = fakeRepo([dbBlock({ title: 'Old name' })]);
+    const mirror: ScheduleMirror = {
+      create: vi.fn(async () => ({ googleEventId: 'g1', googleCalendarId: 'cal1' })),
+      update: vi.fn(async () => undefined),
+      delete: vi.fn(async () => undefined),
+    };
+    const renamed = eBlock({ title: 'New name' });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([renamed]), { now: NOW, horizonEnd: HORIZON, mirror });
+    expect(res).toEqual({ created: 0, updated: 1, deleted: 0 });
+    expect(mirror.update).toHaveBeenCalledTimes(1);
+    expect(mirror.update).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'New name' }),
+      expect.objectContaining({ id: 'b1' }),
+    );
+    expect(mirror.create).not.toHaveBeenCalled();
+    expect(mirror.delete).not.toHaveBeenCalled();
   });
 });
 
@@ -157,7 +211,7 @@ describe('applyDesiredSchedule across time (stale past blocks)', () => {
     expect(res).toEqual({ created: 0, updated: 1, deleted: 0 });
     expect(repo.create).not.toHaveBeenCalled();
     expect(repo.update).toHaveBeenCalledWith('u1', 'b1', {
-      startsAt: new Date('2026-01-12T09:00:00.000Z'), endsAt: new Date('2026-01-12T10:00:00.000Z'),
+      startsAt: new Date('2026-01-12T09:00:00.000Z'), endsAt: new Date('2026-01-12T10:00:00.000Z'), title: 'A',
     });
   });
 
