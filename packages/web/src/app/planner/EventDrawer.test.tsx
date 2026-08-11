@@ -125,6 +125,32 @@ describe('EventDrawer', () => {
     expect(screen.getByTestId('event-save')).toBeDisabled();
   });
 
+  it('edits a blocked entry like any app event (type is not editable here)', async () => {
+    const onClose = vi.fn();
+    const updateCalendarEvent = vi.fn(async () => appEvent());
+    const blocked = appEvent({ id: 'e-b', title: 'Gym', kind: 'blocked' });
+    renderWithProviders(
+      <EventDrawer event={blocked} zone="UTC" onClose={onClose} />,
+      { api: api({ updateCalendarEvent }) },
+    );
+    expect(screen.getByTestId('event-drawer')).toBeInTheDocument();
+    expect(screen.getByTestId('event-title')).toHaveValue('Gym');
+    fireEvent.change(screen.getByTestId('event-end'), { target: { value: '2026-01-07T16:30' } });
+    fireEvent.click(screen.getByTestId('event-save'));
+    await waitFor(() => expect(updateCalendarEvent).toHaveBeenCalledWith('e-b', { endsAt: '2026-01-07T16:30:00.000Z' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it('deletes a blocked entry', async () => {
+    const deleteCalendarEvent = vi.fn(async () => undefined);
+    renderWithProviders(
+      <EventDrawer event={appEvent({ id: 'e-b', title: 'Gym', kind: 'blocked' })} zone="UTC" onClose={vi.fn()} />,
+      { api: api({ deleteCalendarEvent }) },
+    );
+    fireEvent.click(screen.getByTestId('event-delete'));
+    await waitFor(() => expect(deleteCalendarEvent).toHaveBeenCalledWith('e-b'));
+  });
+
   it('renders nothing for a google-owned event', () => {
     renderWithProviders(
       <EventDrawer event={appEvent({ source: 'google', googleEventId: 'g1' })} zone="UTC" onClose={vi.fn()} />,

@@ -141,6 +141,12 @@ export interface CalendarEvent {
   googleEventId: string | null;
   /** 'app' events were created here and are editable; 'google' events mirror the remote calendar (read-only). */
   source: 'app' | 'google';
+  /**
+   * 'blocked' entries are local busy time (relax/personal) that never syncs to Google.
+   * Optional: rows written before the kind column existed, and older fixtures, read as
+   * undefined and are treated as plain events.
+   */
+  kind?: 'event' | 'blocked';
 }
 
 export interface ReconcileResult {
@@ -193,6 +199,6 @@ export interface UpdateScheduledBlockInput {
   pinned?: boolean;
 }
 
-export interface CreateCalendarEventInput { title: string; startsAt: string; endsAt: string; }
+export interface CreateCalendarEventInput { title: string; startsAt: string; endsAt: string; kind?: 'event' | 'blocked'; }
 export interface UpdateCalendarEventInput { title?: string; startsAt?: string; endsAt?: string; }
 export interface CreateScheduledBlockInput { taskId: string; startsAt: string; endsAt: string; }

@@ -49,6 +49,17 @@ describe('EventBlock', () => {
     expect(el).toHaveTextContent('🔒');
   });
 
+  it('renders blocked time muted (gray), distinct from the blue meeting block', () => {
+    render(<EventBlock title="Blocked" kind="blocked" topPct={0} heightPct={5} startLabel="18:00" />);
+    const el = screen.getByTestId('event-block');
+    expect(el).toHaveAttribute('data-kind', 'blocked');
+    expect(el.className).toContain('bg-slate-100');
+    expect(el.className).toContain('border-slate-300');
+    expect(el.className).toContain('text-slate-500');
+    expect(el.className).not.toContain('bg-event');
+    expect(el).not.toHaveTextContent('🔒');
+  });
+
   it('a movable habit uses the same scheme as a task', () => {
     render(<EventBlock title="Workout" kind="habit" topPct={0} heightPct={5} startLabel="08:00" />);
     const el = screen.getByTestId('event-block');

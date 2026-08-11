@@ -271,3 +271,44 @@ describe('WeekGrid app-created events', () => {
     expect(onDeleteEvent).toHaveBeenCalledWith('e9');
   });
 });
+
+describe('WeekGrid blocked time', () => {
+  const PX_PER_60MIN = minutesToPx(60);
+  const blockedEvent = event({
+    id: 'e7', title: 'Gym', kind: 'blocked', source: 'app', googleCalendarId: null, googleEventId: null,
+  });
+  const tileFor = (title: string) => screen.getAllByTestId('event-block').find((b) => b.textContent?.includes(title))!;
+
+  it('renders a blocked entry muted, not as a blue meeting', () => {
+    renderGrid({ events: [blockedEvent], blocks: [] });
+    const tile = tileFor('Gym');
+    expect(tile).toHaveAttribute('data-kind', 'blocked');
+    expect(tile.className).toContain('bg-slate-100');
+    expect(tile.className).not.toContain('bg-event');
+  });
+
+  it('a blocked entry stays interactive: drag commits new times via onCommitEvent', () => {
+    const onCommitEvent = vi.fn();
+    renderGrid({ events: [blockedEvent], blocks: [], onCommitEvent });
+    const tile = tileFor('Gym');
+    expect(tile.querySelector('[data-testid="resize-handle"]')).not.toBeNull();
+    fireEvent.pointerDown(tile, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(tile, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
+    fireEvent.pointerUp(tile, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
+    expect(onCommitEvent).toHaveBeenCalledWith('e7', {
+      startsAt: '2026-01-07T11:00:00.000Z', endsAt: '2026-01-07T11:30:00.000Z',
+    });
+  });
+
+  it('clicking a blocked entry opens the editor, and its × deletes it', () => {
+    const onEditEvent = vi.fn();
+    const onDeleteEvent = vi.fn();
+    renderGrid({ events: [blockedEvent], blocks: [], onEditEvent, onDeleteEvent });
+    const tile = tileFor('Gym');
+    fireEvent.pointerDown(tile, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerUp(tile, { clientX: 50, clientY: 100, pointerId: 1 });
+    expect(onEditEvent).toHaveBeenCalledWith(blockedEvent);
+    fireEvent.click(screen.getByRole('button', { name: /delete event/i, hidden: true }));
+    expect(onDeleteEvent).toHaveBeenCalledWith('e7');
+  });
+});
