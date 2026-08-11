@@ -5,7 +5,7 @@ import type {
   ScheduledBlock,
   UnscheduledItem,
 } from './types.js';
-import { intersectIntervals, subtractIntervals } from './intervals.js';
+import { intersectIntervals, mergeIntervals, subtractIntervals } from './intervals.js';
 import { placeItem, splitDuration } from './placement.js';
 
 export interface ScheduleItemResult {
@@ -99,6 +99,19 @@ function dayAvailable(budget: HabitWindowBudget, time: number): boolean {
   return budget.allowed.some((w) => time >= w.start && time < w.end);
 }
 
+/**
+ * When a habit states a preference, stickiness must not outrank it: a prior slot
+ * sitting outside every preferred window is re-placed (preferred-first) instead
+ * of being kept forever. Habits with no preference keep their slots unchanged.
+ *
+ * Merged first so a slot straddling two touching preferred windows still counts
+ * as "fully inside one".
+ */
+function insidePreferred(preferred: Interval[] | undefined, slot: Interval): boolean {
+  if (!preferred || preferred.length === 0) return true;
+  return mergeIntervals(preferred).some((w) => slot.start >= w.start && slot.end <= w.end);
+}
+
 export function scheduleHabit(free: Interval[], habit: Habit, gapMs = 0): ScheduleItemResult {
   let remainingFree = free;
   const blocks: ScheduledBlock[] = [];
@@ -133,6 +146,8 @@ export function scheduleHabit(free: Interval[], habit: Habit, gapMs = 0): Schedu
       if (slot.end - slot.start !== habit.chunkMs) continue;
       if (slot.start < period.start || slot.end > period.end) continue;
       if (!dayAvailable(budget, slot.start)) continue;
+      // Preference beats stickiness: a slot outside it is re-placed below.
+      if (!insidePreferred(habit.preferredWindows, slot)) continue;
 
       const bound = budget.allowed
         ? intersectIntervals(budget.allowed, periodWindow)

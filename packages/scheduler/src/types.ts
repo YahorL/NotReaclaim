@@ -111,6 +111,14 @@ export interface UnscheduledItem {
 export interface ScheduleInput {
   /** Available working time over the horizon (already expanded by the caller). */
   workingWindows: Interval[];
+  /**
+   * Optional full planning envelope [now, horizonEnd). When present the free
+   * timeline spans the whole horizon rather than only `workingWindows`, so
+   * habits (whose `allowedWindows` are full eligible days) may be placed outside
+   * working hours; TASKS stay confined — their candidate windows are intersected
+   * with `workingWindows`. Omit for the previous behavior (free = working hours).
+   */
+  horizon?: Interval;
   /** Immovable events that block time. */
   fixedEvents: FixedEvent[];
   /** Already-fixed engine blocks (user-pinned). Treated as busy AND echoed in output. */

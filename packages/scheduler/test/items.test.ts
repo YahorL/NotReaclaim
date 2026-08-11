@@ -429,6 +429,67 @@ describe('scheduleHabit existingSlots (sticky placements)', () => {
   });
 });
 
+describe('scheduleHabit sticky slots vs preferredWindows', () => {
+  const D = 86_400_000;
+  const H = 3_600_000;
+
+  const dayWindows = (days: number[], fromH = 9, toH = 17) =>
+    days.map((d) => ({ start: d * D + fromH * H, end: d * D + toH * H }));
+
+  const preferringHabit = (over: Partial<Habit> = {}): Habit => ({
+    id: 'h', title: 'H', priority: 1, chunkMs: H, perPeriod: 1,
+    periods: [{ start: 0, end: 7 * D }],
+    allowedWindows: dayWindows([0, 1, 2, 3, 4]),
+    preferredWindows: dayWindows([0, 1, 2, 3, 4], 13, 15),
+    ...over,
+  });
+
+  const spans = (res: { blocks: { start: number; end: number }[] }) =>
+    res.blocks.map((b) => ({ start: b.start, end: b.end }));
+
+  it('keeps a slot that lies fully inside a preferred window', () => {
+    const h = preferringHabit({ existingSlots: [{ start: 1 * D + 14 * H, end: 1 * D + 15 * H }] });
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    expect(spans(res)).toEqual([{ start: 1 * D + 14 * H, end: 1 * D + 15 * H }]);
+  });
+
+  it('re-places a slot that lies outside every preferred window', () => {
+    // 09:00 is inside the allowed day window but outside the 13–15 preference.
+    const h = preferringHabit({ existingSlots: [{ start: 1 * D + 9 * H, end: 1 * D + 10 * H }] });
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    expect(spans(res)).toEqual([{ start: 0 * D + 13 * H, end: 0 * D + 14 * H }]);
+  });
+
+  it('re-places a slot that only partially overlaps a preferred window', () => {
+    const h = preferringHabit({ existingSlots: [{ start: 1 * D + 12 * H + 30 * 60_000, end: 1 * D + 13 * H + 30 * 60_000 }] });
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    expect(spans(res)).toEqual([{ start: 0 * D + 13 * H, end: 0 * D + 14 * H }]);
+  });
+
+  it('keeps an out-of-window slot when the habit has no preferredWindows (unchanged)', () => {
+    const h = preferringHabit({
+      preferredWindows: undefined,
+      existingSlots: [{ start: 1 * D + 9 * H, end: 1 * D + 10 * H }],
+    });
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    expect(spans(res)).toEqual([{ start: 1 * D + 9 * H, end: 1 * D + 10 * H }]);
+  });
+
+  it('keeps a slot spanning two touching preferred windows', () => {
+    const h = preferringHabit({
+      preferredWindows: [
+        { start: 1 * D + 13 * H, end: 1 * D + 14 * H },
+        { start: 1 * D + 14 * H, end: 1 * D + 16 * H },
+      ],
+      existingSlots: [{ start: 1 * D + 13 * H + 30 * 60_000, end: 1 * D + 14 * H + 30 * 60_000 }],
+    });
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    expect(spans(res)).toEqual([
+      { start: 1 * D + 13 * H + 30 * 60_000, end: 1 * D + 14 * H + 30 * 60_000 },
+    ]);
+  });
+});
+
 describe('scheduleHabit pinnedSlotTimes', () => {
   const D = 86_400_000;
   const H = 3_600_000;
