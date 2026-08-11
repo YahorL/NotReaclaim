@@ -30,9 +30,11 @@ export interface EventDrawerProps {
  * calendar and are not editable here, so the drawer renders nothing for them.
  */
 export function EventDrawer({ event, onClose, zone = 'UTC' }: EventDrawerProps) {
+  const seededStart = isoToZonedInput(event.startsAt, zone);
+  const seededEnd = isoToZonedInput(event.endsAt, zone);
   const [title, setTitle] = useState(event.title);
-  const [startLocal, setStartLocal] = useState(() => isoToZonedInput(event.startsAt, zone));
-  const [endLocal, setEndLocal] = useState(() => isoToZonedInput(event.endsAt, zone));
+  const [startLocal, setStartLocal] = useState(seededStart);
+  const [endLocal, setEndLocal] = useState(seededEnd);
   const rootRef = useRef<HTMLElement>(null);
   useClickOutside(rootRef, onClose);
   const updateM = useUpdateCalendarEventMutation();
@@ -52,11 +54,14 @@ export function EventDrawer({ event, onClose, zone = 'UTC' }: EventDrawerProps) 
   const save = () => {
     if (!ok || pending) return;
     // Only changed fields travel: the PATCH merges into the Google event, so untouched
-    // fields must stay untouched.
+    // fields must stay untouched. Changes are detected on the *input strings* vs. what the
+    // fields were seeded with — comparing instants instead would misfire whenever the
+    // minute-precision round-trip isn't lossless (seconds/ms on the stored event, and the
+    // DST fall-back hour, where luxon resolves the repeated wall time to the earlier offset).
     const patch: UpdateCalendarEventInput = {};
     if (title.trim() !== event.title) patch.title = title.trim();
-    if (startIso !== null && Date.parse(startIso) !== Date.parse(event.startsAt)) patch.startsAt = startIso;
-    if (endIso !== null && Date.parse(endIso) !== Date.parse(event.endsAt)) patch.endsAt = endIso;
+    if (startLocal !== seededStart && startIso !== null) patch.startsAt = startIso;
+    if (endLocal !== seededEnd && endIso !== null) patch.endsAt = endIso;
     if (Object.keys(patch).length === 0) { onClose(); return; }
     updateM.mutate({ id: event.id, ...patch }, { onSuccess: onClose });
   };

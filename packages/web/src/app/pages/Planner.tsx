@@ -164,7 +164,12 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
       )}
       {editingEvent && (
         <div className="fixed right-3 top-[84px] z-40">
-          <EventDrawer event={editingEvent} zone={zone} onClose={() => setEditingEventId(null)} />
+          {/* Key on the event's times: a background refetch (or a drag) that moves the event
+              remounts the drawer so its fields re-seed instead of holding stale values. */}
+          <EventDrawer
+            key={`${editingEvent.id}:${editingEvent.startsAt}:${editingEvent.endsAt}`}
+            event={editingEvent} zone={zone} onClose={() => setEditingEventId(null)}
+          />
         </div>
       )}
     </div>
