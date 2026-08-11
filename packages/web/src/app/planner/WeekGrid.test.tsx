@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import type { ScheduledBlock, CalendarEvent } from '../../api/types';
-import { startOfWeek, dayColumns } from './weekModel';
+import { startOfWeek, dayColumns, minutesToPx } from './weekModel';
 import { WeekGrid, type WeekGridProps } from './WeekGrid';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 
@@ -17,7 +17,7 @@ const block = (over: Partial<ScheduledBlock> = {}): ScheduledBlock => ({
 const event = (over: Partial<CalendarEvent> = {}): CalendarEvent => ({
   id: 'e1', userId: 'u1', title: 'Standup',
   startsAt: '2026-01-07T10:00:00.000Z', endsAt: '2026-01-07T10:30:00.000Z',
-  googleCalendarId: 'primary', googleEventId: 'g1', ...over,
+  googleCalendarId: 'primary', googleEventId: 'g1', source: 'google', ...over,
 });
 
 function renderGrid(props: Partial<WeekGridProps> = {}) {
@@ -219,4 +219,55 @@ describe('WeekGrid', () => {
     expect(tiles.every((t) => /width:\s*calc\(50%/.test(t.getAttribute('style') || ''))).toBe(true);
   });
 
+});
+
+describe('WeekGrid app-created events', () => {
+  const PX_PER_60MIN = minutesToPx(60);
+  const appEvent = event({ id: 'e9', title: 'Coffee', source: 'app', googleCalendarId: null, googleEventId: null });
+  const tileFor = (title: string) => screen.getAllByTestId('event-block').find((b) => b.textContent?.includes(title))!;
+
+  it('renders an app-created event as an interactive block (resize handle present)', () => {
+    renderGrid({ events: [appEvent] });
+    expect(tileFor('Coffee').querySelector('[data-testid="resize-handle"]')).not.toBeNull();
+  });
+
+  it('a google-source event stays static (no resize handle, no drag)', () => {
+    const onCommitEvent = vi.fn();
+    renderGrid({ events: [event()], onCommitEvent });
+    const tile = tileFor('Standup');
+    expect(tile.querySelector('[data-testid="resize-handle"]')).toBeNull();
+    fireEvent.pointerDown(tile, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerUp(tile, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
+    expect(onCommitEvent).not.toHaveBeenCalled();
+  });
+
+  it('dragging an app event down an hour commits the new ISO times via onCommitEvent', () => {
+    const onCommitEvent = vi.fn();
+    renderGrid({ events: [appEvent], onCommitEvent });
+    const tile = tileFor('Coffee');
+    fireEvent.pointerDown(tile, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(tile, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
+    fireEvent.pointerUp(tile, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
+    expect(onCommitEvent).toHaveBeenCalledWith('e9', {
+      startsAt: '2026-01-07T11:00:00.000Z', endsAt: '2026-01-07T11:30:00.000Z',
+    });
+  });
+
+  it('clicking an app event (no drag) calls onEditEvent with the event', () => {
+    const onEditEvent = vi.fn();
+    const onCommitEvent = vi.fn();
+    renderGrid({ events: [appEvent], onEditEvent, onCommitEvent });
+    const tile = tileFor('Coffee');
+    fireEvent.pointerDown(tile, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerUp(tile, { clientX: 50, clientY: 100, pointerId: 1 });
+    expect(onEditEvent).toHaveBeenCalledWith(appEvent);
+    expect(onCommitEvent).not.toHaveBeenCalled();
+  });
+
+  it('delete on an app event still calls onDeleteEvent with the event id', () => {
+    const onDeleteEvent = vi.fn();
+    renderGrid({ events: [appEvent], blocks: [], onDeleteEvent });
+    fireEvent.click(screen.getByRole('button', { name: /delete event/i, hidden: true }));
+    expect(onDeleteEvent).toHaveBeenCalledWith('e9');
+  });
 });

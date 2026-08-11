@@ -33,6 +33,10 @@ export interface WeekGridProps {
   onNext: () => void;
   onReplan: () => void;
   onCommit: (id: string, patch: { startsAt?: string; endsAt?: string; pinned?: boolean }) => void;
+  /** Drag/resize commit for app-created calendar events (Google-owned events are read-only). */
+  onCommitEvent?: (id: string, patch: { startsAt: string; endsAt: string }) => void;
+  /** Click (no drag) on an app-created event — opens the event editor. */
+  onEditEvent?: (event: CalendarEvent) => void;
   onDeleteBlock?: (id: string) => void;
   onDeleteEvent?: (id: string) => void;
   onScheduleTaskAt?: (taskId: string, dayStartMs: number, startMin: number) => void;
@@ -51,7 +55,7 @@ interface Item {
   endMs: number;
   startLabel: string;
   blockId: string | null;
-  eventId: string | null;
+  event: CalendarEvent | null;
   taskId: string | null;
 }
 
@@ -61,18 +65,18 @@ function toItems(blocks: ScheduledBlock[], events: CalendarEvent[], zone: string
     const startMs = Date.parse(b.startsAt);
     return { key: `b:${b.id}`, title: b.title, kind: cls.kind, pinned: cls.pinned,
       startMs, endMs: Date.parse(b.endsAt), startLabel: formatHm(startMs, zone), blockId: b.id,
-      eventId: null, taskId: b.taskId };
+      event: null, taskId: b.taskId };
   });
   const fromEvents = events.map((e): Item => {
     const startMs = Date.parse(e.startsAt);
     return { key: `e:${e.id}`, title: e.title, kind: 'meeting', pinned: false,
-      startMs, endMs: Date.parse(e.endsAt), startLabel: formatHm(startMs, zone), blockId: null, eventId: e.id, taskId: null };
+      startMs, endMs: Date.parse(e.endsAt), startLabel: formatHm(startMs, zone), blockId: null, event: e, taskId: null };
   });
   return [...fromEvents, ...fromBlocks];
 }
 
 export function WeekGrid(props: WeekGridProps) {
-  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit, onDeleteBlock, onDeleteEvent, onScheduleTaskAt, accents = {}, zone = 'UTC', panelHidden, onTogglePanel } = props;
+  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit, onCommitEvent, onEditEvent, onDeleteBlock, onDeleteEvent, onScheduleTaskAt, accents = {}, zone = 'UTC', panelHidden, onTogglePanel } = props;
   const gridCols = `${TIME_GUTTER_PX}px repeat(${days.length}, minmax(0, 1fr))`;
   const items = toItems(blocks, events, zone);
   const [creating, setCreating] = useState<{ dayIndex: number; startMin: number } | null>(null);
@@ -235,6 +239,27 @@ export function WeekGrid(props: WeekGridProps) {
                         />
                       );
                     }
+                    // App-created events are ours to move: same drag/resize machinery as task
+                    // blocks, minus pinning. Google-owned events mirror the remote calendar and
+                    // stay static.
+                    const ev = it.event;
+                    if (ev && ev.source === 'app') {
+                      return (
+                        <InteractiveBlock
+                          key={it.key} id={ev.id} dayStartMs={d} dayIndex={i}
+                          startMs={it.startMs} endMs={it.endMs}
+                          topPct={pos.topPct} heightPct={pos.heightPct}
+                          leftPct={leftPct} widthPct={widthPct}
+                          startLabel={it.startLabel} title={it.title} kind={it.kind} pinned={false}
+                          onCommit={(patch) => onCommitEvent?.(ev.id, { startsAt: patch.startsAt, endsAt: patch.endsAt })}
+                          onClick={onEditEvent ? () => onEditEvent(ev) : undefined}
+                          onDelete={onDeleteEvent ? () => onDeleteEvent(ev.id) : undefined}
+                          deleteLabel="Delete event"
+                          dayCount={days.length}
+                          zone={zone}
+                        />
+                      );
+                    }
                     return (
                       <EventBlock
                         key={it.key}
@@ -247,7 +272,7 @@ export function WeekGrid(props: WeekGridProps) {
                         widthPct={widthPct}
                         startLabel={it.startLabel}
                         accent={accent}
-                        onDelete={it.eventId && onDeleteEvent ? () => onDeleteEvent(it.eventId!) : undefined}
+                        onDelete={ev && onDeleteEvent ? () => onDeleteEvent(ev.id) : undefined}
                       />
                     );
                   })}

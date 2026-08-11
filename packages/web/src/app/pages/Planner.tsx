@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import type { Task } from '../../api/types';
 import { ApiError } from '../../api/client';
-import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation, useSettingsQuery } from '../../api/queries';
+import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation, useSettingsQuery } from '../../api/queries';
 import { dayColumns, daysThatFit, shiftDays, localMidnight, clampToWindow, MS_PER_DAY, WINDOW_START_MIN, WINDOW_END_MIN } from '../planner/weekModel';
 import { useElementWidth } from '../planner/useElementWidth';
 import { WeekGrid } from '../planner/WeekGrid';
@@ -48,6 +48,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const updateBlock = useUpdateScheduledBlockMutation();
   const deleteBlock = useDeleteScheduledBlockMutation();
   const deleteEvent = useDeleteCalendarEventMutation();
+  const updateEvent = useUpdateCalendarEventMutation();
   const updateTask = useUpdateTaskMutation();
   const deleteTask = useDeleteTaskMutation();
   const createBlock = useCreateScheduledBlockMutation();
@@ -124,6 +125,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           onReplan={() => replan.mutate()}
           onCommit={(id, patch) => updateBlock.mutate({ id, patch })}
           onDeleteBlock={(id) => deleteBlock.mutate(id)}
+          onCommitEvent={(id, patch) => updateEvent.mutate({ id, ...patch })}
           onDeleteEvent={(id) => deleteEvent.mutate(id)}
           onScheduleTaskAt={onScheduleTaskAt}
           accents={accents}

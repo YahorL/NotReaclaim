@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useApi } from './ApiProvider';
-import type { CreateTaskInput, UpdateTaskInput, CreateHabitInput, UpdateHabitInput, SettingsInput, UpdateScheduledBlockInput, CreateCategoryInput, UpdateCategoryInput, CreateSubtaskInput, UpdateSubtaskInput, CreateCalendarEventInput, CreateScheduledBlockInput } from './types';
+import type { CreateTaskInput, UpdateTaskInput, CreateHabitInput, UpdateHabitInput, SettingsInput, UpdateScheduledBlockInput, CreateCategoryInput, UpdateCategoryInput, CreateSubtaskInput, UpdateSubtaskInput, CreateCalendarEventInput, UpdateCalendarEventInput, CreateScheduledBlockInput } from './types';
 
 export const queryKeys = {
   scheduleRoot: ['schedule'] as const,
@@ -88,6 +88,32 @@ export function useDeleteScheduledBlockMutation() {
       ctx?.snapshots.forEach(([key, data]) => qc.setQueryData(key, data));
     },
     onSettled: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.scheduleRoot });
+    },
+  });
+}
+
+export function useUpdateCalendarEventMutation() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...patch }: { id: string } & UpdateCalendarEventInput) => api.updateCalendarEvent(id, patch),
+    // Optimistic: patch every cached calendar-event LIST so a dragged event stays where it
+    // was dropped while the PATCH is in flight (same shape as the block-move mutation).
+    onMutate: async ({ id, ...patch }) => {
+      await qc.cancelQueries({ queryKey: queryKeys.calendarEventsRoot });
+      const snapshots = qc.getQueriesData<unknown>({ queryKey: queryKeys.calendarEventsRoot });
+      qc.setQueriesData<unknown>({ queryKey: queryKeys.calendarEventsRoot }, (old: unknown) =>
+        Array.isArray(old) ? old.map((e: { id: string }) => (e.id === id ? { ...e, ...patch } : e)) : old,
+      );
+      return { snapshots };
+    },
+    onError: (_err, _vars, ctx) => {
+      ctx?.snapshots.forEach(([key, data]) => qc.setQueryData(key, data));
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.calendarEventsRoot });
+      // Moving an event changes the busy map, so the server re-plans around it.
       void qc.invalidateQueries({ queryKey: queryKeys.scheduleRoot });
     },
   });

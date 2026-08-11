@@ -137,8 +137,10 @@ export interface CalendarEvent {
   title: string;
   startsAt: string;           // ISO
   endsAt: string;             // ISO
-  googleCalendarId: string;
-  googleEventId: string;
+  googleCalendarId: string | null;
+  googleEventId: string | null;
+  /** 'app' events were created here and are editable; 'google' events mirror the remote calendar (read-only). */
+  source: 'app' | 'google';
 }
 
 export interface ReconcileResult {
@@ -192,4 +194,5 @@ export interface UpdateScheduledBlockInput {
 }
 
 export interface CreateCalendarEventInput { title: string; startsAt: string; endsAt: string; }
+export interface UpdateCalendarEventInput { title?: string; startsAt?: string; endsAt?: string; }
 export interface CreateScheduledBlockInput { taskId: string; startsAt: string; endsAt: string; }

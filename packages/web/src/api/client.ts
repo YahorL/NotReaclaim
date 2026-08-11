@@ -3,7 +3,7 @@ import type {
   TaskStatus, CreateTaskInput, UpdateTaskInput, CreateHabitInput, UpdateHabitInput, SettingsInput,
   UpdateScheduledBlockInput, Category, CreateCategoryInput, UpdateCategoryInput,
   Subtask, CreateSubtaskInput, UpdateSubtaskInput,
-  CreateCalendarEventInput, CreateScheduledBlockInput,
+  CreateCalendarEventInput, UpdateCalendarEventInput, CreateScheduledBlockInput,
 } from './types';
 
 export class ApiError extends Error {
@@ -34,6 +34,7 @@ export interface ApiClient {
   updateScheduledBlock(id: string, patch: UpdateScheduledBlockInput): Promise<ScheduledBlock>;
   deleteScheduledBlock(id: string): Promise<void>;
   getCalendarEvents(from?: string, to?: string): Promise<CalendarEvent[]>;
+  updateCalendarEvent(id: string, patch: UpdateCalendarEventInput): Promise<CalendarEvent>;
   deleteCalendarEvent(id: string): Promise<void>;
   getSchedulePreview(): Promise<SchedulePreview>;
   replan(): Promise<ReconcileResult>;
@@ -122,6 +123,7 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
     createSubtask: (body) => request('POST', '/subtasks', body),
     updateSubtask: (id, patch) => request('PATCH', `/subtasks/${id}`, patch),
     deleteSubtask: (id) => request('DELETE', `/subtasks/${id}`),
+    updateCalendarEvent: (id, patch) => request('PATCH', `/calendar/events/${id}`, patch),
     deleteCalendarEvent: (id) => request('DELETE', `/calendar/events/${id}`),
     createCalendarEvent: (body) => request('POST', '/calendar/events', body),
     createScheduledBlock: (body) => request('POST', '/schedule', body),

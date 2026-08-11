@@ -24,6 +24,9 @@ export interface InteractiveBlockProps {
   onCommit: (patch: { startsAt: string; endsAt: string; pinned: boolean }) => void;
   onUnpin?: () => void;
   onDelete?: () => void;
+  /** Fired on a press that moved nothing (a click, not a drag) — never alongside onCommit. */
+  onClick?: () => void;
+  deleteLabel?: string;
   dayCount?: number;
   accent?: string;
   zone?: string;
@@ -33,7 +36,7 @@ type DragMode = 'move' | 'resize';
 
 export function InteractiveBlock(props: InteractiveBlockProps) {
   // `id` is part of the props for the parent's onCommit binding; not read inside this component.
-  const { dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, leftPct = 0, widthPct = 100, startLabel, title, kind, pinned, onCommit, onUnpin, onDelete, dayCount = 7, accent, zone = 'UTC' } = props;
+  const { dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, leftPct = 0, widthPct = 100, startLabel, title, kind, pinned, onCommit, onUnpin, onDelete, onClick, deleteLabel = 'Delete block', dayCount = 7, accent, zone = 'UTC' } = props;
   // Refs hold the authoritative drag state; mutated directly so pointer handlers always
   // see the latest values regardless of React's batching/commit schedule.
   const modeRef = useRef<DragMode | null>(null);
@@ -180,7 +183,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
     const endMin = (endMs - dayStartMs) / 60_000;
 
     if (mode === 'move') {
-      if (deltaMin === 0 && deltaDays === 0) return; // zero-delta no-op: no held preview
+      if (deltaMin === 0 && deltaDays === 0) { onClick?.(); return; } // a click, not a drag: no held preview
       const moved = clampToWindow(startMin + deltaMin, endMin - startMin);
       const dayStart = shiftDays(dayStartMs, deltaDays);
       // Transfer to held preview before firing mutation
@@ -247,7 +250,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
       {onDelete && !activeDrag && (
         <button
           type="button"
-          aria-label="Delete block"
+          aria-label={deleteLabel}
           title="Delete"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); onDelete(); }}

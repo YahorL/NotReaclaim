@@ -14,7 +14,7 @@ const blocks: ScheduledBlock[] = [{
 const events: CalendarEvent[] = [{
   id: 'e1', userId: 'u1', title: 'Standup',
   startsAt: '2026-01-07T10:00:00.000Z', endsAt: '2026-01-07T10:30:00.000Z',
-  googleCalendarId: 'primary', googleEventId: 'g1',
+  googleCalendarId: 'primary', googleEventId: 'g1', source: 'google',
 }];
 const preview: SchedulePreview = {
   blocks: [],

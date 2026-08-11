@@ -4,7 +4,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiProvider } from './ApiProvider';
 import { fakeApiClient } from '../test/fakes';
-import { queryKeys, useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useHabitsQuery, useCreateTaskMutation, useDeleteHabitMutation, useSettingsQuery, useUpdateSettingsMutation, useCreateCalendarEventMutation, useCreateScheduledBlockMutation } from './queries';
+import { queryKeys, useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useHabitsQuery, useCreateTaskMutation, useDeleteHabitMutation, useSettingsQuery, useUpdateSettingsMutation, useCreateCalendarEventMutation, useCreateScheduledBlockMutation } from './queries';
 
 function wrap(api = fakeApiClient(), qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   const Wrapper = ({ children }: { children: ReactNode }) => (
@@ -250,6 +250,44 @@ describe('useDeleteScheduledBlockMutation', () => {
     result.current.mutate('b1');
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(qc.getQueryData(queryKeys.schedule('a', 'b'))).toEqual([block, other]);
+  });
+});
+
+describe('useUpdateCalendarEventMutation', () => {
+  const ev = { id: 'e1', title: 'Standup', startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T09:30:00.000Z', source: 'app' };
+  const other = { id: 'e2', title: 'Retro', startsAt: '2026-01-05T11:00:00.000Z', endsAt: '2026-01-05T12:00:00.000Z', source: 'app' };
+  const patch = { startsAt: '2026-01-05T10:00:00.000Z', endsAt: '2026-01-05T10:30:00.000Z' };
+
+  it('PATCHes the event and optimistically patches cached event lists, invalidating on settle', async () => {
+    let resolveReq!: (v: unknown) => void;
+    const updateCalendarEvent = vi.fn(() => new Promise((res) => { resolveReq = res; }));
+    const api = fakeApiClient({ updateCalendarEvent } as never);
+    const { Wrapper, qc } = wrap(api);
+    qc.setQueryData(queryKeys.calendarEvents('a', 'b'), [ev, other]);
+    const spy = vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    const { result } = renderHook(() => useUpdateCalendarEventMutation(), { wrapper: Wrapper });
+    result.current.mutate({ id: 'e1', ...patch });
+    await waitFor(() => {
+      const cached = qc.getQueryData<(typeof ev)[]>(queryKeys.calendarEvents('a', 'b'))!;
+      expect(cached[0]).toEqual({ ...ev, ...patch });
+    });
+    expect(qc.getQueryData<(typeof ev)[]>(queryKeys.calendarEvents('a', 'b'))![1]).toEqual(other); // untouched
+    resolveReq({ ...ev, ...patch });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(updateCalendarEvent).toHaveBeenCalledWith('e1', patch);
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['calendarEvents'] });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['schedule'] });
+  });
+
+  it('rolls the cache back when the request fails', async () => {
+    const updateCalendarEvent = vi.fn(async () => { throw new Error('500'); });
+    const api = fakeApiClient({ updateCalendarEvent } as never);
+    const { Wrapper, qc } = wrap(api);
+    qc.setQueryData(queryKeys.calendarEvents('a', 'b'), [ev, other]);
+    const { result } = renderHook(() => useUpdateCalendarEventMutation(), { wrapper: Wrapper });
+    result.current.mutate({ id: 'e1', ...patch });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(qc.getQueryData(queryKeys.calendarEvents('a', 'b'))).toEqual([ev, other]);
   });
 });
 
