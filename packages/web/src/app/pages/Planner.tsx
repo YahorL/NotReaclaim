@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
-import type { Task } from '../../api/types';
+import type { CalendarEvent, Task } from '../../api/types';
 import { ApiError } from '../../api/client';
 import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation, useSettingsQuery } from '../../api/queries';
 import { dayColumns, daysThatFit, shiftDays, localMidnight, clampToWindow, MS_PER_DAY, WINDOW_START_MIN, WINDOW_END_MIN } from '../planner/weekModel';
@@ -7,6 +7,7 @@ import { useElementWidth } from '../planner/useElementWidth';
 import { WeekGrid } from '../planner/WeekGrid';
 import { PlannerTaskPanel } from '../planner/PlannerTaskPanel';
 import { TaskDrawer } from '../tasks/TaskDrawer';
+import { EventDrawer } from '../planner/EventDrawer';
 import { labelBlocksWithSubtasks } from '../planner/blockLabels';
 
 function weekLabel(days: number[], zone = 'UTC'): string {
@@ -54,6 +55,12 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const createBlock = useCreateScheduledBlockMutation();
   const [editingId, setEditingId] = useState<string | null>(null);
   const editing = (tasksQ.data ?? []).find((t) => t.id === editingId) ?? null;
+  // Only one drawer at a time — they share the same fixed slot on the right. The event is looked
+  // up by id (like the task above) so the drawer disappears when the event is deleted elsewhere.
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const editingEvent = (calendar.data ?? []).find((e) => e.id === editingEventId) ?? null;
+  const openTaskDrawer = (id: string) => { setEditingEventId(null); setEditingId(id); };
+  const openEventDrawer = (ev: CalendarEvent) => { setEditingId(null); setEditingEventId(ev.id); };
 
   const onCompleteTask = (t: Task) => updateTask.mutate({ id: t.id, patch: { status: t.status === 'completed' ? 'pending' : 'completed' } });
   const onDeleteTask = (t: Task) => deleteTask.mutate(t.id, { onSuccess: () => { if (editingId === t.id) setEditingId(null); } });
@@ -126,6 +133,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           onCommit={(id, patch) => updateBlock.mutate({ id, patch })}
           onDeleteBlock={(id) => deleteBlock.mutate(id)}
           onCommitEvent={(id, patch) => updateEvent.mutate({ id, ...patch })}
+          onEditEvent={openEventDrawer}
           onDeleteEvent={(id) => deleteEvent.mutate(id)}
           onScheduleTaskAt={onScheduleTaskAt}
           accents={accents}
@@ -140,7 +148,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           preview={preview.data}
           nowMs={nowMs}
           onComplete={onCompleteTask}
-          onEdit={(t) => setEditingId(t.id)}
+          onEdit={(t) => openTaskDrawer(t.id)}
           onDelete={onDeleteTask}
         />
       )}
@@ -152,6 +160,11 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
             onSave={(patch) => updateTask.mutate({ id: editing.id, patch }, { onSuccess: () => setEditingId(null) })}
             onCancel={() => setEditingId(null)}
           />
+        </div>
+      )}
+      {editingEvent && (
+        <div className="fixed right-3 top-[84px] z-40">
+          <EventDrawer event={editingEvent} zone={zone} onClose={() => setEditingEventId(null)} />
         </div>
       )}
     </div>

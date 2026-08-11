@@ -112,6 +112,24 @@ describe('Planner', () => {
     expect(screen.getByTestId('planner-task-panel')).toBeInTheDocument();
   });
 
+  it('clicking an app-created event opens the event edit drawer, prefilled', async () => {
+    const appEvent: CalendarEvent = {
+      id: 'e9', userId: 'u1', title: 'Coffee',
+      startsAt: '2026-01-07T15:00:00.000Z', endsAt: '2026-01-07T15:30:00.000Z',
+      googleCalendarId: null, googleEventId: null, source: 'app',
+    };
+    const api = makeApi({ getCalendarEvents: vi.fn(async () => [appEvent]) });
+    renderWithProviders(<Planner now={() => NOW} />, { api });
+    await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument());
+    expect(screen.queryByTestId('event-drawer')).toBeNull();
+    const tile = screen.getAllByTestId('event-block').find((b) => b.textContent?.includes('Coffee'))!;
+    fireEvent.pointerDown(tile, { clientX: 40, clientY: 80, pointerId: 1 });
+    fireEvent.pointerUp(tile, { clientX: 40, clientY: 80, pointerId: 1 });
+    expect(screen.getByTestId('event-drawer')).toBeInTheDocument();
+    expect(screen.getByTestId('event-title')).toHaveValue('Coffee');
+    expect(screen.getByTestId('event-start')).toHaveValue('2026-01-07T15:00'); // TZ=UTC settings default
+  });
+
   it('renders the schedule range query for the settings timezone', async () => {
     // with NY zone, today's column start is NY midnight (04:00Z in EDT; but NOW is Jan, so EST UTC-5 → 05:00Z)
     const getSchedule = vi.fn(async () => blocks);
