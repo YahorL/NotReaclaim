@@ -35,7 +35,10 @@ export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afte
         summary: body.title, startDateTime: body.startsAt, endDateTime: body.endsAt,
       });
       event = await deps.repos.calendarEvents.setGoogleIds(request.userId, event.id, PRIMARY, googleEventId);
-    } catch { /* not connected or Google failure — local row stands */ }
+    } catch (err) {
+      // Not connected or a Google failure — the local row stands, but say so in the log.
+      app.log.warn({ err, eventId: event.id }, 'google write-back failed: event not mirrored');
+    }
     afterMutation(request.userId);
     reply.code(201);
     return event;
@@ -67,7 +70,11 @@ export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afte
         await deps.google.client.patchEvent(accessToken, event.googleCalendarId, event.googleEventId, {
           summary: title, startDateTime: startsAt.toISOString(), endDateTime: endsAt.toISOString(),
         });
-      } catch { /* not connected or Google failure — local row is authoritative */ }
+      } catch (err) {
+        // Not connected or a Google failure — the local row is authoritative, but the
+        // Google copy is now stale, so this must be visible in the log.
+        app.log.warn({ err, eventId: id }, 'google write-back failed: event edit not mirrored');
+      }
     }
     afterMutation(request.userId);
     return updated;
@@ -85,7 +92,10 @@ export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afte
       try {
         const accessToken = await deps.google.tokens.getAccessToken(request.userId, deps.now());
         await deps.google.client.deleteEvent(accessToken, event.googleCalendarId, event.googleEventId);
-      } catch { /* not connected or Google failure — local delete still proceeds */ }
+      } catch (err) {
+        // The local delete still proceeds, so the Google copy may be orphaned: log it.
+        app.log.warn({ err, eventId: id }, 'google write-back failed: event not removed remotely');
+      }
     }
     await deps.repos.calendarEvents.delete(request.userId, id);
     afterMutation(request.userId);
