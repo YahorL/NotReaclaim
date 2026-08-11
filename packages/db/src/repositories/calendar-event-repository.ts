@@ -106,8 +106,14 @@ export function createCalendarEventRepository(prisma: PrismaClient) {
       });
     },
 
-    async deleteByCalendar(userId: string, googleCalendarId: string): Promise<void> {
-      await prisma.calendarEvent.deleteMany({ where: { userId, googleCalendarId } });
+    /**
+     * Drop the calendar's MIRRORED rows (source 'google') — the full-resync purge.
+     * App-created events that were written back to Google keep source 'app' and must
+     * survive: they are owned locally, and a re-mirror would only be able to recreate
+     * them as read-only 'google' rows under a new id.
+     */
+    async deleteMirroredByCalendar(userId: string, googleCalendarId: string): Promise<void> {
+      await prisma.calendarEvent.deleteMany({ where: { userId, googleCalendarId, source: 'google' } });
     },
 
     async deleteByUser(userId: string): Promise<void> {

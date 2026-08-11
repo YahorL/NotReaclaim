@@ -17,7 +17,7 @@ export interface SyncDeps {
   client: GoogleClient;
   tokens: AccessTokenProvider;
   syncState: Pick<CalendarSyncStateRepository, 'getByCalendar' | 'upsert'>;
-  events: Pick<CalendarEventRepository, 'upsertMany' | 'deleteByGoogleEventIds' | 'deleteByCalendar'>;
+  events: Pick<CalendarEventRepository, 'upsertMany' | 'deleteByGoogleEventIds' | 'deleteMirroredByCalendar'>;
 }
 
 export interface SyncResult {
@@ -90,7 +90,10 @@ export async function syncPrimaryCalendar(deps: SyncDeps, userId: string, now: n
   }
 
   if (fullResync) {
-    await deps.events.deleteByCalendar(userId, PRIMARY);
+    // Only the mirrored rows: app-created events written back to this calendar are
+    // owned locally. The upsert below matches them on (calendar, event) ids and takes
+    // the UPDATE branch, which never touches `source` — so they stay editable 'app' rows.
+    await deps.events.deleteMirroredByCalendar(userId, PRIMARY);
   }
   if (toUpsert.length > 0) await deps.events.upsertMany(userId, toUpsert);
   if (toDelete.length > 0) await deps.events.deleteByGoogleEventIds(userId, PRIMARY, toDelete);
