@@ -22,9 +22,13 @@ function earliestPeriodStart(periods: Interval[]): number {
 
 /** Pure auto-scheduling entry point. */
 export function schedule(input: ScheduleInput): ScheduleResult {
+  const gapMs = input.blockBufferMs ?? 0;
+  // Pinned blocks are task/habit work, so they get the same breathing room as
+  // auto-placed ones: reserve the buffer on BOTH sides in the busy set. Fixed
+  // events stay RAW here — meeting padding is `meetingBufferMs`' job upstream.
   const busy = mergeIntervals([
     ...input.fixedEvents.map((e) => ({ start: e.start, end: e.end })),
-    ...input.pinnedBlocks.map((b) => ({ start: b.start, end: b.end })),
+    ...input.pinnedBlocks.map((b) => ({ start: b.start - gapMs, end: b.end + gapMs })),
   ]);
   let free = subtractIntervals(input.workingWindows, busy);
 
@@ -51,7 +55,6 @@ export function schedule(input: ScheduleInput): ScheduleResult {
   const unscheduled: UnscheduledItem[] = [];
 
   for (const item of work) {
-    const gapMs = input.blockBufferMs ?? 0;
     const res =
       item.kind === 'task'
         ? scheduleTask(free, item.task, gapMs)

@@ -82,4 +82,62 @@ describe('blockBufferMs', () => {
     const b = res.blocks.find((b) => b.sourceId === 'b')!;
     expect(b.start - a.end).toBe(10);
   });
+
+  it('keeps blockBufferMs distance on both sides of a pinned block', () => {
+    const H = 3_600_000;
+    const G = 900_000;
+    const res = schedule({
+      workingWindows: [{ start: 9 * H, end: 18 * H }],
+      fixedEvents: [],
+      pinnedBlocks: [
+        { id: 'pin', sourceType: 'task', sourceId: 'p', title: 'P', start: 11 * H, end: 12 * H },
+      ],
+      tasks: [
+        { id: 'a', title: 'A', priority: 1, durationMs: 2 * H, dueBy: 24 * H, minChunkMs: 2 * H, maxChunkMs: 2 * H },
+        { id: 'b', title: 'B', priority: 2, durationMs: 4 * H, dueBy: 24 * H, minChunkMs: 4 * H, maxChunkMs: 4 * H },
+      ],
+      habits: [],
+      blockBufferMs: G,
+    });
+    const auto = res.blocks.filter((b) => b.id !== 'pin');
+    expect(auto.length).toBeGreaterThan(0);
+    for (const b of auto) {
+      expect(b.end <= 11 * H - G || b.start >= 12 * H + G).toBe(true);
+    }
+  });
+
+  it('echoes pinned blocks with their verbatim (unpadded) geometry', () => {
+    const H = 3_600_000;
+    const G = 900_000;
+    const res = schedule({
+      workingWindows: [{ start: 9 * H, end: 18 * H }],
+      fixedEvents: [],
+      pinnedBlocks: [
+        { id: 'pin', sourceType: 'task', sourceId: 'p', title: 'P', start: 11 * H, end: 12 * H },
+      ],
+      tasks: [],
+      habits: [],
+      blockBufferMs: G,
+    });
+    expect(res.blocks).toEqual([
+      { id: 'pin', sourceType: 'task', sourceId: 'p', title: 'P', start: 11 * H, end: 12 * H },
+    ]);
+  });
+
+  it('does not apply blockBufferMs to fixed events', () => {
+    const H = 3_600_000;
+    const G = 900_000;
+    const res = schedule({
+      workingWindows: [{ start: 9 * H, end: 18 * H }],
+      fixedEvents: [{ id: 'e', start: 11 * H, end: 12 * H }],
+      pinnedBlocks: [],
+      tasks: [
+        { id: 'a', title: 'A', priority: 1, durationMs: 2 * H, dueBy: 24 * H, minChunkMs: 2 * H, maxChunkMs: 2 * H },
+      ],
+      habits: [],
+      blockBufferMs: G,
+    });
+    // flush against a fixed event is allowed: meeting padding is meetingBufferMs' job in core.
+    expect(res.blocks[0]).toMatchObject({ start: 9 * H, end: 11 * H });
+  });
 });
