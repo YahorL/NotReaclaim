@@ -235,6 +235,22 @@ describe('PATCH /calendar/events/:id', () => {
     expect(reconcileCalls.length).toBe(before);
   });
 
+  it('cannot change kind — an unknown key is stripped, the row keeps its kind', async () => {
+    const { app } = buildTestApp({
+      settings: settings(),
+      calendarEvents: [event({ googleEventId: null, googleCalendarId: null, kind: 'event' })],
+    });
+    const token = await tokenFor(app);
+    const res = await app.inject({
+      method: 'PATCH', url: '/calendar/events/e1', headers: auth(token),
+      payload: { title: 'Renamed', kind: 'blocked' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as CalendarEvent).kind).toBe('event');
+    const list = await app.inject({ method: 'GET', url: '/calendar/events', headers: auth(token) });
+    expect((list.json() as CalendarEvent[])[0]!.kind).toBe('event');
+  });
+
   it('400s on an empty update body', async () => {
     const { app } = buildTestApp({ settings: settings(), calendarEvents: [event()] });
     const token = await tokenFor(app);
