@@ -3,7 +3,7 @@ import type { ScheduledBlock as DbScheduledBlock } from '@notreclaim/db';
 import type { ScheduleResult } from '@notreclaim/scheduler';
 import { applyDesiredSchedule, planLocally, type ScheduleMirror } from '../src/apply.js';
 import { SettingsRequiredError } from '../src/errors.js';
-import { fakeRepos, makeSettings, makeHabit } from './fakes.js';
+import { fakeRepos, makeSettings, makeHabit, makeEvent } from './fakes.js';
 
 const NOW = Date.parse('2026-01-05T00:00:00.000Z');
 const HORIZON = NOW + 24 * 60 * 60 * 1000;
@@ -235,13 +235,7 @@ describe('replan idempotence across a moving `now`', () => {
     const repos = {
       ...fakeRepos({
         settings: makeSettings({ horizonDays: 1 }),
-        // Mondays, once a week, preferred 10:00–11:00. Since Review 18 the free
-        // timeline spans the whole horizon, so a habit with NO preference would
-        // start at `now` and roll forward with it (see the trade-off test below);
-        // the preference is what pins a placement worth being idempotent about.
-        habits: [makeHabit({
-          eligibleDays: [1], perPeriod: 1, preferredStartMinute: 600, preferredEndMinute: 660,
-        })],
+        habits: [makeHabit({ eligibleDays: [1], perPeriod: 1 })], // Mondays, once a week
       }),
       // The block store is the live one, so the second plan sees what the first wrote.
       scheduledBlocks: { listByUserInRange: async () => blocks.rows() },
@@ -253,14 +247,18 @@ describe('replan idempotence across a moving `now`', () => {
     const second = await planLocally(repos, blocks, 'u1', T1);
     expect(second).toMatchObject({ created: 0, updated: 0, deleted: 0 });
     expect(blocks.rows()).toHaveLength(1);
-    expect(blocks.rows()[0]!.startsAt).toEqual(new Date('2026-01-05T10:00:00.000Z'));
+    // Review 18: the free timeline now spans the whole day, but the habit is still
+    // placed at the working-hours start (09:00) rather than at `now` — the engine's
+    // middle fallback tier. That is what keeps this replan idempotent: a placement
+    // at `now` would be in the past 30 minutes later and get dragged along.
+    expect(blocks.rows()[0]!.startsAt).toEqual(new Date('2026-01-05T09:00:00.000Z'));
   });
 
-  // Review 18 accepted trade-off, pinned so it stays deliberate: with the free
-  // timeline spanning the whole day, a habit with no preferred window starts at
-  // the earliest free moment — i.e. `now` — and each replan drags it along.
-  // It stays ONE row (the day-keyed engineKey does not churn), only its time moves.
-  it('rolls a preference-less habit forward with `now` (same row, updated)', async () => {
+  // Review 18 last-resort trade-off, pinned so it stays deliberate: when the day's
+  // working hours are gone, a habit with no preferred window takes the earliest free
+  // moment of its eligible day — `now` today — and each replan drags it along. It
+  // stays ONE row (the day-keyed engineKey does not churn), only its time moves.
+  it('rolls a preference-less habit forward with `now` when working hours are full', async () => {
     const T0 = Date.parse('2026-01-05T08:00:00.000Z');
     const T1 = Date.parse('2026-01-05T08:30:00.000Z');
 
@@ -269,6 +267,10 @@ describe('replan idempotence across a moving `now`', () => {
       ...fakeRepos({
         settings: makeSettings({ horizonDays: 1 }),
         habits: [makeHabit({ eligibleDays: [1], perPeriod: 1 })], // no preferred window
+        // A meeting swallowing the entire 09:00–17:00 working day.
+        events: [makeEvent({
+          startsAt: new Date('2026-01-05T09:00:00.000Z'), endsAt: new Date('2026-01-05T17:00:00.000Z'),
+        })],
       }),
       scheduledBlocks: { listByUserInRange: async () => blocks.rows() },
     };

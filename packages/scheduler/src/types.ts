@@ -115,8 +115,14 @@ export interface ScheduleInput {
    * Optional full planning envelope [now, horizonEnd). When present the free
    * timeline spans the whole horizon rather than only `workingWindows`, so
    * habits (whose `allowedWindows` are full eligible days) may be placed outside
-   * working hours; TASKS stay confined — their candidate windows are intersected
-   * with `workingWindows`. Omit for the previous behavior (free = working hours).
+   * working hours — preferring, in order, their `preferredWindows`, then
+   * `workingWindows`, then the whole eligible day. TASKS stay confined: their
+   * candidate windows are intersected with `workingWindows`.
+   *
+   * Omitting this restores the previous FREE-TIMELINE behavior (free = working
+   * hours) only. It is not a blanket engine-wide back-compat switch: the habit
+   * sticky-slot rule ("a kept slot must lie inside a preferred window") applies
+   * unconditionally.
    */
   horizon?: Interval;
   /** Immovable events that block time. */

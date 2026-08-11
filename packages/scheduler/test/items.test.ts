@@ -490,6 +490,58 @@ describe('scheduleHabit sticky slots vs preferredWindows', () => {
   });
 });
 
+describe('scheduleHabit tiered fallback (preferred → working hours → whole day)', () => {
+  const D = 86_400_000;
+  const H = 3_600_000;
+  const WORK = [{ start: 10 * H, end: 17 * H }];
+
+  const dayHabit = (over: Partial<Habit> = {}): Habit => ({
+    id: 'h', title: 'H', priority: 1, chunkMs: H, perPeriod: 1,
+    periods: [{ start: 0, end: D }],
+    allowedWindows: [{ start: 0, end: D }],
+    ...over,
+  });
+
+  it('prefers the preferred window over the working windows', () => {
+    const res = scheduleHabit([{ start: 0, end: D }], dayHabit({
+      preferredWindows: [{ start: 22 * H, end: 23 * H }],
+    }), 0, WORK);
+    expect(res.blocks[0]).toMatchObject({ start: 22 * H, end: 23 * H });
+  });
+
+  it('falls back to the working windows when the preferred window cannot fit', () => {
+    const res = scheduleHabit([{ start: 0, end: D }], dayHabit({
+      preferredWindows: [{ start: 22 * H, end: 22 * H + 60_000 }],
+    }), 0, WORK);
+    expect(res.blocks[0]).toMatchObject({ start: 10 * H, end: 11 * H });
+  });
+
+  it('uses the working windows when the habit states no preference at all', () => {
+    const res = scheduleHabit([{ start: 0, end: D }], dayHabit(), 0, WORK);
+    expect(res.blocks[0]).toMatchObject({ start: 10 * H, end: 11 * H });
+  });
+
+  it('falls back to the whole allowed day when the working windows are full', () => {
+    const free = [{ start: 0, end: 10 * H }, { start: 17 * H, end: D }];
+    const res = scheduleHabit(free, dayHabit({
+      preferredWindows: [{ start: 22 * H, end: 22 * H + 60_000 }],
+    }), 0, WORK);
+    expect(res.blocks[0]).toMatchObject({ start: 0, end: H });
+  });
+
+  it('ignores empty working windows (habit stays 24/7)', () => {
+    const res = scheduleHabit([{ start: 0, end: D }], dayHabit(), 0, []);
+    expect(res.blocks[0]).toMatchObject({ start: 0, end: H });
+  });
+
+  it('never leaves the allowed windows via the working-hours tier', () => {
+    const res = scheduleHabit([{ start: 0, end: D }], dayHabit({
+      allowedWindows: [{ start: 20 * H, end: 24 * H }], // working hours lie outside
+    }), 0, WORK);
+    expect(res.blocks[0]).toMatchObject({ start: 20 * H, end: 21 * H });
+  });
+});
+
 describe('scheduleHabit pinnedSlotTimes', () => {
   const D = 86_400_000;
   const H = 3_600_000;

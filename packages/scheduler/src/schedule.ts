@@ -48,8 +48,9 @@ export function schedule(input: ScheduleInput): ScheduleResult {
   // hours (a late-evening routine can finally be placed at 23:30). Tasks are then
   // re-confined below — the free envelope no longer does it for them.
   let free = subtractIntervals(input.horizon ? [input.horizon] : input.workingWindows, busy);
+  const workingWindows = mergeIntervals(input.workingWindows);
   // Only meaningful with a horizon; without one, free ⊆ workingWindows already.
-  const taskBound = input.horizon ? mergeIntervals(input.workingWindows) : undefined;
+  const taskBound = input.horizon ? workingWindows : undefined;
 
   const work: WorkItem[] = [
     ...input.tasks.map(
@@ -77,7 +78,10 @@ export function schedule(input: ScheduleInput): ScheduleResult {
     const res =
       item.kind === 'task'
         ? scheduleTask(free, confineTask(item.task, taskBound), gapMs)
-        : scheduleHabit(free, item.habit, gapMs);
+        // Habits may leave the working windows, but only as a fallback: they are
+        // offered as the middle tier so a habit whose preference is booked out
+        // lands in the user's day rather than at midnight.
+        : scheduleHabit(free, item.habit, gapMs, workingWindows);
     blocks.push(...res.blocks);
     unscheduled.push(...res.unscheduled);
     free = res.free;

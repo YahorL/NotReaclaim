@@ -144,9 +144,52 @@ describe('horizon (full-day free envelope)', () => {
       pinnedBlocks: [], tasks: [],
       habits: [eveningHabit()],
     });
-    // 22:00–22:30 is busy, so the 1h chunk no longer fits the preferred window and
-    // falls back to the earliest free time of the (now full-day) allowed window.
+    // 22:00–22:30 is busy, so the 1h chunk no longer fits the preferred window —
+    // and the fallback is working hours, NOT the small hours of the morning.
+    expect(res.blocks[0]).toMatchObject({ start: 10 * H, end: 11 * H });
+  });
+
+  it('falls a habit back to working hours when its preferred window is too small', () => {
+    const res = schedule({
+      workingWindows: [WORK],
+      horizon: { start: 0, end: D },
+      fixedEvents: [], pinnedBlocks: [], tasks: [],
+      habits: [{ ...eveningHabit(), preferredWindows: [{ start: 22 * H, end: 22 * H + 30 * 60_000 }] }],
+    });
+    expect(res.blocks[0]).toMatchObject({ start: 10 * H, end: 11 * H });
+  });
+
+  it('falls a habit back to the rest of the day only when working hours are full too', () => {
+    const res = schedule({
+      workingWindows: [WORK],
+      horizon: { start: 0, end: D },
+      // Working hours booked solid AND the preferred window booked solid.
+      fixedEvents: [
+        { id: 'work', start: 10 * H, end: 17 * H },
+        { id: 'eve', start: 22 * H, end: 23 * H },
+      ],
+      pinnedBlocks: [], tasks: [],
+      habits: [eveningHabit()],
+    });
+    // Deliberate last resort: with neither preference nor working hours available,
+    // the habit takes the earliest free time of the eligible day — midnight.
     expect(res.blocks[0]).toMatchObject({ start: 0, end: H });
+  });
+
+  it('schedules no tasks but still places habits when workingWindows is empty', () => {
+    const res = schedule({
+      workingWindows: [],
+      horizon: { start: 0, end: D },
+      fixedEvents: [], pinnedBlocks: [],
+      tasks: [oneHourTask()],
+      habits: [eveningHabit()],
+    });
+    // Tasks are confined to working hours, of which there are none.
+    expect(res.unscheduled.map((u) => u.sourceId)).toEqual(['t']);
+    // Habits roam the full day, so the empty working hours mean 24/7 availability.
+    expect(res.blocks).toEqual([
+      { id: 'habit:h:0', sourceType: 'habit', sourceId: 'h', title: 'Evening Routine', start: 22 * H, end: 23 * H },
+    ]);
   });
 
   it('does not let a habit steal another habit\'s preferred window', () => {
