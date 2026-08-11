@@ -146,5 +146,15 @@ export async function assembleScheduleInput(
     habits.push(engineHabit);
   }
 
-  return { workingWindows: envelope, fixedEvents, pinnedBlocks, tasks, habits, blockBufferMs: settings.taskBufferMs ?? 0 };
+  return {
+    workingWindows: envelope,
+    // Full planning envelope: habits may roam the whole day (they carry eligible-day
+    // allowedWindows), while tasks stay clipped to `envelope` inside the engine.
+    horizon: { start: now, end: horizonEnd.getTime() },
+    fixedEvents,
+    pinnedBlocks,
+    tasks,
+    habits,
+    blockBufferMs: settings.taskBufferMs ?? 0,
+  };
 }

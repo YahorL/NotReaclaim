@@ -74,6 +74,153 @@ describe('sortOrder tiebreaker', () => {
   });
 });
 
+describe('horizon (full-day free envelope)', () => {
+  const H = 3_600_000;
+  const D = 24 * H;
+  const WORK = { start: 10 * H, end: 17 * H };
+
+  const eveningHabit = () => ({
+    id: 'h', title: 'Evening Routine', priority: 1, chunkMs: H, perPeriod: 1,
+    periods: [{ start: 0, end: D }],
+    allowedWindows: [{ start: 0, end: D }], // core emits full eligible days
+    preferredWindows: [{ start: 22 * H, end: 23 * H }],
+  });
+
+  const oneHourTask = (over = {}) => ({
+    id: 't', title: 'T', priority: 1, durationMs: H, dueBy: D, minChunkMs: H, maxChunkMs: H, ...over,
+  });
+
+  it('places a habit outside working hours, in its preferred window', () => {
+    const res = schedule({
+      workingWindows: [WORK],
+      horizon: { start: 0, end: D },
+      fixedEvents: [], pinnedBlocks: [], tasks: [],
+      habits: [eveningHabit()],
+    });
+    expect(res.blocks).toEqual([
+      { id: 'habit:h:0', sourceType: 'habit', sourceId: 'h', title: 'Evening Routine', start: 22 * H, end: 23 * H },
+    ]);
+    expect(res.unscheduled).toEqual([]);
+  });
+
+  it('still confines a task without allowedWindows to the working windows', () => {
+    const res = schedule({
+      workingWindows: [WORK],
+      horizon: { start: 0, end: D },
+      fixedEvents: [], pinnedBlocks: [], habits: [],
+      tasks: [oneHourTask()],
+    });
+    expect(res.blocks).toEqual([
+      { id: 'task:t:0', sourceType: 'task', sourceId: 't', title: 'T', start: 10 * H, end: 11 * H },
+    ]);
+  });
+
+  it('clips a task\'s own allowedWindows to the working windows', () => {
+    const res = schedule({
+      workingWindows: [WORK],
+      horizon: { start: 0, end: D },
+      fixedEvents: [], pinnedBlocks: [], habits: [],
+      tasks: [oneHourTask({ allowedWindows: [{ start: 8 * H, end: 12 * H }] })],
+    });
+    expect(res.blocks[0]).toMatchObject({ start: 10 * H, end: 11 * H });
+  });
+
+  it('leaves a task unscheduled when its allowedWindows lie wholly outside working hours', () => {
+    const res = schedule({
+      workingWindows: [WORK],
+      horizon: { start: 0, end: D },
+      fixedEvents: [], pinnedBlocks: [], habits: [],
+      tasks: [oneHourTask({ allowedWindows: [{ start: 2 * H, end: 6 * H }] })],
+    });
+    expect(res.blocks).toEqual([]);
+    expect(res.unscheduled[0]).toMatchObject({ sourceId: 't', remainingMs: H });
+  });
+
+  it('lets a fixed event outside working hours consume habit free time', () => {
+    const res = schedule({
+      workingWindows: [WORK],
+      horizon: { start: 0, end: D },
+      fixedEvents: [{ id: 'e', start: 22 * H, end: 22 * H + 30 * 60_000 }],
+      pinnedBlocks: [], tasks: [],
+      habits: [eveningHabit()],
+    });
+    // 22:00–22:30 is busy, so the 1h chunk no longer fits the preferred window —
+    // and the fallback is working hours, NOT the small hours of the morning.
+    expect(res.blocks[0]).toMatchObject({ start: 10 * H, end: 11 * H });
+  });
+
+  it('falls a habit back to working hours when its preferred window is too small', () => {
+    const res = schedule({
+      workingWindows: [WORK],
+      horizon: { start: 0, end: D },
+      fixedEvents: [], pinnedBlocks: [], tasks: [],
+      habits: [{ ...eveningHabit(), preferredWindows: [{ start: 22 * H, end: 22 * H + 30 * 60_000 }] }],
+    });
+    expect(res.blocks[0]).toMatchObject({ start: 10 * H, end: 11 * H });
+  });
+
+  it('falls a habit back to the rest of the day only when working hours are full too', () => {
+    const res = schedule({
+      workingWindows: [WORK],
+      horizon: { start: 0, end: D },
+      // Working hours booked solid AND the preferred window booked solid.
+      fixedEvents: [
+        { id: 'work', start: 10 * H, end: 17 * H },
+        { id: 'eve', start: 22 * H, end: 23 * H },
+      ],
+      pinnedBlocks: [], tasks: [],
+      habits: [eveningHabit()],
+    });
+    // Deliberate last resort: with neither preference nor working hours available,
+    // the habit takes the earliest free time of the eligible day — midnight.
+    expect(res.blocks[0]).toMatchObject({ start: 0, end: H });
+  });
+
+  it('schedules no tasks but still places habits when workingWindows is empty', () => {
+    const res = schedule({
+      workingWindows: [],
+      horizon: { start: 0, end: D },
+      fixedEvents: [], pinnedBlocks: [],
+      tasks: [oneHourTask()],
+      habits: [eveningHabit()],
+    });
+    // Tasks are confined to working hours, of which there are none.
+    expect(res.unscheduled.map((u) => u.sourceId)).toEqual(['t']);
+    // Habits roam the full day, so the empty working hours mean 24/7 availability.
+    expect(res.blocks).toEqual([
+      { id: 'habit:h:0', sourceType: 'habit', sourceId: 'h', title: 'Evening Routine', start: 22 * H, end: 23 * H },
+    ]);
+  });
+
+  it('does not let a habit steal another habit\'s preferred window', () => {
+    const morning = {
+      id: 'm', title: 'Morning', priority: 2, chunkMs: H, perPeriod: 1,
+      periods: [{ start: 0, end: D }],
+      allowedWindows: [{ start: 0, end: D }],
+      preferredWindows: [{ start: 10 * H, end: 11 * H }],
+    };
+    const res = schedule({
+      workingWindows: [WORK],
+      horizon: { start: 0, end: D },
+      fixedEvents: [], pinnedBlocks: [], tasks: [],
+      habits: [eveningHabit(), morning], // evening has the better priority, goes first
+    });
+    expect(res.blocks.map((b) => [b.sourceId, b.start, b.end])).toEqual([
+      ['m', 10 * H, 11 * H],
+      ['h', 22 * H, 23 * H],
+    ]);
+  });
+
+  it('without horizon, keeps confining habits to the working windows (regression)', () => {
+    const res = schedule({
+      workingWindows: [WORK],
+      fixedEvents: [], pinnedBlocks: [], tasks: [],
+      habits: [eveningHabit()],
+    });
+    expect(res.blocks[0]).toMatchObject({ start: 10 * H, end: 11 * H });
+  });
+});
+
 describe('blockBufferMs', () => {
   it('spaces two consecutive tasks by the buffer', () => {
     const mk = (id: string) => ({ id, title: id, priority: 1, durationMs: 20, dueBy: 100, minChunkMs: 20, maxChunkMs: 20 });

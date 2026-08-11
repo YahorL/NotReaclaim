@@ -13,10 +13,15 @@ preferred window (Morning Routine 10:00–11:00, 1h chunk) and cascades it out o
 1. **Engine** (`packages/scheduler`): `ScheduleInput` gains optional `horizon?: Interval`.
    When present: `free = subtract([horizon], busy)` (full-day envelope), and each task's
    candidate windows become `intersect(task.allowedWindows ?? workingWindows, workingWindows)`
-   so tasks stay inside working hours exactly as today. When `horizon` is absent, behavior is
-   byte-identical to today (back-compat for existing tests). Habits need no engine change to
-   roam: their `allowedWindows` are already full eligible days; only the free envelope
-   confined them. Preferred windows remain soft-first (unchanged mechanics).
+   so tasks stay inside working hours exactly as today. When `horizon` is absent, the free
+   envelope is byte-identical to today (back-compat for existing tests). Habits need no engine
+   change to roam: their `allowedWindows` are already full eligible days; only the free envelope
+   confined them.
+   **Fallback tiers** (added in review): an occurrence is tried against
+   (1) `preferredWindows`, then (2) `bound ∩ workingWindows`, then (3) `bound` (the whole
+   eligible day). Without tier 2 a habit whose preference is booked out would fall straight to
+   the day's earliest free time — local midnight — instead of the user's waking hours. Tier 2 is
+   skipped when the caller passes no working windows or they do not overlap `bound`.
 2. **Sticky-slot validity** (`scheduleHabit`): a kept `existingSlot` is valid only if — in
    addition to the Review 17 rules — it lies fully inside one of the habit's
    `preferredWindows` when the habit has any. Otherwise it is re-placed (preferred-first).
@@ -27,8 +32,12 @@ preferred window (Morning Routine 10:00–11:00, 1h chunk) and cascades it out o
    already computed) into the engine input.
 
 ## Consequences / accepted trade-offs
-- A habit with NO preferred window may land at the very start of an eligible day (user
-  explicitly accepted; mitigation = set preferred windows).
+- A habit with NO preferred window lands at the start of that day's working hours (tier 2), and
+  only at the very start of the eligible day — midnight, or `now` for today — when working hours
+  are full or absent (user explicitly accepted; mitigation = set preferred windows).
+- Empty `workingWindows` + a `horizon` means tasks schedule nothing at all (they are confined to
+  windows that do not exist) while habits still place, effectively 24/7. That asymmetry is
+  deliberate: working hours bound tasks, habits are only steered by them.
 - One-time migration on first replan: habits with preferred windows move into them (sticky
   rule 2); day-key ids may change day → delete/recreate of those Google events, once.
 - Meetings/blocks outside working hours now correctly consume free time for habits.

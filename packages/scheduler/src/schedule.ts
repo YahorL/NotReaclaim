@@ -7,7 +7,7 @@ import type {
   ScheduledBlock,
   UnscheduledItem,
 } from './types.js';
-import { mergeIntervals, subtractIntervals } from './intervals.js';
+import { intersectIntervals, mergeIntervals, subtractIntervals } from './intervals.js';
 import { scheduleHabit, scheduleTask } from './items.js';
 
 type WorkItem =
@@ -20,6 +20,19 @@ function earliestPeriodStart(periods: Interval[]): number {
   return min;
 }
 
+/**
+ * Clip a task's candidate windows to the working windows.
+ *
+ * Only used when a `horizon` widened the free timeline past working hours: a
+ * task's own `allowedWindows` (e.g. a category's evening hours) must never let
+ * it escape them, and a task without any inherits them outright. `bound`
+ * undefined = no horizon, so the free timeline still confines tasks by itself.
+ */
+function confineTask(task: FlexibleTask, bound: Interval[] | undefined): FlexibleTask {
+  if (!bound) return task;
+  return { ...task, allowedWindows: intersectIntervals(task.allowedWindows ?? bound, bound) };
+}
+
 /** Pure auto-scheduling entry point. */
 export function schedule(input: ScheduleInput): ScheduleResult {
   const gapMs = input.blockBufferMs ?? 0;
@@ -30,7 +43,14 @@ export function schedule(input: ScheduleInput): ScheduleResult {
     ...input.fixedEvents.map((e) => ({ start: e.start, end: e.end })),
     ...input.pinnedBlocks.map((b) => ({ start: b.start - gapMs, end: b.end + gapMs })),
   ]);
-  let free = subtractIntervals(input.workingWindows, busy);
+  // With a `horizon`, the shared free timeline spans the WHOLE planning window:
+  // habits carry their own full-day allowedWindows and may roam outside working
+  // hours (a late-evening routine can finally be placed at 23:30). Tasks are then
+  // re-confined below — the free envelope no longer does it for them.
+  let free = subtractIntervals(input.horizon ? [input.horizon] : input.workingWindows, busy);
+  const workingWindows = mergeIntervals(input.workingWindows);
+  // Only meaningful with a horizon; without one, free ⊆ workingWindows already.
+  const taskBound = input.horizon ? workingWindows : undefined;
 
   const work: WorkItem[] = [
     ...input.tasks.map(
@@ -57,8 +77,11 @@ export function schedule(input: ScheduleInput): ScheduleResult {
   for (const item of work) {
     const res =
       item.kind === 'task'
-        ? scheduleTask(free, item.task, gapMs)
-        : scheduleHabit(free, item.habit, gapMs);
+        ? scheduleTask(free, confineTask(item.task, taskBound), gapMs)
+        // Habits may leave the working windows, but only as a fallback: they are
+        // offered as the middle tier so a habit whose preference is booked out
+        // lands in the user's day rather than at midnight.
+        : scheduleHabit(free, item.habit, gapMs, workingWindows);
     blocks.push(...res.blocks);
     unscheduled.push(...res.unscheduled);
     free = res.free;

@@ -136,6 +136,28 @@ describe('assembleScheduleInput', () => {
   });
 });
 
+describe('assembleScheduleInput horizon', () => {
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+  it('sets the horizon envelope from now and settings.horizonDays', async () => {
+    const now = utc('2026-01-05T12:00:00');
+    const input = await assembleScheduleInput(
+      fakeRepos({ settings: makeSettings({ horizonDays: 7 }), categories: [makeCategory()], tasks: [], habits: [] }),
+      'u1', now,
+    );
+    expect(input.horizon).toEqual({ start: now, end: now + 7 * MS_PER_DAY });
+  });
+
+  it('tracks a different horizonDays setting', async () => {
+    const now = utc('2026-01-05T12:00:00');
+    const input = await assembleScheduleInput(
+      fakeRepos({ settings: makeSettings({ horizonDays: 3 }), categories: [makeCategory()], tasks: [], habits: [] }),
+      'u1', now,
+    );
+    expect(input.horizon).toEqual({ start: now, end: now + 3 * MS_PER_DAY });
+  });
+});
+
 describe('assembleScheduleInput categories', () => {
   const NOW = Date.parse('2026-01-05T00:00:00.000Z'); // Monday, UTC
   const settings = makeSettings({ workingHours: [{ weekday: 1, startMinute: 540, endMinute: 1020 }] as never });

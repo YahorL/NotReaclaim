@@ -5,7 +5,7 @@ import type {
   ScheduledBlock,
   UnscheduledItem,
 } from './types.js';
-import { intersectIntervals, subtractIntervals } from './intervals.js';
+import { intersectIntervals, mergeIntervals, subtractIntervals } from './intervals.js';
 import { placeItem, splitDuration } from './placement.js';
 
 export interface ScheduleItemResult {
@@ -99,7 +99,59 @@ function dayAvailable(budget: HabitWindowBudget, time: number): boolean {
   return budget.allowed.some((w) => time >= w.start && time < w.end);
 }
 
-export function scheduleHabit(free: Interval[], habit: Habit, gapMs = 0): ScheduleItemResult {
+/**
+ * When a habit states a preference, stickiness must not outrank it: a prior slot
+ * sitting outside every preferred window is re-placed (preferred-first) instead
+ * of being kept forever. Habits with no preference keep their slots unchanged.
+ *
+ * `preferred` is expected pre-merged (see `preferredBounds`), so a slot straddling
+ * two touching preferred windows still counts as "fully inside one".
+ */
+function insidePreferred(preferred: Interval[] | undefined, slot: Interval): boolean {
+  if (!preferred) return true;
+  return preferred.some((w) => slot.start >= w.start && slot.end <= w.end);
+}
+
+/**
+ * Place one occurrence, trying ever-wider windows:
+ *   1. `preferred` — what the user asked for;
+ *   2. `bound ∩ workingWindows` — the user is awake and available there;
+ *   3. `bound` — the whole eligible day, which starts at midnight. Last resort.
+ *
+ * Tier 2 is what keeps a habit whose preference is booked out from landing at
+ * 00:00; it is skipped when the caller supplies no working windows (direct
+ * engine callers) or when they do not overlap `bound` at all.
+ */
+function placeOccurrence(
+  free: Interval[],
+  chunkMs: number,
+  deadline: number,
+  bound: Interval[],
+  preferred: Interval[] | undefined,
+  workingWindows: Interval[] | undefined,
+  gapMs: number,
+): ReturnType<typeof placeItem> {
+  const tiers: Interval[][] = [];
+  if (preferred && preferred.length > 0) tiers.push(preferred);
+  if (workingWindows && workingWindows.length > 0) {
+    const inHours = intersectIntervals(bound, workingWindows);
+    if (inHours.length > 0) tiers.push(inHours);
+  }
+  tiers.push(bound);
+
+  let res = placeItem(free, [chunkMs], deadline, tiers[0]!, gapMs);
+  for (let t = 1; t < tiers.length && res.placements.length === 0; t++) {
+    res = placeItem(free, [chunkMs], deadline, tiers[t]!, gapMs);
+  }
+  return res;
+}
+
+export function scheduleHabit(
+  free: Interval[],
+  habit: Habit,
+  gapMs = 0,
+  workingWindows?: Interval[],
+): ScheduleItemResult {
   let remainingFree = free;
   const blocks: ScheduledBlock[] = [];
   let missed = 0;
@@ -111,6 +163,14 @@ export function scheduleHabit(free: Interval[], habit: Habit, gapMs = 0): Schedu
     allowed: habit.allowedWindows,
     preferred: habit.preferredWindows,
   };
+
+  // Hoisted out of the sticky loop: merged so a slot straddling two TOUCHING
+  // preferred windows still counts as "fully inside one". `undefined` = the
+  // habit states no preference, so stickiness is unconstrained by one.
+  const preferredBounds =
+    habit.preferredWindows && habit.preferredWindows.length > 0
+      ? mergeIntervals(habit.preferredWindows)
+      : undefined;
 
   // User-pinned occurrences are emitted by the caller (pinnedBlocks), but their
   // days are off-limits here so an auto occurrence cannot double up on them.
@@ -133,6 +193,8 @@ export function scheduleHabit(free: Interval[], habit: Habit, gapMs = 0): Schedu
       if (slot.end - slot.start !== habit.chunkMs) continue;
       if (slot.start < period.start || slot.end > period.end) continue;
       if (!dayAvailable(budget, slot.start)) continue;
+      // Preference beats stickiness: a slot outside it is re-placed below.
+      if (!insidePreferred(preferredBounds, slot)) continue;
 
       const bound = budget.allowed
         ? intersectIntervals(budget.allowed, periodWindow)
@@ -166,11 +228,9 @@ export function scheduleHabit(free: Interval[], habit: Habit, gapMs = 0): Schedu
         ? intersectIntervals(budget.preferred, bound)
         : undefined;
 
-      const primaryWindow = preferred && preferred.length > 0 ? preferred : bound;
-      let res = placeItem(remainingFree, [habit.chunkMs], period.end, primaryWindow, gapMs);
-      if (res.placements.length === 0 && primaryWindow !== bound) {
-        res = placeItem(remainingFree, [habit.chunkMs], period.end, bound, gapMs);
-      }
+      const res = placeOccurrence(
+        remainingFree, habit.chunkMs, period.end, bound, preferred, workingWindows, gapMs,
+      );
 
       if (res.placements.length === 0) {
         missed++;
