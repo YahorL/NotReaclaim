@@ -266,6 +266,118 @@ describe('scheduleHabit one occurrence per allowed-window day', () => {
   });
 });
 
+describe('scheduleHabit existingSlots (sticky placements)', () => {
+  const D = 86_400_000;
+  const H = 3_600_000;
+
+  const dayWindows = (days: number[], fromH = 9, toH = 17) =>
+    days.map((d) => ({ start: d * D + fromH * H, end: d * D + toH * H }));
+
+  const stickyHabit = (over: Partial<Habit> = {}): Habit => ({
+    id: 'h', title: 'H', priority: 1, chunkMs: H, perPeriod: 2,
+    periods: [{ start: 0, end: 7 * D }],
+    allowedWindows: dayWindows([0, 1, 2, 3, 4]),
+    ...over,
+  });
+
+  const spans = (res: { blocks: { start: number; end: number }[] }) =>
+    res.blocks.map((b) => ({ start: b.start, end: b.end }));
+
+  it('keeps a valid existing slot verbatim', () => {
+    const h = stickyHabit({ existingSlots: [{ start: 1 * D + 13 * H, end: 1 * D + 14 * H }] });
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    expect(spans(res)).toContainEqual({ start: 1 * D + 13 * H, end: 1 * D + 14 * H });
+    expect(res.blocks).toHaveLength(2); // kept slot counts toward perPeriod
+    expect(res.unscheduled).toEqual([]);
+  });
+
+  it('emits kept slots first so their engineKeys stay stable', () => {
+    const h = stickyHabit({ existingSlots: [{ start: 1 * D + 13 * H, end: 1 * D + 14 * H }] });
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    expect(res.blocks[0]).toMatchObject({
+      id: 'habit:h:0', start: 1 * D + 13 * H, end: 1 * D + 14 * H,
+    });
+    expect(res.blocks[1]!.id).toBe('habit:h:1');
+  });
+
+  it('re-places a slot that no longer fits in free time', () => {
+    const slot = { start: 1 * D + 13 * H, end: 1 * D + 14 * H };
+    const h = stickyHabit({ existingSlots: [slot] });
+    // Day 1 is entirely busy, so the stale slot cannot be kept.
+    const res = scheduleHabit([{ start: 0, end: 1 * D }, { start: 2 * D, end: 7 * D }], h, 0);
+    expect(res.blocks).toHaveLength(2);
+    expect(spans(res)).not.toContainEqual(slot);
+    expect(res.blocks.map((b) => Math.floor(b.start / D))).toEqual([0, 2]);
+  });
+
+  it('kept slot consumes its day (no second occurrence that day)', () => {
+    const h = stickyHabit({ existingSlots: [{ start: 1 * D + 13 * H, end: 1 * D + 14 * H }] });
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    const autoDays = res.blocks
+      .filter((b) => b.start !== 1 * D + 13 * H)
+      .map((b) => Math.floor(b.start / D));
+    expect(autoDays).toEqual([0]);
+  });
+
+  it('reserves the gap around a kept slot', () => {
+    const h = stickyHabit({
+      perPeriod: 2,
+      allowedWindows: [{ start: 0, end: 4 * H }],
+      existingSlots: [{ start: 2 * H, end: 3 * H }],
+    });
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 30 * 60_000);
+    // Day consumed by the kept slot → only one block, and the free time it
+    // released must exclude [slot.start − gap, slot.end + gap].
+    expect(spans(res)).toEqual([{ start: 2 * H, end: 3 * H }]);
+    expect(res.free).toEqual([
+      { start: 0, end: 1.5 * H },
+      { start: 3.5 * H, end: 7 * D },
+    ]);
+  });
+
+  it('ignores slots outside the period and beyond the period target', () => {
+    const h = stickyHabit({
+      perPeriod: 1,
+      periods: [{ start: 0, end: 3 * D }],
+      existingSlots: [
+        { start: 4 * D + 13 * H, end: 4 * D + 14 * H }, // outside the period
+        { start: 1 * D + 13 * H, end: 1 * D + 14 * H },
+        { start: 2 * D + 13 * H, end: 2 * D + 14 * H }, // beyond target 1
+      ],
+    });
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    expect(spans(res)).toEqual([{ start: 1 * D + 13 * H, end: 1 * D + 14 * H }]);
+  });
+
+  it('skips a slot that falls outside the allowed windows', () => {
+    const h = stickyHabit({
+      perPeriod: 1,
+      existingSlots: [{ start: 1 * D + 3 * H, end: 1 * D + 4 * H }], // 03:00, outside 09–17
+    });
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    expect(spans(res)).toEqual([{ start: 0 * D + 9 * H, end: 0 * D + 10 * H }]);
+  });
+});
+
+describe('scheduleHabit pinnedSlotTimes', () => {
+  const D = 86_400_000;
+  const H = 3_600_000;
+
+  const dayWindows = (days: number[], fromH = 9, toH = 17) =>
+    days.map((d) => ({ start: d * D + fromH * H, end: d * D + toH * H }));
+
+  it('consumes the day of a pinned occurrence without emitting it', () => {
+    const h: Habit = {
+      id: 'h', title: 'H', priority: 1, chunkMs: H, perPeriod: 2,
+      periods: [{ start: 0, end: 7 * D }],
+      allowedWindows: dayWindows([0, 1, 2]),
+      pinnedSlotTimes: [1 * D + 13 * H],
+    };
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    expect(res.blocks.map((b) => Math.floor(b.start / D))).toEqual([0, 2]);
+  });
+});
+
 describe('scheduleHabit with periodTargets (per-period counts)', () => {
   it("uses periodTargets[i] as each period's occurrence count", () => {
     const free = [{ start: 0, end: 1000 }];

@@ -73,6 +73,12 @@ function consumeWindowContaining(budget: HabitWindowBudget, time: number): void 
   }
 }
 
+/** True when `time` still falls in an unconsumed allowed entry (always for uncapped habits). */
+function dayAvailable(budget: HabitWindowBudget, time: number): boolean {
+  if (!budget.allowed) return true;
+  return budget.allowed.some((w) => time >= w.start && time < w.end);
+}
+
 export function scheduleHabit(free: Interval[], habit: Habit, gapMs = 0): ScheduleItemResult {
   let remainingFree = free;
   const blocks: ScheduledBlock[] = [];
@@ -86,12 +92,50 @@ export function scheduleHabit(free: Interval[], habit: Habit, gapMs = 0): Schedu
     preferred: habit.preferredWindows,
   };
 
+  // User-pinned occurrences are emitted by the caller (pinnedBlocks), but their
+  // days are off-limits here so an auto occurrence cannot double up on them.
+  for (const time of habit.pinnedSlotTimes ?? []) {
+    consumeWindowContaining(budget, time);
+  }
+
   for (let i = 0; i < habit.periods.length; i++) {
     const period = habit.periods[i]!;
     const target = habit.periodTargets?.[i] ?? habit.perPeriod;
     const periodWindow: Interval[] = [period];
+    let placed = 0;
 
-    for (let k = 0; k < target; k++) {
+    // Sticky slots first: keep prior placements that are still valid, in start
+    // order, so their engineKeys (habit:<id>:<index>) stay stable across replans.
+    for (const slot of habit.existingSlots ?? []) {
+      if (placed >= target) break;
+      if (slot.end <= slot.start) continue;
+      if (slot.start < period.start || slot.end > period.end) continue;
+      if (!dayAvailable(budget, slot.start)) continue;
+
+      const bound = budget.allowed
+        ? intersectIntervals(budget.allowed, periodWindow)
+        : periodWindow;
+      const room = intersectIntervals(remainingFree, bound);
+      const fits = room.some((iv) => iv.start <= slot.start && iv.end >= slot.end);
+      if (!fits) continue;
+
+      remainingFree = subtractIntervals(remainingFree, [
+        { start: slot.start - gapMs, end: slot.end + gapMs },
+      ]);
+      consumeWindowContaining(budget, slot.start);
+      blocks.push({
+        id: `habit:${habit.id}:${index}`,
+        sourceType: 'habit',
+        sourceId: habit.id,
+        title: habit.title,
+        start: slot.start,
+        end: slot.end,
+      });
+      index++;
+      placed++;
+    }
+
+    for (let k = placed; k < target; k++) {
       // Recomputed per occurrence: consumed days shrink the budget as we go.
       const bound = budget.allowed
         ? intersectIntervals(budget.allowed, periodWindow)
