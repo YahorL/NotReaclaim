@@ -17,6 +17,9 @@ export interface SettingsFormState {
   meetingBufferMs: number;
   taskBufferMs: number;
   requireStartToTrack: boolean;
+  /** Visual planner day boundary, minutes past local midnight. Optional so callers built before
+   *  Review 20 (and their fixtures) stay valid; treated as 0 when absent. */
+  dayStartMinute?: number;
 }
 
 const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
@@ -37,6 +40,7 @@ export function toFormState(s: Settings): SettingsFormState {
     meetingBufferMs: s.meetingBufferMs ?? 0,
     taskBufferMs: s.taskBufferMs ?? 0,
     requireStartToTrack: s.requireStartToTrack ?? false,
+    dayStartMinute: s.dayStartMinute ?? 0,
   };
 }
 
@@ -50,6 +54,7 @@ export function defaultFormState(timezone: string): SettingsFormState {
     meetingBufferMs: 0,
     taskBufferMs: 0,
     requireStartToTrack: false,
+    dayStartMinute: 0,
   };
 }
 
@@ -60,6 +65,7 @@ export interface SettingsFormErrors {
   defaultMaxChunkMs?: string;
   meetingBufferMs?: string;
   taskBufferMs?: string;
+  dayStartMinute?: string;
   days?: Partial<Record<number, string>>;
 }
 
@@ -73,6 +79,9 @@ export function validateSettingsForm(s: SettingsFormState): { ok: boolean; error
 
   if (!Number.isInteger(s.meetingBufferMs) || s.meetingBufferMs < 0) errors.meetingBufferMs = 'Buffer must be a whole number of minutes (≥ 0)';
   if (!Number.isInteger(s.taskBufferMs) || s.taskBufferMs < 0) errors.taskBufferMs = 'Buffer must be a whole number of minutes (≥ 0)';
+
+  const dayStart = s.dayStartMinute ?? 0;
+  if (!Number.isInteger(dayStart) || dayStart < 0 || dayStart > 1439) errors.dayStartMinute = 'Day start must be a time of day';
 
   const days: Partial<Record<number, string>> = {};
   for (const d of s.days) {
@@ -97,6 +106,7 @@ export function toSettingsInput(s: SettingsFormState): SettingsInput {
     meetingBufferMs: s.meetingBufferMs,
     taskBufferMs: s.taskBufferMs,
     requireStartToTrack: s.requireStartToTrack,
+    dayStartMinute: s.dayStartMinute ?? 0,
   };
 }
 

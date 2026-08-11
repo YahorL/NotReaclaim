@@ -3,6 +3,7 @@ import type { SettingsInput } from '../../api/types';
 import type { ApiError } from '../../api/client';
 import { DurationStepper } from '../components/DurationStepper';
 import { FieldBox } from '../components/FieldBox';
+import { minutesToHHMM, hhmmToMinutes } from '../lib/duration';
 import {
   type SettingsFormState, type DayState, validateSettingsForm, toSettingsInput, supportedTimezones,
 } from './settingsForm';
@@ -52,6 +53,22 @@ export function SettingsForm({ initial, onSave, saving = false, error = null, ju
           </select>
         </FieldBox>
         {errors.timezone && <p data-testid="err-timezone" className={errCls}>{errors.timezone}</p>}
+      </section>
+
+      {/* Planner day boundary — display only, scheduling keeps the midnight boundary */}
+      <section className="mb-4 rounded-[14px] border border-line bg-card p-4">
+        <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-inkSoft">Planner</h3>
+        <FieldBox label="Day starts at">
+          <input
+            type="time"
+            data-testid="day-start"
+            className="w-full bg-transparent text-[15px] font-bold text-ink focus:outline-none"
+            value={minutesToHHMM(form.dayStartMinute ?? 0)}
+            onChange={(e) => setForm((f) => ({ ...f, dayStartMinute: hhmmToMinutes(e.target.value) }))}
+          />
+        </FieldBox>
+        <p className="mt-1 text-[12px] text-inkSoft">Each planner column runs from this time to the same time the next day — set 03:00 and late-night work stays on the previous day.</p>
+        {errors.dayStartMinute && <p data-testid="err-dayStartMinute" className={errCls}>{errors.dayStartMinute}</p>}
       </section>
 
       {/* Scheduling */}

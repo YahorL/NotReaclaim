@@ -70,6 +70,22 @@ describe('settingsForm', () => {
     expect(validateSettingsForm({ ...base, meetingBufferMs: -60000 }).ok).toBe(false);
   });
 
+  it('round-trips dayStartMinute and defaults it to 0', () => {
+    expect(defaultFormState('UTC').dayStartMinute).toBe(0);
+    expect(toFormState(settings()).dayStartMinute).toBe(0);                       // absent on the server row
+    expect(toFormState(settings({ dayStartMinute: 180 })).dayStartMinute).toBe(180);
+    expect(toSettingsInput(validState()).dayStartMinute).toBe(0);
+    expect(toSettingsInput(validState({ dayStartMinute: 180 })).dayStartMinute).toBe(180);
+  });
+
+  it('validateSettingsForm rejects a dayStartMinute outside 0–1439 or non-integer', () => {
+    expect(validateSettingsForm(validState({ dayStartMinute: 0 })).ok).toBe(true);
+    expect(validateSettingsForm(validState({ dayStartMinute: 1439 })).ok).toBe(true);
+    expect(validateSettingsForm(validState({ dayStartMinute: 1440 })).errors.dayStartMinute).toBeTruthy();
+    expect(validateSettingsForm(validState({ dayStartMinute: -1 })).errors.dayStartMinute).toBeTruthy();
+    expect(validateSettingsForm(validState({ dayStartMinute: 12.5 })).errors.dayStartMinute).toBeTruthy();
+  });
+
   it('browserTimezone() returns a non-empty string and defaultFormState uses it as the default', () => {
     const tz = browserTimezone();
     expect(typeof tz).toBe('string');
