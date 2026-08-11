@@ -10,6 +10,7 @@ export interface UpsertSettingsInput {
   meetingBufferMs?: number;
   taskBufferMs?: number;
   requireStartToTrack?: boolean;
+  dayStartMinute?: number;
 }
 
 export function createSettingsRepository(prisma: PrismaClient) {
