@@ -24,20 +24,26 @@ export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afte
 
   app.post('/calendar/events', guard, async (request, reply) => {
     const body = createCalendarEventSchema.parse(request.body);
+    const kind = body.kind ?? 'event';
     let event = await deps.repos.calendarEvents.create(request.userId, {
-      title: body.title, startsAt: new Date(body.startsAt), endsAt: new Date(body.endsAt),
+      title: body.title, startsAt: new Date(body.startsAt), endsAt: new Date(body.endsAt), kind,
     });
-    // Best-effort Google write-back: connected users get the event mirrored to their
-    // primary calendar; failures (or no Google account) leave the local row authoritative.
-    try {
-      const accessToken = await deps.google.tokens.getAccessToken(request.userId, deps.now());
-      const { googleEventId } = await deps.google.client.insertEvent(accessToken, PRIMARY, {
-        summary: body.title, startDateTime: body.startsAt, endDateTime: body.endsAt,
-      });
-      event = await deps.repos.calendarEvents.setGoogleIds(request.userId, event.id, PRIMARY, googleEventId);
-    } catch (err) {
-      // Not connected or a Google failure — the local row stands, but say so in the log.
-      app.log.warn({ err, eventId: event.id }, 'google write-back failed: event not mirrored');
+    // Blocked time is local-only by definition: skip the write-back entirely (not even an
+    // access-token lookup, so a connected user gets no warn-log noise for it). The row keeps
+    // null Google ids, which is what makes the PATCH/DELETE guards below skip Google too.
+    if (kind !== 'blocked') {
+      // Best-effort Google write-back: connected users get the event mirrored to their
+      // primary calendar; failures (or no Google account) leave the local row authoritative.
+      try {
+        const accessToken = await deps.google.tokens.getAccessToken(request.userId, deps.now());
+        const { googleEventId } = await deps.google.client.insertEvent(accessToken, PRIMARY, {
+          summary: body.title, startDateTime: body.startsAt, endDateTime: body.endsAt,
+        });
+        event = await deps.repos.calendarEvents.setGoogleIds(request.userId, event.id, PRIMARY, googleEventId);
+      } catch (err) {
+        // Not connected or a Google failure — the local row stands, but say so in the log.
+        app.log.warn({ err, eventId: event.id }, 'google write-back failed: event not mirrored');
+      }
     }
     afterMutation(request.userId);
     reply.code(201);

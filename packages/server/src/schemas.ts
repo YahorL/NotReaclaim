@@ -95,7 +95,13 @@ export const rangeQuerySchema = z.object({
 });
 
 export const createCalendarEventSchema = z
-  .object({ title: z.string().min(1), startsAt: z.string().datetime(), endsAt: z.string().datetime() })
+  .object({
+    title: z.string().min(1),
+    startsAt: z.string().datetime(),
+    endsAt: z.string().datetime(),
+    // 'blocked' = local busy time (relax/personal): busy in the engine, never sent to Google.
+    kind: z.enum(['event', 'blocked']).optional(),
+  })
   .refine((b) => Date.parse(b.startsAt) < Date.parse(b.endsAt), { message: 'startsAt must be before endsAt' });
 
 export const updateCalendarEventSchema = z
