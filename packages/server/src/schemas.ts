@@ -98,6 +98,16 @@ export const createCalendarEventSchema = z
   .object({ title: z.string().min(1), startsAt: z.string().datetime(), endsAt: z.string().datetime() })
   .refine((b) => Date.parse(b.startsAt) < Date.parse(b.endsAt), { message: 'startsAt must be before endsAt' });
 
+export const updateCalendarEventSchema = z
+  .object({
+    title: z.string().min(1).optional(),
+    startsAt: z.string().datetime().optional(),
+    endsAt: z.string().datetime().optional(),
+  })
+  .refine((b) => b.title !== undefined || b.startsAt !== undefined || b.endsAt !== undefined, {
+    message: 'empty update',
+  });
+
 export const createScheduledBlockSchema = z
   .object({ taskId: z.string().min(1), startsAt: z.string().datetime(), endsAt: z.string().datetime() })
   .refine((b) => Date.parse(b.startsAt) < Date.parse(b.endsAt), { message: 'startsAt must be before endsAt' });

@@ -34,14 +34,14 @@ export interface AppDeps {
     tasks: TaskRepository;
     habits: HabitRepository;
     scheduledBlocks: Pick<ScheduledBlockRepository, 'listByUserInRange' | 'update' | 'create' | 'delete' | 'findById'>;
-    calendarEvents: Pick<CalendarEventRepository, 'listByUserInRange' | 'create' | 'setGoogleIds' | 'findById' | 'delete'>;
+    calendarEvents: Pick<CalendarEventRepository, 'listByUserInRange' | 'create' | 'setGoogleIds' | 'findById' | 'update' | 'delete'>;
     categories: CategoryRepository;
     subtasks: SubtaskRepository;
     users: Pick<UserRepository, 'findById' | 'findByEmail' | 'findByGoogleId' | 'create' | 'update'>;
     invites: Pick<InviteCodeRepository, 'tryConsume'>;
   };
   google: {
-    client: Pick<GoogleClient, 'getConsentUrl' | 'insertEvent' | 'deleteEvent'>;
+    client: Pick<GoogleClient, 'getConsentUrl' | 'insertEvent' | 'deleteEvent' | 'updateEvent'>;
     tokens: Pick<TokenService, 'connectFromCode' | 'exchangeCodeForLink' | 'getAccessToken'>;
   };
   schedulingRepos: SchedulingRepositories;

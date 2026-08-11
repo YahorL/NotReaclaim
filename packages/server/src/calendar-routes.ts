@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { AppDeps, AfterMutation } from './app.js';
-import { rangeQuerySchema, createCalendarEventSchema, idParamSchema } from './schemas.js';
+import { rangeQuerySchema, createCalendarEventSchema, updateCalendarEventSchema, idParamSchema } from './schemas.js';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const PRIMARY = 'primary';
@@ -39,6 +39,37 @@ export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afte
     afterMutation(request.userId);
     reply.code(201);
     return event;
+  });
+
+  // Only app-created events are editable here; Google-owned rows are mirrors of the
+  // remote calendar and stay read-only (reported as 404 so ids don't leak).
+  app.patch('/calendar/events/:id', guard, async (request, reply) => {
+    const { id } = idParamSchema.parse(request.params);
+    const body = updateCalendarEventSchema.parse(request.body);
+    const event = await deps.repos.calendarEvents.findById(request.userId, id);
+    if (!event || event.source !== 'app') {
+      reply.code(404).send({ code: 'not_found', message: `Event ${id} not found` });
+      return;
+    }
+    const startsAt = body.startsAt ? new Date(body.startsAt) : event.startsAt;
+    const endsAt = body.endsAt ? new Date(body.endsAt) : event.endsAt;
+    if (endsAt.getTime() <= startsAt.getTime()) {
+      reply.code(400).send({ code: 'invalid_range', message: 'endsAt must be after startsAt' });
+      return;
+    }
+    const title = body.title ?? event.title;
+    const updated = await deps.repos.calendarEvents.update(request.userId, id, { title, startsAt, endsAt });
+    // Best-effort Google write-back for events previously mirrored to Google.
+    if (event.googleEventId && event.googleCalendarId) {
+      try {
+        const accessToken = await deps.google.tokens.getAccessToken(request.userId, deps.now());
+        await deps.google.client.updateEvent(accessToken, event.googleCalendarId, event.googleEventId, {
+          summary: title, startDateTime: startsAt.toISOString(), endDateTime: endsAt.toISOString(),
+        });
+      } catch { /* not connected or Google failure — local row is authoritative */ }
+    }
+    afterMutation(request.userId);
+    return updated;
   });
 
   app.delete('/calendar/events/:id', guard, async (request, reply) => {
