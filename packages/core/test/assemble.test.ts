@@ -330,6 +330,30 @@ describe('assembleScheduleInput buffers', () => {
     });
   });
 
+  it('does NOT pad a blocked entry — the meeting buffer is prep time around meetings', async () => {
+    const input = await assembleScheduleInput(
+      fakeRepos({
+        settings: settings({ meetingBufferMs: 15 * 60_000 }),
+        categories: [makeCategory()],
+        events: [
+          makeEvent({ id: 'blk', kind: 'blocked', title: 'Gym' }),
+          makeEvent({
+            id: 'mtg',
+            startsAt: new Date('2026-01-05T14:00:00.000Z'),
+            endsAt: new Date('2026-01-05T15:00:00.000Z'),
+          }),
+        ],
+        tasks: [], habits: [],
+      }),
+      'u1', NOW,
+    );
+    // Both reach the engine as busy time; only the meeting is inflated.
+    expect(input.fixedEvents).toEqual([
+      { id: 'blk', start: Date.parse('2026-01-05T10:00:00.000Z'), end: Date.parse('2026-01-05T11:00:00.000Z') },
+      { id: 'mtg', start: Date.parse('2026-01-05T13:45:00.000Z'), end: Date.parse('2026-01-05T15:15:00.000Z') },
+    ]);
+  });
+
   it('sets blockBufferMs from settings.taskBufferMs', async () => {
     const input = await assembleScheduleInput(
       fakeRepos({ settings: settings({ taskBufferMs: 10 * 60_000 }), categories: [makeCategory()], tasks: [], habits: [] }), 'u1', NOW,

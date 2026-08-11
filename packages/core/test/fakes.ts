@@ -87,6 +87,7 @@ export function makeEvent(over: Partial<CalendarEvent> = {}): CalendarEvent {
     googleCalendarId: 'primary',
     googleEventId: 'g1',
     title: 'Meeting',
+    kind: 'event',
     startsAt: new Date('2026-01-05T10:00:00.000Z'),
     endsAt: new Date('2026-01-05T11:00:00.000Z'),
     createdAt: new Date(0),
