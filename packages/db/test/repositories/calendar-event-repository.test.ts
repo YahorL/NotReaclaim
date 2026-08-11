@@ -122,6 +122,28 @@ describe('CalendarEventRepository', () => {
     expect(created.source).toBe('app');
   });
 
+  it("create defaults kind to 'event'", async () => {
+    const user = await users.create({ email: 'ckind1@example.com' });
+    const created = await repo.create(user.id, {
+      title: 'Standup', startsAt: new Date('2026-01-03T09:00:00.000Z'), endsAt: new Date('2026-01-03T09:30:00.000Z'),
+    });
+    expect(created.kind).toBe('event');
+  });
+
+  it("create persists kind 'blocked' for locally blocked time", async () => {
+    const user = await users.create({ email: 'ckind2@example.com' });
+    const created = await repo.create(user.id, {
+      title: 'Gym', startsAt: new Date('2026-01-03T18:00:00.000Z'), endsAt: new Date('2026-01-03T19:00:00.000Z'),
+      kind: 'blocked',
+    });
+    expect(created.kind).toBe('blocked');
+    expect(created.source).toBe('app');
+    const [listed] = await repo.listByUserInRange(
+      user.id, new Date('2026-01-03T00:00:00.000Z'), new Date('2026-01-04T00:00:00.000Z'),
+    );
+    expect(listed?.kind).toBe('blocked');
+  });
+
   it("upsertMany marks mirrored events as google-sourced (source 'google')", async () => {
     const user = await users.create({ email: 'csrc2@example.com' });
     await repo.upsertMany(user.id, [event()]);

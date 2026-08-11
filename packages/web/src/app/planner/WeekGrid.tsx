@@ -13,6 +13,7 @@ const LEGEND: { label: string; swatch: string }[] = [
   { label: 'Meeting', swatch: 'bg-event' },
   { label: 'Locked 🔒', swatch: 'bg-low' },
   { label: 'Movable', swatch: 'border border-dashed border-low' },
+  { label: 'Blocked', swatch: 'border border-slate-300 bg-slate-100' },
 ];
 
 function hourLabel(h: number): string {
@@ -69,7 +70,7 @@ function toItems(blocks: ScheduledBlock[], events: CalendarEvent[], zone: string
   });
   const fromEvents = events.map((e): Item => {
     const startMs = Date.parse(e.startsAt);
-    return { key: `e:${e.id}`, title: e.title, kind: 'meeting', pinned: false,
+    return { key: `e:${e.id}`, title: e.title, kind: e.kind === 'blocked' ? 'blocked' : 'meeting', pinned: false,
       startMs, endMs: Date.parse(e.endsAt), startLabel: formatHm(startMs, zone), blockId: null, event: e, taskId: null };
   });
   return [...fromEvents, ...fromBlocks];

@@ -51,6 +51,54 @@ describe('CreatePopover', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
+  it('blocked mode creates a local blocked entry with the typed title', async () => {
+    const onClose = vi.fn();
+    const createCalendarEvent = vi.fn(async () => ({ id: 'e2' }));
+    renderWithProviders(<CreatePopover {...baseProps} onClose={onClose} />, { api: fakeApiClient({ createCalendarEvent } as never) });
+    fireEvent.click(screen.getByTestId('mode-blocked'));
+    fireEvent.change(screen.getByTestId('create-title'), { target: { value: 'Gym' } });
+    fireEvent.click(screen.getByTestId('create-submit'));
+    await waitFor(() => expect(createCalendarEvent).toHaveBeenCalledWith({
+      title: 'Gym', startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T09:30:00.000Z', kind: 'blocked',
+    }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it('blocked mode needs no title — it defaults to "Blocked"', async () => {
+    const createCalendarEvent = vi.fn(async () => ({ id: 'e3' }));
+    renderWithProviders(<CreatePopover {...baseProps} />, { api: fakeApiClient({ createCalendarEvent } as never) });
+    fireEvent.click(screen.getByTestId('mode-blocked'));
+    expect(screen.getByTestId('create-submit')).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId('create-submit'));
+    await waitFor(() => expect(createCalendarEvent).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Blocked', kind: 'blocked',
+    })));
+  });
+
+  it('event mode still posts without a kind override (plain event)', async () => {
+    const createCalendarEvent = vi.fn(async () => ({ id: 'e4' }));
+    renderWithProviders(<CreatePopover {...baseProps} />, { api: fakeApiClient({ createCalendarEvent } as never) });
+    fireEvent.change(screen.getByTestId('create-title'), { target: { value: 'Standup' } });
+    fireEvent.click(screen.getByTestId('create-submit'));
+    await waitFor(() => {
+      const calls = createCalendarEvent.mock.calls as unknown[][];
+      const payload = (calls[0]?.[0] ?? {}) as Record<string, unknown>;
+      expect(payload['kind']).toBeUndefined();
+    });
+  });
+
+  it('switching back from blocked to task keeps the task flow intact', async () => {
+    const createTask = vi.fn(async () => ({ id: 't-b' }));
+    const createScheduledBlock = vi.fn(async () => ({ id: 'b-b' }));
+    renderWithProviders(<CreatePopover {...baseProps} />, { api: fakeApiClient({ createTask, createScheduledBlock } as never) });
+    fireEvent.click(screen.getByTestId('mode-blocked'));
+    fireEvent.click(screen.getByTestId('mode-task'));
+    expect(screen.getByTestId('create-due')).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('create-title'), { target: { value: 'Back to tasks' } });
+    fireEvent.click(screen.getByTestId('create-submit'));
+    await waitFor(() => expect(createTask).toHaveBeenCalled());
+  });
+
   it('disables Create on an empty title and closes on Escape', () => {
     const onClose = vi.fn();
     renderWithProviders(<CreatePopover {...baseProps} onClose={onClose} />, { api: fakeApiClient() });

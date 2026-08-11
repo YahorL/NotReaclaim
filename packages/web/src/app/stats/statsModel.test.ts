@@ -40,6 +40,15 @@ describe('hoursByDay', () => {
     expect(perDay.reduce((a, d) => a + d.task, 0)).toBe(2 * HOUR_MS);             // out-of-week task excluded
   });
 
+  it('ignores blocked entries — local busy time is not work data', () => {
+    const blocked = event({ id: 'e-b', title: 'Gym', kind: 'blocked', source: 'app',
+      startsAt: '2026-01-07T18:00:00.000Z', endsAt: '2026-01-07T20:00:00.000Z' }); // Wed, 2h
+    const perDay = hoursByDay(days, preview(), [event(), blocked]);
+    // Wed still shows only the 30m meeting — the 2h block contributes nothing.
+    expect(perDay[2]).toEqual({ task: 2 * HOUR_MS, meeting: HOUR_MS / 2, habit: 0 });
+    expect(summary(perDay).meetingMs).toBe(HOUR_MS / 2);
+  });
+
   it('treats undefined preview as no blocks', () => {
     const perDay = hoursByDay(days, undefined, []);
     expect(perDay.every((d) => d.task === 0 && d.meeting === 0 && d.habit === 0)).toBe(true);
@@ -59,6 +68,12 @@ describe('summary', () => {
 describe('meetingCount', () => {
   it('counts events whose start falls in the week', () => {
     expect(meetingCount(days, [event(), event({ id: 'e2', startsAt: '2026-02-01T10:00:00.000Z' })])).toBe(1);
+  });
+
+  it('does not count blocked entries as meetings', () => {
+    const blocked = event({ id: 'e-b', title: 'Gym', kind: 'blocked', source: 'app' });
+    expect(meetingCount(days, [blocked])).toBe(0);
+    expect(meetingCount(days, [event(), blocked])).toBe(1);
   });
 });
 

@@ -77,7 +77,10 @@ export async function assembleScheduleInput(
   const meetingBufferMs = settings.meetingBufferMs ?? 0;
   const fixedEvents: FixedEvent[] = events.map((e) => {
     const fe = toFixedEvent(e);
-    return meetingBufferMs > 0 ? { id: fe.id, start: fe.start - meetingBufferMs, end: fe.end + meetingBufferMs } : fe;
+    // The meeting buffer is prep/decompress time around meetings — a `blocked` entry is
+    // the user's own relax/personal time and is subtracted raw, exactly as drawn.
+    const pad = meetingBufferMs > 0 && e.kind !== 'blocked';
+    return pad ? { id: fe.id, start: fe.start - meetingBufferMs, end: fe.end + meetingBufferMs } : fe;
   });
 
   const blocks = await repos.scheduledBlocks.listByUserInRange(userId, new Date(0), horizonEnd);

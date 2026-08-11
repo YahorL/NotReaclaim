@@ -5,7 +5,7 @@ import { buildTestApp, tokenFor } from './fakes.js';
 function event(over: Partial<CalendarEvent> = {}): CalendarEvent {
   return {
     id: 'e1', userId: 'u1', googleCalendarId: 'primary', googleEventId: 'g1',
-    title: 'Standup', source: 'app',
+    title: 'Standup', source: 'app', kind: 'event',
     startsAt: new Date('2026-01-05T10:00:00.000Z'),
     endsAt: new Date('2026-01-05T10:30:00.000Z'),
     createdAt: new Date(0), updatedAt: new Date(0), ...over,
@@ -107,6 +107,49 @@ describe('POST /calendar/events', () => {
     expect(res.json().googleEventId).toBeNull();
   });
 
+  it("defaults kind to 'event'", async () => {
+    const { app } = buildTestApp();
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'POST', url: '/calendar/events', headers: { authorization: `Bearer ${token}` }, payload: body });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().kind).toBe('event');
+  });
+
+  it('creates blocked time locally and never attempts a Google insert, even when connected', async () => {
+    let tokenCalls = 0;
+    let insertCalls = 0;
+    const { app, reconcileCalls } = buildTestApp({
+      // Connected: only the kind guard can stop the write-back. The token lookup is
+      // counted too — a blocked entry must not even ask for an access token.
+      getAccessToken: async () => { tokenCalls += 1; return 'at-1'; },
+      insertEvent: async () => { insertCalls += 1; return { googleEventId: 'g-nope' }; },
+    });
+    const token = await tokenFor(app);
+    const before = reconcileCalls.length;
+    const res = await app.inject({
+      method: 'POST', url: '/calendar/events', headers: { authorization: `Bearer ${token}` },
+      payload: { ...body, title: 'Gym', kind: 'blocked' },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().kind).toBe('blocked');
+    expect(res.json().source).toBe('app');
+    expect(res.json().googleEventId).toBeNull();
+    expect(res.json().googleCalendarId).toBeNull();
+    expect(insertCalls).toBe(0);
+    expect(tokenCalls).toBe(0);
+    expect(reconcileCalls.length).toBe(before + 1); // afterMutation reflow still fires
+  });
+
+  it('rejects an unknown kind with 400', async () => {
+    const { app } = buildTestApp();
+    const token = await tokenFor(app);
+    const res = await app.inject({
+      method: 'POST', url: '/calendar/events', headers: { authorization: `Bearer ${token}` },
+      payload: { ...body, kind: 'nonsense' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   it('rejects an inverted range with 400', async () => {
     const { app } = buildTestApp();
     const token = await tokenFor(app);
@@ -190,6 +233,22 @@ describe('PATCH /calendar/events/:id', () => {
     });
     expect(res.statusCode).toBe(400);
     expect(reconcileCalls.length).toBe(before);
+  });
+
+  it('cannot change kind — an unknown key is stripped, the row keeps its kind', async () => {
+    const { app } = buildTestApp({
+      settings: settings(),
+      calendarEvents: [event({ googleEventId: null, googleCalendarId: null, kind: 'event' })],
+    });
+    const token = await tokenFor(app);
+    const res = await app.inject({
+      method: 'PATCH', url: '/calendar/events/e1', headers: auth(token),
+      payload: { title: 'Renamed', kind: 'blocked' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as CalendarEvent).kind).toBe('event');
+    const list = await app.inject({ method: 'GET', url: '/calendar/events', headers: auth(token) });
+    expect((list.json() as CalendarEvent[])[0]!.kind).toBe('event');
   });
 
   it('400s on an empty update body', async () => {

@@ -1,9 +1,12 @@
-export type BlockKind = 'meeting' | 'task' | 'habit';
+export type BlockKind = 'meeting' | 'task' | 'habit' | 'blocked';
 
 export const BASE = 'absolute overflow-hidden rounded-[6px] px-[7px] py-1 text-[12.5px] font-bold leading-tight';
 
 /** Color by state, Google-Calendar-style: meeting=blue, locked task/habit=green+lock, movable=transparent dashed green. */
 export function variantClass(kind: BlockKind, pinned: boolean, accent?: string): string {
+  // Blocked time is the user's own busy time, not an appointment: muted gray so it reads as
+  // "unavailable" rather than competing with the blue meeting blocks.
+  if (kind === 'blocked') return 'border border-slate-300 bg-slate-100 text-slate-500';
   if (kind === 'meeting') return 'bg-event text-white';
   if (pinned) {
     // With accent: swap bg-low for inline backgroundColor (caller sets style); keep text-white

@@ -40,6 +40,7 @@ export type {
   CalendarSyncState,
   InviteCode,
   CalendarEventSource,
+  CalendarEventKind,
   TaskStatus,
   HabitStatus,
   HabitPeriod,

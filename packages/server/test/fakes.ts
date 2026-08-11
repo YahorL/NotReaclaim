@@ -142,7 +142,7 @@ export function fakeCalendarEventRepo(seed: CalendarEvent[] = []) {
     async create(userId: string, data: Record<string, unknown>): Promise<CalendarEvent> {
       const row: CalendarEvent = {
         id: `cal-${++n}`, userId, googleCalendarId: null, googleEventId: null,
-        title: '', source: 'app', startsAt: new Date(0), endsAt: new Date(0),
+        title: '', source: 'app', kind: 'event', startsAt: new Date(0), endsAt: new Date(0),
         createdAt: new Date(0), updatedAt: new Date(0),
         ...data,
       };
@@ -289,6 +289,8 @@ export interface TestAppOptions {
   schedulingReposOverride?: SchedulingRepositories;
   webClientUrl?: string;
   accessToken?: string;
+  /** Full override of the token lookup — lets a test assert it was never even attempted. */
+  getAccessToken?: AppDeps['google']['tokens']['getAccessToken'];
   insertEvent?: AppDeps['google']['client']['insertEvent'];
   deleteEvent?: AppDeps['google']['client']['deleteEvent'];
   patchEvent?: AppDeps['google']['client']['patchEvent'];
@@ -342,10 +344,10 @@ export function buildTestApp(opts: TestAppOptions = {}) {
             autoScheduledCalendarId: null, createdAt: new Date(0), updatedAt: new Date(0),
           } as User),
         exchangeCodeForLink: async () => ({ email: 'a@example.com', emailVerified: opts.googleEmailVerified ?? true, googleUserId: 'g-1', encryptedRefreshToken: 'enc' }),
-        getAccessToken: async () => {
+        getAccessToken: opts.getAccessToken ?? (async () => {
           if (!opts.accessToken) throw new Error('not connected');
           return opts.accessToken;
-        },
+        }),
       },
     },
     schedulingRepos,

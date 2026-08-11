@@ -5,6 +5,13 @@ export const HOUR_MS = 3_600_000;
 
 export interface KindMs { task: number; meeting: number; habit: number }
 
+/**
+ * Blocked entries are the user's own local busy time (relax/personal), not work: they are
+ * excluded from every meeting aggregation rather than given a bucket of their own, so the
+ * hours bars, the donut and the meeting count all report work data only.
+ */
+const isMeeting = (e: CalendarEvent): boolean => e.kind !== 'blocked';
+
 export function hoursByDay(days: number[], preview: SchedulePreview | undefined, events: CalendarEvent[]): KindMs[] {
   const blocks = preview?.blocks ?? [];
   return days.map((d) => {
@@ -19,6 +26,7 @@ export function hoursByDay(days: number[], preview: SchedulePreview | undefined,
       }
     }
     for (const e of events) {
+      if (!isMeeting(e)) continue;
       const s = Date.parse(e.startsAt);
       if (s >= d && s < end) meeting += Date.parse(e.endsAt) - s;
     }
@@ -37,6 +45,7 @@ export function meetingCount(days: number[], events: CalendarEvent[]): number {
   const first = days[0] ?? 0;
   const last = (days[days.length - 1] ?? 0) + MS_PER_DAY;
   return events.filter((e) => {
+    if (!isMeeting(e)) return false;
     const s = Date.parse(e.startsAt);
     return s >= first && s < last;
   }).length;

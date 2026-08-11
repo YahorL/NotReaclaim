@@ -68,6 +68,13 @@ enum CalendarEventSource {
   google
 }
 
+/// `blocked` rows are local busy time (relax/personal): they consume free time in the
+/// engine but are never written to Google.
+enum CalendarEventKind {
+  event
+  blocked
+}
+
 model CalendarEvent {
   id               String   @id @default(uuid())
   userId           String
@@ -77,6 +84,7 @@ model CalendarEvent {
   startsAt         DateTime @db.Timestamptz
   endsAt           DateTime @db.Timestamptz
   source           CalendarEventSource @default(google)
+  kind             CalendarEventKind   @default(event)
   createdAt        DateTime @default(now()) @db.Timestamptz
   updatedAt        DateTime @updatedAt @db.Timestamptz
 

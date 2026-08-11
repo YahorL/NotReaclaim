@@ -17,7 +17,10 @@ export interface CreatePopoverProps {
   zone?: string;
 }
 
-type Mode = 'event' | 'task';
+type Mode = 'event' | 'task' | 'blocked';
+
+/** Blocked time is about the slot, not the label — an untitled entry just reads "Blocked". */
+const DEFAULT_BLOCKED_TITLE = 'Blocked';
 
 export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = 'left', now = () => Date.now(), zone = 'UTC' }: CreatePopoverProps) {
   const [mode, setMode] = useState<Mode>('event');
@@ -40,6 +43,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
   const activeTasks = (tasksQ.data ?? []).filter((t) => t.status === 'pending' || t.status === 'scheduled');
   const existingChosen = mode === 'task' && taskId !== '';
   const showNewTaskFields = mode === 'task' && !existingChosen;
+  const titleOptional = mode === 'blocked';
 
   // Mirror NewTaskModal: default-select the isDefault category once categories load
   useEffect(() => {
@@ -63,8 +67,13 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
   }, [onClose]);
 
   const submit = () => {
-    if (pending || (!existingChosen && !title.trim()) || (showNewTaskFields && !dueLocal)) return;
-    if (mode === 'event') {
+    if (pending || (!titleOptional && !existingChosen && !title.trim()) || (showNewTaskFields && !dueLocal)) return;
+    if (mode === 'blocked') {
+      createEventM.mutate(
+        { title: title.trim() || DEFAULT_BLOCKED_TITLE, startsAt: iso(startMs), endsAt: iso(endMs), kind: 'blocked' },
+        { onSuccess: onClose },
+      );
+    } else if (mode === 'event') {
       createEventM.mutate({ title: title.trim(), startsAt: iso(startMs), endsAt: iso(endMs) }, { onSuccess: onClose });
     } else if (existingChosen) {
       createBlockM.mutate({ taskId, startsAt: iso(startMs), endsAt: iso(endMs) }, { onSuccess: onClose });
@@ -97,6 +106,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
       <div className="mb-2 flex gap-1 rounded-[10px] bg-bg p-1">
         <button type="button" data-testid="mode-event" onClick={() => { setMode('event'); setTaskId(''); }} className={tabCls(mode === 'event')}>Event</button>
         <button type="button" data-testid="mode-task" onClick={() => setMode('task')} className={tabCls(mode === 'task')}>Task</button>
+        <button type="button" data-testid="mode-blocked" onClick={() => { setMode('blocked'); setTaskId(''); }} className={tabCls(mode === 'blocked')}>Blocked</button>
       </div>
       {mode === 'task' && (
         <select
@@ -116,7 +126,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
-          placeholder={mode === 'event' ? 'Event name…' : 'Task name…'}
+          placeholder={mode === 'event' ? 'Event name…' : mode === 'blocked' ? 'Blocked (optional)…' : 'Task name…'}
           className="mb-2 w-full rounded-[9px] border-[1.5px] border-line px-3 py-2 text-[15px] font-semibold outline-none focus:border-indigo"
         />
       )}
@@ -165,11 +175,11 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
       <button
         type="button"
         data-testid="create-submit"
-        disabled={(!existingChosen && (!title.trim() || (showNewTaskFields && !dueLocal))) || pending}
+        disabled={(!existingChosen && ((!title.trim() && !titleOptional) || (showNewTaskFields && !dueLocal))) || pending}
         onClick={submit}
         className="w-full rounded-[20px] bg-indigo py-2 text-[14px] font-bold text-white disabled:opacity-50"
       >
-        {mode === 'event' ? 'Create event' : existingChosen ? 'Schedule task' : 'Create task'}
+        {mode === 'blocked' ? 'Block time' : mode === 'event' ? 'Create event' : existingChosen ? 'Schedule task' : 'Create task'}
       </button>
     </div>
   );
