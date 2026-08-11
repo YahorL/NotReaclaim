@@ -349,6 +349,17 @@ describe('scheduleHabit existingSlots (sticky placements)', () => {
     expect(spans(res)).toEqual([{ start: 1 * D + 13 * H, end: 1 * D + 14 * H }]);
   });
 
+  it('skips a slot whose length no longer matches chunkMs', () => {
+    const h = stickyHabit({
+      perPeriod: 1,
+      chunkMs: 2 * H,
+      // Placed when the habit was 1h long; the user has since made it 2h.
+      existingSlots: [{ start: 1 * D + 13 * H, end: 1 * D + 14 * H }],
+    });
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
+    expect(spans(res)).toEqual([{ start: 0 * D + 9 * H, end: 0 * D + 11 * H }]);
+  });
+
   it('skips a slot that falls outside the allowed windows', () => {
     const h = stickyHabit({
       perPeriod: 1,

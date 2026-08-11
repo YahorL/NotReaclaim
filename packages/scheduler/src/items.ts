@@ -108,7 +108,9 @@ export function scheduleHabit(free: Interval[], habit: Habit, gapMs = 0): Schedu
     // order, so their engineKeys (habit:<id>:<index>) stay stable across replans.
     for (const slot of habit.existingSlots ?? []) {
       if (placed >= target) break;
-      if (slot.end <= slot.start) continue;
+      // A length mismatch means the user changed the habit's duration since the
+      // slot was placed — re-place it at the new chunkMs instead of keeping it.
+      if (slot.end - slot.start !== habit.chunkMs) continue;
       if (slot.start < period.start || slot.end > period.end) continue;
       if (!dayAvailable(budget, slot.start)) continue;
 

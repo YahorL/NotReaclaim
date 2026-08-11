@@ -60,9 +60,9 @@ export interface Habit {
   allowedWindows?: Interval[];
   /**
    * Optional prior placements of this habit (sorted by `start`). The engine keeps
-   * each slot verbatim when it is still valid — inside its period and its allowed
-   * window, and still free — so a replan does not shuffle habits the user has
-   * already seen. Kept slots count toward the period target, reserve their free
+   * each slot verbatim when it is still valid — `chunkMs` long, inside its period
+   * and its allowed window, and still free — so a replan does not shuffle habits
+   * the user has already seen. Kept slots count toward the period target, reserve their free
    * time (plus the buffer gap) and consume their day. Stale slots are re-placed.
    */
   existingSlots?: Interval[];
