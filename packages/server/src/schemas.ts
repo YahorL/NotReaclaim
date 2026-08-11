@@ -53,6 +53,8 @@ export const settingsSchema = z.object({
   meetingBufferMs: z.number().int().nonnegative().optional(),
   taskBufferMs: z.number().int().nonnegative().optional(),
   requireStartToTrack: z.boolean().optional(),
+  /** Visual planner day boundary, minutes past local midnight (0 = midnight, 180 = 03:00). */
+  dayStartMinute: z.number().int().min(0).max(1439).optional(),
 });
 
 export const workingHourEntrySchema = z.object({

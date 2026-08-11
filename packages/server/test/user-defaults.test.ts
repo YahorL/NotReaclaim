@@ -10,6 +10,7 @@ describe('ensureUserDefaults', () => {
     const row = await settings.getByUserId('u1');
     expect(row?.timezone).toBe('America/New_York');
     expect(row?.horizonDays).toBe(14);
+    expect(row?.dayStartMinute).toBe(0);
     expect((row?.workingHours as unknown as Array<{ weekday: number }>).length).toBe(5);
   });
 

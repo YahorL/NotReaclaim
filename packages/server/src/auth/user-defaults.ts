@@ -19,5 +19,6 @@ export async function ensureUserDefaults(
     horizonDays: 14,
     defaultMinChunkMs: 1_800_000,
     defaultMaxChunkMs: 7_200_000,
+    dayStartMinute: 0,
   });
 }
