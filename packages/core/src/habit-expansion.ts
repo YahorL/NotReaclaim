@@ -10,12 +10,16 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
  * Expand a DB habit (recurrence rule) into the engine Habit over the horizon:
  * ISO Monday-week `periods`, hard `allowedWindows` on eligible days, and soft
  * `preferredWindows` when a preferred time-of-day is set.
+ *
+ * `existingSlots` are the habit's current (non-pinned, future) placements; passing
+ * them lets the engine keep still-valid occurrences verbatim across a replan.
  */
 export function expandHabit(
   habit: DbHabit,
   timezone: string,
   now: number,
   horizonDays: number,
+  existingSlots?: Interval[],
 ): EngineHabit {
   assertValidZone(timezone);
   if (horizonDays <= 0) throw new InvalidHorizonError(horizonDays);
@@ -78,6 +82,9 @@ export function expandHabit(
   };
   if (preferredWindows.length > 0) {
     result.preferredWindows = preferredWindows;
+  }
+  if (existingSlots && existingSlots.length > 0) {
+    result.existingSlots = existingSlots;
   }
   return result;
 }

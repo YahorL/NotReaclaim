@@ -74,6 +74,18 @@ describe('expandHabit', () => {
     expect(h.allowedWindows).toEqual([]);
   });
 
+  it('attaches existingSlots when the caller supplies them', () => {
+    const now = utc('2026-01-05T00:00:00');
+    const slots = [{ start: utc('2026-01-05T09:00:00'), end: utc('2026-01-05T09:30:00') }];
+    expect(expandHabit(dbHabit(), 'utc', now, 7, slots).existingSlots).toEqual(slots);
+  });
+
+  it('omits existingSlots when the caller supplies none or an empty list', () => {
+    const now = utc('2026-01-05T00:00:00');
+    expect(expandHabit(dbHabit(), 'utc', now, 7).existingSlots).toBeUndefined();
+    expect(expandHabit(dbHabit(), 'utc', now, 7, []).existingSlots).toBeUndefined();
+  });
+
   it('clips the final period to the horizon end', () => {
     const now = utc('2026-01-05T00:00:00'); // Monday (ISO week start)
     const h = expandHabit(dbHabit(), 'utc', now, 10); // horizon end = Jan 15

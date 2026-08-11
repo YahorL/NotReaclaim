@@ -124,15 +124,24 @@ export async function assembleScheduleInput(
   const habits: EngineHabit[] = [];
   for (const h of allHabits) {
     if (h.status !== 'active') continue;
-    const engineHabit = expandHabit(h, settings.timezone, now, horizonDays);
+    // Feed the habit's current auto placements back in so a replan keeps the ones the
+    // user has already seen (sorted: the engine's slot selection is array-order dependent).
+    const existingSlots: Interval[] = blocks
+      .filter((b) => b.habitId === h.id && !b.pinned && b.startedAt == null && b.startsAt.getTime() >= now)
+      .map((b) => ({ start: b.startsAt.getTime(), end: b.endsAt.getTime() }))
+      .sort((a, b) => a.start - b.start);
+    const engineHabit = expandHabit(h, settings.timezone, now, horizonDays, existingSlots);
+
+    const pinnedForHabit = pinnedBlocks.filter((b) => b.sourceType === 'habit' && b.sourceId === h.id);
     const occurrences = engineHabit.periods.map(
-      (p) =>
-        pinnedBlocks.filter(
-          (b) => b.sourceType === 'habit' && b.sourceId === h.id && b.start >= p.start && b.start < p.end,
-        ).length,
+      (p) => pinnedForHabit.filter((b) => b.start >= p.start && b.start < p.end).length,
     );
     if (occurrences.some((count) => count > 0)) {
       engineHabit.periodTargets = engineHabit.periods.map((_p, i) => Math.max(0, h.perPeriod - occurrences[i]!));
+    }
+    // Pinned occupy their day too, so an auto occurrence never doubles up on the same day.
+    if (pinnedForHabit.length > 0) {
+      engineHabit.pinnedSlotTimes = pinnedForHabit.map((b) => b.start).sort((a, b) => a - b);
     }
     habits.push(engineHabit);
   }
