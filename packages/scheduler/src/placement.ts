@@ -70,7 +70,11 @@ export function placeItem(
 
     const placement: Placement = { start: slot.start, end: slot.start + size };
     placements.push(placement);
-    remainingFree = subtractIntervals(remainingFree, [{ start: placement.start, end: placement.end + gapMs }]);
+    // Reserve the gap on BOTH sides so a later placement cannot butt up against
+    // this one from the left either.
+    remainingFree = subtractIntervals(remainingFree, [
+      { start: placement.start - gapMs, end: placement.end + gapMs },
+    ]);
   }
 
   return { placements, free: remainingFree, unplaced };
