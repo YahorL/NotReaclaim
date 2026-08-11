@@ -153,13 +153,15 @@ describe('PATCH /calendar/events/:id', () => {
     expect(body.endsAt).toBe('2026-01-05T10:30:00.000Z');
   });
 
-  it('404s for a Google-sourced event', async () => {
-    const { app } = buildTestApp({ settings: settings(), calendarEvents: [event({ source: 'google' })] });
+  it('404s for a Google-sourced event without reflowing', async () => {
+    const { app, reconcileCalls } = buildTestApp({ settings: settings(), calendarEvents: [event({ source: 'google' })] });
     const token = await tokenFor(app);
+    const before = reconcileCalls.length;
     const res = await app.inject({
       method: 'PATCH', url: '/calendar/events/e1', headers: auth(token), payload: { title: 'Nope' },
     });
     expect(res.statusCode).toBe(404);
+    expect(reconcileCalls.length).toBe(before);
   });
 
   it("404s for another user's event and for an unknown id", async () => {
@@ -175,17 +177,19 @@ describe('PATCH /calendar/events/:id', () => {
     expect(missing.statusCode).toBe(404);
   });
 
-  it('400s when the merged range inverts', async () => {
-    const { app } = buildTestApp({
+  it('400s when the merged range inverts, without reflowing', async () => {
+    const { app, reconcileCalls } = buildTestApp({
       settings: settings(),
       calendarEvents: [event({ googleEventId: null, googleCalendarId: null })],
     });
     const token = await tokenFor(app);
+    const before = reconcileCalls.length;
     const res = await app.inject({
       method: 'PATCH', url: '/calendar/events/e1', headers: auth(token),
       payload: { startsAt: '2026-01-05T11:00:00.000Z' }, // past the existing 10:30 end
     });
     expect(res.statusCode).toBe(400);
+    expect(reconcileCalls.length).toBe(before);
   });
 
   it('400s on an empty update body', async () => {
@@ -196,13 +200,13 @@ describe('PATCH /calendar/events/:id', () => {
   });
 
   it('writes the edit back to Google when the row carries Google ids', async () => {
-    const updates: Array<{ calendarId: string; googleEventId: string; summary: string; startDateTime: string; endDateTime: string }> = [];
+    const patches: Array<{ calendarId: string; googleEventId: string; summary: string; startDateTime: string; endDateTime: string }> = [];
     const { app } = buildTestApp({
       settings: settings(),
       calendarEvents: [event()], // googleCalendarId 'primary', googleEventId 'g1'
       accessToken: 'at-1',
-      updateEvent: async (_t, calendarId, googleEventId, ev) => {
-        updates.push({ calendarId, googleEventId, summary: ev.summary, startDateTime: ev.startDateTime, endDateTime: ev.endDateTime });
+      patchEvent: async (_t, calendarId, googleEventId, ev) => {
+        patches.push({ calendarId, googleEventId, summary: ev.summary, startDateTime: ev.startDateTime, endDateTime: ev.endDateTime });
       },
     });
     const token = await tokenFor(app);
@@ -211,10 +215,26 @@ describe('PATCH /calendar/events/:id', () => {
       payload: { title: 'Renamed', startsAt: '2026-01-05T14:00:00.000Z', endsAt: '2026-01-05T15:00:00.000Z' },
     });
     expect(res.statusCode).toBe(200);
-    expect(updates).toEqual([{
+    expect(patches).toEqual([{
       calendarId: 'primary', googleEventId: 'g1', summary: 'Renamed',
       startDateTime: '2026-01-05T14:00:00.000Z', endDateTime: '2026-01-05T15:00:00.000Z',
     }]);
+  });
+
+  it('skips the Google write-back for a row with no Google ids, even when connected', async () => {
+    let patchCalls = 0;
+    const { app } = buildTestApp({
+      settings: settings(),
+      calendarEvents: [event({ googleEventId: null, googleCalendarId: null })],
+      accessToken: 'at-1', // connected, so only the id guard can stop the call
+      patchEvent: async () => { patchCalls += 1; },
+    });
+    const token = await tokenFor(app);
+    const res = await app.inject({
+      method: 'PATCH', url: '/calendar/events/e1', headers: auth(token), payload: { title: 'Renamed' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(patchCalls).toBe(0);
   });
 
   it('still updates locally when the Google write-back fails', async () => {
@@ -222,7 +242,7 @@ describe('PATCH /calendar/events/:id', () => {
       settings: settings(),
       calendarEvents: [event()],
       accessToken: 'at-1',
-      updateEvent: async () => { throw new Error('google down'); },
+      patchEvent: async () => { throw new Error('google down'); },
     });
     const token = await tokenFor(app);
     const res = await app.inject({

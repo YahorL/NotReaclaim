@@ -291,7 +291,7 @@ export interface TestAppOptions {
   accessToken?: string;
   insertEvent?: AppDeps['google']['client']['insertEvent'];
   deleteEvent?: AppDeps['google']['client']['deleteEvent'];
-  updateEvent?: AppDeps['google']['client']['updateEvent'];
+  patchEvent?: AppDeps['google']['client']['patchEvent'];
   users?: User[];
   registrationMode?: 'closed' | 'invite' | 'open';
   validInvites?: string[];
@@ -333,7 +333,7 @@ export function buildTestApp(opts: TestAppOptions = {}) {
         getConsentUrl: () => 'https://consent.example/auth',
         insertEvent: opts.insertEvent ?? (async () => { throw new Error('not connected'); }),
         deleteEvent: opts.deleteEvent ?? (async () => { throw new Error('not connected'); }),
-        updateEvent: opts.updateEvent ?? (async () => { throw new Error('not connected'); }),
+        patchEvent: opts.patchEvent ?? (async () => { throw new Error('not connected'); }),
       },
       tokens: {
         connectFromCode: async () =>

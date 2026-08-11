@@ -65,6 +65,7 @@ export class FakeGoogleClient implements GoogleClient {
   createCalendarResult = { calendarId: 'cal-auto' };
   insertedEvents: Array<{ calendarId: string; event: GoogleEventWrite }> = [];
   updatedEvents: Array<{ calendarId: string; googleEventId: string; event: GoogleEventWrite }> = [];
+  patchedEvents: Array<{ calendarId: string; googleEventId: string; event: GoogleEventWrite }> = [];
   deletedEvents: Array<{ calendarId: string; googleEventId: string }> = [];
   private insertCount = 0;
 
@@ -81,6 +82,10 @@ export class FakeGoogleClient implements GoogleClient {
 
   async updateEvent(_accessToken: string, calendarId: string, googleEventId: string, event: GoogleEventWrite): Promise<void> {
     this.updatedEvents.push({ calendarId, googleEventId, event });
+  }
+
+  async patchEvent(_accessToken: string, calendarId: string, googleEventId: string, event: GoogleEventWrite): Promise<void> {
+    this.patchedEvents.push({ calendarId, googleEventId, event });
   }
 
   async deleteEvent(_accessToken: string, calendarId: string, googleEventId: string): Promise<void> {

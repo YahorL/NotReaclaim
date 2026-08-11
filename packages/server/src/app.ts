@@ -41,7 +41,7 @@ export interface AppDeps {
     invites: Pick<InviteCodeRepository, 'tryConsume'>;
   };
   google: {
-    client: Pick<GoogleClient, 'getConsentUrl' | 'insertEvent' | 'deleteEvent' | 'updateEvent'>;
+    client: Pick<GoogleClient, 'getConsentUrl' | 'insertEvent' | 'deleteEvent' | 'patchEvent'>;
     tokens: Pick<TokenService, 'connectFromCode' | 'exchangeCodeForLink' | 'getAccessToken'>;
   };
   schedulingRepos: SchedulingRepositories;

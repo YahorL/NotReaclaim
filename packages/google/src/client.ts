@@ -50,6 +50,9 @@ export interface GoogleClient {
   listEvents(args: ListEventsArgs): Promise<ListEventsResult>;
   createCalendar(accessToken: string, summary: string): Promise<{ calendarId: string }>;
   insertEvent(accessToken: string, calendarId: string, event: GoogleEventWrite): Promise<{ googleEventId: string }>;
+  /** Full replace — for events NotReclaim wholly owns (scheduled blocks). */
   updateEvent(accessToken: string, calendarId: string, googleEventId: string, event: GoogleEventWrite): Promise<void>;
+  /** Merge — preserves Google-side fields we never send (description, location, attendees…). */
+  patchEvent(accessToken: string, calendarId: string, googleEventId: string, event: GoogleEventWrite): Promise<void>;
   deleteEvent(accessToken: string, calendarId: string, googleEventId: string): Promise<void>;
 }

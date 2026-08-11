@@ -59,11 +59,12 @@ export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afte
     }
     const title = body.title ?? event.title;
     const updated = await deps.repos.calendarEvents.update(request.userId, id, { title, startsAt, endsAt });
-    // Best-effort Google write-back for events previously mirrored to Google.
+    // Best-effort Google write-back for events previously mirrored to Google. PATCH (merge),
+    // not PUT — the user may have added a description/location/attendees on the Google side.
     if (event.googleEventId && event.googleCalendarId) {
       try {
         const accessToken = await deps.google.tokens.getAccessToken(request.userId, deps.now());
-        await deps.google.client.updateEvent(accessToken, event.googleCalendarId, event.googleEventId, {
+        await deps.google.client.patchEvent(accessToken, event.googleCalendarId, event.googleEventId, {
           summary: title, startDateTime: startsAt.toISOString(), endDateTime: endsAt.toISOString(),
         });
       } catch { /* not connected or Google failure — local row is authoritative */ }
