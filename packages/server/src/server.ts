@@ -60,6 +60,7 @@ async function main(): Promise<void> {
   const replan = makeReplan({ reconcile: reconcileBound, planLocally: planLocallyBound, isConnected });
 
   const app = buildApp({
+    logger: true,
     repos: { settings, tasks, habits, scheduledBlocks, calendarEvents, categories, subtasks, users, invites },
     google: { client, tokens },
     schedulingRepos,

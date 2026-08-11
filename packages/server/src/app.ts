@@ -65,9 +65,9 @@ declare module 'fastify' {
   }
 }
 
-export function buildApp(input: Omit<AppDeps, 'now'> & { now?: () => number }): FastifyInstance {
+export function buildApp(input: Omit<AppDeps, 'now'> & { now?: () => number; logger?: boolean }): FastifyInstance {
   const deps: AppDeps = { ...input, now: input.now ?? (() => Date.now()) };
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger: input.logger ?? false });
 
   app.register(fastifyJwt, { secret: deps.config.jwtSecret });
   app.decorateRequest('userId', '');
