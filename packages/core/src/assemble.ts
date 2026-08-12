@@ -88,6 +88,20 @@ export async function assembleScheduleInput(
     .filter((b) => b.pinned && b.endsAt.getTime() > now)
     .map(toScheduledBlock);
 
+  // A habit occurrence that is running right now is frozen in place (see the begun-habit
+  // handling below), so its remaining minutes are NOT free: without this, every replan
+  // during the occurrence could drop a task straight on top of it. Pinned ones are
+  // already busy via `pinnedBlocks`; these go in raw, like `blocked` entries — the
+  // meeting buffer is prep time around meetings, not padding for our own work blocks.
+  // `fixedEvents` are busy-only and never emitted as engine blocks, so nothing about the
+  // apply/diff path changes: the row itself survives via the begun-habit sweep guard.
+  for (const b of blocks) {
+    if (b.habitId == null || b.pinned) continue;
+    if (b.startsAt.getTime() <= now && b.endsAt.getTime() > now) {
+      fixedEvents.push({ id: `habit-running:${b.id}`, start: b.startsAt.getTime(), end: b.endsAt.getTime() });
+    }
+  }
+
   // A task the user has Started becomes user-managed: stop auto-scheduling it (no surprise
   // "remainder" tiles when Start shrinks its block). Its pinned/started blocks stay; apply
   // clears its stale auto blocks since it drops out of the desired schedule.
@@ -141,8 +155,12 @@ export async function assembleScheduleInput(
     // No timezone reasoning is needed here: `expandHabit` only emits allowed windows for
     // days from today onward, so a start from a fully-past day matches no window and the
     // engine's day consumption is a silent no-op. Passing all of them is therefore safe.
+    // Pinned rows are included: `pinnedBlocks` (and with it `pinnedForHabit` below) drops
+    // anything that ended before `now`, so a pinned occurrence that has finished would
+    // otherwise free its day up again and let a second one be booked on top of it.
+    // Overlap with `pinnedForHabit` is fine — consuming a day twice is idempotent.
     const begunForHabit = blocks
-      .filter((b) => b.habitId === h.id && !b.pinned && b.startsAt.getTime() <= now)
+      .filter((b) => b.habitId === h.id && b.startsAt.getTime() <= now)
       .map((b) => b.startsAt.getTime());
 
     const pinnedForHabit = pinnedBlocks.filter((b) => b.sourceType === 'habit' && b.sourceId === h.id);

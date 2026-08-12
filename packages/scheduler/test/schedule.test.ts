@@ -122,6 +122,23 @@ describe('preferred-first habit ordering', () => {
     expect(res.blocks.map((b) => b.sourceId)).toEqual(['a', 'b']);
   });
 
+  it('places a habit before an overdue task of equal priority (inert inversion)', () => {
+    // The ONE relation the claim term inverts: a task whose deadline precedes the habit's
+    // period start used to sort first. It can never cost the habit a slot — a shared slot
+    // would have to start at or after the habit's period start AND end at or before the
+    // task's deadline, which is impossible once the deadline is the earlier of the two.
+    // Here the deadline is behind the free timeline entirely, so the task places nothing.
+    const res = schedule({
+      workingWindows: [WORK],
+      horizon: { start: 0, end: D },
+      fixedEvents: [], pinnedBlocks: [],
+      tasks: [{ id: 't', title: 'T', priority: 3, durationMs: H, dueBy: 9 * H, minChunkMs: H, maxChunkMs: H }],
+      habits: [habit('h', { periods: [{ start: 10 * H, end: D }] })],
+    });
+    expect(res.blocks.map((b) => [b.sourceId, b.start])).toEqual([['h', 10 * H]]);
+    expect(res.unscheduled.map((u) => u.sourceId)).toEqual(['t']);
+  });
+
   it('keeps a task and a preference-less habit of equal priority in their existing order', () => {
     // Characterization: a habit's `tie` is its period start (now) and a task's is its
     // dueBy (later), so habits have always been placed before same-priority tasks. The

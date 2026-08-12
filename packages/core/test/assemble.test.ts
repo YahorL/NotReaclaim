@@ -517,6 +517,64 @@ describe('assembleScheduleInput habit slots', () => {
     ]);
   });
 
+  it('consumes the day of a PINNED occurrence that has already ended', async () => {
+    // `pinnedBlocks` drops rows that ended before `now`, so without this the day would
+    // look free again the moment a pinned occurrence finished — and get double-booked.
+    const input = await assembleScheduleInput(
+      fakeRepos({
+        settings: makeSettings({ horizonDays: 7 }),
+        categories: [makeCategory()],
+        habits: [makeHabit({ id: 'h1', perPeriod: 1, eligibleDays: [1, 2, 3, 4, 5] })],
+        blocks: [makeBlock({
+          id: 'pinned-done', taskId: null, habitId: 'h1', pinned: true,
+          startsAt: new Date(at('2026-01-05T09:00:00.000Z')), endsAt: new Date(at('2026-01-05T09:30:00.000Z')),
+        })],
+      }),
+      'u1', NOW,
+    );
+    expect(input.habits.find((h) => h.id === 'h1')!.consumedSlotTimes)
+      .toEqual([at('2026-01-05T09:00:00.000Z')]);
+  });
+
+  it('adds a RUNNING habit block to fixedEvents as raw busy time', async () => {
+    // 11:45–12:15 with `now` at 12:00: the occurrence is frozen in place, so its
+    // remaining minutes must not be handed out as free time.
+    const input = await assembleScheduleInput(
+      fakeRepos({
+        settings: makeSettings({ horizonDays: 7, meetingBufferMs: 15 * 60_000 }),
+        categories: [makeCategory()],
+        habits: [makeHabit({ id: 'h1', eligibleDays: [1, 2, 3, 4, 5] })],
+        blocks: [
+          makeBlock({
+            id: 'running', taskId: null, habitId: 'h1', pinned: false,
+            startsAt: new Date(at('2026-01-05T11:45:00.000Z')), endsAt: new Date(at('2026-01-05T12:15:00.000Z')),
+          }),
+          // Already over → no time left to reserve.
+          makeBlock({
+            id: 'done', taskId: null, habitId: 'h1', pinned: false,
+            startsAt: new Date(at('2026-01-05T09:00:00.000Z')), endsAt: new Date(at('2026-01-05T09:30:00.000Z')),
+          }),
+          // Pinned → already busy via pinnedBlocks.
+          makeBlock({
+            id: 'pinned-running', taskId: null, habitId: 'h1', pinned: true,
+            startsAt: new Date(at('2026-01-05T11:50:00.000Z')), endsAt: new Date(at('2026-01-05T12:20:00.000Z')),
+          }),
+          // A running TASK block is not a frozen occurrence.
+          makeBlock({
+            id: 'task-running', taskId: 't1', habitId: null, pinned: false,
+            startsAt: new Date(at('2026-01-05T11:45:00.000Z')), endsAt: new Date(at('2026-01-05T12:15:00.000Z')),
+          }),
+        ],
+      }),
+      'u1', NOW,
+    );
+    // Raw, exactly as placed: meetingBufferMs is prep time around meetings, not padding
+    // for our own work blocks.
+    expect(input.fixedEvents).toEqual([
+      { id: 'habit-running:running', start: at('2026-01-05T11:45:00.000Z'), end: at('2026-01-05T12:15:00.000Z') },
+    ]);
+  });
+
   it('still passes begun blocks from earlier days (harmless: those days emit no window)', async () => {
     const input = await assembleScheduleInput(
       fakeRepos({
