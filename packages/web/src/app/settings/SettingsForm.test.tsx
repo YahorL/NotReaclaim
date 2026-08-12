@@ -59,6 +59,15 @@ describe('SettingsForm', () => {
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ requireStartToTrack: true }));
   });
 
+  it('edits the planner day start and saves it as minutes past midnight', () => {
+    const onSave = vi.fn();
+    render(<SettingsForm initial={initial()} onSave={onSave} timezones={['UTC']} />);
+    expect(screen.getByTestId('day-start')).toHaveValue('00:00');
+    fireEvent.change(screen.getByTestId('day-start'), { target: { value: '03:00' } });
+    fireEvent.click(screen.getByTestId('save'));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ dayStartMinute: 180 }));
+  });
+
   it('shows ✓ Saved and surfaces an ApiError', () => {
     const { rerender } = render(<SettingsForm initial={initial()} onSave={vi.fn()} timezones={['UTC']} justSaved />);
     expect(screen.getByTestId('saved')).toBeInTheDocument();

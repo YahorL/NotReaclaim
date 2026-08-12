@@ -11,10 +11,38 @@ export function startOfWeek(now: number, zone = 'UTC'): number {
   return DateTime.fromMillis(now, { zone }).startOf('week').toMillis(); // luxon weeks start Monday
 }
 
-/** `count` consecutive zone-midnight timestamps starting at `startMs` (default 7). */
-export function dayColumns(startMs: number, count = 7, zone = 'UTC'): number[] {
-  const base = DateTime.fromMillis(startMs, { zone });
-  return Array.from({ length: count }, (_, i) => base.plus({ days: i }).startOf('day').toMillis());
+/**
+ * Split `dayStartMinute` (minutes past local midnight) into the wall-clock {hour, minute} a day
+ * column is anchored to. Applied with luxon `.set()` — never by adding milliseconds — so a column
+ * keeps its wall-clock anchor across DST transitions.
+ */
+function anchorParts(dayStartMinute: number): { hour: number; minute: number; second: 0; millisecond: 0 } {
+  return { hour: Math.floor(dayStartMinute / 60), minute: dayStartMinute % 60, second: 0, millisecond: 0 };
+}
+
+/**
+ * Start of the day *column* containing `ms`: the most recent `dayStartMinute` wall-clock time in
+ * `zone`. With the default 0 this is exactly `localMidnight`. With 180 (03:00), 01:30 on the 7th
+ * anchors to the 6th's column — late-night work stays on the previous day.
+ *
+ * DST: the anchor is a wall-clock time, so a column can span 23h or 25h across a transition while
+ * the grid still draws 1440 minutes — blocks on those two days sit up to an hour off (the same
+ * ±1h tolerance the zone-aware grid has carried since R16a). If the day-start time does not exist
+ * on a spring-forward day, luxon shifts it forward to the first valid instant.
+ */
+export function dayAnchor(ms: number, zone = 'UTC', dayStartMinute = 0): number {
+  const parts = anchorParts(dayStartMinute);
+  const day = DateTime.fromMillis(ms, { zone }).startOf('day');
+  const sameDay = day.set(parts);
+  if (sameDay.toMillis() <= ms) return sameDay.toMillis();
+  return day.minus({ days: 1 }).set(parts).toMillis();
+}
+
+/** `count` consecutive day-column starts from the column containing `startMs` (default 7). */
+export function dayColumns(startMs: number, count = 7, zone = 'UTC', dayStartMinute = 0): number[] {
+  const parts = anchorParts(dayStartMinute);
+  const base = DateTime.fromMillis(dayAnchor(startMs, zone, dayStartMinute), { zone });
+  return Array.from({ length: count }, (_, i) => base.plus({ days: i }).set(parts).toMillis());
 }
 
 /** The zone-midnight `weeks` weeks from `weekStartMs`. */
@@ -37,9 +65,12 @@ export interface BlockPosition {
 }
 
 /**
- * Position an interval within a day's 00:00-24:00 window, as top/height percentages.
- * Clamps to the window; returns null when the interval does not intersect the window
- * (outside hours, or a different day).
+ * Position an interval within a day column's 24h window, as top/height percentages. The window
+ * runs `dayStartMs` → `dayStartMs + 24h`; that anchor is midnight by default and the configured
+ * day start otherwise, so all the maths here stays relative to the column start.
+ * Clamps to the window; returns null when the interval does not intersect it (a different column).
+ * An interval straddling the boundary is clipped at the column edge (its tail is drawn by no
+ * column, exactly as a midnight-straddling block behaves today).
  */
 export function placeInDay(startMs: number, endMs: number, dayStartMs: number): BlockPosition | null {
   const startMin = (startMs - dayStartMs) / MS_PER_MIN;
@@ -109,7 +140,22 @@ export function minutesToPx(min: number): number {
   return (min / (WINDOW_END_MIN - WINDOW_START_MIN)) * GRID_COLUMN_PX;
 }
 
-/** Zone midnight (00:00) of the day containing `ms`. */
+/**
+ * Label for hour row `index` of the gutter (e.g. "9a", "12p"). With a non-zero `dayStartMinute`
+ * the labels rotate so the first row reads the day-start hour ("3a", "4a", … "2a"); a day start
+ * that is not on the hour renders the minutes too ("3:30a").
+ */
+export function hourRowLabel(index: number, dayStartMinute = 0): string {
+  const min = (dayStartMinute + index * 60) % (24 * 60);
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  const period = h < 12 ? 'a' : 'p';
+  const base = h % 12 === 0 ? 12 : h % 12;
+  return m === 0 ? `${base}${period}` : `${base}:${String(m).padStart(2, '0')}${period}`;
+}
+
+/** Zone midnight (00:00) of the day containing `ms`. Calendar-date semantics — for a shifted
+ *  planner column start use `dayAnchor`. */
 export function localMidnight(ms: number, zone = 'UTC'): number {
   return DateTime.fromMillis(ms, { zone }).startOf('day').toMillis();
 }

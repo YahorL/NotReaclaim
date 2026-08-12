@@ -185,7 +185,9 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
     if (mode === 'move') {
       if (deltaMin === 0 && deltaDays === 0) { onClick?.(); return; } // a click, not a drag: no held preview
       const moved = clampToWindow(startMin + deltaMin, endMin - startMin);
-      const dayStart = shiftDays(dayStartMs, deltaDays);
+      // Zone-aware: column starts are wall-clock anchors (midnight, or the configured day start),
+      // so a cross-day drag must preserve the wall clock rather than add a flat 24h.
+      const dayStart = shiftDays(dayStartMs, deltaDays, zone);
       // Transfer to held preview before firing mutation
       holdPreview(captureMoveMin, 0, captureDayDelta, captureColWidth);
       onCommit({ startsAt: iso(dayStart + moved.startMin * 60_000), endsAt: iso(dayStart + moved.endMin * 60_000), pinned: true });

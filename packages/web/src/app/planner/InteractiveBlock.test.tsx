@@ -162,6 +162,32 @@ describe('InteractiveBlock cross-day move', () => {
   });
 });
 
+describe('InteractiveBlock cross-day move across a DST transition', () => {
+  it('keeps the wall-clock time when dragging onto the spring-forward day', () => {
+    // America/New_York, planner day start 03:00 → column anchors are 08:00Z (EST) then 07:00Z (EDT)
+    const onCommit = vi.fn();
+    const { container } = render(
+      <div>
+        <InteractiveBlock
+          id="b1" dayStartMs={Date.parse('2026-03-07T08:00:00.000Z')} dayIndex={0}
+          startMs={Date.parse('2026-03-07T14:00:00.000Z')} endMs={Date.parse('2026-03-07T15:00:00.000Z')}
+          topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
+          zone="America/New_York" onCommit={onCommit}
+        />
+      </div>,
+    );
+    const column = container.firstChild as HTMLElement;
+    vi.spyOn(column, 'getBoundingClientRect').mockReturnValue({ width: 120, height: 928, top: 0, left: 0, right: 120, bottom: 928, x: 0, y: 0, toJSON: () => ({}) } as DOMRect);
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 100, clientY: 100, pointerId: 1 });
+    fireEvent.pointerUp(el, { clientX: 230, clientY: 100, pointerId: 1 }); // +1 column
+    // 09:00 EST → 09:00 EDT (13:00Z), not a blind +24h (which would land at 10:00 EDT)
+    expect(onCommit).toHaveBeenCalledWith({
+      startsAt: '2026-03-08T13:00:00.000Z', endsAt: '2026-03-08T14:00:00.000Z', pinned: true,
+    });
+  });
+});
+
 describe('InteractiveBlock held preview (flicker fix)', () => {
   it('after pointerUp with a 15-min move, the transform STILL shows the moved offset (held)', () => {
     renderBlock();

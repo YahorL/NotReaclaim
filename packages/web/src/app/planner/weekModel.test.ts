@@ -5,7 +5,7 @@ import {
   WINDOW_START_MIN, WINDOW_END_MIN,
   HOUR_ROW_PX, GRID_COLUMN_PX, snapMinutes, pxToMinutes, clampToWindow,
   minutesToPx, shiftDays, clampDayDelta, snapClickToSlot, localMidnight,
-  daysThatFit, formatHm, weekdayLabel, dayOfMonth,
+  daysThatFit, formatHm, weekdayLabel, dayOfMonth, dayAnchor, hourRowLabel,
 } from './weekModel';
 
 const MON = Date.parse('2026-01-05T00:00:00.000Z'); // Monday 00:00 UTC
@@ -241,5 +241,95 @@ describe('weekModel timezone-aware (America/New_York)', () => {
     const dayStart = localMidnight(noonZ, Z);
     const pos = placeInDay(Date.parse('2026-06-18T13:00:00.000Z'), Date.parse('2026-06-18T14:00:00.000Z'), dayStart)!;
     expect(pos.topPct).toBeCloseTo((540 / (WINDOW_END_MIN - WINDOW_START_MIN)) * 100, 5);
+  });
+});
+
+describe('dayStartMinute — shifted day boundary (Review 20)', () => {
+  const D = (iso: string) => Date.parse(iso);
+
+  it('defaults to the midnight boundary (dayAnchor === localMidnight)', () => {
+    expect(dayAnchor(WED_NOON)).toBe(localMidnight(WED_NOON));
+    expect(dayAnchor(MON)).toBe(MON);
+    expect(dayColumns(MON, 3, 'UTC', 0)).toEqual(dayColumns(MON, 3));
+  });
+
+  it('anchors a timestamp to the column whose [start, next start) contains it', () => {
+    // 03:00 day start: 01:30 on the 7th still belongs to the 6th's column
+    expect(dayAnchor(D('2026-01-07T01:30:00.000Z'), 'UTC', 180)).toBe(D('2026-01-06T03:00:00.000Z'));
+    expect(dayAnchor(D('2026-01-07T03:00:00.000Z'), 'UTC', 180)).toBe(D('2026-01-07T03:00:00.000Z'));
+    expect(dayAnchor(D('2026-01-07T02:59:59.999Z'), 'UTC', 180)).toBe(D('2026-01-06T03:00:00.000Z'));
+    expect(dayAnchor(D('2026-01-07T23:00:00.000Z'), 'UTC', 180)).toBe(D('2026-01-07T03:00:00.000Z'));
+    // a non-hour boundary works too (03:30)
+    expect(dayAnchor(D('2026-01-07T03:15:00.000Z'), 'UTC', 210)).toBe(D('2026-01-06T03:30:00.000Z'));
+  });
+
+  it('dayColumns steps whole days keeping the wall-clock anchor', () => {
+    const cols = dayColumns(D('2026-01-05T09:00:00.000Z'), 3, 'UTC', 180);
+    expect(cols).toEqual([
+      D('2026-01-05T03:00:00.000Z'), D('2026-01-06T03:00:00.000Z'), D('2026-01-07T03:00:00.000Z'),
+    ]);
+  });
+
+  it('keeps the 03:00 wall clock across both DST transitions (America/New_York)', () => {
+    const Z = 'America/New_York';
+    // spring forward 2026-03-08 (02:00 EST → 03:00 EDT): the 7th's column is 23h long
+    const spring = dayColumns(D('2026-03-07T12:00:00.000Z'), 3, Z, 180);
+    expect(spring).toEqual([
+      D('2026-03-07T08:00:00.000Z'), // 03:00 EST
+      D('2026-03-08T07:00:00.000Z'), // 03:00 EDT
+      D('2026-03-09T07:00:00.000Z'),
+    ]);
+    expect(spring[1]! - spring[0]!).toBe(23 * 60 * 60 * 1000);
+    // fall back 2026-11-01 (02:00 EDT → 01:00 EST): the Oct 31 column is 25h long
+    const fall = dayColumns(D('2026-10-31T12:00:00.000Z'), 2, Z, 180);
+    expect(fall).toEqual([D('2026-10-31T07:00:00.000Z'), D('2026-11-01T08:00:00.000Z')]);
+    expect(fall[1]! - fall[0]!).toBe(25 * 60 * 60 * 1000);
+    // and the anchor of a 01:30-EST instant on Nov 2 is still Nov 1's column
+    expect(dayAnchor(D('2026-11-02T06:30:00.000Z'), Z, 180)).toBe(D('2026-11-01T08:00:00.000Z'));
+  });
+
+  it('places a 01:00 block on the previous date column, 22h down', () => {
+    const col = dayAnchor(D('2026-01-07T01:00:00.000Z'), 'UTC', 180); // = Jan 6 03:00
+    const pos = placeInDay(D('2026-01-07T01:00:00.000Z'), D('2026-01-07T02:00:00.000Z'), col)!;
+    const span = WINDOW_END_MIN - WINDOW_START_MIN;
+    expect(pos.topPct).toBeCloseTo((22 * 60 / span) * 100, 5);
+    expect(pos.heightPct).toBeCloseTo((60 / span) * 100, 5);
+  });
+
+  it('clips a block that straddles the column boundary at the column edge', () => {
+    const col = D('2026-01-06T03:00:00.000Z');
+    // 02:00 → 04:00 on the 7th: 23h..25h since the column start → clipped to the last hour
+    const pos = placeInDay(D('2026-01-07T02:00:00.000Z'), D('2026-01-07T04:00:00.000Z'), col)!;
+    const span = WINDOW_END_MIN - WINDOW_START_MIN;
+    expect(pos.topPct).toBeCloseTo((23 * 60 / span) * 100, 5);
+    expect(pos.heightPct).toBeCloseTo((60 / span) * 100, 5);
+    // the same block against the NEXT column starts at its top
+    const next = placeInDay(D('2026-01-07T02:00:00.000Z'), D('2026-01-07T04:00:00.000Z'), D('2026-01-07T03:00:00.000Z'))!;
+    expect(next.topPct).toBe(0);
+    expect(next.heightPct).toBeCloseTo((60 / span) * 100, 5);
+  });
+
+  it('selects the previous date column as "today" at 01:30 with a 03:00 day start', () => {
+    const now = D('2026-01-07T01:30:00.000Z');
+    const cols = dayColumns(D('2026-01-05T12:00:00.000Z'), 3, 'UTC', 180);
+    expect(cols.map((c) => isToday(now, c))).toEqual([false, true, false]); // Jan 6's column
+    // 01:30 on the 7th is 22.5h into the 6th's column
+    expect(nowLine(now, cols[1]!)).toBeCloseTo((22.5 * 60 / (WINDOW_END_MIN - WINDOW_START_MIN)) * 100, 5);
+  });
+
+  it('snaps clicks and clamps durations relative to the column start', () => {
+    const col = D('2026-01-06T03:00:00.000Z');
+    // half-way down a 03:00-anchored column is 15:00 wall clock
+    expect(col + snapClickToSlot(0.5) * 60_000).toBe(D('2026-01-06T15:00:00.000Z'));
+    // a 2h slot dropped near the bottom is pulled back so it ends at the column edge (03:00)
+    const { startMin, endMin } = clampToWindow(snapClickToSlot(0.99), 120);
+    expect(col + startMin * 60_000).toBe(D('2026-01-07T01:00:00.000Z'));
+    expect(col + endMin * 60_000).toBe(D('2026-01-07T03:00:00.000Z'));
+  });
+
+  it('rotates the hour-gutter labels to start at the day-start hour', () => {
+    expect([0, 9, 12, 13, 23].map((h) => hourRowLabel(h))).toEqual(['12a', '9a', '12p', '1p', '11p']);
+    expect([0, 1, 20, 21, 23].map((h) => hourRowLabel(h, 180))).toEqual(['3a', '4a', '11p', '12a', '2a']);
+    expect(hourRowLabel(0, 210)).toBe('3:30a');
   });
 });

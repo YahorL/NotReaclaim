@@ -57,6 +57,9 @@ model Settings {
   meetingBufferMs   Int      @default(0)
   taskBufferMs      Int      @default(0)
   requireStartToTrack Boolean @default(false)
+  /// Visual planner day boundary, in minutes past local midnight (0-1439). 180 = a day column
+  /// runs 03:00 → 03:00. Display only: scheduling semantics keep the midnight boundary.
+  dayStartMinute    Int      @default(0)
   createdAt         DateTime @default(now()) @db.Timestamptz
   updatedAt         DateTime @updatedAt @db.Timestamptz
 

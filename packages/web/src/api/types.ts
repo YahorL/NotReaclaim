@@ -92,6 +92,8 @@ export interface Settings {
   meetingBufferMs?: number;
   taskBufferMs?: number;
   requireStartToTrack?: boolean;
+  /** Visual planner day boundary, minutes past local midnight (0 = midnight). */
+  dayStartMinute?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -191,6 +193,7 @@ export interface SettingsInput {
   meetingBufferMs?: number;
   taskBufferMs?: number;
   requireStartToTrack?: boolean;
+  dayStartMinute?: number;
 }
 
 export interface UpdateScheduledBlockInput {

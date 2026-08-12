@@ -67,4 +67,27 @@ describe('settings routes', () => {
     expect(put.statusCode).toBe(200);
     expect(put.json().requireStartToTrack).toBe(true);
   });
+
+  it('PUT /settings round-trips dayStartMinute', async () => {
+    const { app } = buildTestApp({ settings: null });
+    const token = await tokenFor(app);
+    const put = await app.inject({
+      method: 'PUT', url: '/settings', headers: { authorization: `Bearer ${token}` },
+      payload: { ...settingsBody, dayStartMinute: 180 },
+    });
+    expect(put.statusCode).toBe(200);
+    expect(put.json().dayStartMinute).toBe(180);
+  });
+
+  it('rejects an out-of-range dayStartMinute with 400', async () => {
+    const { app } = buildTestApp();
+    const token = await tokenFor(app);
+    const auth = { authorization: `Bearer ${token}` };
+    for (const dayStartMinute of [1440, -1, 12.5]) {
+      const res = await app.inject({ method: 'PUT', url: '/settings', headers: auth, payload: { ...settingsBody, dayStartMinute } });
+      expect(res.statusCode).toBe(400);
+    }
+    const ok = await app.inject({ method: 'PUT', url: '/settings', headers: auth, payload: { ...settingsBody, dayStartMinute: 1439 } });
+    expect(ok.statusCode).toBe(200);
+  });
 });

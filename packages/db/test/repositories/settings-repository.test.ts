@@ -46,4 +46,13 @@ describe('SettingsRepository', () => {
     const defaults = await repo.upsert(user2.id, settingsInput());
     expect(defaults).toMatchObject({ meetingBufferMs: 0, taskBufferMs: 0, requireStartToTrack: false });
   });
+
+  it('defaults dayStartMinute to 0 and round-trips a 03:00 day start', async () => {
+    const user = await users.create({ email: 'daystart@example.com' });
+    const created = await repo.upsert(user.id, settingsInput());
+    expect(created.dayStartMinute).toBe(0);
+    const updated = await repo.upsert(user.id, { ...settingsInput(), dayStartMinute: 180 });
+    expect(updated.dayStartMinute).toBe(180);
+    expect((await repo.getByUserId(user.id))?.dayStartMinute).toBe(180);
+  });
 });

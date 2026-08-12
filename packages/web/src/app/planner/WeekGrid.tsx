@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import type { ScheduledBlock, CalendarEvent } from '../../api/types';
 import { EventBlock, type BlockKind } from './EventBlock';
 import { InteractiveBlock } from './InteractiveBlock';
-import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY, snapClickToSlot, WINDOW_START_MIN, WINDOW_END_MIN, TIME_GUTTER_PX, GRID_COLUMN_PX, localMidnight, formatHm, weekdayLabel, dayOfMonth } from './weekModel';
+import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY, snapClickToSlot, WINDOW_START_MIN, WINDOW_END_MIN, TIME_GUTTER_PX, GRID_COLUMN_PX, dayAnchor, formatHm, weekdayLabel, dayOfMonth, hourRowLabel } from './weekModel';
 import { CreatePopover } from './CreatePopover';
 import { layoutOverlaps } from './overlapLayout';
 import { Icons } from '../shell/icons';
 
-const HOURS = Array.from({ length: 24 }, (_, i) => i); // 00:00 → 23:00 row starts (full day)
+const HOURS = Array.from({ length: 24 }, (_, i) => i); // 24 hour rows, counted from the day start
 
 const LEGEND: { label: string; swatch: string }[] = [
   { label: 'Meeting', swatch: 'bg-event' },
@@ -15,12 +15,6 @@ const LEGEND: { label: string; swatch: string }[] = [
   { label: 'Movable', swatch: 'border border-dashed border-low' },
   { label: 'Blocked', swatch: 'border border-slate-300 bg-slate-100' },
 ];
-
-function hourLabel(h: number): string {
-  const period = h < 12 ? 'a' : 'p';
-  const base = h % 12 === 0 ? 12 : h % 12;
-  return `${base}${period}`;
-}
 
 export interface WeekGridProps {
   days: number[];            // 7 local-midnight timestamps
@@ -43,6 +37,9 @@ export interface WeekGridProps {
   onScheduleTaskAt?: (taskId: string, dayStartMs: number, startMin: number) => void;
   accents?: Record<string, string>;
   zone?: string;
+  /** Minutes past local midnight that a day column starts at (0 = midnight). Labels/scroll only —
+   *  the column anchors themselves arrive in `days`. */
+  dayStartMinute?: number;
   panelHidden?: boolean;
   onTogglePanel?: () => void;
 }
@@ -77,7 +74,7 @@ function toItems(blocks: ScheduledBlock[], events: CalendarEvent[], zone: string
 }
 
 export function WeekGrid(props: WeekGridProps) {
-  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit, onCommitEvent, onEditEvent, onDeleteBlock, onDeleteEvent, onScheduleTaskAt, accents = {}, zone = 'UTC', panelHidden, onTogglePanel } = props;
+  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit, onCommitEvent, onEditEvent, onDeleteBlock, onDeleteEvent, onScheduleTaskAt, accents = {}, zone = 'UTC', dayStartMinute = 0, panelHidden, onTogglePanel } = props;
   const gridCols = `${TIME_GUTTER_PX}px repeat(${days.length}, minmax(0, 1fr))`;
   const items = toItems(blocks, events, zone);
   const [creating, setCreating] = useState<{ dayIndex: number; startMin: number } | null>(null);
@@ -89,7 +86,7 @@ export function WeekGrid(props: WeekGridProps) {
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const minOfDay = Math.max(0, Math.min(WINDOW_END_MIN, (nowMs - localMidnight(nowMs, zone)) / 60_000));
+    const minOfDay = Math.max(0, Math.min(WINDOW_END_MIN, (nowMs - dayAnchor(nowMs, zone, dayStartMinute)) / 60_000));
     el.scrollTop = Math.max(0, (minOfDay / (WINDOW_END_MIN - WINDOW_START_MIN)) * GRID_COLUMN_PX - 64);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- scroll to "now" once on mount
   }, []);
@@ -174,10 +171,10 @@ export function WeekGrid(props: WeekGridProps) {
           {/* body grid (scrolls vertically; the day header above stays pinned) */}
           <div ref={scrollRef} data-testid="hours-scroll" className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 230px)' }}>
           <div className="grid" style={{ gridTemplateColumns: gridCols }}>
-            <div>
+            <div data-testid="hour-gutter">
               {HOURS.map((h) => (
                 <div key={h} className="relative h-[58px]">
-                  <span className="absolute right-[10px] -top-[8px] text-[12px] font-semibold text-[#a6aab8]">{hourLabel(h)}</span>
+                  <span className="absolute right-[10px] -top-[8px] text-[12px] font-semibold text-[#a6aab8]">{hourRowLabel(h, dayStartMinute)}</span>
                 </div>
               ))}
             </div>
