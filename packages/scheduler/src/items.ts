@@ -172,9 +172,10 @@ export function scheduleHabit(
       ? mergeIntervals(habit.preferredWindows)
       : undefined;
 
-  // User-pinned occurrences are emitted by the caller (pinnedBlocks), but their
-  // days are off-limits here so an auto occurrence cannot double up on them.
-  for (const time of habit.pinnedSlotTimes ?? []) {
+  // Occurrences settled outside the engine (user-pinned, or already begun) are not
+  // emitted here, but their days are off-limits so an auto occurrence cannot double
+  // up on them.
+  for (const time of habit.consumedSlotTimes ?? []) {
     consumeWindowContaining(budget, time);
   }
 

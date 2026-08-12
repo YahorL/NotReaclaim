@@ -11,8 +11,29 @@ import { intersectIntervals, mergeIntervals, subtractIntervals } from './interva
 import { scheduleHabit, scheduleTask } from './items.js';
 
 type WorkItem =
-  | { kind: 'task'; priority: number; order: number; tie: number; id: string; task: FlexibleTask }
-  | { kind: 'habit'; priority: number; order: number; tie: number; id: string; habit: Habit };
+  | { kind: 'task'; priority: number; order: number; claim: number; tie: number; id: string; task: FlexibleTask }
+  | { kind: 'habit'; priority: number; order: number; claim: number; tie: number; id: string; habit: Habit };
+
+/**
+ * "Claim rank": how strong an item's demand on a specific slot is. Compared at EQUAL
+ * priority and `order`, ahead of `tie`.
+ *
+ * A habit that states a preferred window wants THAT window and nothing else, so it must
+ * claim it before a preference-less habit — which is happy anywhere — can squat it
+ * (a 15-minute chore falling to the start of working hours used to evict an exact
+ * 10:00-11:00 routine purely by winning the id tiebreak).
+ *
+ * Tasks all share the LAST rank, which preserves both existing orderings:
+ *   - task vs task is untouched (same rank for every task, so priority → sortOrder →
+ *     dueBy → id still decides);
+ *   - habit vs same-priority task keeps the order it already had — a habit's `tie` is
+ *     its period start (`now`) and a task's is its due date, so habits already went
+ *     first for every task that can still be placed (a task due before `now` misses
+ *     its deadline regardless of where it sits in this list).
+ */
+const CLAIM_HABIT_PREFERRED = 0;
+const CLAIM_HABIT_ANYTIME = 1;
+const CLAIM_TASK = 2;
 
 function earliestPeriodStart(periods: Interval[]): number {
   let min = Infinity;
@@ -54,13 +75,25 @@ export function schedule(input: ScheduleInput): ScheduleResult {
 
   const work: WorkItem[] = [
     ...input.tasks.map(
-      (t): WorkItem => ({ kind: 'task', priority: t.priority, order: t.sortOrder ?? 0, tie: t.dueBy, id: t.id, task: t }),
+      (t): WorkItem => ({
+        kind: 'task',
+        priority: t.priority,
+        order: t.sortOrder ?? 0,
+        claim: CLAIM_TASK,
+        tie: t.dueBy,
+        id: t.id,
+        task: t,
+      }),
     ),
     ...input.habits.map(
       (h): WorkItem => ({
         kind: 'habit',
         priority: h.priority,
         order: 0,
+        claim:
+          h.preferredWindows && h.preferredWindows.length > 0
+            ? CLAIM_HABIT_PREFERRED
+            : CLAIM_HABIT_ANYTIME,
         tie: earliestPeriodStart(h.periods),
         id: h.id,
         habit: h,
@@ -68,7 +101,12 @@ export function schedule(input: ScheduleInput): ScheduleResult {
     ),
   ];
   work.sort(
-    (a, b) => a.priority - b.priority || a.order - b.order || a.tie - b.tie || a.id.localeCompare(b.id),
+    (a, b) =>
+      a.priority - b.priority ||
+      a.order - b.order ||
+      a.claim - b.claim ||
+      a.tie - b.tie ||
+      a.id.localeCompare(b.id),
   );
 
   const blocks: ScheduledBlock[] = [...input.pinnedBlocks];

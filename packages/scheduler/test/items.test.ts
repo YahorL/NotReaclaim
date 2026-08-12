@@ -542,7 +542,7 @@ describe('scheduleHabit tiered fallback (preferred → working hours → whole d
   });
 });
 
-describe('scheduleHabit pinnedSlotTimes', () => {
+describe('scheduleHabit consumedSlotTimes', () => {
   const D = 86_400_000;
   const H = 3_600_000;
 
@@ -554,7 +554,7 @@ describe('scheduleHabit pinnedSlotTimes', () => {
       id: 'h', title: 'H', priority: 1, chunkMs: H, perPeriod: 2,
       periods: [{ start: 0, end: 7 * D }],
       allowedWindows: dayWindows([0, 1, 2]),
-      pinnedSlotTimes: [1 * D + 13 * H],
+      consumedSlotTimes: [1 * D + 13 * H],
     };
     const res = scheduleHabit([{ start: 0, end: 7 * D }], h, 0);
     expect(res.blocks.map((b) => Math.floor(b.start / D))).toEqual([0, 2]);

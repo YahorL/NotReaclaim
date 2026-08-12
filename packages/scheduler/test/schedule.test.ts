@@ -74,6 +74,89 @@ describe('sortOrder tiebreaker', () => {
   });
 });
 
+describe('preferred-first habit ordering', () => {
+  const H = 3_600_000;
+  const D = 24 * H;
+  const M = 60_000;
+  const WORK = { start: 10 * H, end: 17 * H };
+
+  /** Same priority, same (implicit) order, same period start: only the new claim term separates them. */
+  const habit = (id: string, over: Record<string, unknown> = {}) => ({
+    id, title: id, priority: 3, chunkMs: H, perPeriod: 1,
+    periods: [{ start: 0, end: D }],
+    allowedWindows: [{ start: 0, end: D }],
+    ...over,
+  });
+
+  const morning = (id = 'z-morning') =>
+    habit(id, { preferredWindows: [{ start: 10 * H, end: 11 * H }] });
+  const cleanup = (id = 'a-cleanup') => habit(id, { chunkMs: 15 * M });
+
+  const run = (habits: ReturnType<typeof habit>[]) =>
+    schedule({
+      workingWindows: [WORK],
+      horizon: { start: 0, end: D },
+      fixedEvents: [], pinnedBlocks: [], tasks: [],
+      habits,
+    });
+
+  it('gives a preferred window to the habit that asked for it, not to a preference-less one', () => {
+    // Live case: a 15-minute habit with no preference used to win the id tiebreak and
+    // squat 10:00 — inside Morning Routine's exact 10:00-11:00 preferred window.
+    const res = run([cleanup(), morning()]);
+    expect(res.blocks.find((b) => b.sourceId === 'z-morning')).toMatchObject({ start: 10 * H, end: 11 * H });
+  });
+
+  it('places the preferred habit first regardless of id order', () => {
+    for (const ids of [['a-pref', 'z-plain'], ['z-pref', 'a-plain']]) {
+      const res = run([
+        habit(ids[1]!, { chunkMs: 15 * M }),
+        habit(ids[0]!, { preferredWindows: [{ start: 10 * H, end: 11 * H }] }),
+      ]);
+      expect(res.blocks.find((b) => b.sourceId === ids[0])).toMatchObject({ start: 10 * H, end: 11 * H });
+    }
+  });
+
+  it('keeps the id tiebreak deterministic among equally-ranked habits', () => {
+    const res = run([habit('b'), habit('a')]);
+    expect(res.blocks.map((b) => b.sourceId)).toEqual(['a', 'b']);
+  });
+
+  it('places a habit before an overdue task of equal priority (inert inversion)', () => {
+    // The ONE relation the claim term inverts: a task whose deadline precedes the habit's
+    // period start used to sort first. It can never cost the habit a slot — a shared slot
+    // would have to start at or after the habit's period start AND end at or before the
+    // task's deadline, which is impossible once the deadline is the earlier of the two.
+    // Here the deadline is behind the free timeline entirely, so the task places nothing.
+    const res = schedule({
+      workingWindows: [WORK],
+      horizon: { start: 0, end: D },
+      fixedEvents: [], pinnedBlocks: [],
+      tasks: [{ id: 't', title: 'T', priority: 3, durationMs: H, dueBy: 9 * H, minChunkMs: H, maxChunkMs: H }],
+      habits: [habit('h', { periods: [{ start: 10 * H, end: D }] })],
+    });
+    expect(res.blocks.map((b) => [b.sourceId, b.start])).toEqual([['h', 10 * H]]);
+    expect(res.unscheduled.map((u) => u.sourceId)).toEqual(['t']);
+  });
+
+  it('keeps a task and a preference-less habit of equal priority in their existing order', () => {
+    // Characterization: a habit's `tie` is its period start (now) and a task's is its
+    // dueBy (later), so habits have always been placed before same-priority tasks. The
+    // claim term must not silently invert that.
+    const res = schedule({
+      workingWindows: [WORK],
+      horizon: { start: 0, end: D },
+      fixedEvents: [], pinnedBlocks: [],
+      tasks: [{ id: 't', title: 'T', priority: 3, durationMs: H, dueBy: D, minChunkMs: H, maxChunkMs: H }],
+      habits: [habit('h')],
+    });
+    expect(res.blocks.map((b) => [b.sourceId, b.start])).toEqual([
+      ['h', 10 * H],
+      ['t', 11 * H],
+    ]);
+  });
+});
+
 describe('horizon (full-day free envelope)', () => {
   const H = 3_600_000;
   const D = 24 * H;

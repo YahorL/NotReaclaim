@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { DateTime } from 'luxon';
 import { computeDesiredSchedule } from '../src/compute.js';
-import { fakeRepos, makeSettings, makeTask, makeHabit } from './fakes.js';
+import { fakeRepos, makeSettings, makeTask, makeHabit, makeBlock } from './fakes.js';
 
 const utc = (iso: string) => DateTime.fromISO(iso, { zone: 'utc' }).toMillis();
 
@@ -68,6 +68,54 @@ describe('computeDesiredSchedule', () => {
     const habitBlocks = result.blocks.filter((b) => b.sourceType === 'habit');
     expect(habitBlocks).toHaveLength(1);
     expect(DateTime.fromMillis(habitBlocks[0]!.start, { zone: 'utc' }).weekday).toBe(1); // Monday
+  });
+
+  it('does not place a task over a running habit occurrence', async () => {
+    const now = utc('2026-01-05T12:00:00'); // Monday noon, mid-occurrence
+    const wh = [{ weekday: 1, startMinute: 0, endMinute: 1440 }];
+    const result = await computeDesiredSchedule(
+      fakeRepos({
+        settings: makeSettings({
+          timezone: 'utc', horizonDays: 1,
+          workingHours: wh as unknown as ReturnType<typeof makeSettings>['workingHours'],
+        }),
+        habits: [makeHabit({ id: 'h1', status: 'active', eligibleDays: [1], perPeriod: 1, chunkMs: 1800000 })],
+        tasks: [makeTask({
+          id: 't1', status: 'pending', priority: 1,
+          durationMs: 3600000, dueBy: new Date(utc('2026-01-05T23:00:00')),
+          minChunkMs: 3600000, maxChunkMs: 3600000,
+        })],
+        blocks: [makeBlock({
+          id: 'running', taskId: null, habitId: 'h1', pinned: false,
+          startsAt: new Date(utc('2026-01-05T11:45:00')), endsAt: new Date(utc('2026-01-05T12:15:00')),
+        })],
+      }),
+      'u1', now,
+    );
+    // The frozen occurrence is not re-emitted, and its last 15 minutes stay reserved.
+    expect(result.blocks).toEqual([
+      expect.objectContaining({ sourceId: 't1', start: utc('2026-01-05T12:15:00'), end: utc('2026-01-05T13:15:00') }),
+    ]);
+  });
+
+  it('does not double-book a day after a pinned occurrence has ended', async () => {
+    const now = utc('2026-01-05T12:00:00'); // Monday noon
+    const wh = [{ weekday: 1, startMinute: 0, endMinute: 1440 }];
+    const result = await computeDesiredSchedule(
+      fakeRepos({
+        settings: makeSettings({
+          timezone: 'utc', horizonDays: 1,
+          workingHours: wh as unknown as ReturnType<typeof makeSettings>['workingHours'],
+        }),
+        habits: [makeHabit({ id: 'h1', status: 'active', eligibleDays: [1], perPeriod: 1, chunkMs: 1800000 })],
+        blocks: [makeBlock({
+          id: 'pinned-done', taskId: null, habitId: 'h1', pinned: true,
+          startsAt: new Date(utc('2026-01-05T09:00:00')), endsAt: new Date(utc('2026-01-05T09:30:00')),
+        })],
+      }),
+      'u1', now,
+    );
+    expect(result.blocks.filter((b) => b.sourceType === 'habit')).toEqual([]);
   });
 
   it('reports a habit with no eligible days as unscheduled', async () => {

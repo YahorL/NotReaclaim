@@ -88,6 +88,20 @@ export async function assembleScheduleInput(
     .filter((b) => b.pinned && b.endsAt.getTime() > now)
     .map(toScheduledBlock);
 
+  // A habit occurrence that is running right now is frozen in place (see the begun-habit
+  // handling below), so its remaining minutes are NOT free: without this, every replan
+  // during the occurrence could drop a task straight on top of it. Pinned ones are
+  // already busy via `pinnedBlocks`; these go in raw, like `blocked` entries — the
+  // meeting buffer is prep time around meetings, not padding for our own work blocks.
+  // `fixedEvents` are busy-only and never emitted as engine blocks, so nothing about the
+  // apply/diff path changes: the row itself survives via the begun-habit sweep guard.
+  for (const b of blocks) {
+    if (b.habitId == null || b.pinned) continue;
+    if (b.startsAt.getTime() <= now && b.endsAt.getTime() > now) {
+      fixedEvents.push({ id: `habit-running:${b.id}`, start: b.startsAt.getTime(), end: b.endsAt.getTime() });
+    }
+  }
+
   // A task the user has Started becomes user-managed: stop auto-scheduling it (no surprise
   // "remainder" tiles when Start shrinks its block). Its pinned/started blocks stay; apply
   // clears its stale auto blocks since it drops out of the desired schedule.
@@ -135,6 +149,20 @@ export async function assembleScheduleInput(
       .sort((a, b) => a.start - b.start);
     const engineHabit = expandHabit(h, settings.timezone, now, horizonDays, existingSlots);
 
+    // An occurrence whose start has passed is history — missed or done, the app has no
+    // habit-completion concept — so its day is retired instead of being re-planned at
+    // `now` over and over (the block itself stays put; apply's sweep never deletes it).
+    // No timezone reasoning is needed here: `expandHabit` only emits allowed windows for
+    // days from today onward, so a start from a fully-past day matches no window and the
+    // engine's day consumption is a silent no-op. Passing all of them is therefore safe.
+    // Pinned rows are included: `pinnedBlocks` (and with it `pinnedForHabit` below) drops
+    // anything that ended before `now`, so a pinned occurrence that has finished would
+    // otherwise free its day up again and let a second one be booked on top of it.
+    // Overlap with `pinnedForHabit` is fine — consuming a day twice is idempotent.
+    const begunForHabit = blocks
+      .filter((b) => b.habitId === h.id && b.startsAt.getTime() <= now)
+      .map((b) => b.startsAt.getTime());
+
     const pinnedForHabit = pinnedBlocks.filter((b) => b.sourceType === 'habit' && b.sourceId === h.id);
     const occurrences = engineHabit.periods.map(
       (p) => pinnedForHabit.filter((b) => b.start >= p.start && b.start < p.end).length,
@@ -142,9 +170,12 @@ export async function assembleScheduleInput(
     if (occurrences.some((count) => count > 0)) {
       engineHabit.periodTargets = engineHabit.periods.map((_p, i) => Math.max(0, h.perPeriod - occurrences[i]!));
     }
-    // Pinned occupy their day too, so an auto occurrence never doubles up on the same day.
-    if (pinnedForHabit.length > 0) {
-      engineHabit.pinnedSlotTimes = pinnedForHabit.map((b) => b.start).sort((a, b) => a - b);
+    // Pinned and begun occupy their day, so an auto occurrence never doubles up on it.
+    // `periodTargets` above stays PINNED-only on purpose: a missed occurrence may still
+    // be re-placed on another eligible day of the same period if the target has room.
+    const consumed = [...pinnedForHabit.map((b) => b.start), ...begunForHabit];
+    if (consumed.length > 0) {
+      engineHabit.consumedSlotTimes = consumed.sort((a, b) => a - b);
     }
     habits.push(engineHabit);
   }
