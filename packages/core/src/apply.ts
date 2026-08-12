@@ -89,6 +89,11 @@ export async function applyDesiredSchedule(
   for (const [key, block] of existingByKey) {
     if (seenKeys.has(key)) continue;
     if (block.endsAt.getTime() <= now) continue; // ended in the past: history, not a stale placement
+    // A habit occurrence that has already STARTED is history too — missed or done, the
+    // app has no habit-completion concept — so it freezes in place instead of vanishing
+    // when the engine stops emitting its (now consumed) day. Tasks keep the old sweep:
+    // an in-progress task placement superseded by a replan must still be removable.
+    if (block.habitId != null && block.startsAt.getTime() <= now) continue;
     await mirror?.delete(block);
     await scheduledBlocks.delete(userId, block.id);
     deleted += 1;
