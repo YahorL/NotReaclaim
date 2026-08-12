@@ -254,11 +254,11 @@ describe('replan idempotence across a moving `now`', () => {
     expect(blocks.rows()[0]!.startsAt).toEqual(new Date('2026-01-05T09:00:00.000Z'));
   });
 
-  // Review 18 last-resort trade-off, pinned so it stays deliberate: when the day's
-  // working hours are gone, a habit with no preferred window takes the earliest free
-  // moment of its eligible day — `now` today — and each replan drags it along. It
-  // stays ONE row (the day-keyed engineKey does not churn), only its time moves.
-  it('rolls a preference-less habit forward with `now` when working hours are full', async () => {
+  // Review 21 replaces the Review 18 trade-off (the same occurrence chasing `now` all
+  // day): once a habit block's start has passed it is history — missed or done, the app
+  // has no habit-completion concept — so its day is consumed, the engine emits nothing
+  // for it, and the row stays exactly where the user last saw it.
+  it('freezes a preference-less habit block once its start has passed', async () => {
     const T0 = Date.parse('2026-01-05T08:00:00.000Z');
     const T1 = Date.parse('2026-01-05T08:30:00.000Z');
 
@@ -279,8 +279,8 @@ describe('replan idempotence across a moving `now`', () => {
     expect(blocks.rows()[0]!.startsAt).toEqual(new Date('2026-01-05T08:00:00.000Z'));
 
     const second = await planLocally(repos, blocks, 'u1', T1);
-    expect(second).toMatchObject({ created: 0, updated: 1, deleted: 0 });
+    expect(second).toMatchObject({ created: 0, updated: 0, deleted: 0 });
     expect(blocks.rows()).toHaveLength(1);
-    expect(blocks.rows()[0]!.startsAt).toEqual(new Date('2026-01-05T08:30:00.000Z'));
+    expect(blocks.rows()[0]!.startsAt).toEqual(new Date('2026-01-05T08:00:00.000Z'));
   });
 });

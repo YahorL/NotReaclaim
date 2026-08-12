@@ -469,6 +469,71 @@ describe('assembleScheduleInput habit slots', () => {
     expect(h1.periodTargets![0]).toBe(1); // 3 per period - 2 pinned
   });
 
+  it('merges begun (started-or-past-start) habit block starts into consumedSlotTimes', async () => {
+    const input = await assembleScheduleInput(
+      fakeRepos({
+        settings: makeSettings({ horizonDays: 7 }),
+        categories: [makeCategory()],
+        habits: [makeHabit({ id: 'h1', perPeriod: 3, eligibleDays: [1, 2, 3, 4, 5] })],
+        blocks: [
+          // Today's occurrence has already begun: its day is history, not re-placeable.
+          makeBlock({
+            id: 'begun-today', taskId: null, habitId: 'h1', pinned: false,
+            startsAt: new Date(at('2026-01-05T09:00:00.000Z')), endsAt: new Date(at('2026-01-05T09:30:00.000Z')),
+          }),
+          makeBlock({
+            id: 'pinned-thu', taskId: null, habitId: 'h1', pinned: true,
+            startsAt: new Date(at('2026-01-08T09:00:00.000Z')), endsAt: new Date(at('2026-01-08T09:30:00.000Z')),
+          }),
+          // Still in the future → an existingSlot, not a consumed day.
+          makeBlock({
+            id: 'auto-wed', taskId: null, habitId: 'h1', pinned: false,
+            startsAt: new Date(at('2026-01-07T09:00:00.000Z')), endsAt: new Date(at('2026-01-07T09:30:00.000Z')),
+          }),
+          // Another habit's begun block must not leak in.
+          makeBlock({
+            id: 'other-habit', taskId: null, habitId: 'h2', pinned: false,
+            startsAt: new Date(at('2026-01-05T08:00:00.000Z')), endsAt: new Date(at('2026-01-05T08:30:00.000Z')),
+          }),
+          // Nor a task's.
+          makeBlock({
+            id: 'task-block', taskId: 't1', habitId: null, pinned: false,
+            startsAt: new Date(at('2026-01-05T08:00:00.000Z')), endsAt: new Date(at('2026-01-05T08:30:00.000Z')),
+          }),
+        ],
+      }),
+      'u1', NOW,
+    );
+    const h1 = input.habits.find((h) => h.id === 'h1')!;
+    expect(h1.consumedSlotTimes).toEqual([
+      at('2026-01-05T09:00:00.000Z'),
+      at('2026-01-08T09:00:00.000Z'),
+    ]);
+    // Only PINNED occurrences reduce the weekly target: a missed one may still be
+    // re-placed on another eligible day this week.
+    expect(h1.periodTargets![0]).toBe(2); // 3 per period - 1 pinned
+    expect(h1.existingSlots).toEqual([
+      { start: at('2026-01-07T09:00:00.000Z'), end: at('2026-01-07T09:30:00.000Z') },
+    ]);
+  });
+
+  it('still passes begun blocks from earlier days (harmless: those days emit no window)', async () => {
+    const input = await assembleScheduleInput(
+      fakeRepos({
+        settings: makeSettings({ horizonDays: 7 }),
+        categories: [makeCategory()],
+        habits: [makeHabit({ id: 'h1', eligibleDays: [1, 2, 3, 4, 5] })],
+        blocks: [makeBlock({
+          id: 'yesterday', taskId: null, habitId: 'h1', pinned: false,
+          startsAt: new Date(at('2026-01-02T09:00:00.000Z')), endsAt: new Date(at('2026-01-02T09:30:00.000Z')),
+        })],
+      }),
+      'u1', NOW,
+    );
+    expect(input.habits.find((h) => h.id === 'h1')!.consumedSlotTimes)
+      .toEqual([at('2026-01-02T09:00:00.000Z')]);
+  });
+
   it('leaves consumedSlotTimes undefined when the habit has no pinned blocks', async () => {
     const input = await assembleScheduleInput(
       fakeRepos({
