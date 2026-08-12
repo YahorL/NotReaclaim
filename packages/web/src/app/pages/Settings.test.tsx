@@ -49,4 +49,20 @@ describe('Settings page', () => {
     expect(wrapper).not.toBeNull();
     expect(wrapper!.className).toContain('max-w-');
   });
+
+  it('shows the build version footer with the injected sha and date', async () => {
+    const api = fakeApiClient({ getSettings: async () => settings() } as never);
+    renderWithProviders(<SettingsPage version={{ version: 'a1b2c3d', buildDate: '2026-08-12' }} />, { api });
+    await waitFor(() => expect(screen.getByTestId('settings-form')).toBeInTheDocument());
+    expect(screen.getByTestId('app-version')).toHaveTextContent('NotReclaim a1b2c3d · built 2026-08-12');
+  });
+
+  it('omits the build date when it is unknown', async () => {
+    const api = fakeApiClient({ getSettings: async () => settings() } as never);
+    renderWithProviders(<SettingsPage version={{ version: 'dev', buildDate: null }} />, { api });
+    await waitFor(() => expect(screen.getByTestId('settings-form')).toBeInTheDocument());
+    const el = screen.getByTestId('app-version');
+    expect(el).toHaveTextContent('NotReclaim dev');
+    expect(el.textContent).not.toMatch(/built/i);
+  });
 });

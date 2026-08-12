@@ -19,6 +19,12 @@ fi
 
 echo "[auto-deploy] $(date -u +%FT%TZ) main moved ${LOCAL} -> ${REMOTE}; deploying"
 git pull --ff-only origin main
+
+# Build identity for the SPA footer (baked in as VITE_APP_VERSION/VITE_BUILD_DATE).
+GIT_SHA="$(git rev-parse --short HEAD)"
+BUILD_DATE="$(date -u +%Y-%m-%d)"
+export GIT_SHA BUILD_DATE
+
 docker compose up -d --build
 docker image prune -f
 echo "[auto-deploy] $(date -u +%FT%TZ) done"

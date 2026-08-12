@@ -26,13 +26,18 @@ COPY . .
 # Generate the Prisma client (both the db tsc build and runtime migrate need it).
 RUN npm run prisma:generate -w @notreclaim/db
 
+# Build identity, baked into the SPA bundle so the deployed app can show which
+# commit it runs (Vite inlines VITE_* into import.meta.env at build time).
+ARG GIT_SHA=dev
+ARG BUILD_DATE=unknown
+
 # Compile in dependency order, then build the SPA (outputs packages/web/dist).
 RUN npm run build -w @notreclaim/scheduler \
  && npm run build -w @notreclaim/db \
  && npm run build -w @notreclaim/core \
  && npm run build -w @notreclaim/google \
  && npm run build -w @notreclaim/server \
- && npm run build -w @notreclaim/web
+ && VITE_APP_VERSION="$GIT_SHA" VITE_BUILD_DATE="$BUILD_DATE" npm run build -w @notreclaim/web
 
 ###############################################################################
 # Stage 2: server — Node runtime for the Fastify API. Retains node_modules

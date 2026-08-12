@@ -3,8 +3,10 @@ import { useSettingsQuery, useUpdateSettingsMutation } from '../../api/queries';
 import { SettingsForm } from '../settings/SettingsForm';
 import { AccountSection } from '../settings/AccountSection';
 import { toFormState, defaultFormState, browserTimezone } from '../settings/settingsForm';
+import { appVersion, formatAppVersion, type AppVersion } from '../lib/appVersion';
 
-export function Settings() {
+/** `version` is injectable so tests don't depend on build-time env injection. */
+export function Settings({ version }: { version?: AppVersion } = {}) {
   const settingsQ = useSettingsQuery();
   const updateM = useUpdateSettingsMutation();
 
@@ -23,6 +25,7 @@ export function Settings() {
   }
 
   const initial = settingsQ.data ? toFormState(settingsQ.data) : defaultFormState(browserTimezone());
+  const build = version ?? appVersion();
 
   return (
     <div className="p-4">
@@ -35,6 +38,9 @@ export function Settings() {
           onSave={(input) => updateM.mutate(input)}
         />
         <AccountSection />
+        <p data-testid="app-version" className="mt-6 text-center text-xs text-inkSoft">
+          {formatAppVersion(build)}
+        </p>
       </div>
     </div>
   );

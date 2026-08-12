@@ -19,6 +19,9 @@ services:
       context: .
       dockerfile: Dockerfile
       target: server
+      args:
+        GIT_SHA: ${GIT_SHA:-dev}
+        BUILD_DATE: ${BUILD_DATE:-unknown}
     restart: unless-stopped
     depends_on:
       db:
@@ -43,6 +46,9 @@ services:
       context: .
       dockerfile: Dockerfile
       target: web
+      args:
+        GIT_SHA: ${GIT_SHA:-dev}
+        BUILD_DATE: ${BUILD_DATE:-unknown}
     restart: unless-stopped
     depends_on:
       - server
