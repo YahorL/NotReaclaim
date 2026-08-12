@@ -67,13 +67,15 @@ export interface Habit {
    */
   existingSlots?: Interval[];
   /**
-   * Optional start times of user-pinned occurrences of this habit. Their days are
-   * consumed (so no auto occurrence lands on the same day) but the blocks
-   * themselves are NOT emitted here — they arrive via `ScheduleInput.pinnedBlocks`.
+   * Optional start times of occurrences that are already SETTLED outside the engine —
+   * user-pinned ones, and ones that have already begun (their start is in the past).
+   * Their days are consumed (so no auto occurrence lands on the same day) but no block
+   * is emitted for them here: pinned ones arrive via `ScheduleInput.pinnedBlocks`, and
+   * begun ones simply stay in the caller's store, untouched.
    * Only meaningful together with `allowedWindows`: habits without them are exempt
    * from the one-per-day cap, so there is no day to consume and this is a no-op.
    */
-  pinnedSlotTimes?: number[];
+  consumedSlotTimes?: number[];
   /**
    * Optional per-period occurrence targets, parallel to `periods`. When present,
    * periodTargets[i] is the number of occurrences to place in periods[i]

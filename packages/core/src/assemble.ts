@@ -144,7 +144,7 @@ export async function assembleScheduleInput(
     }
     // Pinned occupy their day too, so an auto occurrence never doubles up on the same day.
     if (pinnedForHabit.length > 0) {
-      engineHabit.pinnedSlotTimes = pinnedForHabit.map((b) => b.start).sort((a, b) => a - b);
+      engineHabit.consumedSlotTimes = pinnedForHabit.map((b) => b.start).sort((a, b) => a - b);
     }
     habits.push(engineHabit);
   }

@@ -441,7 +441,7 @@ describe('assembleScheduleInput habit slots', () => {
     expect(input.habits.find((h) => h.id === 'h1')!.existingSlots).toBeUndefined();
   });
 
-  it('threads pinned habit block start times as pinnedSlotTimes', async () => {
+  it('threads pinned habit block start times as consumedSlotTimes', async () => {
     const input = await assembleScheduleInput(
       fakeRepos({
         settings: makeSettings({ horizonDays: 7 }),
@@ -465,11 +465,11 @@ describe('assembleScheduleInput habit slots', () => {
       'u1', NOW,
     );
     const h1 = input.habits.find((h) => h.id === 'h1')!;
-    expect(h1.pinnedSlotTimes).toEqual([at('2026-01-06T09:00:00.000Z'), at('2026-01-08T09:00:00.000Z')]);
+    expect(h1.consumedSlotTimes).toEqual([at('2026-01-06T09:00:00.000Z'), at('2026-01-08T09:00:00.000Z')]);
     expect(h1.periodTargets![0]).toBe(1); // 3 per period - 2 pinned
   });
 
-  it('leaves pinnedSlotTimes undefined when the habit has no pinned blocks', async () => {
+  it('leaves consumedSlotTimes undefined when the habit has no pinned blocks', async () => {
     const input = await assembleScheduleInput(
       fakeRepos({
         settings: makeSettings({ horizonDays: 7 }),
@@ -482,7 +482,7 @@ describe('assembleScheduleInput habit slots', () => {
       }),
       'u1', NOW,
     );
-    expect(input.habits.find((h) => h.id === 'h1')!.pinnedSlotTimes).toBeUndefined();
+    expect(input.habits.find((h) => h.id === 'h1')!.consumedSlotTimes).toBeUndefined();
   });
 });
 
