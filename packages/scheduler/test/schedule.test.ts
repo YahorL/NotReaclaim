@@ -304,6 +304,118 @@ describe('horizon (full-day free envelope)', () => {
   });
 });
 
+describe('blockBufferMs vs habit preferred windows', () => {
+  const H = 3_600_000;
+  const M = 60_000;
+  const D = 24 * H;
+  const G = 15 * M;
+  const WORK = { start: 10 * H, end: 18 * H };
+
+  const prefHabit = (id: string, chunkMs: number, w: { start: number; end: number }) => ({
+    id, title: id, priority: 3, chunkMs, perPeriod: 1,
+    periods: [{ start: 0, end: D }],
+    allowedWindows: [{ start: 0, end: D }],
+    preferredWindows: [w],
+  });
+
+  /** Morning Routine (1h, 10:00–11:00) + CleanUp (15m, 11:00–11:15) — the live case. */
+  const pair = (morningId: string, cleanupId: string) => [
+    prefHabit(morningId, H, { start: 10 * H, end: 11 * H }),
+    prefHabit(cleanupId, 15 * M, { start: 11 * H, end: 11 * H + 15 * M }),
+  ];
+
+  const run = (
+    habits: ReturnType<typeof prefHabit>[],
+    tasks: ScheduleInput['tasks'] = [],
+    fixedEvents: ScheduleInput['fixedEvents'] = [],
+  ) =>
+    schedule({
+      workingWindows: [WORK],
+      horizon: { start: 0, end: D },
+      fixedEvents,
+      pinnedBlocks: [],
+      tasks,
+      habits,
+      blockBufferMs: G,
+    });
+
+  it('places both abutting preferred windows exactly, in either placement order', () => {
+    // Ids decide the order among equally-ranked preferred habits, so flip them to
+    // cover both: neither habit's buffer may eat into the other's exact window.
+    for (const [morningId, cleanupId] of [['a-morning', 'z-cleanup'], ['z-morning', 'a-cleanup']]) {
+      const res = run(pair(morningId!, cleanupId!));
+      expect(res.blocks.find((b) => b.sourceId === morningId)).toMatchObject({
+        start: 10 * H, end: 11 * H,
+      });
+      expect(res.blocks.find((b) => b.sourceId === cleanupId)).toMatchObject({
+        start: 11 * H, end: 11 * H + 15 * M,
+      });
+    }
+  });
+
+  // Characterization of the trade-off this change buys, NOT a desired property.
+  // The buffer between two blocks is produced solely by the EARLIER block's
+  // reservation — `placeItem` never consults `gapMs` when fitting — so a window
+  // placement that reserves exactly `[start, end]` no longer holds anything off
+  // its edges: the next item, task or habit, lands flush against it. (Everything
+  // placed BEFORE a window block still pads itself, so that side is unaffected.)
+  it('lets a task follow a window-placed habit flush, with no buffer', () => {
+    const res = run(pair('a-morning', 'z-cleanup'), [
+      { id: 't', title: 'T', priority: 3, durationMs: H, dueBy: D, minChunkMs: H, maxChunkMs: H },
+    ]);
+    const task = res.blocks.find((b) => b.sourceType === 'task')!;
+    expect(task.start).toBe(11 * H + 15 * M);
+  });
+
+  it('keeps the buffer between a task and a habit window placed after it', () => {
+    // The other order still buffers: the task reserves [start − gap, end + gap],
+    // and the habit's tier-1 fit respects that reservation like any other.
+    const res = schedule({
+      workingWindows: [WORK],
+      horizon: { start: 0, end: D },
+      fixedEvents: [], pinnedBlocks: [],
+      tasks: [
+        { id: 't', title: 'T', priority: 1, durationMs: H, dueBy: D, minChunkMs: H, maxChunkMs: H },
+      ],
+      habits: [prefHabit('h', H, { start: 11 * H, end: 12 * H })],
+      blockBufferMs: G,
+    });
+    const task = res.blocks.find((b) => b.sourceType === 'task')!;
+    const habit = res.blocks.find((b) => b.sourceType === 'habit')!;
+    expect(task).toMatchObject({ start: 10 * H, end: 11 * H });
+    expect(habit.start - task.end).toBeGreaterThanOrEqual(G);
+  });
+
+  it('still buffers a habit that fell back OUT of its preferred window', () => {
+    const res = schedule({
+      workingWindows: [WORK],
+      horizon: { start: 0, end: D },
+      fixedEvents: [], pinnedBlocks: [],
+      // Preferred window far too small for the 1h chunk → tier-2 fallback, which
+      // keeps the full two-sided reservation.
+      habits: [prefHabit('h', H, { start: 22 * H, end: 22 * H + M })],
+      tasks: [
+        { id: 't', title: 'T', priority: 4, durationMs: H, dueBy: D, minChunkMs: H, maxChunkMs: H },
+      ],
+      blockBufferMs: G,
+    });
+    const habit = res.blocks.find((b) => b.sourceType === 'habit')!;
+    const task = res.blocks.find((b) => b.sourceType === 'task')!;
+    expect(habit).toMatchObject({ start: 10 * H, end: 11 * H });
+    expect(task.start - habit.end).toBeGreaterThanOrEqual(G);
+  });
+
+  it('fits an exact-size preferred window between two abutting fixed events', () => {
+    const res = run([prefHabit('h', H, { start: 10 * H, end: 11 * H })], [], [
+      { id: 'before', start: 9 * H, end: 10 * H },
+      { id: 'after', start: 11 * H, end: 12 * H },
+    ]);
+    expect(res.blocks.find((b) => b.sourceType === 'habit')).toMatchObject({
+      start: 10 * H, end: 11 * H,
+    });
+  });
+});
+
 describe('blockBufferMs', () => {
   it('spaces two consecutive tasks by the buffer', () => {
     const mk = (id: string) => ({ id, title: id, priority: 1, durationMs: 20, dueBy: 100, minChunkMs: 20, maxChunkMs: 20 });

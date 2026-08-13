@@ -121,6 +121,14 @@ function insidePreferred(preferred: Interval[] | undefined, slot: Interval): boo
  * Tier 2 is what keeps a habit whose preference is booked out from landing at
  * 00:00; it is skipped when the caller supplies no working windows (direct
  * engine callers) or when they do not overlap `bound` at all.
+ *
+ * The block buffer does NOT apply inside a preferred window: that window is exact
+ * user intent, so tier 1 places with `gapMs = 0` and therefore reserves exactly
+ * `[start, end]`. Two habits whose windows abut (10:00–11:00 and 11:00–11:15) then
+ * both get what they asked for whichever is placed first — with the buffer, the
+ * first placement's padding ate into the second's exactly-sized window and pushed
+ * it out to a tier-2 fallback. Tiers 2/3 are ordinary fallback placements and keep
+ * the full two-sided reservation.
  */
 function placeOccurrence(
   free: Interval[],
@@ -131,17 +139,17 @@ function placeOccurrence(
   workingWindows: Interval[] | undefined,
   gapMs: number,
 ): ReturnType<typeof placeItem> {
-  const tiers: Interval[][] = [];
-  if (preferred && preferred.length > 0) tiers.push(preferred);
+  const tiers: { windows: Interval[]; gapMs: number }[] = [];
+  if (preferred && preferred.length > 0) tiers.push({ windows: preferred, gapMs: 0 });
   if (workingWindows && workingWindows.length > 0) {
     const inHours = intersectIntervals(bound, workingWindows);
-    if (inHours.length > 0) tiers.push(inHours);
+    if (inHours.length > 0) tiers.push({ windows: inHours, gapMs });
   }
-  tiers.push(bound);
+  tiers.push({ windows: bound, gapMs });
 
-  let res = placeItem(free, [chunkMs], deadline, tiers[0]!, gapMs);
+  let res = placeItem(free, [chunkMs], deadline, tiers[0]!.windows, tiers[0]!.gapMs);
   for (let t = 1; t < tiers.length && res.placements.length === 0; t++) {
-    res = placeItem(free, [chunkMs], deadline, tiers[t]!, gapMs);
+    res = placeItem(free, [chunkMs], deadline, tiers[t]!.windows, tiers[t]!.gapMs);
   }
   return res;
 }
@@ -204,8 +212,13 @@ export function scheduleHabit(
       const fits = room.some((iv) => iv.start <= slot.start && iv.end >= slot.end);
       if (!fits) continue;
 
+      // A kept slot of a preferring habit is a tier-1 placement that already
+      // happened: it passed `insidePreferred` above, so it lies inside a preferred
+      // window and reserves exactly its own span (see `placeOccurrence`). Habits
+      // with no preference keep the ordinary two-sided reservation.
+      const stickyGapMs = preferredBounds ? 0 : gapMs;
       remainingFree = subtractIntervals(remainingFree, [
-        { start: slot.start - gapMs, end: slot.end + gapMs },
+        { start: slot.start - stickyGapMs, end: slot.end + stickyGapMs },
       ]);
       const day = consumeWindowContaining(budget, slot.start);
       blocks.push({
