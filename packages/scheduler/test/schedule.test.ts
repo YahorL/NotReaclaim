@@ -325,7 +325,7 @@ describe('blockBufferMs vs habit preferred windows', () => {
   ];
 
   const run = (
-    habits: ReturnType<typeof prefHabit>[],
+    habits: ScheduleInput['habits'],
     tasks: ScheduleInput['tasks'] = [],
     fixedEvents: ScheduleInput['fixedEvents'] = [],
   ) =>
@@ -353,18 +353,54 @@ describe('blockBufferMs vs habit preferred windows', () => {
     }
   });
 
-  // Characterization of the trade-off this change buys, NOT a desired property.
-  // The buffer between two blocks is produced solely by the EARLIER block's
-  // reservation — `placeItem` never consults `gapMs` when fitting — so a window
-  // placement that reserves exactly `[start, end]` no longer holds anything off
-  // its edges: the next item, task or habit, lands flush against it. (Everything
-  // placed BEFORE a window block still pads itself, so that side is unaffected.)
-  it('lets a task follow a window-placed habit flush, with no buffer', () => {
+  it('keeps the buffer between the last window block and a following task', () => {
+    // A window placement reserves its ± gap everywhere EXCEPT inside some habit's
+    // preferred window, so CleanUp still gets 11:00–11:15 while a task is held off
+    // until 11:30.
     const res = run(pair('a-morning', 'z-cleanup'), [
       { id: 't', title: 'T', priority: 3, durationMs: H, dueBy: D, minChunkMs: H, maxChunkMs: H },
     ]);
     const task = res.blocks.find((b) => b.sourceType === 'task')!;
-    expect(task.start).toBe(11 * H + 15 * M);
+    expect(task.start).toBeGreaterThanOrEqual(11 * H + 15 * M + G);
+  });
+
+  it('keeps the buffer between a window block and a following preference-less habit', () => {
+    const res = run([
+      prefHabit('a-morning', H, { start: 10 * H, end: 11 * H }),
+      // No preferred windows → claim rank 1, so it is placed after the window habit
+      // and must respect that block's trailing pad (tier-2, working hours).
+      { id: 'z-anytime', title: 'z-anytime', priority: 3, chunkMs: H, perPeriod: 1,
+        periods: [{ start: 0, end: D }], allowedWindows: [{ start: 0, end: D }] },
+    ]);
+    const morning = res.blocks.find((b) => b.sourceId === 'a-morning')!;
+    const anytime = res.blocks.find((b) => b.sourceId === 'z-anytime')!;
+    expect(morning).toMatchObject({ start: 10 * H, end: 11 * H });
+    expect(anytime.start - morning.end).toBeGreaterThanOrEqual(G);
+  });
+
+  // Characterization of the one hole the union leaves: the padding is skipped over
+  // EVERY habit's preferred window, whether or not that habit actually claims it.
+  // When the neighbour cannot place (here its only eligible day is already spoken
+  // for), its window stays open and the next item may sit flush against Morning.
+  // Narrow and self-inflicted — a declared-but-unused window — so it is recorded
+  // rather than defended against.
+  it('lets a later item abut a window block through an unused neighbouring window', () => {
+    const cleanup = {
+      ...prefHabit('z-cleanup', 15 * M, { start: 11 * H, end: 11 * H + 15 * M }),
+      consumedSlotTimes: [12 * H], // its only day is taken → it places nothing
+    };
+    const res = schedule({
+      workingWindows: [WORK],
+      horizon: { start: 0, end: D },
+      fixedEvents: [], pinnedBlocks: [],
+      habits: [prefHabit('a-morning', H, { start: 10 * H, end: 11 * H }), cleanup],
+      tasks: [
+        { id: 't', title: 'T', priority: 3, durationMs: H, dueBy: D, minChunkMs: H, maxChunkMs: H },
+      ],
+      blockBufferMs: G,
+    });
+    expect(res.blocks.filter((b) => b.sourceId === 'z-cleanup')).toEqual([]);
+    expect(res.blocks.find((b) => b.sourceType === 'task')).toMatchObject({ start: 11 * H });
   });
 
   it('keeps the buffer between a task and a habit window placed after it', () => {

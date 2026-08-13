@@ -602,6 +602,46 @@ describe('scheduleHabit: the block buffer does not apply inside a preferred wind
     expect(res.free).toEqual([{ start: H + G, end: D }]);
   });
 
+  it('pads a tier-1 placement OUTSIDE the supplied preferred-window union', () => {
+    const res = scheduleHabit([{ start: 0, end: D }], dayHabit({
+      preferredWindows: [{ start: 10 * H, end: 11 * H }],
+    }), G, WORK, [{ start: 10 * H, end: 11 * H }]);
+    expect(res.blocks[0]).toMatchObject({ start: 10 * H, end: 11 * H });
+    // Generic free time on either side of the block keeps its buffer, so a later
+    // task or fallback placement cannot land flush against it.
+    expect(res.free).toEqual([
+      { start: 0, end: 10 * H - G },
+      { start: 11 * H + G, end: D },
+    ]);
+  });
+
+  it('does not pad into a neighbouring habit preferred window', () => {
+    const res = scheduleHabit([{ start: 0, end: D }], dayHabit({
+      preferredWindows: [{ start: 10 * H, end: 11 * H }],
+    }), G, WORK, [
+      { start: 10 * H, end: 11 * H },
+      { start: 11 * H, end: 11 * H + 15 * M }, // another habit's exact window
+    ]);
+    expect(res.blocks[0]).toMatchObject({ start: 10 * H, end: 11 * H });
+    // Trailing pad falls wholly inside the neighbour's window → not reserved, so
+    // that habit can still take its window exactly. The leading pad is ordinary
+    // free time and is reserved as usual.
+    expect(res.free).toEqual([
+      { start: 0, end: 10 * H - G },
+      { start: 11 * H, end: D },
+    ]);
+  });
+
+  it('reserves exactly (no padding) when no union is supplied — direct engine callers', () => {
+    const res = scheduleHabit([{ start: 0, end: D }], dayHabit({
+      preferredWindows: [{ start: 10 * H, end: 11 * H }],
+    }), G, WORK);
+    expect(res.free).toEqual([
+      { start: 0, end: 10 * H },
+      { start: 11 * H, end: D },
+    ]);
+  });
+
   it('consumes the occurrence day (and keeps the day-keyed id) for a tier-1 placement', () => {
     const res = scheduleHabit([{ start: 0, end: 7 * D }], dayHabit({
       perPeriod: 2,
@@ -636,6 +676,26 @@ describe('scheduleHabit sticky slots and the block buffer', () => {
     expect(res.blocks.map((b) => [b.start, b.end])).toEqual([[13 * H, 14 * H]]);
     expect(res.free).toEqual([
       { start: 0, end: 13 * H },
+      { start: 14 * H, end: 7 * D },
+    ]);
+  });
+
+  it('pads a kept in-window slot outside the supplied preferred-window union', () => {
+    const h: Habit = {
+      id: 'h', title: 'H', priority: 1, chunkMs: H, perPeriod: 1,
+      periods: [{ start: 0, end: 7 * D }],
+      allowedWindows: [{ start: 0, end: D }],
+      preferredWindows: [{ start: 13 * H, end: 15 * H }],
+      existingSlots: [{ start: 13 * H, end: 14 * H }],
+    };
+    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, G, undefined, [
+      { start: 13 * H, end: 15 * H },
+    ]);
+    expect(res.blocks.map((b) => [b.start, b.end])).toEqual([[13 * H, 14 * H]]);
+    // Leading pad is ordinary free time → reserved. Trailing pad lies inside the
+    // preferred window → left free, exactly like a fresh tier-1 placement.
+    expect(res.free).toEqual([
+      { start: 0, end: 13 * H - G },
       { start: 14 * H, end: 7 * D },
     ]);
   });

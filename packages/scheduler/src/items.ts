@@ -123,12 +123,12 @@ function insidePreferred(preferred: Interval[] | undefined, slot: Interval): boo
  * engine callers) or when they do not overlap `bound` at all.
  *
  * The block buffer does NOT apply inside a preferred window: that window is exact
- * user intent, so tier 1 places with `gapMs = 0` and therefore reserves exactly
- * `[start, end]`. Two habits whose windows abut (10:00–11:00 and 11:00–11:15) then
- * both get what they asked for whichever is placed first — with the buffer, the
- * first placement's padding ate into the second's exactly-sized window and pushed
- * it out to a tier-2 fallback. Tiers 2/3 are ordinary fallback placements and keep
- * the full two-sided reservation.
+ * user intent, so tier 1 places with `gapMs = 0` and the caller reserves the result
+ * via `windowReservation`. Two habits whose windows abut (10:00–11:00 and
+ * 11:00–11:15) then both get what they asked for whichever is placed first — with
+ * the buffer, the first placement's padding ate into the second's exactly-sized
+ * window and pushed it out to a tier-2 fallback. Tiers 2/3 are ordinary fallback
+ * placements and keep the full two-sided reservation, applied by `placeItem`.
  */
 function placeOccurrence(
   free: Interval[],
@@ -138,20 +138,49 @@ function placeOccurrence(
   preferred: Interval[] | undefined,
   workingWindows: Interval[] | undefined,
   gapMs: number,
-): ReturnType<typeof placeItem> {
+): { result: ReturnType<typeof placeItem>; viaPreferred: boolean } {
   const tiers: { windows: Interval[]; gapMs: number }[] = [];
-  if (preferred && preferred.length > 0) tiers.push({ windows: preferred, gapMs: 0 });
+  const hasPreferred = !!preferred && preferred.length > 0;
+  if (hasPreferred) tiers.push({ windows: preferred!, gapMs: 0 });
   if (workingWindows && workingWindows.length > 0) {
     const inHours = intersectIntervals(bound, workingWindows);
     if (inHours.length > 0) tiers.push({ windows: inHours, gapMs });
   }
   tiers.push({ windows: bound, gapMs });
 
-  let res = placeItem(free, [chunkMs], deadline, tiers[0]!.windows, tiers[0]!.gapMs);
-  for (let t = 1; t < tiers.length && res.placements.length === 0; t++) {
-    res = placeItem(free, [chunkMs], deadline, tiers[t]!.windows, tiers[t]!.gapMs);
+  let placedTier = 0;
+  let result = placeItem(free, [chunkMs], deadline, tiers[0]!.windows, tiers[0]!.gapMs);
+  for (let t = 1; t < tiers.length && result.placements.length === 0; t++) {
+    result = placeItem(free, [chunkMs], deadline, tiers[t]!.windows, tiers[t]!.gapMs);
+    placedTier = t;
   }
-  return res;
+  // Tier 0 is the preferred window, and only exists when the habit stated one.
+  const viaPreferred = hasPreferred && placedTier === 0 && result.placements.length > 0;
+  return { result, viaPreferred };
+}
+
+/**
+ * What a placement INSIDE a preferred window takes out of the free timeline: the
+ * block itself, plus its ± `gapMs` margins except where those fall inside some
+ * habit's preferred window.
+ *
+ * The block buffer exists to keep ordinary work off a block's edges, and that still
+ * holds here — a later task or fallback placement finds the margin reserved. What it
+ * must NOT do is encroach on a neighbouring exactly-sized preferred window, which is
+ * the R22 bug: `preferredUnion` (every habit's preferred windows, supplied by
+ * `schedule`) is precisely the space where the buffer is suspended.
+ *
+ * Without a union — direct engine callers, which have no view of the other habits —
+ * the reservation stays exactly `[start, end]`.
+ */
+function windowReservation(
+  span: Interval,
+  gapMs: number,
+  preferredUnion: Interval[] | undefined,
+): Interval[] {
+  if (gapMs <= 0 || !preferredUnion || preferredUnion.length === 0) return [span];
+  const padded = [{ start: span.start - gapMs, end: span.end + gapMs }];
+  return mergeIntervals([span, ...subtractIntervals(padded, preferredUnion)]);
 }
 
 export function scheduleHabit(
@@ -159,6 +188,8 @@ export function scheduleHabit(
   habit: Habit,
   gapMs = 0,
   workingWindows?: Interval[],
+  /** Every habit's preferred windows — the space in which the buffer is suspended. */
+  preferredUnion?: Interval[],
 ): ScheduleItemResult {
   let remainingFree = free;
   const blocks: ScheduledBlock[] = [];
@@ -214,12 +245,14 @@ export function scheduleHabit(
 
       // A kept slot of a preferring habit is a tier-1 placement that already
       // happened: it passed `insidePreferred` above, so it lies inside a preferred
-      // window and reserves exactly its own span (see `placeOccurrence`). Habits
-      // with no preference keep the ordinary two-sided reservation.
-      const stickyGapMs = preferredBounds ? 0 : gapMs;
-      remainingFree = subtractIntervals(remainingFree, [
-        { start: slot.start - stickyGapMs, end: slot.end + stickyGapMs },
-      ]);
+      // window and reserves like one. Habits with no preference keep the ordinary
+      // two-sided reservation.
+      remainingFree = subtractIntervals(
+        remainingFree,
+        preferredBounds
+          ? windowReservation(slot, gapMs, preferredUnion)
+          : [{ start: slot.start - gapMs, end: slot.end + gapMs }],
+      );
       const day = consumeWindowContaining(budget, slot.start);
       blocks.push({
         id: occurrenceId(habit.id, day, index),
@@ -242,7 +275,7 @@ export function scheduleHabit(
         ? intersectIntervals(budget.preferred, bound)
         : undefined;
 
-      const res = placeOccurrence(
+      const { result: res, viaPreferred } = placeOccurrence(
         remainingFree, habit.chunkMs, period.end, bound, preferred, workingWindows, gapMs,
       );
 
@@ -251,8 +284,13 @@ export function scheduleHabit(
         continue;
       }
 
-      remainingFree = res.free;
       const p = res.placements[0]!;
+      // Tiers 2/3 already reserved `[start − gap, end + gap]` inside `placeItem`;
+      // a tier-1 placement left `res.free` abutting the block, so the margins that
+      // fall outside every preferred window are taken here.
+      remainingFree = viaPreferred
+        ? subtractIntervals(res.free, windowReservation(p, gapMs, preferredUnion))
+        : res.free;
       const day = consumeWindowContaining(budget, p.start);
       blocks.push({
         id: occurrenceId(habit.id, day, index),

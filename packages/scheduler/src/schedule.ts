@@ -70,6 +70,13 @@ export function schedule(input: ScheduleInput): ScheduleResult {
   // re-confined below — the free envelope no longer does it for them.
   let free = subtractIntervals(input.horizon ? [input.horizon] : input.workingWindows, busy);
   const workingWindows = mergeIntervals(input.workingWindows);
+  // The space in which the block buffer is suspended: EVERY habit's preferred
+  // windows. A habit placed into its own window still pads itself against ordinary
+  // free time, but never against another habit's exactly-sized window — otherwise
+  // whichever of two abutting windows is placed first evicts the other.
+  const habitPreferred = mergeIntervals(
+    input.habits.flatMap((h) => h.preferredWindows ?? []),
+  );
   // Only meaningful with a horizon; without one, free ⊆ workingWindows already.
   const taskBound = input.horizon ? workingWindows : undefined;
 
@@ -119,7 +126,7 @@ export function schedule(input: ScheduleInput): ScheduleResult {
         // Habits may leave the working windows, but only as a fallback: they are
         // offered as the middle tier so a habit whose preference is booked out
         // lands in the user's day rather than at midnight.
-        : scheduleHabit(free, item.habit, gapMs, workingWindows);
+        : scheduleHabit(free, item.habit, gapMs, workingWindows, habitPreferred);
     blocks.push(...res.blocks);
     unscheduled.push(...res.unscheduled);
     free = res.free;
