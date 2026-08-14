@@ -65,6 +65,60 @@ describe('placeItem', () => {
   });
 });
 
+describe('placeItem 5-minute grid alignment', () => {
+  const M = 60_000;
+  const H = 60 * M;
+
+  it('rounds an odd free start up to the next 5-minute mark', () => {
+    const free = [{ start: 5 * H + 7 * M, end: 8 * H }];
+    const res = placeItem(free, [30 * M], 8 * H);
+    expect(res.placements).toEqual([{ start: 5 * H + 10 * M, end: 5 * H + 40 * M }]);
+    // The 3-minute sliver the alignment stepped over stays free (nothing that
+    // small is ever placed, and a buffer would swallow it anyway).
+    expect(res.free).toEqual([
+      { start: 5 * H + 7 * M, end: 5 * H + 10 * M },
+      { start: 5 * H + 40 * M, end: 8 * H },
+    ]);
+  });
+
+  it('leaves an already-aligned start untouched', () => {
+    const free = [{ start: 5 * H + 10 * M, end: 8 * H }];
+    const res = placeItem(free, [30 * M], 8 * H);
+    expect(res.placements).toEqual([{ start: 5 * H + 10 * M, end: 5 * H + 40 * M }]);
+  });
+
+  it('keeps the raw start when alignment would overflow the slot (Evening Routine 23:29–23:59)', () => {
+    const free = [{ start: 23 * H + 29 * M, end: 23 * H + 59 * M }];
+    const res = placeItem(free, [30 * M], 24 * H);
+    expect(res.placements).toEqual([{ start: 23 * H + 29 * M, end: 23 * H + 59 * M }]);
+  });
+
+  it('keeps the raw start when alignment would breach the deadline', () => {
+    const free = [{ start: 5 * H + 7 * M, end: 8 * H }];
+    const res = placeItem(free, [30 * M], 5 * H + 37 * M);
+    expect(res.placements).toEqual([{ start: 5 * H + 7 * M, end: 5 * H + 37 * M }]);
+  });
+
+  it('does not skip an exact-fit slot in favour of a later alignable one', () => {
+    const free = [
+      { start: 23 * H + 29 * M, end: 23 * H + 59 * M },
+      { start: 25 * H + 1 * M, end: 27 * H },
+    ];
+    const res = placeItem(free, [30 * M], 30 * H);
+    expect(res.placements).toEqual([{ start: 23 * H + 29 * M, end: 23 * H + 59 * M }]);
+  });
+
+  it('measures the gap reservation from the aligned start', () => {
+    const G = 15 * M;
+    const free = [{ start: 5 * H + 7 * M, end: 8 * H }];
+    const res = placeItem(free, [30 * M], 8 * H, undefined, G);
+    expect(res.placements).toEqual([{ start: 5 * H + 10 * M, end: 5 * H + 40 * M }]);
+    // Leading margin measured from the ALIGNED start (5:10 − 15m = 4:55), which is
+    // before the slot, so only the trailing margin shows; it starts at 5:40 + 15m.
+    expect(res.free).toEqual([{ start: 5 * H + 55 * M, end: 8 * H }]);
+  });
+});
+
 describe('placeItem gapMs', () => {
   it('reserves the gap after each placement so the next chunk starts gap later', () => {
     const res = placeItem([{ start: 0, end: 100 }], [20, 20], 100, undefined, 10);
