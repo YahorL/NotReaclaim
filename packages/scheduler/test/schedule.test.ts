@@ -378,13 +378,11 @@ describe('blockBufferMs vs habit preferred windows', () => {
     expect(anytime.start - morning.end).toBeGreaterThanOrEqual(G);
   });
 
-  // Characterization of the one hole the union leaves: the padding is skipped over
-  // EVERY habit's preferred window, whether or not that habit actually claims it.
-  // When the neighbour cannot place (here its only eligible day is already spoken
-  // for), its window stays open and the next item may sit flush against Morning.
-  // Narrow and self-inflicted — a declared-but-unused window — so it is recorded
-  // rather than defended against.
-  it('lets a later item abut a window block through an unused neighbouring window', () => {
+  // R23 (was a characterization of the R22 hole): the padding is skipped over EVERY
+  // habit's preferred window at placement time, whether or not that habit actually
+  // claims it. Once the last habit has been processed, the margins nothing claimed
+  // are re-reserved, so the next item can no longer sit flush against Morning.
+  it('re-reserves a margin suspended over a window no habit claimed', () => {
     const cleanup = {
       ...prefHabit('z-cleanup', 15 * M, { start: 11 * H, end: 11 * H + 15 * M }),
       consumedSlotTimes: [12 * H], // its only day is taken → it places nothing
@@ -400,6 +398,75 @@ describe('blockBufferMs vs habit preferred windows', () => {
       blockBufferMs: G,
     });
     expect(res.blocks.filter((b) => b.sourceId === 'z-cleanup')).toEqual([]);
+    expect(res.blocks.find((b) => b.sourceType === 'task')!.start).toBeGreaterThanOrEqual(
+      11 * H + G,
+    );
+  });
+
+  // The live R23 case: CleanUp's window is WIDER than its 15-minute chunk, so the
+  // part of it that CleanUp does not occupy is a declared-but-unclaimed margin.
+  it('re-reserves the margin left inside a habit\'s own wider window', () => {
+    const res = run(
+      [
+        prefHabit('a-morning', H, { start: 10 * H, end: 11 * H }),
+        prefHabit('z-cleanup', 15 * M, { start: 11 * H, end: 12 * H }),
+      ],
+      [{ id: 't', title: 'T', priority: 3, durationMs: H, dueBy: D, minChunkMs: H, maxChunkMs: H }],
+    );
+    expect(res.blocks.find((b) => b.sourceId === 'a-morning')).toMatchObject({
+      start: 10 * H, end: 11 * H,
+    });
+    expect(res.blocks.find((b) => b.sourceId === 'z-cleanup')).toMatchObject({
+      start: 11 * H, end: 11 * H + 15 * M,
+    });
+    expect(res.blocks.find((b) => b.sourceType === 'task')!.start).toBeGreaterThanOrEqual(
+      11 * H + 15 * M + G,
+    );
+  });
+
+  it('re-reserves the unclaimed margin of a sticky in-window kept slot', () => {
+    const res = run(
+      [
+        {
+          ...prefHabit('a-morning', H, { start: 10 * H, end: 12 * H }),
+          existingSlots: [{ start: 10 * H, end: 11 * H }],
+        },
+      ],
+      [{ id: 't', title: 'T', priority: 3, durationMs: H, dueBy: D, minChunkMs: H, maxChunkMs: H }],
+    );
+    expect(res.blocks.find((b) => b.sourceId === 'a-morning')).toMatchObject({
+      start: 10 * H, end: 11 * H,
+    });
+    expect(res.blocks.find((b) => b.sourceType === 'task')!.start).toBeGreaterThanOrEqual(
+      11 * H + G,
+    );
+  });
+
+  it('re-reserves nothing when there are no habits, and leaves tasks alone', () => {
+    const res = run([], [
+      { id: 't', title: 'T', priority: 3, durationMs: H, dueBy: D, minChunkMs: H, maxChunkMs: H },
+    ]);
+    expect(res.blocks).toMatchObject([{ sourceId: 't', start: 10 * H, end: 11 * H }]);
+  });
+
+  // Documented limitation: reconciliation runs after the LAST habit, so a task that
+  // outranks some habit places before it and may still sit flush against an earlier
+  // habit's suspended margin. Unreachable with real data (all habits are priority 0).
+  it('does not protect a task that outranks a habit (known limitation)', () => {
+    const res = schedule({
+      workingWindows: [WORK],
+      horizon: { start: 0, end: D },
+      fixedEvents: [], pinnedBlocks: [],
+      habits: [
+        { ...prefHabit('a-morning', H, { start: 10 * H, end: 11 * H }), priority: 0 },
+        { ...prefHabit('z-cleanup', 15 * M, { start: 11 * H, end: 12 * H }), priority: 2 },
+      ],
+      tasks: [
+        { id: 't', title: 'T', priority: 1, durationMs: 15 * M, dueBy: D, minChunkMs: 15 * M, maxChunkMs: 15 * M },
+      ],
+      blockBufferMs: G,
+    });
+    // Placed between the two habits → flush against Morning's suspended margin.
     expect(res.blocks.find((b) => b.sourceType === 'task')).toMatchObject({ start: 11 * H });
   });
 

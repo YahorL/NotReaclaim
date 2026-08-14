@@ -632,6 +632,33 @@ describe('scheduleHabit: the block buffer does not apply inside a preferred wind
     ]);
   });
 
+  it('reports the margin it suspended over a neighbouring window', () => {
+    const res = scheduleHabit([{ start: 0, end: D }], dayHabit({
+      preferredWindows: [{ start: 10 * H, end: 11 * H }],
+    }), G, WORK, [
+      { start: 10 * H, end: 11 * H },
+      { start: 11 * H, end: 11 * H + 15 * M },
+    ]);
+    // The trailing pad was left free because it falls inside the union; the caller
+    // needs it back if no habit ends up claiming that window (R23).
+    expect(res.suspendedMargins).toEqual([{ start: 11 * H, end: 11 * H + 15 * M }]);
+  });
+
+  it('reports no suspended margin for a tier-2 fallback (full reservation)', () => {
+    const res = scheduleHabit([{ start: 0, end: D }], dayHabit({
+      preferredWindows: [{ start: 22 * H, end: 22 * H + M }],
+    }), G, WORK, [{ start: 22 * H, end: 22 * H + M }]);
+    expect(res.blocks[0]).toMatchObject({ start: 10 * H, end: 11 * H });
+    expect(res.suspendedMargins).toEqual([]);
+  });
+
+  it('reports no suspended margin when no union is supplied', () => {
+    const res = scheduleHabit([{ start: 0, end: D }], dayHabit({
+      preferredWindows: [{ start: 10 * H, end: 11 * H }],
+    }), G, WORK);
+    expect(res.suspendedMargins).toEqual([]);
+  });
+
   it('reserves exactly (no padding) when no union is supplied — direct engine callers', () => {
     const res = scheduleHabit([{ start: 0, end: D }], dayHabit({
       preferredWindows: [{ start: 10 * H, end: 11 * H }],
@@ -698,6 +725,8 @@ describe('scheduleHabit sticky slots and the block buffer', () => {
       { start: 0, end: 13 * H - G },
       { start: 14 * H, end: 7 * D },
     ]);
+    // …and is reported so the caller can re-reserve it if nothing claims it (R23).
+    expect(res.suspendedMargins).toEqual([{ start: 14 * H, end: 14 * H + G }]);
   });
 
   it('keeps the ± gap around a kept slot of a habit with no preference (unchanged)', () => {
@@ -762,6 +791,13 @@ describe('scheduleHabit with periodTargets (per-period counts)', () => {
     const free = [{ start: 0, end: 1000 }];
     const result = scheduleHabit(free, habit({ perPeriod: 2, periods: [{ start: 0, end: 1000 }] }));
     expect(result.blocks).toHaveLength(2);
+  });
+});
+
+describe('scheduleTask suspendedMargins', () => {
+  it('is always empty — tasks reserve their full padding', () => {
+    const res = scheduleTask([{ start: 0, end: 100 }], task(), 10);
+    expect(res.suspendedMargins).toEqual([]);
   });
 });
 

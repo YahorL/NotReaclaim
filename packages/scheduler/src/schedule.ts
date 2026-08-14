@@ -119,7 +119,32 @@ export function schedule(input: ScheduleInput): ScheduleResult {
   const blocks: ScheduledBlock[] = [...input.pinnedBlocks];
   const unscheduled: UnscheduledItem[] = [];
 
-  for (const item of work) {
+  // Claim-aware second phase (R23). A habit placed inside a preferred window skips
+  // its buffer over the DECLARED union above, because at that point we cannot know
+  // which parts of it other habits will really claim. Declared ≠ claimed: a habit's
+  // own window wider than its chunk, or a daily window on a day the habit does not
+  // run, leaves margin that nothing occupies — and the next item lands flush against
+  // the block (Research at 11:15 against CleanUp 11:00–11:15).
+  //
+  // So the suspended margins are collected and, once the LAST habit has been
+  // processed, whatever no habit block covers is reserved after all. Margins a
+  // neighbouring habit did claim re-reserve nothing, which is exactly what keeps
+  // abutting exact windows working in either placement order.
+  //
+  // Known limitation, deliberately not solved: a task that sorts BEFORE some habit
+  // places pre-reconciliation and may still sit flush against an earlier habit's
+  // suspended margin. Unreachable with real data — every habit is priority 0, so
+  // every task is processed after the last habit.
+  const lastHabitIndex = work.reduce((last, item, i) => (item.kind === 'habit' ? i : last), -1);
+  const suspendedMargins: Interval[] = [];
+  // Every habit block that exists this run: placed or kept below, plus the pinned
+  // ones (settled outside the engine, never re-emitted by `scheduleHabit`).
+  const habitBlockSpans: Interval[] = input.pinnedBlocks
+    .filter((b) => b.sourceType === 'habit')
+    .map((b) => ({ start: b.start, end: b.end }));
+
+  for (let i = 0; i < work.length; i++) {
+    const item = work[i]!;
     const res =
       item.kind === 'task'
         ? scheduleTask(free, confineTask(item.task, taskBound), gapMs)
@@ -130,6 +155,18 @@ export function schedule(input: ScheduleInput): ScheduleResult {
     blocks.push(...res.blocks);
     unscheduled.push(...res.unscheduled);
     free = res.free;
+
+    if (item.kind === 'habit') {
+      suspendedMargins.push(...res.suspendedMargins);
+      for (const b of res.blocks) habitBlockSpans.push({ start: b.start, end: b.end });
+    }
+    // No habits at all, or none that suspended anything → nothing to reconcile.
+    if (i === lastHabitIndex && suspendedMargins.length > 0) {
+      free = subtractIntervals(
+        free,
+        subtractIntervals(mergeIntervals(suspendedMargins), habitBlockSpans),
+      );
+    }
   }
 
   blocks.sort((a, b) => a.start - b.start || a.id.localeCompare(b.id));

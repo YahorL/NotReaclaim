@@ -12,6 +12,13 @@ export interface ScheduleItemResult {
   blocks: ScheduledBlock[];
   free: Interval[];
   unscheduled: UnscheduledItem[];
+  /**
+   * Margin that a placement did NOT reserve because it fell inside the supplied
+   * preferred-window union (see `windowReservation`). Always empty for tasks and
+   * for placements that reserve their full padding. `schedule()` re-reserves the
+   * parts of it no habit ends up occupying — see its reconciliation step.
+   */
+  suspendedMargins: Interval[];
 }
 
 /** Split a task into chunks and place them before its due date. */
@@ -42,7 +49,7 @@ export function scheduleTask(free: Interval[], task: FlexibleTask, gapMs = 0): S
         ]
       : [];
 
-  return { blocks, free: result.free, unscheduled };
+  return { blocks, free: result.free, unscheduled, suspendedMargins: [] };
 }
 
 /**
@@ -172,15 +179,22 @@ function placeOccurrence(
  *
  * Without a union — direct engine callers, which have no view of the other habits —
  * the reservation stays exactly `[start, end]`.
+ *
+ * The `suspended` remainder (`padded − reservation`) is the margin given up to the
+ * union. Declared ≠ claimed, so `schedule()` collects it and hands back whatever no
+ * habit actually occupies (R23) — see the reconciliation step there.
  */
 function windowReservation(
   span: Interval,
   gapMs: number,
   preferredUnion: Interval[] | undefined,
-): Interval[] {
-  if (gapMs <= 0 || !preferredUnion || preferredUnion.length === 0) return [span];
+): { reservation: Interval[]; suspended: Interval[] } {
+  if (gapMs <= 0 || !preferredUnion || preferredUnion.length === 0) {
+    return { reservation: [span], suspended: [] };
+  }
   const padded = [{ start: span.start - gapMs, end: span.end + gapMs }];
-  return mergeIntervals([span, ...subtractIntervals(padded, preferredUnion)]);
+  const reservation = mergeIntervals([span, ...subtractIntervals(padded, preferredUnion)]);
+  return { reservation, suspended: subtractIntervals(padded, reservation) };
 }
 
 export function scheduleHabit(
@@ -193,6 +207,7 @@ export function scheduleHabit(
 ): ScheduleItemResult {
   let remainingFree = free;
   const blocks: ScheduledBlock[] = [];
+  const suspendedMargins: Interval[] = [];
   let missed = 0;
   let index = 0;
 
@@ -247,12 +262,15 @@ export function scheduleHabit(
       // happened: it passed `insidePreferred` above, so it lies inside a preferred
       // window and reserves like one. Habits with no preference keep the ordinary
       // two-sided reservation.
-      remainingFree = subtractIntervals(
-        remainingFree,
-        preferredBounds
-          ? windowReservation(slot, gapMs, preferredUnion)
-          : [{ start: slot.start - gapMs, end: slot.end + gapMs }],
-      );
+      if (preferredBounds) {
+        const kept = windowReservation(slot, gapMs, preferredUnion);
+        remainingFree = subtractIntervals(remainingFree, kept.reservation);
+        suspendedMargins.push(...kept.suspended);
+      } else {
+        remainingFree = subtractIntervals(remainingFree, [
+          { start: slot.start - gapMs, end: slot.end + gapMs },
+        ]);
+      }
       const day = consumeWindowContaining(budget, slot.start);
       blocks.push({
         id: occurrenceId(habit.id, day, index),
@@ -288,9 +306,13 @@ export function scheduleHabit(
       // Tiers 2/3 already reserved `[start − gap, end + gap]` inside `placeItem`;
       // a tier-1 placement left `res.free` abutting the block, so the margins that
       // fall outside every preferred window are taken here.
-      remainingFree = viaPreferred
-        ? subtractIntervals(res.free, windowReservation(p, gapMs, preferredUnion))
-        : res.free;
+      if (viaPreferred) {
+        const placedRes = windowReservation(p, gapMs, preferredUnion);
+        remainingFree = subtractIntervals(res.free, placedRes.reservation);
+        suspendedMargins.push(...placedRes.suspended);
+      } else {
+        remainingFree = res.free;
+      }
       const day = consumeWindowContaining(budget, p.start);
       blocks.push({
         id: occurrenceId(habit.id, day, index),
@@ -317,5 +339,5 @@ export function scheduleHabit(
         ]
       : [];
 
-  return { blocks, free: remainingFree, unscheduled };
+  return { blocks, free: remainingFree, unscheduled, suspendedMargins };
 }
