@@ -6,7 +6,7 @@ const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export interface HabitRowProps {
   habit: Habit;
-  /** Occurrences the engine could not place this week (0 = everything fits). */
+  /** Occurrences the engine could not place across the planning horizon (0 = everything fits). */
   unscheduledCount?: number;
   onEdit: (habit: Habit) => void;
   onToggleStatus: (habit: Habit) => void;
@@ -31,7 +31,9 @@ export function HabitRow({ habit, unscheduledCount = 0, onEdit, onToggleStatus, 
           {unscheduledCount > 0 && (
             <span
               data-testid="habit-at-risk"
-              title={`${unscheduledCount} ${unscheduledCount === 1 ? 'occurrence' : 'occurrences'} couldn't be scheduled this week`}
+              // The preview spans the whole horizon (settings.horizonDays), which is several
+              // partial weeks — so the copy names the horizon rather than a day count.
+              title={`${unscheduledCount} ${unscheduledCount === 1 ? 'occurrence' : 'occurrences'} couldn't be scheduled in the planning horizon`}
               className="shrink-0 rounded-full bg-amber-100 px-1.5 text-[10px] font-bold text-amber-700"
             >
               ⚠

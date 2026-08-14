@@ -33,6 +33,9 @@ export function missedByHabit(
  * tasks as leftover work time, habits as a missed-occurrence count. Titles come from the
  * live tasks/habits queries (so a rename shows through), falling back to the title the
  * engine snapshotted and finally to "(deleted)" — an unknown id must never crash the banner.
+ *
+ * `habits === undefined` means the habits query has not resolved yet: habit rows are held back
+ * until then, because without the chunk map every habit would briefly read "1 missed".
  */
 export function summarizeUnscheduled(
   items: UnscheduledItem[] | undefined,
@@ -48,6 +51,7 @@ export function summarizeUnscheduled(
   const titleByKey = new Map<string, string>();
 
   for (const it of items ?? []) {
+    if (it.sourceType === 'habit' && habits === undefined) continue;
     const key = `${it.sourceType}:${it.sourceId}`;
     if (!titleByKey.has(key)) {
       order.push(key);

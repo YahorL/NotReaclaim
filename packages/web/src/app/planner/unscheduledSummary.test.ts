@@ -70,6 +70,16 @@ describe('summarizeUnscheduled', () => {
     expect(entries[0]!.label).toBe('(deleted) (1h left)');
   });
 
+  it('omits habit entries until the habits query has loaded, so no "1 missed" flashes', () => {
+    const items = [
+      item({ sourceType: 'habit', sourceId: 'h1', title: 'Run', remainingMs: 3_600_000 }),
+      item({ remainingMs: 3_600_000 }),
+    ];
+    expect(summarizeUnscheduled(items, [task()], undefined).map((e) => e.key)).toEqual(['task:t1']);
+    expect(summarizeUnscheduled(items, [task()], [habit()]).map((e) => e.label))
+      .toEqual(['Run (2 missed)', 'Write spec (1h left)']);
+  });
+
   it('keeps first-seen order and returns [] for empty input', () => {
     const entries = summarizeUnscheduled(
       [

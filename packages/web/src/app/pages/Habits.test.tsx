@@ -53,7 +53,7 @@ describe('Habits page', () => {
     });
     renderWithProviders(<Habits />, { api });
     const chip = await screen.findByTestId('habit-at-risk');
-    expect(chip).toHaveAttribute('title', "2 occurrences couldn't be scheduled this week"); // 1h / 30m chunk
+    expect(chip).toHaveAttribute('title', "2 occurrences couldn't be scheduled in the planning horizon"); // 1h / 30m chunk
   });
 
   it('shows no chip when every occurrence fits', async () => {

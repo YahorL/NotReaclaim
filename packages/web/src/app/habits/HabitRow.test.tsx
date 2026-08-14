@@ -43,12 +43,12 @@ describe('HabitRow', () => {
     expect(screen.queryByTestId('habit-at-risk')).toBeNull();
     setup({}, 3);
     const chip = screen.getByTestId('habit-at-risk');
-    expect(chip).toHaveAttribute('title', "3 occurrences couldn't be scheduled this week");
+    expect(chip).toHaveAttribute('title', "3 occurrences couldn't be scheduled in the planning horizon");
   });
 
   it('says "occurrence" for a single miss', () => {
     setup({}, 1);
-    expect(screen.getByTestId('habit-at-risk')).toHaveAttribute('title', "1 occurrence couldn't be scheduled this week");
+    expect(screen.getByTestId('habit-at-risk')).toHaveAttribute('title', "1 occurrence couldn't be scheduled in the planning horizon");
   });
 
   it('delete requires inline confirm', () => {

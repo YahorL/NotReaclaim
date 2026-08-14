@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { Habit } from '../../api/types';
 import { ApiError } from '../../api/client';
 import { useHabitsQuery, useCreateHabitMutation, useUpdateHabitMutation, useDeleteHabitMutation, useSchedulePreviewQuery } from '../../api/queries';
@@ -19,7 +19,10 @@ export function Habits() {
   // Same preview the planner banner reads (shared query key, no extra endpoint): habits whose
   // occurrences the engine could not place get the ⚠ chip.
   const previewQ = useSchedulePreviewQuery();
-  const missed = missedByHabit(previewQ.data?.unscheduled, habits);
+  const missed = useMemo(
+    () => missedByHabit(previewQ.data?.unscheduled, habitsQ.data),
+    [previewQ.data, habitsQ.data],
+  );
 
   return (
     <div className="p-4">
