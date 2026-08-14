@@ -127,14 +127,22 @@ export function schedule(input: ScheduleInput): ScheduleResult {
   // the block (Research at 11:15 against CleanUp 11:00–11:15).
   //
   // So the suspended margins are collected and, once the LAST habit has been
-  // processed, whatever no habit block covers is reserved after all. Margins a
-  // neighbouring habit did claim re-reserve nothing, which is exactly what keeps
-  // abutting exact windows working in either placement order.
+  // processed, reserved after all. Abutting exact windows keep working in either
+  // placement order purely because reconciliation runs STRICTLY AFTER every habit
+  // has placed: no habit ever sees a re-reserved margin. The `habitBlockSpans`
+  // subtraction below is inert — every habit block is already out of `free` by
+  // then — and is kept as defensive, documentary code: it states that a margin a
+  // habit really claimed is never handed back.
   //
   // Known limitation, deliberately not solved: a task that sorts BEFORE some habit
   // places pre-reconciliation and may still sit flush against an earlier habit's
   // suspended margin. Unreachable with real data — every habit is priority 0, so
   // every task is processed after the last habit.
+  //
+  // Informational, unchanged from R22 and deliberate: this protects TASKS only. A
+  // later-placed habit can still land flush inside an earlier habit's suspended
+  // margin — that is the whole point of suspending it — and its own ± gap
+  // reservation then protects the tasks that follow it.
   const lastHabitIndex = work.reduce((last, item, i) => (item.kind === 'habit' ? i : last), -1);
   const suspendedMargins: Interval[] = [];
   // Every habit block that exists this run: placed or kept below, plus the pinned
