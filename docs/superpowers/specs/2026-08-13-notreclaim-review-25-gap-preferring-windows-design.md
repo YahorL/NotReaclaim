@@ -1,39 +1,54 @@
-# NotReclaim Review 25 — gap-preferring placement inside habit windows
+# NotReclaim Review 25 (REVISED) — universal buffers + tightest-window-first habit ordering
 
-**Date:** 2026-08-13 · **Status:** approved (user: "why not all tasks have gaps of 10 minutes around them?")
+**Date:** 2026-08-13 · **Status:** approved (user chose "Buffer everything" over windows-override-buffer; this REPLACES the earlier draft of this spec — the two-attempt gap-preferring design is abandoned)
 
-## Problem
-R22 places a habit at its preferred window's earliest free instant with zero gap, so a window
-that merely *starts* where another block ends (CleanUp window from 11:00, Morning ends 11:00)
-produces flush contact even when the window is wide enough to afford the gap (chunk 15m in a
-60m window could start 11:10). The user's mental model: gaps everywhere they physically fit;
-windows override the gap only when they must.
+## Rule
+One buffer rule everywhere: every auto-placed block (task chunk, habit occurrence, kept sticky
+slot) fits and reserves `[start − gapMs, end + gapMs]`. No window exemption, no suspension, no
+reconciliation. Windows only constrain WHERE a habit may go; they never disable the gap.
 
-## Change (engine, tier-1 placement + sticky unchanged)
-Tier-1 becomes two attempts:
-1. **Gap-respecting attempt:** place the chunk inside `preferred ∩ bound` on a free timeline
-   that EXCLUDES the accumulated suspended margins (this run's pending `suspendedMargins`,
-   threaded from `schedule()` into `scheduleHabit`, plus the habit's own margins accumulated so
-   far) — i.e. the space a normal ±gap reservation would have covered. Placement itself still
-   uses `gapMs = 0` fit semantics and the R22/R23 `windowReservation` reservation.
-2. **Fallback (current behavior):** if attempt 1 finds no room, place on the full free timeline
-   exactly as today (flush allowed — exact-size windows keep working).
+## What makes it correct: ordering
+Exact-size windows survive universal buffers only if tight-window habits claim their spots
+before anyone's reservation encroaches. Replace the R21 `claim` comparator term with a graded
+key at equal priority+order:
+- habits WITH preferredWindows: `slack = max(0, min(window length across its preferred
+  windows) − chunkMs)` — ascending (slack 0 = exactly-sized window places first);
+- habits WITHOUT preferredWindows: after all with-window habits;
+- tasks: last (R21 decision, unchanged — provably placement-inert vs habits).
+Deterministic tiebreaks preserved (`tie`, then id).
 
-Result: CleanUp in a wide 11:00+ window lands 11:10 (gap after Morning); Evening Routine's
-exact 23:29–23:59 window still lands 23:29; two exactly-abutting exact windows still abut.
-Tasks and tiers 2/3 are untouched (they already respect margins post-R23 reconciliation; note
-tier-2/3 placements occur on the pre-reconciliation timeline — unchanged behavior, out of
-scope).
+## What gets DELETED (net simplification)
+- R22 `windowReservation` + `preferredUnion` threading and zero-gap tier-1 fit/reservation.
+- R23 `suspendedMargins` + the post-last-habit reconciliation in `schedule()`.
+- The R25-draft two-attempt logic (never merged).
+Tier-1/2/3 all become plain `placeItem(..., gapMs)` calls, differing only in candidate
+windows. Sticky kept slots reserve ± gap uniformly (the inside-preferred special case goes).
 
-## Threading
-`schedule()` already accumulates `suspendedMargins` across habits (R23); pass the accumulated
-list into each `scheduleHabit` call (new optional param; undefined → attempt 1 uses just the
-habit's own accumulated margins, preserving direct-call test behavior).
+## Unchanged
+Once-per-day cap, day-keyed ids, consumedSlotTimes/frozen begun blocks, sticky validity rules
+(chunk-length, day-free, inside-preferred-when-set, fits free∩bound), pinned ± gap busy
+padding, meetingBufferMs, R24 5-min alignment, task confinement to working hours.
+
+## Accepted consequences (user-confirmed)
+- Two exactly-sized ABUTTING windows can no longer both be honored: the tighter/earlier-sorted
+  one wins its window; the other relocates with full gap (falls back per tiers).
+- A wide-window habit starts `gap` after a neighboring block inside its window (CleanUp
+  [11:00–22:00] after Morning ending 11:00 → 11:10) — this is the user's headline case.
+- placeItem's FIT never consults gapMs (unchanged), so an exact window whose interior is
+  untouched still fits exactly — e.g. Morning [10:00–11:00] with working hours starting 10:00
+  → placed 10:00–11:00; its reservation pads outward only.
+
+## Expected live layout (acceptance)
+Working hours 10:00–17:00 (habits roam), gap 10m: Morning [10:00,11:00] (slack 0, first);
+CleanUp (slack ~10.75h) → [11:10,11:25]; Evening [23:29,23:59] (slack 0) unaffected; first
+task ≥ 11:35. R22's "both abutting exact windows place" centerpiece REVERSES: the later-sorted
+one now relocates — flip that test with a comment referencing this spec.
 
 ## Tests
-Live case: Morning 1h@[10,11] + CleanUp 15m window [11:00,12:00], gap 10m → Morning [10,11],
-CleanUp [11:10,11:25] (red-first: currently 11:00), in both placement orders. Exact window
-regression: CleanUp window [11:00,11:15] → 11:00 flush (fallback). Evening 23:29 regression
-stays green. Attempt-1 must also respect margins of the SAME habit's earlier occurrence (two
-occurrences same week, adjacent days unaffected; same-day impossible via cap). 5-min alignment
-(R24) composes: gap-respecting start also aligns.
+Ordering: slack-0 habit places before wide-window habit before no-window habit before task
+(equal priority); deterministic on slack ties. Placement: the acceptance layout above red-first
+(CleanUp currently 11:00 → expect 11:10); exact window fits when interior free; exact window
+falls back when a pinned block's padding intrudes (pre-existing behavior, now pinned by test);
+Evening 23:29 regression; abutting-windows reversal (flipped R22 centerpiece); sticky
+kept-slot ± gap reservation uniform; R24 alignment composes (11:10 already aligned). Deletion
+hygiene: no reference to windowReservation/suspendedMargins/preferredUnion remains (grep).
