@@ -9,9 +9,12 @@ const habit = (over: Partial<Habit> = {}): Habit => ({
   status: 'active', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', ...over,
 });
 
-function setup(over: Partial<Habit> = {}) {
+function setup(over: Partial<Habit> = {}, unscheduledCount = 0) {
   const onEdit = vi.fn(); const onToggleStatus = vi.fn(); const onDelete = vi.fn();
-  render(<HabitRow habit={habit(over)} onEdit={onEdit} onToggleStatus={onToggleStatus} onDelete={onDelete} />);
+  render(
+    <HabitRow habit={habit(over)} unscheduledCount={unscheduledCount}
+      onEdit={onEdit} onToggleStatus={onToggleStatus} onDelete={onDelete} />,
+  );
   return { onEdit, onToggleStatus, onDelete };
 }
 
@@ -33,6 +36,19 @@ describe('HabitRow', () => {
   it('shows resume for a paused habit', () => {
     setup({ status: 'paused' });
     expect(screen.getByRole('button', { name: /resume/i })).toBeInTheDocument();
+  });
+
+  it('shows an at-risk chip only when occurrences went unscheduled', () => {
+    setup();
+    expect(screen.queryByTestId('habit-at-risk')).toBeNull();
+    setup({}, 3);
+    const chip = screen.getByTestId('habit-at-risk');
+    expect(chip).toHaveAttribute('title', "3 occurrences couldn't be scheduled in the planning horizon");
+  });
+
+  it('says "occurrence" for a single miss', () => {
+    setup({}, 1);
+    expect(screen.getByTestId('habit-at-risk')).toHaveAttribute('title', "1 occurrence couldn't be scheduled in the planning horizon");
   });
 
   it('delete requires inline confirm', () => {

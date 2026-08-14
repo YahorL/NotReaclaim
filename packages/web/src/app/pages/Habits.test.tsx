@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
-import type { Habit } from '../../api/types';
+import type { Habit, SchedulePreview } from '../../api/types';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 import { Habits } from './Habits';
 
@@ -16,6 +16,7 @@ function makeApi(over = {}) {
     createHabit: vi.fn(async () => habit({ id: 'h9' })),
     updateHabit: vi.fn(async () => habit()),
     deleteHabit: vi.fn(async () => undefined),
+    getSchedulePreview: vi.fn(async (): Promise<SchedulePreview> => ({ blocks: [], unscheduled: [] })),
     ...over,
   } as never);
 }
@@ -41,6 +42,24 @@ describe('Habits page', () => {
     await waitFor(() => expect(screen.getByText('Run')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /pause/i }));
     await waitFor(() => expect(updateHabit).toHaveBeenCalledWith('h1', { status: 'paused' }));
+  });
+
+  it('flags a habit whose occurrences could not be scheduled', async () => {
+    const api = makeApi({
+      getSchedulePreview: vi.fn(async (): Promise<SchedulePreview> => ({
+        blocks: [],
+        unscheduled: [{ sourceType: 'habit', sourceId: 'h1', title: 'Run', reason: 'could not place all habit occurrences in free time', remainingMs: 3_600_000 }],
+      })),
+    });
+    renderWithProviders(<Habits />, { api });
+    const chip = await screen.findByTestId('habit-at-risk');
+    expect(chip).toHaveAttribute('title', "2 occurrences couldn't be scheduled in the planning horizon"); // 1h / 30m chunk
+  });
+
+  it('shows no chip when every occurrence fits', async () => {
+    renderWithProviders(<Habits />, { api: makeApi() });
+    await waitFor(() => expect(screen.getByText('Run')).toBeInTheDocument());
+    expect(screen.queryByTestId('habit-at-risk')).toBeNull();
   });
 
   it('delete confirm calls deleteHabit', async () => {

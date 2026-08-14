@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
-import type { ScheduledBlock, CalendarEvent, SchedulePreview, Task, Category } from '../../api/types';
+import type { ScheduledBlock, CalendarEvent, SchedulePreview, Task, Category, Habit } from '../../api/types';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 import { Planner } from './Planner';
 
@@ -30,6 +30,7 @@ function makeApi(over = {}) {
     updateScheduledBlock: vi.fn(async () => blocks[0]!),
     listTasks: vi.fn(async () => [] as Task[]),
     listCategories: vi.fn(async () => [] as Category[]),
+    listHabits: vi.fn(async () => [] as Habit[]),
     ...over,
   } as never);
 }
@@ -185,6 +186,36 @@ describe('Planner', () => {
     expect(screen.getByTestId('hour-gutter').textContent!.startsWith('3a')).toBe(true);
   });
 
+  it('warns above the grid about what could not be scheduled, naming tasks and habits', async () => {
+    const habit: Habit = {
+      id: 'h1', userId: 'u1', title: 'Run', priority: 2, chunkMs: 1_800_000, perPeriod: 4,
+      periodType: 'week', preferredStartMinute: null, preferredEndMinute: null, eligibleDays: [1, 3, 5],
+      status: 'active', createdAt: '', updatedAt: '',
+    };
+    const api = makeApi({
+      listHabits: vi.fn(async () => [habit]),
+      getSchedulePreview: vi.fn(async (): Promise<SchedulePreview> => ({
+        blocks: [],
+        unscheduled: [
+          { sourceType: 'task', sourceId: 't9', title: 'Tax filing', reason: 'no free time before due', remainingMs: 3_600_000 },
+          { sourceType: 'habit', sourceId: 'h1', title: 'Run', reason: 'could not place all habit occurrences in free time', remainingMs: 3_600_000 },
+        ],
+      })),
+    });
+    renderWithProviders(<Planner now={() => NOW} />, { api });
+    const banner = await screen.findByTestId('unscheduled-warning');
+    expect(banner).toHaveTextContent("Couldn't schedule everything:");
+    expect(banner).toHaveTextContent('Tax filing (1h left)');
+    expect(banner).toHaveTextContent('Run (2 missed)'); // 1h remaining / 30m chunk
+  });
+
+  it('shows no warning when the preview schedules everything', async () => {
+    const api = makeApi({ getSchedulePreview: vi.fn(async (): Promise<SchedulePreview> => ({ blocks: [], unscheduled: [] })) });
+    renderWithProviders(<Planner now={() => NOW} />, { api });
+    await waitFor(() => expect(screen.getByText('Write spec')).toBeInTheDocument());
+    expect(screen.queryByTestId('unscheduled-warning')).toBeNull();
+  });
+
   it('task block is tinted when its category has a color', async () => {
     // blocks[0] has taskId:'t1'; task has categoryId:'cat-1'; category has color:'#5b62e3'
     const task: Task = {
@@ -201,6 +232,7 @@ describe('Planner', () => {
       updateScheduledBlock: vi.fn(async () => blocks[0]!),
       listTasks: vi.fn(async () => [task]),
       listCategories: vi.fn(async () => [category]),
+      listHabits: vi.fn(async () => [] as Habit[]),
     } as never);
     renderWithProviders(<Planner now={() => NOW} />, { api });
     // 'Write spec' now also shows in the task panel, so wait on the block instead of getByText

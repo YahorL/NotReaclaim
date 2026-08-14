@@ -6,6 +6,8 @@ const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export interface HabitRowProps {
   habit: Habit;
+  /** Occurrences the engine could not place across the planning horizon (0 = everything fits). */
+  unscheduledCount?: number;
   onEdit: (habit: Habit) => void;
   onToggleStatus: (habit: Habit) => void;
   onDelete: (habit: Habit) => void;
@@ -14,7 +16,7 @@ export interface HabitRowProps {
 // Pill button matching the app's design system (drawers/popovers).
 const pill = 'rounded-full border border-line px-3 py-1 text-[13px] font-semibold text-inkSoft transition-colors hover:bg-bg hover:text-ink';
 
-export function HabitRow({ habit, onEdit, onToggleStatus, onDelete }: HabitRowProps) {
+export function HabitRow({ habit, unscheduledCount = 0, onEdit, onToggleStatus, onDelete }: HabitRowProps) {
   const [confirming, setConfirming] = useState(false);
   const paused = habit.status === 'paused';
   const days = [...habit.eligibleDays].sort((a, b) => a - b).map((d) => DAY_LABELS[d]).join(' ');
@@ -24,7 +26,20 @@ export function HabitRow({ habit, onEdit, onToggleStatus, onDelete }: HabitRowPr
       className={`mb-1.5 flex items-center gap-3 rounded-[12px] border border-line bg-card px-3.5 py-2.5 shadow-card ${paused ? 'opacity-60' : ''}`}
     >
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[15px] font-bold text-ink">{habit.title}</div>
+        <div className="flex items-center gap-1.5">
+          <span className="truncate text-[15px] font-bold text-ink">{habit.title}</span>
+          {unscheduledCount > 0 && (
+            <span
+              data-testid="habit-at-risk"
+              // The preview spans the whole horizon (settings.horizonDays), which is several
+              // partial weeks — so the copy names the horizon rather than a day count.
+              title={`${unscheduledCount} ${unscheduledCount === 1 ? 'occurrence' : 'occurrences'} couldn't be scheduled in the planning horizon`}
+              className="shrink-0 rounded-full bg-amber-100 px-1.5 text-[10px] font-bold text-amber-700"
+            >
+              ⚠
+            </span>
+          )}
+        </div>
         <div className="mt-0.5 text-[12.5px] text-inkSoft">{formatDurationShort(habit.chunkMs)} × {habit.perPeriod}/week · {days}</div>
       </div>
       {confirming ? (
