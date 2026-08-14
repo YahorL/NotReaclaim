@@ -1,0 +1,37 @@
+import { describe, it, expect } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { UnscheduledWarning } from './UnscheduledWarning';
+
+const entry = (key: string, label: string) => ({ key, label });
+
+describe('UnscheduledWarning', () => {
+  it('renders nothing when everything fits', () => {
+    const { container } = render(<UnscheduledWarning entries={[]} />);
+    expect(screen.queryByTestId('unscheduled-warning')).toBeNull();
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('renders the entries in an amber banner', () => {
+    render(<UnscheduledWarning entries={[entry('task:t1', 'Tax filing (1h left)'), entry('habit:h1', 'Run (2 missed)')]} />);
+    const banner = screen.getByTestId('unscheduled-warning');
+    expect(banner).toHaveTextContent("Couldn't schedule everything:");
+    expect(banner.className).toContain('amber');
+    expect(screen.getByText('Tax filing (1h left)')).toBeInTheDocument();
+    expect(screen.getByText('Run (2 missed)')).toBeInTheDocument();
+  });
+
+  it('shows at most three entries and folds the rest into +N more', () => {
+    render(
+      <UnscheduledWarning
+        entries={[
+          entry('a', 'A (1h left)'), entry('b', 'B (1h left)'), entry('c', 'C (1h left)'),
+          entry('d', 'D (1h left)'), entry('e', 'E (2 missed)'),
+        ]}
+      />,
+    );
+    expect(screen.getByText('C (1h left)')).toBeInTheDocument();
+    expect(screen.queryByText('D (1h left)')).toBeNull();
+    const more = screen.getByText('+2 more');
+    expect(more).toHaveAttribute('title', 'D (1h left), E (2 missed)');
+  });
+});

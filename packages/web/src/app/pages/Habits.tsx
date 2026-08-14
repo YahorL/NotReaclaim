@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import type { Habit } from '../../api/types';
 import { ApiError } from '../../api/client';
-import { useHabitsQuery, useCreateHabitMutation, useUpdateHabitMutation, useDeleteHabitMutation } from '../../api/queries';
+import { useHabitsQuery, useCreateHabitMutation, useUpdateHabitMutation, useDeleteHabitMutation, useSchedulePreviewQuery } from '../../api/queries';
+import { missedByHabit } from '../planner/unscheduledSummary';
 import { QuickAdd } from '../components/QuickAdd';
 import { HabitRow } from '../habits/HabitRow';
 import { HabitDrawer } from '../habits/HabitDrawer';
@@ -15,6 +16,10 @@ export function Habits() {
   const [editing, setEditing] = useState<Habit | null>(null);
 
   const habits = habitsQ.data ?? [];
+  // Same preview the planner banner reads (shared query key, no extra endpoint): habits whose
+  // occurrences the engine could not place get the ⚠ chip.
+  const previewQ = useSchedulePreviewQuery();
+  const missed = missedByHabit(previewQ.data?.unscheduled, habits);
 
   return (
     <div className="p-4">
@@ -33,7 +38,7 @@ export function Habits() {
         )}
         <div>
           {habits.map((h) => (
-            <HabitRow key={h.id} habit={h}
+            <HabitRow key={h.id} habit={h} unscheduledCount={missed.get(h.id) ?? 0}
               onEdit={setEditing}
               onToggleStatus={(habit) => updateM.mutate({ id: habit.id, patch: { status: habit.status === 'active' ? 'paused' : 'active' } })}
               onDelete={(habit) => deleteM.mutate(habit.id)} />

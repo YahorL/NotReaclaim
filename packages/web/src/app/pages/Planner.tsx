@@ -1,11 +1,13 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import type { CalendarEvent, Task } from '../../api/types';
 import { ApiError } from '../../api/client';
-import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation, useSettingsQuery } from '../../api/queries';
+import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useHabitsQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation, useSettingsQuery } from '../../api/queries';
 import { dayColumns, daysThatFit, shiftDays, dayAnchor, clampToWindow, MS_PER_DAY, WINDOW_START_MIN, WINDOW_END_MIN } from '../planner/weekModel';
 import { useElementWidth } from '../planner/useElementWidth';
 import { WeekGrid } from '../planner/WeekGrid';
 import { PlannerTaskPanel } from '../planner/PlannerTaskPanel';
+import { UnscheduledWarning } from '../planner/UnscheduledWarning';
+import { summarizeUnscheduled } from '../planner/unscheduledSummary';
 import { TaskDrawer } from '../tasks/TaskDrawer';
 import { EventDrawer } from '../planner/EventDrawer';
 import { labelBlocksWithSubtasks } from '../planner/blockLabels';
@@ -49,6 +51,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const calendar = useCalendarEventsQuery(fromIso, toIso);
   const preview = useSchedulePreviewQuery();
   const tasksQ = useTasksQuery();
+  const habitsQ = useHabitsQuery();
   const categoriesQ = useCategoriesQuery();
   const replan = useReplanMutation();
   const updateBlock = useUpdateScheduledBlockMutation();
@@ -102,6 +105,13 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
     return result;
   }, [tasksQ.data, categoriesQ.data]);
 
+  // The preview query lives under the ['schedule'] root, so every replan / ws schedule event
+  // invalidates it too — the banner clears itself once everything fits again.
+  const unscheduledEntries = useMemo(
+    () => summarizeUnscheduled(preview.data?.unscheduled, tasksQ.data, habitsQ.data),
+    [preview.data, tasksQ.data, habitsQ.data],
+  );
+
   const isLoading = schedule.isLoading || calendar.isLoading || preview.isLoading;
   const isError = schedule.isError || calendar.isError || preview.isError;
 
@@ -123,6 +133,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
     <div className="flex gap-3 p-4">
       <div ref={gridRef} className="min-w-0 flex-1">
         {isLoading && <div className="p-2 text-sm text-gray-500">Loading your days…</div>}
+        <UnscheduledWarning entries={unscheduledEntries} />
         <WeekGrid
           days={days}
           nowMs={nowMs}
