@@ -859,7 +859,7 @@ describe('5-minute grid alignment (R24)', () => {
     expect(res.blocks[0]).toMatchObject({ start: 9 * H + 10 * M, end: 9 * H + 40 * M });
   });
 
-  it('keeps the Evening Routine in its exact 23:29–23:59 preferred window', () => {
+  it('keeps the Evening Routine in its exact 23:29–23:59 preferred window (R24 + R25 fallback)', () => {
     const res = scheduleHabit(
       [{ start: 0, end: 24 * H }],
       {
@@ -872,6 +872,138 @@ describe('5-minute grid alignment (R24)', () => {
     expect(res.blocks[0]).toMatchObject({
       start: 23 * H + 29 * M,
       end: 23 * H + 59 * M,
+    });
+  });
+});
+
+// R25 — see docs/superpowers/specs/2026-08-13-notreclaim-review-25-gap-preferring-windows-design.md
+describe('scheduleHabit gap-preferring tier-1 placement (pendingMargins)', () => {
+  const D = 86_400_000;
+  const H = 3_600_000;
+  const M = 60_000;
+  const G = 10 * M;
+  const WORK = [{ start: 10 * H, end: 18 * H }];
+
+  const dayHabit = (over: Partial<Habit> = {}): Habit => ({
+    id: 'h', title: 'H', priority: 1, chunkMs: 15 * M, perPeriod: 1,
+    periods: [{ start: 0, end: D }],
+    allowedWindows: [{ start: 0, end: D }],
+    ...over,
+  });
+
+  it('starts after a pending margin when the window has room to spare', () => {
+    const res = scheduleHabit(
+      [{ start: 0, end: D }],
+      dayHabit({ preferredWindows: [{ start: 11 * H, end: 12 * H }] }),
+      G, WORK, [{ start: 11 * H, end: 12 * H }],
+      [{ start: 11 * H, end: 11 * H + G }], // the previous habit's suspended margin
+    );
+    expect(res.blocks[0]).toMatchObject({ start: 11 * H + G, end: 11 * H + G + 15 * M });
+  });
+
+  it('leaves the margin itself free — attempt 1 only chooses the spot', () => {
+    const res = scheduleHabit(
+      [{ start: 0, end: D }],
+      dayHabit({ preferredWindows: [{ start: 11 * H, end: 12 * H }] }),
+      G, WORK, [{ start: 11 * H, end: 12 * H }],
+      [{ start: 11 * H, end: 11 * H + G }],
+    );
+    // Bookkeeping runs on the REAL timeline: the pending margin is still free here
+    // (it is `schedule()`'s to reconcile), and only the block itself is taken —
+    // the trailing pad falls inside the supplied union, so it is suspended.
+    expect(res.free).toEqual([
+      { start: 0, end: 11 * H + G },
+      { start: 11 * H + G + 15 * M, end: D },
+    ]);
+    expect(res.suspendedMargins).toEqual([
+      { start: 11 * H + G - G, end: 11 * H + G },
+      { start: 11 * H + G + 15 * M, end: 11 * H + G + 15 * M + G },
+    ]);
+  });
+
+  it('flushes into an exactly-sized window instead (fallback)', () => {
+    const res = scheduleHabit(
+      [{ start: 0, end: D }],
+      dayHabit({ preferredWindows: [{ start: 11 * H, end: 11 * H + 15 * M }] }),
+      G, WORK, [{ start: 11 * H, end: 11 * H + 15 * M }],
+      [{ start: 11 * H, end: 11 * H + G }],
+    );
+    expect(res.blocks[0]).toMatchObject({ start: 11 * H, end: 11 * H + 15 * M });
+  });
+
+  it('aligns the gap-respecting start to the 5-minute grid (R24 composition)', () => {
+    const res = scheduleHabit(
+      [{ start: 0, end: D }],
+      dayHabit({ preferredWindows: [{ start: 11 * H, end: 12 * H }] }),
+      G, WORK, [{ start: 11 * H, end: 12 * H }],
+      [{ start: 11 * H, end: 11 * H + 7 * M }], // margin ends at 11:07
+    );
+    expect(res.blocks[0]).toMatchObject({ start: 11 * H + 10 * M, end: 11 * H + 25 * M });
+  });
+
+  it('respects the margin of the SAME habit\'s earlier occurrence', () => {
+    const res = scheduleHabit(
+      [{ start: 0, end: D }],
+      dayHabit({
+        perPeriod: 2,
+        allowedWindows: undefined, // uncapped, so both occurrences share the day
+        preferredWindows: [{ start: 10 * H, end: 11 * H }],
+      }),
+      G, WORK, [{ start: 10 * H, end: 11 * H }],
+    );
+    expect(res.blocks.map((b) => [b.start, b.end])).toEqual([
+      [10 * H, 10 * H + 15 * M],
+      [10 * H + 25 * M, 10 * H + 40 * M], // 10:15 + the 10-minute margin
+    ]);
+  });
+
+  it('places exactly as before when no margins are pending (direct callers)', () => {
+    const res = scheduleHabit(
+      [{ start: 0, end: D }],
+      dayHabit({ preferredWindows: [{ start: 11 * H, end: 12 * H }] }),
+      G, WORK, [{ start: 11 * H, end: 12 * H }],
+    );
+    expect(res.blocks[0]).toMatchObject({ start: 11 * H, end: 11 * H + 15 * M });
+  });
+
+  it('never mutates the caller\'s pending-margins array', () => {
+    const pending = [{ start: 11 * H, end: 11 * H + G }];
+    scheduleHabit(
+      [{ start: 0, end: D }],
+      dayHabit({ preferredWindows: [{ start: 11 * H, end: 12 * H }] }),
+      G, WORK, [{ start: 11 * H, end: 12 * H }], pending,
+    );
+    expect(pending).toEqual([{ start: 11 * H, end: 11 * H + G }]);
+  });
+});
+
+describe('scheduleHabit gap-preferring tier-1 stays on its day (R25)', () => {
+  const D = 86_400_000;
+  const H = 3_600_000;
+  const M = 60_000;
+  const G = 10 * M;
+
+  /** Evening Routine: 30m in an exact 23:29–23:59 window, eligible today and tomorrow. */
+  const evening: Habit = {
+    id: 'h', title: 'Evening Routine', priority: 1, chunkMs: 30 * M, perPeriod: 1,
+    periods: [{ start: 0, end: 2 * D }],
+    allowedWindows: [{ start: 0, end: D }, { start: D, end: 2 * D }],
+    preferredWindows: [
+      { start: 23 * H + 29 * M, end: 23 * H + 59 * M },
+      { start: D + 23 * H + 29 * M, end: D + 23 * H + 59 * M },
+    ],
+  };
+
+  it('flushes today rather than jumping to tomorrow to win the gap', () => {
+    const res = scheduleHabit(
+      [{ start: 0, end: 2 * D }], evening, G, undefined, evening.preferredWindows,
+      // A margin eats into today's window; tomorrow's is untouched, so the
+      // gap-respecting attempt would place there — a whole day away.
+      [{ start: 23 * H + 29 * M, end: 23 * H + 39 * M }],
+    );
+    expect(res.blocks).toHaveLength(1);
+    expect(res.blocks[0]).toMatchObject({
+      start: 23 * H + 29 * M, end: 23 * H + 59 * M,
     });
   });
 });

@@ -11,8 +11,8 @@ import { intersectIntervals, mergeIntervals, subtractIntervals } from './interva
 import { scheduleHabit, scheduleTask } from './items.js';
 
 type WorkItem =
-  | { kind: 'task'; priority: number; order: number; claim: number; tie: number; id: string; task: FlexibleTask }
-  | { kind: 'habit'; priority: number; order: number; claim: number; tie: number; id: string; habit: Habit };
+  | { kind: 'task'; priority: number; order: number; claim: number; slack: number; tie: number; id: string; task: FlexibleTask }
+  | { kind: 'habit'; priority: number; order: number; claim: number; slack: number; tie: number; id: string; habit: Habit };
 
 /**
  * "Claim rank": how strong an item's demand on a specific slot is. Compared at EQUAL
@@ -34,6 +34,27 @@ type WorkItem =
 const CLAIM_HABIT_PREFERRED = 0;
 const CLAIM_HABIT_ANYTIME = 1;
 const CLAIM_TASK = 2;
+
+/**
+ * How much room a preferring habit's tightest window has to spare (R25). Compared
+ * only between two habits of EQUAL claim rank — i.e. two habits that both state a
+ * preference — where the one whose window can least afford to move must go first:
+ * it has nowhere else to sit, while the roomier one can take its gap around
+ * whatever the tight one claimed.
+ *
+ * Without this, the live case (exact 10:00–11:00 Morning + roomy 11:00–12:00 CleanUp)
+ * came out differently depending on which habit id happened to sort first: CleanUp
+ * placed first has no margin to avoid yet and lands flush at 11:00. Tasks and
+ * preference-less habits all share slack 0, so no existing ordering is disturbed —
+ * `claim` already separates them from the preferring habits.
+ */
+function windowSlack(h: Habit): number {
+  const windows = h.preferredWindows;
+  if (!windows || windows.length === 0) return 0;
+  let min = Infinity;
+  for (const w of windows) min = Math.min(min, Math.max(0, w.end - w.start - h.chunkMs));
+  return Number.isFinite(min) ? min : 0;
+}
 
 function earliestPeriodStart(periods: Interval[]): number {
   let min = Infinity;
@@ -87,6 +108,7 @@ export function schedule(input: ScheduleInput): ScheduleResult {
         priority: t.priority,
         order: t.sortOrder ?? 0,
         claim: CLAIM_TASK,
+        slack: 0,
         tie: t.dueBy,
         id: t.id,
         task: t,
@@ -101,6 +123,7 @@ export function schedule(input: ScheduleInput): ScheduleResult {
           h.preferredWindows && h.preferredWindows.length > 0
             ? CLAIM_HABIT_PREFERRED
             : CLAIM_HABIT_ANYTIME,
+        slack: windowSlack(h),
         tie: earliestPeriodStart(h.periods),
         id: h.id,
         habit: h,
@@ -112,6 +135,7 @@ export function schedule(input: ScheduleInput): ScheduleResult {
       a.priority - b.priority ||
       a.order - b.order ||
       a.claim - b.claim ||
+      a.slack - b.slack ||
       a.tie - b.tie ||
       a.id.localeCompare(b.id),
   );
@@ -159,7 +183,9 @@ export function schedule(input: ScheduleInput): ScheduleResult {
         // Habits may leave the working windows, but only as a fallback: they are
         // offered as the middle tier so a habit whose preference is booked out
         // lands in the user's day rather than at midnight.
-        : scheduleHabit(free, item.habit, gapMs, workingWindows, habitPreferred);
+        // The margins suspended so far are threaded in so a habit whose window can
+        // afford the buffer starts after it rather than flush (R25).
+        : scheduleHabit(free, item.habit, gapMs, workingWindows, habitPreferred, suspendedMargins);
     blocks.push(...res.blocks);
     unscheduled.push(...res.unscheduled);
     free = res.free;

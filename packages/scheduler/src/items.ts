@@ -136,6 +136,14 @@ function insidePreferred(preferred: Interval[] | undefined, slot: Interval): boo
  * the buffer, the first placement's padding ate into the second's exactly-sized
  * window and pushed it out to a tier-2 fallback. Tiers 2/3 are ordinary fallback
  * placements and keep the full two-sided reservation, applied by `placeItem`.
+ *
+ * R25: tier 1 gives up the buffer only when it MUST. It is tried twice — the flush
+ * placement above, plus a gap-respecting attempt on a timeline that excludes the
+ * margins suspended so far (`pendingMargins`: the space an ordinary ± gap reservation
+ * would have covered), which wins when it finds room. A window merely STARTING where
+ * another block ends (CleanUp 11:00–12:00 after Morning 10:00–11:00) is wide enough to
+ * afford the gap, so the chunk starts at 11:10; an exactly-sized window (Evening
+ * Routine's 23:29–23:59) has no room to give and keeps the flush placement.
  */
 function placeOccurrence(
   free: Interval[],
@@ -145,6 +153,9 @@ function placeOccurrence(
   preferred: Interval[] | undefined,
   workingWindows: Interval[] | undefined,
   gapMs: number,
+  pendingMargins: Interval[],
+  /** The habit's remaining allowed entries — day identity for the R25 gap attempt. */
+  days: Interval[] | undefined,
 ): { result: ReturnType<typeof placeItem>; viaPreferred: boolean } {
   const tiers: { windows: Interval[]; gapMs: number }[] = [];
   const hasPreferred = !!preferred && preferred.length > 0;
@@ -157,6 +168,9 @@ function placeOccurrence(
 
   let placedTier = 0;
   let result = placeItem(free, [chunkMs], deadline, tiers[0]!.windows, tiers[0]!.gapMs);
+  if (hasPreferred && result.placements.length > 0) {
+    result = preferGap(free, chunkMs, deadline, tiers[0]!.windows, pendingMargins, days, result);
+  }
   for (let t = 1; t < tiers.length && result.placements.length === 0; t++) {
     result = placeItem(free, [chunkMs], deadline, tiers[t]!.windows, tiers[t]!.gapMs);
     placedTier = t;
@@ -164,6 +178,50 @@ function placeOccurrence(
   // Tier 0 is the preferred window, and only exists when the habit stated one.
   const viaPreferred = hasPreferred && placedTier === 0 && result.placements.length > 0;
   return { result, viaPreferred };
+}
+
+/**
+ * Improve a tier-1 placement to one that leaves the pending margins intact (R25),
+ * keeping `flush` when there is no room for that.
+ *
+ * The gap-respecting attempt only CHOOSES a spot: it runs on a timeline shrunk by the
+ * pending margins, which must not leak into any bookkeeping (those margins are merely
+ * suspended — `schedule()` reconciles them later, and a habit may still legitimately
+ * flush into one). So the chosen span is re-placed on the REAL free timeline,
+ * restricted to exactly that span, and the caller sees a result identical in shape to
+ * the plain single-attempt one.
+ *
+ * The improvement must stay on `flush`'s day (`days` = the habit's remaining allowed
+ * entries, one per eligible day): moving an occurrence to ANOTHER day to win a
+ * 10-minute gap would be a far bigger surprise than the flush contact it avoids, and
+ * would hand the vacated day back to the one-per-day budget. Uncapped habits have no
+ * day identity at all, so the check does not apply to them.
+ */
+function preferGap(
+  free: Interval[],
+  chunkMs: number,
+  deadline: number,
+  windows: Interval[],
+  pendingMargins: Interval[],
+  days: Interval[] | undefined,
+  flush: ReturnType<typeof placeItem>,
+): ReturnType<typeof placeItem> {
+  if (pendingMargins.length === 0) return flush;
+  const chosen = placeItem(
+    subtractIntervals(free, pendingMargins), [chunkMs], deadline, windows, 0,
+  ).placements[0];
+  if (!chosen) return flush;
+  if (days && dayIndex(days, chosen.start) !== dayIndex(days, flush.placements[0]!.start)) {
+    return flush;
+  }
+  // Exact-size candidate window ⇒ `placeItem` reproduces `chosen` verbatim,
+  // including its R24 alignment, on the unshrunken timeline.
+  return placeItem(free, [chunkMs], deadline, [chosen], 0);
+}
+
+/** Index of the allowed (day) entry holding `time`; -1 if none. */
+function dayIndex(days: Interval[], time: number): number {
+  return days.findIndex((w) => time >= w.start && time < w.end);
 }
 
 /**
@@ -204,10 +262,20 @@ export function scheduleHabit(
   workingWindows?: Interval[],
   /** Every habit's preferred windows — the space in which the buffer is suspended. */
   preferredUnion?: Interval[],
+  /**
+   * Margins suspended by the habits processed BEFORE this one (R25). Tier-1
+   * placement prefers a spot that leaves them intact — see `placeGapPreferring`.
+   * Copied on entry, so the caller's array is never touched.
+   */
+  pendingMargins?: Interval[],
 ): ScheduleItemResult {
   let remainingFree = free;
   const blocks: ScheduledBlock[] = [];
   const suspendedMargins: Interval[] = [];
+  // Merging both copies and normalizes: no aliasing of the caller's array, and the
+  // habit's own margins join the list as it generates them (an earlier occurrence's
+  // margin is respected by the next one).
+  const inheritedMargins = pendingMargins ? mergeIntervals(pendingMargins) : [];
   let missed = 0;
   let index = 0;
 
@@ -295,6 +363,7 @@ export function scheduleHabit(
 
       const { result: res, viaPreferred } = placeOccurrence(
         remainingFree, habit.chunkMs, period.end, bound, preferred, workingWindows, gapMs,
+        [...inheritedMargins, ...suspendedMargins], budget.allowed,
       );
 
       if (res.placements.length === 0) {

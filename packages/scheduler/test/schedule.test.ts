@@ -405,6 +405,12 @@ describe('blockBufferMs vs habit preferred windows', () => {
 
   // The live R23 case: CleanUp's window is WIDER than its 15-minute chunk, so the
   // part of it that CleanUp does not occupy is a declared-but-unclaimed margin.
+  //
+  // R25 flipped CleanUp's own start here (was 11:00, flush against Morning): a window
+  // with room to spare now takes the buffer too, so CleanUp starts at 11:15. What this
+  // test guards — the margin around the pair being re-reserved, so the task cannot
+  // sit flush against CleanUp — is unchanged.
+  // See docs/superpowers/specs/2026-08-13-notreclaim-review-25-gap-preferring-windows-design.md
   it('re-reserves the margin left inside a habit\'s own wider window', () => {
     const res = run(
       [
@@ -417,10 +423,10 @@ describe('blockBufferMs vs habit preferred windows', () => {
       start: 10 * H, end: 11 * H,
     });
     expect(res.blocks.find((b) => b.sourceId === 'z-cleanup')).toMatchObject({
-      start: 11 * H, end: 11 * H + 15 * M,
+      start: 11 * H + G, end: 11 * H + G + 15 * M,
     });
     expect(res.blocks.find((b) => b.sourceType === 'task')!.start).toBeGreaterThanOrEqual(
-      11 * H + 15 * M + G,
+      11 * H + G + 15 * M + G,
     );
   });
 
@@ -516,6 +522,83 @@ describe('blockBufferMs vs habit preferred windows', () => {
     expect(res.blocks.find((b) => b.sourceType === 'habit')).toMatchObject({
       start: 10 * H, end: 11 * H,
     });
+  });
+});
+
+// R25 — see docs/superpowers/specs/2026-08-13-notreclaim-review-25-gap-preferring-windows-design.md
+describe('gap-preferring placement inside a wide preferred window (R25)', () => {
+  const H = 3_600_000;
+  const M = 60_000;
+  const D = 24 * H;
+  const G = 10 * M; // the user's real block buffer
+  const WORK = { start: 10 * H, end: 18 * H };
+
+  const prefHabit = (id: string, chunkMs: number, w: { start: number; end: number }) => ({
+    id, title: id, priority: 3, chunkMs, perPeriod: 1,
+    periods: [{ start: 0, end: D }],
+    allowedWindows: [{ start: 0, end: D }],
+    preferredWindows: [w],
+  });
+
+  const run = (habits: ScheduleInput['habits'], tasks: ScheduleInput['tasks'] = []) =>
+    schedule({
+      workingWindows: [WORK],
+      horizon: { start: 0, end: D },
+      fixedEvents: [], pinnedBlocks: [],
+      tasks, habits,
+      blockBufferMs: G,
+    });
+
+  it('starts a habit after the gap when its window is wider than its chunk', () => {
+    // Morning 10:00–11:00 (exact) + CleanUp 15m in a WIDE 11:00–12:00 window. The
+    // window merely starts where Morning ends, and it can afford the buffer — so
+    // CleanUp gets it (11:10) instead of sitting flush at 11:00. Ids decide the
+    // placement order among equally-ranked preferred habits, so cover both.
+    for (const [morningId, cleanupId] of [['a-morning', 'z-cleanup'], ['z-morning', 'a-cleanup']]) {
+      const res = run([
+        prefHabit(morningId!, H, { start: 10 * H, end: 11 * H }),
+        prefHabit(cleanupId!, 15 * M, { start: 11 * H, end: 12 * H }),
+      ]);
+      expect(res.blocks.find((b) => b.sourceId === morningId)).toMatchObject({
+        start: 10 * H, end: 11 * H,
+      });
+      expect(res.blocks.find((b) => b.sourceId === cleanupId)).toMatchObject({
+        start: 11 * H + 10 * M, end: 11 * H + 25 * M,
+      });
+    }
+  });
+
+  it('lets the tighter window claim first, whatever the ids say', () => {
+    // Both habits want 10:00; only the exact one CAN have it. Placement order is
+    // what makes the gap-preferring attempt work at all (the first habit placed has
+    // no margin to avoid yet), so the habit with nowhere else to go goes first even
+    // when its id sorts last.
+    const res = run([
+      prefHabit('a-roomy', H, { start: 10 * H, end: 12 * H }),
+      prefHabit('z-tight', H, { start: 10 * H, end: 11 * H }),
+    ]);
+    expect(res.blocks.find((b) => b.sourceId === 'z-tight')).toMatchObject({
+      start: 10 * H, end: 11 * H,
+    });
+    // 11:00–12:00 is all that is left of the roomy window, so it flushes (fallback).
+    expect(res.blocks.find((b) => b.sourceId === 'a-roomy')).toMatchObject({
+      start: 11 * H, end: 12 * H,
+    });
+  });
+
+  it('still flushes into an exactly-sized window (fallback), in either order', () => {
+    for (const [morningId, cleanupId] of [['a-morning', 'z-cleanup'], ['z-morning', 'a-cleanup']]) {
+      const res = run([
+        prefHabit(morningId!, H, { start: 10 * H, end: 11 * H }),
+        prefHabit(cleanupId!, 15 * M, { start: 11 * H, end: 11 * H + 15 * M }),
+      ]);
+      expect(res.blocks.find((b) => b.sourceId === morningId)).toMatchObject({
+        start: 10 * H, end: 11 * H,
+      });
+      expect(res.blocks.find((b) => b.sourceId === cleanupId)).toMatchObject({
+        start: 11 * H, end: 11 * H + 15 * M,
+      });
+    }
   });
 });
 
