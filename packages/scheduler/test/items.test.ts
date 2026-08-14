@@ -542,7 +542,9 @@ describe('scheduleHabit tiered fallback (preferred → working hours → whole d
   });
 });
 
-describe('scheduleHabit: the block buffer does not apply inside a preferred window', () => {
+// R25 — one buffer rule everywhere; see
+// docs/superpowers/specs/2026-08-13-notreclaim-review-25-gap-preferring-windows-design.md
+describe('scheduleHabit: the block buffer applies inside a preferred window too', () => {
   const D = 86_400_000;
   const H = 3_600_000;
   const M = 60_000;
@@ -556,19 +558,25 @@ describe('scheduleHabit: the block buffer does not apply inside a preferred wind
     ...over,
   });
 
-  it('reserves exactly the placed chunk for a tier-1 (preferred) placement', () => {
+  // R25 flipped this (was: "reserves exactly the placed chunk", free abutting the
+  // block on both sides). A preferred window no longer exempts a placement from the
+  // buffer — the fit still fills the window exactly, the reservation pads outward.
+  it('reserves ± gap around a tier-1 (preferred) placement', () => {
     const res = scheduleHabit([{ start: 0, end: D }], dayHabit({
       preferredWindows: [{ start: 10 * H, end: 11 * H }],
     }), G, WORK);
     expect(res.blocks[0]).toMatchObject({ start: 10 * H, end: 11 * H });
-    // No ± gap padding: the free time released abuts the block on both sides.
     expect(res.free).toEqual([
-      { start: 0, end: 10 * H },
-      { start: 11 * H, end: D },
+      { start: 0, end: 10 * H - G },
+      { start: 11 * H + G, end: D },
     ]);
   });
 
-  it('fills two abutting preferred windows back-to-back', () => {
+  // R25 flipped this (was: "fills two abutting preferred windows back-to-back"). The
+  // accepted consequence of universal buffers: the first occurrence's trailing pad
+  // covers the second window, so that occurrence relocates via the working-hours tier
+  // with a full gap instead of abutting.
+  it('cannot fill two abutting preferred windows back-to-back', () => {
     const res = scheduleHabit([{ start: 0, end: D }], dayHabit({
       chunkMs: 15 * M,
       perPeriod: 2,
@@ -580,7 +588,7 @@ describe('scheduleHabit: the block buffer does not apply inside a preferred wind
     }), G, WORK);
     expect(res.blocks.map((b) => [b.start, b.end])).toEqual([
       [10 * H, 10 * H + 15 * M],
-      [10 * H + 15 * M, 10 * H + 30 * M],
+      [10 * H + 30 * M, 10 * H + 45 * M],
     ]);
   });
 
@@ -600,73 +608,6 @@ describe('scheduleHabit: the block buffer does not apply inside a preferred wind
     const res = scheduleHabit([{ start: 0, end: D }], dayHabit(), G);
     expect(res.blocks[0]).toMatchObject({ start: 0, end: H });
     expect(res.free).toEqual([{ start: H + G, end: D }]);
-  });
-
-  it('pads a tier-1 placement OUTSIDE the supplied preferred-window union', () => {
-    const res = scheduleHabit([{ start: 0, end: D }], dayHabit({
-      preferredWindows: [{ start: 10 * H, end: 11 * H }],
-    }), G, WORK, [{ start: 10 * H, end: 11 * H }]);
-    expect(res.blocks[0]).toMatchObject({ start: 10 * H, end: 11 * H });
-    // Generic free time on either side of the block keeps its buffer, so a later
-    // task or fallback placement cannot land flush against it.
-    expect(res.free).toEqual([
-      { start: 0, end: 10 * H - G },
-      { start: 11 * H + G, end: D },
-    ]);
-  });
-
-  it('does not pad into a neighbouring habit preferred window', () => {
-    const res = scheduleHabit([{ start: 0, end: D }], dayHabit({
-      preferredWindows: [{ start: 10 * H, end: 11 * H }],
-    }), G, WORK, [
-      { start: 10 * H, end: 11 * H },
-      { start: 11 * H, end: 11 * H + 15 * M }, // another habit's exact window
-    ]);
-    expect(res.blocks[0]).toMatchObject({ start: 10 * H, end: 11 * H });
-    // Trailing pad falls wholly inside the neighbour's window → not reserved, so
-    // that habit can still take its window exactly. The leading pad is ordinary
-    // free time and is reserved as usual.
-    expect(res.free).toEqual([
-      { start: 0, end: 10 * H - G },
-      { start: 11 * H, end: D },
-    ]);
-  });
-
-  it('reports the margin it suspended over a neighbouring window', () => {
-    const res = scheduleHabit([{ start: 0, end: D }], dayHabit({
-      preferredWindows: [{ start: 10 * H, end: 11 * H }],
-    }), G, WORK, [
-      { start: 10 * H, end: 11 * H },
-      { start: 11 * H, end: 11 * H + 15 * M },
-    ]);
-    // The trailing pad was left free because it falls inside the union; the caller
-    // needs it back if no habit ends up claiming that window (R23).
-    expect(res.suspendedMargins).toEqual([{ start: 11 * H, end: 11 * H + 15 * M }]);
-  });
-
-  it('reports no suspended margin for a tier-2 fallback (full reservation)', () => {
-    const res = scheduleHabit([{ start: 0, end: D }], dayHabit({
-      preferredWindows: [{ start: 22 * H, end: 22 * H + M }],
-    }), G, WORK, [{ start: 22 * H, end: 22 * H + M }]);
-    expect(res.blocks[0]).toMatchObject({ start: 10 * H, end: 11 * H });
-    expect(res.suspendedMargins).toEqual([]);
-  });
-
-  it('reports no suspended margin when no union is supplied', () => {
-    const res = scheduleHabit([{ start: 0, end: D }], dayHabit({
-      preferredWindows: [{ start: 10 * H, end: 11 * H }],
-    }), G, WORK);
-    expect(res.suspendedMargins).toEqual([]);
-  });
-
-  it('reserves exactly (no padding) when no union is supplied — direct engine callers', () => {
-    const res = scheduleHabit([{ start: 0, end: D }], dayHabit({
-      preferredWindows: [{ start: 10 * H, end: 11 * H }],
-    }), G, WORK);
-    expect(res.free).toEqual([
-      { start: 0, end: 10 * H },
-      { start: 11 * H, end: D },
-    ]);
   });
 
   it('consumes the occurrence day (and keeps the day-keyed id) for a tier-1 placement', () => {
@@ -691,7 +632,9 @@ describe('scheduleHabit sticky slots and the block buffer', () => {
   const H = 3_600_000;
   const G = 30 * 60_000;
 
-  it('reserves exactly a kept slot that lies inside a preferred window', () => {
+  // R25 flipped this (was: "reserves exactly a kept slot that lies inside a preferred
+  // window"). Kept slots reserve their ± gap uniformly now, in or out of a window.
+  it('reserves ± gap around a kept slot that lies inside a preferred window', () => {
     const h: Habit = {
       id: 'h', title: 'H', priority: 1, chunkMs: H, perPeriod: 1,
       periods: [{ start: 0, end: 7 * D }],
@@ -702,31 +645,9 @@ describe('scheduleHabit sticky slots and the block buffer', () => {
     const res = scheduleHabit([{ start: 0, end: 7 * D }], h, G);
     expect(res.blocks.map((b) => [b.start, b.end])).toEqual([[13 * H, 14 * H]]);
     expect(res.free).toEqual([
-      { start: 0, end: 13 * H },
-      { start: 14 * H, end: 7 * D },
-    ]);
-  });
-
-  it('pads a kept in-window slot outside the supplied preferred-window union', () => {
-    const h: Habit = {
-      id: 'h', title: 'H', priority: 1, chunkMs: H, perPeriod: 1,
-      periods: [{ start: 0, end: 7 * D }],
-      allowedWindows: [{ start: 0, end: D }],
-      preferredWindows: [{ start: 13 * H, end: 15 * H }],
-      existingSlots: [{ start: 13 * H, end: 14 * H }],
-    };
-    const res = scheduleHabit([{ start: 0, end: 7 * D }], h, G, undefined, [
-      { start: 13 * H, end: 15 * H },
-    ]);
-    expect(res.blocks.map((b) => [b.start, b.end])).toEqual([[13 * H, 14 * H]]);
-    // Leading pad is ordinary free time → reserved. Trailing pad lies inside the
-    // preferred window → left free, exactly like a fresh tier-1 placement.
-    expect(res.free).toEqual([
       { start: 0, end: 13 * H - G },
-      { start: 14 * H, end: 7 * D },
+      { start: 14 * H + G, end: 7 * D },
     ]);
-    // …and is reported so the caller can re-reserve it if nothing claims it (R23).
-    expect(res.suspendedMargins).toEqual([{ start: 14 * H, end: 14 * H + G }]);
   });
 
   it('keeps the ± gap around a kept slot of a habit with no preference (unchanged)', () => {
@@ -794,13 +715,6 @@ describe('scheduleHabit with periodTargets (per-period counts)', () => {
   });
 });
 
-describe('scheduleTask suspendedMargins', () => {
-  it('is always empty — tasks reserve their full padding', () => {
-    const res = scheduleTask([{ start: 0, end: 100 }], task(), 10);
-    expect(res.suspendedMargins).toEqual([]);
-  });
-});
-
 describe('scheduleTask gapMs', () => {
   it('threads the gap so a task\'s own chunks are spaced', () => {
     const res = scheduleTask([{ start: 0, end: 100 }], { id: 't', title: 'T', priority: 1, durationMs: 40, dueBy: 100, minChunkMs: 20, maxChunkMs: 20 }, 10);
@@ -859,7 +773,7 @@ describe('5-minute grid alignment (R24)', () => {
     expect(res.blocks[0]).toMatchObject({ start: 9 * H + 10 * M, end: 9 * H + 40 * M });
   });
 
-  it('keeps the Evening Routine in its exact 23:29–23:59 preferred window', () => {
+  it('keeps the Evening Routine in its exact 23:29–23:59 preferred window (R24 + R25 fallback)', () => {
     const res = scheduleHabit(
       [{ start: 0, end: 24 * H }],
       {

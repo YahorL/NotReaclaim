@@ -339,24 +339,35 @@ describe('blockBufferMs vs habit preferred windows', () => {
       blockBufferMs: G,
     });
 
-  it('places both abutting preferred windows exactly, in either placement order', () => {
-    // Ids decide the order among equally-ranked preferred habits, so flip them to
-    // cover both: neither habit's buffer may eat into the other's exact window.
+  // R25 REVERSED the R22 centerpiece (was: "places both abutting preferred windows
+  // exactly, in either placement order"). With universal buffers two exactly-sized
+  // ABUTTING windows can no longer both be honored — the user accepted this: whoever
+  // claims first keeps its window, the other relocates with a full gap. Both habits
+  // have slack 0 here, so the id tiebreak decides, and the test covers both ids.
+  // See docs/superpowers/specs/2026-08-13-notreclaim-review-25-gap-preferring-windows-design.md
+  it('gives an abutting exact window to whichever habit claims first, relocating the other', () => {
     for (const [morningId, cleanupId] of [['a-morning', 'z-cleanup'], ['z-morning', 'a-cleanup']]) {
       const res = run(pair(morningId!, cleanupId!));
-      expect(res.blocks.find((b) => b.sourceId === morningId)).toMatchObject({
-        start: 10 * H, end: 11 * H,
-      });
-      expect(res.blocks.find((b) => b.sourceId === cleanupId)).toMatchObject({
-        start: 11 * H, end: 11 * H + 15 * M,
-      });
+      const morning = res.blocks.find((b) => b.sourceId === morningId)!;
+      const cleanup = res.blocks.find((b) => b.sourceId === cleanupId)!;
+      const [first, second] = morningId! < cleanupId!
+        ? [morning, cleanup]
+        : [cleanup, morning];
+      // The habit that sorts first gets exactly the window it asked for…
+      const firstWindow = morningId! < cleanupId!
+        ? { start: 10 * H, end: 11 * H }
+        : { start: 11 * H, end: 11 * H + 15 * M };
+      expect(first).toMatchObject(firstWindow);
+      // …and the other is pushed out of its window, keeping the full buffer.
+      expect(
+        Math.min(Math.abs(second!.start - first!.end), Math.abs(first!.start - second!.end)),
+      ).toBeGreaterThanOrEqual(G);
     }
   });
 
   it('keeps the buffer between the last window block and a following task', () => {
-    // A window placement reserves its ± gap everywhere EXCEPT inside some habit's
-    // preferred window, so CleanUp still gets 11:00–11:15 while a task is held off
-    // until 11:30.
+    // Whatever the habits ended up doing with their abutting windows, the task that
+    // follows them is held off by a full buffer.
     const res = run(pair('a-morning', 'z-cleanup'), [
       { id: 't', title: 'T', priority: 3, durationMs: H, dueBy: D, minChunkMs: H, maxChunkMs: H },
     ]);
@@ -378,53 +389,10 @@ describe('blockBufferMs vs habit preferred windows', () => {
     expect(anytime.start - morning.end).toBeGreaterThanOrEqual(G);
   });
 
-  // R23 (was a characterization of the R22 hole): the padding is skipped over EVERY
-  // habit's preferred window at placement time, whether or not that habit actually
-  // claims it. Once the last habit has been processed, the margins nothing claimed
-  // are re-reserved, so the next item can no longer sit flush against Morning.
-  it('re-reserves a margin suspended over a window no habit claimed', () => {
-    const cleanup = {
-      ...prefHabit('z-cleanup', 15 * M, { start: 11 * H, end: 11 * H + 15 * M }),
-      consumedSlotTimes: [12 * H], // its only day is taken → it places nothing
-    };
-    const res = schedule({
-      workingWindows: [WORK],
-      horizon: { start: 0, end: D },
-      fixedEvents: [], pinnedBlocks: [],
-      habits: [prefHabit('a-morning', H, { start: 10 * H, end: 11 * H }), cleanup],
-      tasks: [
-        { id: 't', title: 'T', priority: 3, durationMs: H, dueBy: D, minChunkMs: H, maxChunkMs: H },
-      ],
-      blockBufferMs: G,
-    });
-    expect(res.blocks.filter((b) => b.sourceId === 'z-cleanup')).toEqual([]);
-    expect(res.blocks.find((b) => b.sourceType === 'task')!.start).toBeGreaterThanOrEqual(
-      11 * H + G,
-    );
-  });
-
-  // The live R23 case: CleanUp's window is WIDER than its 15-minute chunk, so the
-  // part of it that CleanUp does not occupy is a declared-but-unclaimed margin.
-  it('re-reserves the margin left inside a habit\'s own wider window', () => {
-    const res = run(
-      [
-        prefHabit('a-morning', H, { start: 10 * H, end: 11 * H }),
-        prefHabit('z-cleanup', 15 * M, { start: 11 * H, end: 12 * H }),
-      ],
-      [{ id: 't', title: 'T', priority: 3, durationMs: H, dueBy: D, minChunkMs: H, maxChunkMs: H }],
-    );
-    expect(res.blocks.find((b) => b.sourceId === 'a-morning')).toMatchObject({
-      start: 10 * H, end: 11 * H,
-    });
-    expect(res.blocks.find((b) => b.sourceId === 'z-cleanup')).toMatchObject({
-      start: 11 * H, end: 11 * H + 15 * M,
-    });
-    expect(res.blocks.find((b) => b.sourceType === 'task')!.start).toBeGreaterThanOrEqual(
-      11 * H + 15 * M + G,
-    );
-  });
-
-  it('re-reserves the unclaimed margin of a sticky in-window kept slot', () => {
+  // R25: a sticky kept slot reserves its ± gap uniformly, so the following task is
+  // buffered without any reconciliation step (was: "re-reserves the unclaimed margin
+  // of a sticky in-window kept slot").
+  it('buffers a task after a sticky kept slot inside a wider window', () => {
     const res = run(
       [
         {
@@ -442,17 +410,18 @@ describe('blockBufferMs vs habit preferred windows', () => {
     );
   });
 
-  it('re-reserves nothing when there are no habits, and leaves tasks alone', () => {
+  it('leaves tasks alone when there are no habits', () => {
     const res = run([], [
       { id: 't', title: 'T', priority: 3, durationMs: H, dueBy: D, minChunkMs: H, maxChunkMs: H },
     ]);
     expect(res.blocks).toMatchObject([{ sourceId: 't', start: 10 * H, end: 11 * H }]);
   });
 
-  // Documented limitation: reconciliation runs after the LAST habit, so a task that
-  // outranks some habit places before it and may still sit flush against an earlier
-  // habit's suspended margin. Unreachable with real data (all habits are priority 0).
-  it('does not protect a task that outranks a habit (known limitation)', () => {
+  // R25 flipped this (was: "does not protect a task that outranks a habit (known
+  // limitation)", asserting the task landed flush at 11:00). Universal buffers close
+  // that hole outright: there is no suspended margin for a task to land in, whatever
+  // the priority interleaving.
+  it('buffers a task that outranks a habit (the R23 hole is gone)', () => {
     const res = schedule({
       workingWindows: [WORK],
       horizon: { start: 0, end: D },
@@ -466,8 +435,12 @@ describe('blockBufferMs vs habit preferred windows', () => {
       ],
       blockBufferMs: G,
     });
-    // Placed between the two habits → flush against Morning's suspended margin.
-    expect(res.blocks.find((b) => b.sourceType === 'task')).toMatchObject({ start: 11 * H });
+    // Placed between the two habits, buffered on both sides.
+    const morning = res.blocks.find((b) => b.sourceId === 'a-morning')!;
+    const task = res.blocks.find((b) => b.sourceType === 'task')!;
+    const cleanup = res.blocks.find((b) => b.sourceId === 'z-cleanup')!;
+    expect(task.start - morning.end).toBeGreaterThanOrEqual(G);
+    expect(cleanup.start - task.end).toBeGreaterThanOrEqual(G);
   });
 
   it('keeps the buffer between a task and a habit window placed after it', () => {
@@ -515,6 +488,181 @@ describe('blockBufferMs vs habit preferred windows', () => {
     ]);
     expect(res.blocks.find((b) => b.sourceType === 'habit')).toMatchObject({
       start: 10 * H, end: 11 * H,
+    });
+  });
+});
+
+// R25 — universal buffers + tightest-window-first ordering; see
+// docs/superpowers/specs/2026-08-13-notreclaim-review-25-gap-preferring-windows-design.md
+describe('universal buffers and habit claim order (R25)', () => {
+  const H = 3_600_000;
+  const M = 60_000;
+  const D = 24 * H;
+  const G = 10 * M; // the user's real block buffer
+  const WORK = { start: 10 * H, end: 17 * H };
+
+  const habit = (
+    id: string,
+    chunkMs: number,
+    w?: { start: number; end: number },
+  ): ScheduleInput['habits'][number] => ({
+    id, title: id, priority: 3, chunkMs, perPeriod: 1,
+    periods: [{ start: 0, end: D }],
+    allowedWindows: [{ start: 0, end: D }],
+    ...(w ? { preferredWindows: [w] } : {}),
+  });
+
+  const run = (
+    habits: ScheduleInput['habits'],
+    tasks: ScheduleInput['tasks'] = [],
+    pinnedBlocks: ScheduleInput['pinnedBlocks'] = [],
+  ) =>
+    schedule({
+      workingWindows: [WORK],
+      horizon: { start: 0, end: D },
+      fixedEvents: [], pinnedBlocks,
+      tasks, habits,
+      blockBufferMs: G,
+    });
+
+  /** The user's live layout: an exact Morning window, a wide CleanUp one, a task. */
+  const live = (morningId: string, cleanupId: string) => [
+    habit(morningId, H, { start: 10 * H, end: 11 * H }),
+    habit(cleanupId, 15 * M, { start: 11 * H, end: 22 * H }),
+  ];
+  const research = {
+    id: 't', title: 'Research', priority: 3,
+    durationMs: H, dueBy: D, minChunkMs: H, maxChunkMs: H,
+  };
+
+  it('lays out the live case with a gap after every block, in either placement order', () => {
+    for (const [morningId, cleanupId] of [['a-morning', 'z-cleanup'], ['z-morning', 'a-cleanup']]) {
+      const res = run(live(morningId!, cleanupId!), [research]);
+      // Morning has slack 0 and claims its exact window; CleanUp's window is wide
+      // enough to take the buffer, so it starts 10 minutes after Morning ends; the
+      // task then starts 10 minutes after CleanUp.
+      expect(res.blocks.find((b) => b.sourceId === morningId)).toMatchObject({
+        start: 10 * H, end: 11 * H,
+      });
+      expect(res.blocks.find((b) => b.sourceId === cleanupId)).toMatchObject({
+        start: 11 * H + 10 * M, end: 11 * H + 25 * M,
+      });
+      expect(res.blocks.find((b) => b.sourceType === 'task')!.start).toBeGreaterThanOrEqual(
+        11 * H + 35 * M,
+      );
+    }
+  });
+
+  it('produces the identical layout whichever way the ids sort', () => {
+    // Stronger than the per-id assertions above: the claim key must make the habit
+    // ids irrelevant to the SHAPE of the plan, not just to two spot checks.
+    const layout = (morningId: string, cleanupId: string) =>
+      run(live(morningId, cleanupId), [research]).blocks.map((b) => [b.start, b.end]);
+    expect(layout('z-morning', 'a-cleanup')).toEqual(layout('a-morning', 'z-cleanup'));
+  });
+
+  it('claims windows tightest-first: slack 0, then wide, then window-less, then tasks', () => {
+    // All four want 10:00. Ids are chosen so that every one of them would sort BEFORE
+    // the exact-window habit if the claim key did not exist.
+    const res = run(
+      [
+        habit('a-wide', H, { start: 10 * H, end: 14 * H }),
+        habit('b-anytime', H),
+        habit('z-exact', H, { start: 10 * H, end: 11 * H }),
+      ],
+      [{ id: 'a-task', title: 'T', priority: 3, durationMs: H, dueBy: D, minChunkMs: H, maxChunkMs: H }],
+    );
+    expect(res.blocks.map((b) => b.title)).toEqual(['z-exact', 'a-wide', 'b-anytime', 'T']);
+    expect(res.blocks[0]).toMatchObject({ start: 10 * H, end: 11 * H });
+    // Everything after it is spaced by the buffer.
+    for (let i = 1; i < res.blocks.length; i++) {
+      expect(res.blocks[i]!.start - res.blocks[i - 1]!.end).toBeGreaterThanOrEqual(G);
+    }
+  });
+
+  it('breaks slack ties deterministically by id', () => {
+    const ids = ['b-two', 'a-one'];
+    const res = run(ids.map((id) => habit(id, H, { start: 10 * H, end: 12 * H })));
+    expect(res.blocks.map((b) => b.title)).toEqual(['a-one', 'b-two']);
+  });
+
+  it('does not let a habit whose window cannot hold its chunk claim the tightest rank', () => {
+    // `a-impossible` states a 30-minute window for a 60-minute chunk — reachable
+    // without user error, since core clips the last day's preferred window at the
+    // horizon. It can never use that window, so it must not sort ahead of a habit
+    // whose exact window it would then evict via the working-hours tier.
+    const res = run([
+      habit('a-impossible', H, { start: 10 * H, end: 10 * H + 30 * M }),
+      habit('z-exact', H, { start: 10 * H, end: 11 * H }),
+    ]);
+    expect(res.blocks.find((b) => b.sourceId === 'z-exact')).toMatchObject({
+      start: 10 * H, end: 11 * H,
+    });
+    expect(res.blocks.find((b) => b.sourceId === 'a-impossible')!.start)
+      .toBeGreaterThanOrEqual(11 * H + G);
+  });
+
+  it('ranks an unfittable-window habit ahead of a window-less one, deterministically', () => {
+    // Both end up in the working-hours tier, so the order is a pure claim-rank
+    // decision: a stated (if unusable) preference still outranks "anywhere", and the
+    // ids are chosen to sort the other way.
+    const res = run([
+      habit('a-anytime', H),
+      habit('z-impossible', H, { start: 10 * H, end: 10 * H + 30 * M }),
+    ]);
+    expect(res.blocks.map((b) => b.title)).toEqual(['z-impossible', 'a-anytime']);
+  });
+
+  it('ranks a multi-window habit by its tightest window that can actually hold the chunk', () => {
+    // `a-multi` has three windows: one too short to hold its 30m chunk (must be
+    // skipped, not treated as slack 0), a tight one and a wide one (the tightest
+    // FITTABLE window decides — min, not max).
+    const multi = {
+      ...habit('a-multi', 30 * M),
+      preferredWindows: [
+        { start: 9 * H, end: 9 * H + 20 * M },   // too short → skipped
+        { start: 10 * H, end: 10 * H + 40 * M }, // slack 10m → the habit's rank
+        { start: 12 * H, end: 13 * H + 30 * M }, // slack 1h
+      ],
+    };
+    const res = run([
+      multi,
+      habit('b-medium', 30 * M, { start: 12 * H, end: 12 * H + 50 * M }), // slack 20m
+      habit('z-exact', 30 * M, { start: 10 * H, end: 10 * H + 30 * M }),  // slack 0
+    ]);
+    const at = (id: string) => res.blocks.find((b) => b.sourceId === id)!.start;
+    // Counting the unfittable window as slack 0 would put `a-multi` first (id order)
+    // and evict `z-exact` from its window…
+    expect(at('z-exact')).toBe(10 * H);
+    // …and ranking by the WIDEST window would put `b-medium` (20m) ahead of
+    // `a-multi` (1h), handing 12:00 to `b-medium` instead.
+    expect(at('a-multi')).toBe(12 * H);
+    expect(at('b-medium')).toBe(10 * H + 40 * M);
+  });
+
+  it('fills an exact window whose interior is free (the fit ignores the buffer)', () => {
+    // Working hours START at 10:00, so the window has no room for a leading pad — the
+    // fit never consults gapMs, so it is placed exactly and pads outward only.
+    const res = run([habit('h', H, { start: 10 * H, end: 11 * H })]);
+    expect(res.blocks[0]).toMatchObject({ start: 10 * H, end: 11 * H });
+  });
+
+  it('relocates an exact-window habit when a pinned block\'s padding intrudes', () => {
+    // Pre-existing behavior, now pinned: pinned blocks pad ± gap into the busy set,
+    // so 10:00–11:00 is no longer wholly free and the habit falls back a tier.
+    const res = run([habit('h', H, { start: 10 * H, end: 11 * H })], [], [
+      { id: 'pin', sourceType: 'task', sourceId: 'p', title: 'P', start: 9 * H, end: 10 * H },
+    ]);
+    expect(res.blocks.find((b) => b.sourceId === 'h')!.start).toBeGreaterThanOrEqual(10 * H + G);
+  });
+
+  it('keeps the Evening Routine in its exact 23:29-23:59 window (R24 alignment intact)', () => {
+    const evening = {
+      ...habit('evening', 30 * M, { start: 23 * H + 29 * M, end: 23 * H + 59 * M }),
+    };
+    const res = run([...live('a-morning', 'z-cleanup'), evening], [research]);
+    expect(res.blocks.find((b) => b.sourceId === 'evening')).toMatchObject({
+      start: 23 * H + 29 * M, end: 23 * H + 59 * M,
     });
   });
 });

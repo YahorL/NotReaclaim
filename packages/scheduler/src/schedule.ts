@@ -11,8 +11,8 @@ import { intersectIntervals, mergeIntervals, subtractIntervals } from './interva
 import { scheduleHabit, scheduleTask } from './items.js';
 
 type WorkItem =
-  | { kind: 'task'; priority: number; order: number; claim: number; tie: number; id: string; task: FlexibleTask }
-  | { kind: 'habit'; priority: number; order: number; claim: number; tie: number; id: string; habit: Habit };
+  | { kind: 'task'; priority: number; order: number; claim: number; slack: number; tie: number; id: string; task: FlexibleTask }
+  | { kind: 'habit'; priority: number; order: number; claim: number; slack: number; tie: number; id: string; habit: Habit };
 
 /**
  * "Claim rank": how strong an item's demand on a specific slot is. Compared at EQUAL
@@ -34,6 +34,58 @@ type WorkItem =
 const CLAIM_HABIT_PREFERRED = 0;
 const CLAIM_HABIT_ANYTIME = 1;
 const CLAIM_TASK = 2;
+
+/**
+ * How much room a preferring habit's tightest window has to spare — the second half of
+ * the claim key, and what makes universal buffers (R25) work at all.
+ *
+ * Every block now reserves `[start − gap, end + gap]` with no window exemption, so an
+ * exactly-sized window survives only if its habit claims it BEFORE a neighbour's
+ * reservation reaches in. Slack ascending does exactly that: a habit with nowhere else
+ * to sit goes first, and roomier windows absorb the buffer around what it took
+ * (Morning 10:00–11:00 exact, then CleanUp's wide 11:00+ window starting at 11:10).
+ *
+ * It also makes the outcome independent of habit ids, which previously decided the
+ * order between two preferring habits and so decided who got squeezed.
+ *
+ * Only ever compared between two habits that both state a preference: `claim` already
+ * separates those from preference-less habits and from tasks, which all sit at 0.
+ *
+ * Windows too SHORT to hold the chunk are skipped, not clamped to 0. Such a window is
+ * not a tight demand, it is an impossible one: tier 1 can never place there (candidate
+ * windows only ever shrink), so the habit will take working-hours space like any
+ * fallback — and letting it claim the tightest rank would evict a habit whose exact
+ * window is real. This is reachable without user error: core clips the last day's
+ * preferred window at the horizon, so a final-day remnant can fall below the chunk and
+ * drag the whole minimum to 0.
+ *
+ * A habit NO window of which can hold its chunk scores `Infinity`: last among the
+ * preferring habits, but still ahead of the preference-less ones (`claim` decides that,
+ * and it is untouched). That ordering is deliberate — the habit still carries a
+ * preference the fallback tiers respect through `bound`, and keeping the rank boundary
+ * at "states a preference" rather than "states a usable preference" means a window
+ * shrinking below the chunk changes a habit's position WITHIN its group instead of
+ * moving it to another one.
+ */
+function windowSlack(h: Habit): number {
+  const windows = h.preferredWindows;
+  if (!windows || windows.length === 0) return 0;
+  let min = Infinity;
+  for (const w of windows) {
+    const slack = w.end - w.start - h.chunkMs;
+    if (slack >= 0 && slack < min) min = slack;
+  }
+  return min;
+}
+
+/**
+ * Compare two slacks. Written out rather than `a - b` because two habits with no
+ * fittable window both score `Infinity`, and `Infinity - Infinity` is NaN — which is
+ * falsy, so it would silently skip this term AND every term after it in the `||` chain.
+ */
+function compareSlack(a: number, b: number): number {
+  return a === b ? 0 : a < b ? -1 : 1;
+}
 
 function earliestPeriodStart(periods: Interval[]): number {
   let min = Infinity;
@@ -70,13 +122,6 @@ export function schedule(input: ScheduleInput): ScheduleResult {
   // re-confined below — the free envelope no longer does it for them.
   let free = subtractIntervals(input.horizon ? [input.horizon] : input.workingWindows, busy);
   const workingWindows = mergeIntervals(input.workingWindows);
-  // The space in which the block buffer is suspended: EVERY habit's preferred
-  // windows. A habit placed into its own window still pads itself against ordinary
-  // free time, but never against another habit's exactly-sized window — otherwise
-  // whichever of two abutting windows is placed first evicts the other.
-  const habitPreferred = mergeIntervals(
-    input.habits.flatMap((h) => h.preferredWindows ?? []),
-  );
   // Only meaningful with a horizon; without one, free ⊆ workingWindows already.
   const taskBound = input.horizon ? workingWindows : undefined;
 
@@ -87,6 +132,7 @@ export function schedule(input: ScheduleInput): ScheduleResult {
         priority: t.priority,
         order: t.sortOrder ?? 0,
         claim: CLAIM_TASK,
+        slack: 0,
         tie: t.dueBy,
         id: t.id,
         task: t,
@@ -101,6 +147,7 @@ export function schedule(input: ScheduleInput): ScheduleResult {
           h.preferredWindows && h.preferredWindows.length > 0
             ? CLAIM_HABIT_PREFERRED
             : CLAIM_HABIT_ANYTIME,
+        slack: windowSlack(h),
         tie: earliestPeriodStart(h.periods),
         id: h.id,
         habit: h,
@@ -112,6 +159,7 @@ export function schedule(input: ScheduleInput): ScheduleResult {
       a.priority - b.priority ||
       a.order - b.order ||
       a.claim - b.claim ||
+      compareSlack(a.slack, b.slack) ||
       a.tie - b.tie ||
       a.id.localeCompare(b.id),
   );
@@ -119,62 +167,23 @@ export function schedule(input: ScheduleInput): ScheduleResult {
   const blocks: ScheduledBlock[] = [...input.pinnedBlocks];
   const unscheduled: UnscheduledItem[] = [];
 
-  // Claim-aware second phase (R23). A habit placed inside a preferred window skips
-  // its buffer over the DECLARED union above, because at that point we cannot know
-  // which parts of it other habits will really claim. Declared ≠ claimed: a habit's
-  // own window wider than its chunk, or a daily window on a day the habit does not
-  // run, leaves margin that nothing occupies — and the next item lands flush against
-  // the block (Research at 11:15 against CleanUp 11:00–11:15).
-  //
-  // So the suspended margins are collected and, once the LAST habit has been
-  // processed, reserved after all. Abutting exact windows keep working in either
-  // placement order purely because reconciliation runs STRICTLY AFTER every habit
-  // has placed: no habit ever sees a re-reserved margin. The `habitBlockSpans`
-  // subtraction below is inert — every habit block is already out of `free` by
-  // then — and is kept as defensive, documentary code: it states that a margin a
-  // habit really claimed is never handed back.
-  //
-  // Known limitation, deliberately not solved: a task that sorts BEFORE some habit
-  // places pre-reconciliation and may still sit flush against an earlier habit's
-  // suspended margin. Unreachable with real data — every habit is priority 0, so
-  // every task is processed after the last habit.
-  //
-  // Informational, unchanged from R22 and deliberate: this protects TASKS only. A
-  // later-placed habit can still land flush inside an earlier habit's suspended
-  // margin — that is the whole point of suspending it — and its own ± gap
-  // reservation then protects the tasks that follow it.
-  const lastHabitIndex = work.reduce((last, item, i) => (item.kind === 'habit' ? i : last), -1);
-  const suspendedMargins: Interval[] = [];
-  // Every habit block that exists this run: placed or kept below, plus the pinned
-  // ones (settled outside the engine, never re-emitted by `scheduleHabit`).
-  const habitBlockSpans: Interval[] = input.pinnedBlocks
-    .filter((b) => b.sourceType === 'habit')
-    .map((b) => ({ start: b.start, end: b.end }));
-
-  for (let i = 0; i < work.length; i++) {
-    const item = work[i]!;
+  // One pass, one buffer rule (R25): every item — task chunk, habit occurrence, kept
+  // sticky slot — takes `[start − gap, end + gap]` out of the shared free timeline as
+  // it is placed, so whatever is placed next simply cannot land on another block's
+  // edge. There is no second phase: the R22 window exemption and the R23
+  // suspended-margin reconciliation it needed are gone, and what protects an
+  // exactly-sized window is the claim order above, not an exemption.
+  for (const item of work) {
     const res =
       item.kind === 'task'
         ? scheduleTask(free, confineTask(item.task, taskBound), gapMs)
         // Habits may leave the working windows, but only as a fallback: they are
         // offered as the middle tier so a habit whose preference is booked out
         // lands in the user's day rather than at midnight.
-        : scheduleHabit(free, item.habit, gapMs, workingWindows, habitPreferred);
+        : scheduleHabit(free, item.habit, gapMs, workingWindows);
     blocks.push(...res.blocks);
     unscheduled.push(...res.unscheduled);
     free = res.free;
-
-    if (item.kind === 'habit') {
-      suspendedMargins.push(...res.suspendedMargins);
-      for (const b of res.blocks) habitBlockSpans.push({ start: b.start, end: b.end });
-    }
-    // No habits at all, or none that suspended anything → nothing to reconcile.
-    if (i === lastHabitIndex && suspendedMargins.length > 0) {
-      free = subtractIntervals(
-        free,
-        subtractIntervals(mergeIntervals(suspendedMargins), habitBlockSpans),
-      );
-    }
   }
 
   blocks.sort((a, b) => a.start - b.start || a.id.localeCompare(b.id));
