@@ -837,3 +837,41 @@ describe('scheduleTask allowedWindows', () => {
     expect(res.blocks[0]).toMatchObject({ start: 0, end: H });
   });
 });
+
+describe('5-minute grid alignment (R24)', () => {
+  const M = 60_000;
+  const H = 60 * M;
+
+  it('aligns a task placed at an odd now-clipped free start', () => {
+    // Free time starts at 09:07 (e.g. the timeline clipped to `now`).
+    const res = scheduleTask([{ start: 9 * H + 7 * M, end: 17 * H }], {
+      id: 't1', title: 'T', priority: 1,
+      durationMs: 30 * M, dueBy: 17 * H, minChunkMs: 30 * M, maxChunkMs: 30 * M,
+    });
+    expect(res.blocks[0]).toMatchObject({ start: 9 * H + 10 * M, end: 9 * H + 40 * M });
+  });
+
+  it('aligns a habit occurrence placed at an odd free start', () => {
+    const res = scheduleHabit([{ start: 9 * H + 7 * M, end: 17 * H }], {
+      id: 'h1', title: 'H', priority: 1, chunkMs: 30 * M, perPeriod: 1,
+      periods: [{ start: 0, end: 24 * H }],
+    });
+    expect(res.blocks[0]).toMatchObject({ start: 9 * H + 10 * M, end: 9 * H + 40 * M });
+  });
+
+  it('keeps the Evening Routine in its exact 23:29–23:59 preferred window', () => {
+    const res = scheduleHabit(
+      [{ start: 0, end: 24 * H }],
+      {
+        id: 'h1', title: 'Evening Routine', priority: 1, chunkMs: 30 * M, perPeriod: 1,
+        periods: [{ start: 0, end: 24 * H }],
+        allowedWindows: [{ start: 0, end: 24 * H }],
+        preferredWindows: [{ start: 23 * H + 29 * M, end: 23 * H + 59 * M }],
+      },
+    );
+    expect(res.blocks[0]).toMatchObject({
+      start: 23 * H + 29 * M,
+      end: 23 * H + 59 * M,
+    });
+  });
+});

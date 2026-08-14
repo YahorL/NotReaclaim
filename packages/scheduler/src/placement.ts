@@ -26,6 +26,14 @@ export function splitDuration(
   return chunks;
 }
 
+/**
+ * Auto placements land on a 5-minute clock grid: "8:07 PM" reads as a glitch,
+ * "8:10 PM" reads as a schedule. 5 divides 60, so plain epoch-ms rounding is
+ * timezone-safe (every real UTC offset is a whole number of minutes, and the
+ * grid repeats every 5).
+ */
+const GRID_MS = 5 * 60_000;
+
 export interface Placement {
   start: number;
   end: number;
@@ -68,7 +76,15 @@ export function placeItem(
       continue;
     }
 
-    const placement: Placement = { start: slot.start, end: slot.start + size };
+    // Nudge the start up to the grid, but only when the chunk still fits the slot
+    // it was chosen for and still beats the deadline. The slot search above stays
+    // earliest-fit: an exact-fit window (Evening Routine's 23:29–23:59 × 30m) is
+    // kept at its raw start rather than skipped in favour of a later alignable one.
+    const aligned = Math.ceil(slot.start / GRID_MS) * GRID_MS;
+    const start =
+      aligned + size <= slot.end && aligned + size <= deadline ? aligned : slot.start;
+
+    const placement: Placement = { start, end: start + size };
     placements.push(placement);
     // Reserve the gap on BOTH sides so a later placement cannot butt up against
     // this one from the left either.
