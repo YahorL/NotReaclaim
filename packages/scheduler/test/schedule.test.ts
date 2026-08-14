@@ -586,6 +586,60 @@ describe('universal buffers and habit claim order (R25)', () => {
     expect(res.blocks.map((b) => b.title)).toEqual(['a-one', 'b-two']);
   });
 
+  it('does not let a habit whose window cannot hold its chunk claim the tightest rank', () => {
+    // `a-impossible` states a 30-minute window for a 60-minute chunk — reachable
+    // without user error, since core clips the last day's preferred window at the
+    // horizon. It can never use that window, so it must not sort ahead of a habit
+    // whose exact window it would then evict via the working-hours tier.
+    const res = run([
+      habit('a-impossible', H, { start: 10 * H, end: 10 * H + 30 * M }),
+      habit('z-exact', H, { start: 10 * H, end: 11 * H }),
+    ]);
+    expect(res.blocks.find((b) => b.sourceId === 'z-exact')).toMatchObject({
+      start: 10 * H, end: 11 * H,
+    });
+    expect(res.blocks.find((b) => b.sourceId === 'a-impossible')!.start)
+      .toBeGreaterThanOrEqual(11 * H + G);
+  });
+
+  it('ranks an unfittable-window habit ahead of a window-less one, deterministically', () => {
+    // Both end up in the working-hours tier, so the order is a pure claim-rank
+    // decision: a stated (if unusable) preference still outranks "anywhere", and the
+    // ids are chosen to sort the other way.
+    const res = run([
+      habit('a-anytime', H),
+      habit('z-impossible', H, { start: 10 * H, end: 10 * H + 30 * M }),
+    ]);
+    expect(res.blocks.map((b) => b.title)).toEqual(['z-impossible', 'a-anytime']);
+  });
+
+  it('ranks a multi-window habit by its tightest window that can actually hold the chunk', () => {
+    // `a-multi` has three windows: one too short to hold its 30m chunk (must be
+    // skipped, not treated as slack 0), a tight one and a wide one (the tightest
+    // FITTABLE window decides — min, not max).
+    const multi = {
+      ...habit('a-multi', 30 * M),
+      preferredWindows: [
+        { start: 9 * H, end: 9 * H + 20 * M },   // too short → skipped
+        { start: 10 * H, end: 10 * H + 40 * M }, // slack 10m → the habit's rank
+        { start: 12 * H, end: 13 * H + 30 * M }, // slack 1h
+      ],
+    };
+    const res = run([
+      multi,
+      habit('b-medium', 30 * M, { start: 12 * H, end: 12 * H + 50 * M }), // slack 20m
+      habit('z-exact', 30 * M, { start: 10 * H, end: 10 * H + 30 * M }),  // slack 0
+    ]);
+    const at = (id: string) => res.blocks.find((b) => b.sourceId === id)!.start;
+    // Counting the unfittable window as slack 0 would put `a-multi` first (id order)
+    // and evict `z-exact` from its window…
+    expect(at('z-exact')).toBe(10 * H);
+    // …and ranking by the WIDEST window would put `b-medium` (20m) ahead of
+    // `a-multi` (1h), handing 12:00 to `b-medium` instead.
+    expect(at('a-multi')).toBe(12 * H);
+    expect(at('b-medium')).toBe(10 * H + 40 * M);
+  });
+
   it('fills an exact window whose interior is free (the fit ignores the buffer)', () => {
     // Working hours START at 10:00, so the window has no room for a leading pad — the
     // fit never consults gapMs, so it is placed exactly and pads outward only.

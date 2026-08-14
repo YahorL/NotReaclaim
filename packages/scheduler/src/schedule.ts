@@ -50,13 +50,41 @@ const CLAIM_TASK = 2;
  *
  * Only ever compared between two habits that both state a preference: `claim` already
  * separates those from preference-less habits and from tasks, which all sit at 0.
+ *
+ * Windows too SHORT to hold the chunk are skipped, not clamped to 0. Such a window is
+ * not a tight demand, it is an impossible one: tier 1 can never place there (candidate
+ * windows only ever shrink), so the habit will take working-hours space like any
+ * fallback — and letting it claim the tightest rank would evict a habit whose exact
+ * window is real. This is reachable without user error: core clips the last day's
+ * preferred window at the horizon, so a final-day remnant can fall below the chunk and
+ * drag the whole minimum to 0.
+ *
+ * A habit NO window of which can hold its chunk scores `Infinity`: last among the
+ * preferring habits, but still ahead of the preference-less ones (`claim` decides that,
+ * and it is untouched). That ordering is deliberate — the habit still carries a
+ * preference the fallback tiers respect through `bound`, and keeping the rank boundary
+ * at "states a preference" rather than "states a usable preference" means a window
+ * shrinking below the chunk changes a habit's position WITHIN its group instead of
+ * moving it to another one.
  */
 function windowSlack(h: Habit): number {
   const windows = h.preferredWindows;
   if (!windows || windows.length === 0) return 0;
   let min = Infinity;
-  for (const w of windows) min = Math.min(min, Math.max(0, w.end - w.start - h.chunkMs));
-  return Number.isFinite(min) ? min : 0;
+  for (const w of windows) {
+    const slack = w.end - w.start - h.chunkMs;
+    if (slack >= 0 && slack < min) min = slack;
+  }
+  return min;
+}
+
+/**
+ * Compare two slacks. Written out rather than `a - b` because two habits with no
+ * fittable window both score `Infinity`, and `Infinity - Infinity` is NaN — which is
+ * falsy, so it would silently skip this term AND every term after it in the `||` chain.
+ */
+function compareSlack(a: number, b: number): number {
+  return a === b ? 0 : a < b ? -1 : 1;
 }
 
 function earliestPeriodStart(periods: Interval[]): number {
@@ -131,7 +159,7 @@ export function schedule(input: ScheduleInput): ScheduleResult {
       a.priority - b.priority ||
       a.order - b.order ||
       a.claim - b.claim ||
-      a.slack - b.slack ||
+      compareSlack(a.slack, b.slack) ||
       a.tie - b.tie ||
       a.id.localeCompare(b.id),
   );
