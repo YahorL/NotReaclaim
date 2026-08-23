@@ -43,7 +43,7 @@ describe('toFlexibleTask', () => {
       createdAt: D('2026-01-01T00:00:00.000Z'),
       updatedAt: D('2026-01-01T00:00:00.000Z'),
     } satisfies Task;
-    expect(toFlexibleTask(row)).toEqual({
+    expect(toFlexibleTask(row, 0)).toEqual({
       id: 't1',
       title: 'Write report',
       priority: 1,
@@ -53,6 +53,29 @@ describe('toFlexibleTask', () => {
       minChunkMs: 900000,
       maxChunkMs: 1800000,
     });
+  });
+
+  it('falls back to the supplied dueBy when the task has no due date', () => {
+    const row = {
+      id: 't1',
+      userId: 'u1',
+      title: 'Write report',
+      priority: 2,
+      sortOrder: 0,
+      durationMs: 3_600_000,
+      dueBy: null,
+      notBefore: null,
+      minChunkMs: 900_000,
+      maxChunkMs: 1_800_000,
+      categoryId: null,
+      status: 'pending',
+      completedAt: null,
+      timeLoggedMs: 0,
+      createdAt: D('2026-01-01T00:00:00.000Z'),
+      updatedAt: D('2026-01-01T00:00:00.000Z'),
+    } satisfies Task;
+    const horizonEnd = D('2026-01-15T00:00:00.000Z').getTime();
+    expect(toFlexibleTask(row, horizonEnd).dueBy).toBe(horizonEnd);
   });
 });
 

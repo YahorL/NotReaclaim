@@ -14,15 +14,22 @@ export function toFixedEvent(row: CalendarEvent): FixedEvent {
   };
 }
 
-/** Map a task row to the engine's FlexibleTask (epoch-ms dueBy). */
-export function toFlexibleTask(row: Task): FlexibleTask {
+/**
+ * Map a task row to the engine's FlexibleTask (epoch-ms dueBy).
+ *
+ * A task with no due date is mapped to `fallbackDueBy` (core passes the horizon end).
+ * That is exact, not a fudge: `placeItem` uses the deadline only as
+ * `start + size <= deadline`, and the free timeline is already clipped to the horizon,
+ * so "no deadline" and "due at the horizon edge" are indistinguishable to the engine.
+ */
+export function toFlexibleTask(row: Task, fallbackDueBy: number): FlexibleTask {
   return {
     id: row.id,
     title: row.title,
     priority: row.priority,
     sortOrder: row.sortOrder,
     durationMs: row.durationMs,
-    dueBy: row.dueBy.getTime(),
+    dueBy: row.dueBy?.getTime() ?? fallbackDueBy,
     minChunkMs: row.minChunkMs,
     maxChunkMs: row.maxChunkMs,
   };
