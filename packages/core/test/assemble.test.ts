@@ -204,6 +204,32 @@ describe('assembleScheduleInput', () => {
     // A misconfigured habit is actionable, unlike a day the horizon put out of reach.
     expect(input.habits.find((h) => h.id === 'h1')!.periodTargets).toEqual([3]);
   });
+
+  it('gives an undated task the horizon end as its engine deadline and lists it as undated', async () => {
+    const now = utc('2026-01-05T00:00:00'); // Monday
+    const input = await assembleScheduleInput(
+      fakeRepos({
+        settings: makeSettings({ horizonDays: 7 }),
+        tasks: [
+          makeTask({ id: 't1', dueBy: null }),
+          makeTask({ id: 't2', dueBy: new Date(utc('2026-01-06T10:00:00')) }),
+        ],
+      }),
+      'u1', now,
+    );
+    expect(input.tasks.find((t) => t.id === 't1')!.dueBy).toBe(now + 7 * 24 * 60 * 60 * 1000);
+    expect(input.undatedTaskIds).toEqual(['t1']);
+  });
+
+  it('reports no undated ids when every task has a due date', async () => {
+    const now = utc('2026-01-05T00:00:00');
+    const input = await assembleScheduleInput(
+      fakeRepos({ settings: makeSettings({ horizonDays: 7 }), tasks: [makeTask({ id: 't1' })] }),
+      'u1', now,
+    );
+    expect(input.undatedTaskIds).toEqual([]);
+  });
+
 });
 
 describe('assembleScheduleInput horizon', () => {

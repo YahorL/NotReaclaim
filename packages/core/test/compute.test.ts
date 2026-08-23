@@ -159,4 +159,67 @@ describe('computeDesiredSchedule', () => {
     expect(result.blocks.filter((b) => b.sourceType === 'habit')).toHaveLength(0);
     expect(result.unscheduled.some((u) => u.sourceId === 'h1')).toBe(true);
   });
+
+  it('schedules an undated task like any other when there is room', async () => {
+    const now = utc('2026-01-05T00:00:00'); // Monday
+    const wh = [{ weekday: 1, startMinute: 540, endMinute: 1020 }];
+    const result = await computeDesiredSchedule(
+      fakeRepos({
+        settings: makeSettings({
+          timezone: 'utc', horizonDays: 7,
+          workingHours: wh as unknown as ReturnType<typeof makeSettings>['workingHours'],
+        }),
+        tasks: [makeTask({ id: 't1', dueBy: null, durationMs: 3_600_000, minChunkMs: 3_600_000, maxChunkMs: 3_600_000 })],
+      }),
+      'u1', now,
+    );
+    expect(result.blocks.filter((b) => b.sourceId === 't1')).toHaveLength(1);
+    expect(result.unscheduled).toEqual([]);
+  });
+
+  it('never reports an undated task as unscheduled, even with no free time', async () => {
+    const now = utc('2026-01-05T00:00:00');
+    const wh = [{ weekday: 1, startMinute: 540, endMinute: 1020 }];
+    const result = await computeDesiredSchedule(
+      fakeRepos({
+        settings: makeSettings({
+          timezone: 'utc', horizonDays: 1,
+          workingHours: wh as unknown as ReturnType<typeof makeSettings>['workingHours'],
+        }),
+        tasks: [makeTask({ id: 't1', dueBy: null, durationMs: 3_600_000, minChunkMs: 3_600_000, maxChunkMs: 3_600_000 })],
+        events: [makeEvent({
+          id: 'busy',
+          startsAt: new Date(utc('2026-01-05T00:00:00')),
+          endsAt: new Date(utc('2026-01-06T00:00:00')),
+        })],
+      }),
+      'u1', now,
+    );
+    expect(result.blocks.filter((b) => b.sourceId === 't1')).toHaveLength(0);
+    expect(result.unscheduled).toEqual([]);
+  });
+
+  it('still reports a DATED task that does not fit', async () => {
+    const now = utc('2026-01-05T00:00:00');
+    const wh = [{ weekday: 1, startMinute: 540, endMinute: 1020 }];
+    const result = await computeDesiredSchedule(
+      fakeRepos({
+        settings: makeSettings({
+          timezone: 'utc', horizonDays: 1,
+          workingHours: wh as unknown as ReturnType<typeof makeSettings>['workingHours'],
+        }),
+        tasks: [makeTask({
+          id: 't1', dueBy: new Date(utc('2026-01-05T18:00:00')),
+          durationMs: 3_600_000, minChunkMs: 3_600_000, maxChunkMs: 3_600_000,
+        })],
+        events: [makeEvent({
+          id: 'busy',
+          startsAt: new Date(utc('2026-01-05T00:00:00')),
+          endsAt: new Date(utc('2026-01-06T00:00:00')),
+        })],
+      }),
+      'u1', now,
+    );
+    expect(result.unscheduled.some((u) => u.sourceId === 't1')).toBe(true);
+  });
 });

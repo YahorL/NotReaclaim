@@ -36,12 +36,20 @@ export interface SchedulingRepositories {
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const SCHEDULABLE_TASK_STATUSES: TaskStatus[] = ['pending', 'scheduled'];
 
+/**
+ * The engine input plus the ids of tasks that have NO due date. The engine is
+ * deliberately unaware of undated tasks (they reach it with `dueBy` = horizon end);
+ * core carries the distinction so `computeDesiredSchedule` can keep them out of the
+ * unscheduled warning. `schedule()` ignores the extra field.
+ */
+export type AssembledScheduleInput = ScheduleInput & { undatedTaskIds: string[] };
+
 /** Assemble a complete engine ScheduleInput from persisted user data. */
 export async function assembleScheduleInput(
   repos: SchedulingRepositories,
   userId: string,
   now: number,
-): Promise<ScheduleInput> {
+): Promise<AssembledScheduleInput> {
   const settings = await repos.settings.getByUserId(userId);
   if (!settings) throw new SettingsRequiredError(userId);
 
@@ -119,10 +127,12 @@ export async function assembleScheduleInput(
 
   const allTasks = await repos.tasks.listByUser(userId);
   const tasks: FlexibleTask[] = [];
+  const undatedTaskIds: string[] = [];
   for (const t of allTasks) {
     if (!SCHEDULABLE_TASK_STATUSES.includes(t.status)) continue;
     if (startedTaskIds.has(t.id)) continue; // started → user-managed
-    const flexible = toFlexibleTask(t);
+    const flexible = toFlexibleTask(t, horizonEnd.getTime());
+    if (t.dueBy == null) undatedTaskIds.push(t.id);
     const spent = computeSpentMs(t.id, blocks, settings.requireStartToTrack, now);
     const remaining = flexible.durationMs - (taskCoverageMs.get(t.id) ?? 0) - spent;
     if (remaining <= 0) continue;
@@ -210,5 +220,6 @@ export async function assembleScheduleInput(
     tasks,
     habits,
     blockBufferMs: settings.taskBufferMs ?? 0,
+    undatedTaskIds,
   };
 }
