@@ -18,7 +18,7 @@ export function registerTaskRoutes(app: FastifyInstance, deps: AppDeps, afterMut
     const body = createTaskSchema.parse(request.body);
     const task = await deps.repos.tasks.create(request.userId, {
       ...body,
-      dueBy: new Date(body.dueBy),
+      dueBy: body.dueBy ? new Date(body.dueBy) : null,
       notBefore: body.notBefore ? new Date(body.notBefore) : null,
     });
     afterMutation(request.userId, { taskId: task.id, action: 'created' });
@@ -50,7 +50,7 @@ export function registerTaskRoutes(app: FastifyInstance, deps: AppDeps, afterMut
     const { dueBy: dueByStr, notBefore: nbStr, ...rest } = updateTaskSchema.parse(request.body);
     const data = {
       ...rest,
-      ...(dueByStr ? { dueBy: new Date(dueByStr) } : {}),
+      ...(dueByStr !== undefined ? { dueBy: dueByStr === null ? null : new Date(dueByStr) } : {}),
       ...(nbStr !== undefined ? { notBefore: nbStr === null ? null : new Date(nbStr) } : {}),
       ...(rest.status !== undefined
         ? { completedAt: rest.status === 'completed' ? new Date(deps.now()) : null }

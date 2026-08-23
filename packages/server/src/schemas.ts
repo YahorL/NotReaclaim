@@ -9,7 +9,7 @@ export const createTaskSchema = z.object({
   title: z.string().min(1),
   priority: z.number().int(),
   durationMs: z.number().int().positive(),
-  dueBy: z.string().datetime(),
+  dueBy: z.string().datetime().nullable().optional(),
   minChunkMs: z.number().int().positive(),
   maxChunkMs: z.number().int().positive(),
   categoryId: z.string().nullable().optional(),

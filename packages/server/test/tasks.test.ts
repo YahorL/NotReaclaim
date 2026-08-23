@@ -125,6 +125,56 @@ describe('task routes', () => {
     expect(patch.json()).toMatchObject({ notBefore: null });
   });
 
+  it('creates a task with no due date when dueBy is omitted', async () => {
+    const { app } = buildTestApp();
+    const token = await tokenFor(app);
+    const authHeader = { authorization: `Bearer ${token}` };
+    const res = await app.inject({
+      method: 'POST', url: '/tasks', headers: authHeader,
+      payload: { title: 'Someday', priority: 3, durationMs: 3_600_000, minChunkMs: 900_000, maxChunkMs: 1_800_000 },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().dueBy).toBeNull();
+  });
+
+  it('creates a task with no due date when dueBy is explicitly null', async () => {
+    const { app } = buildTestApp();
+    const token = await tokenFor(app);
+    const authHeader = { authorization: `Bearer ${token}` };
+    const res = await app.inject({
+      method: 'POST', url: '/tasks', headers: authHeader,
+      payload: { title: 'Someday', priority: 3, durationMs: 3_600_000, minChunkMs: 900_000, maxChunkMs: 1_800_000, dueBy: null },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().dueBy).toBeNull();
+  });
+
+  it('clears an existing due date when PATCHed with null', async () => {
+    const { app } = buildTestApp();
+    const token = await tokenFor(app);
+    const authHeader = { authorization: `Bearer ${token}` };
+    const existingTaskId = (await app.inject({ method: 'POST', url: '/tasks', headers: authHeader, payload: taskBody })).json().id;
+    const res = await app.inject({
+      method: 'PATCH', url: `/tasks/${existingTaskId}`, headers: authHeader,
+      payload: { dueBy: null },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().dueBy).toBeNull();
+  });
+
+  it('leaves the due date untouched when PATCH omits dueBy', async () => {
+    const { app } = buildTestApp();
+    const token = await tokenFor(app);
+    const authHeader = { authorization: `Bearer ${token}` };
+    const existingTaskId = (await app.inject({ method: 'POST', url: '/tasks', headers: authHeader, payload: taskBody })).json().id;
+    const res = await app.inject({
+      method: 'PATCH', url: `/tasks/${existingTaskId}`, headers: authHeader,
+      payload: { title: 'Renamed' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().dueBy).not.toBeNull();
+  });
+
   it('rejects a non-datetime notBefore with 400', async () => {
     const { app } = buildTestApp();
     const token = await tokenFor(app);
