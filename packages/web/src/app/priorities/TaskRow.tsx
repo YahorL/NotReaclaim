@@ -3,8 +3,9 @@ import type { Task } from '../../api/types';
 import { Icons } from '../shell/icons';
 import { type BoardColumnKey, columnMeta, relativeDayTimeLabel, insertionSortOrder } from './priorityBucket';
 
-function dueShort(iso: string): string {
-  return new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric' }).format(new Date(iso));
+function dueShort(iso: string | null): string {
+  if (!iso) return 'No deadline';
+  return `Due ${new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric' }).format(new Date(iso))}`;
 }
 
 export interface TaskRowProps {
@@ -36,7 +37,7 @@ export function TaskRow({ task, columnKey, nextMs, now, dragging, draggable = tr
     return () => document.removeEventListener('mousedown', onDown);
   }, [menuOpen]);
   const done = task.status === 'completed';
-  const meta = `Due ${dueShort(task.dueBy)}${nextMs !== null ? ` · Next: ${relativeDayTimeLabel(nextMs, now)}` : ''}`;
+  const meta = `${dueShort(task.dueBy)}${nextMs !== null ? ` · Next: ${relativeDayTimeLabel(nextMs, now)}` : ''}`;
   const subtasks = task.subtasks ?? [];
   const subtaskDone = subtasks.filter((s) => s.done).length;
   const colMeta = columnMeta(columnKey);

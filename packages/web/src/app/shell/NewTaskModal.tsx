@@ -108,6 +108,7 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
           </FieldBox>
           <FieldBox label="Due date">
             <input type="datetime-local" data-testid="due-date" value={form.dueByLocal} onChange={(e) => set('dueByLocal', e.target.value)} className="w-full min-w-0 text-[15px] font-bold text-ink outline-none" />
+            <p className="mt-1 text-[11px] text-inkSoft">Leave empty for no deadline</p>
           </FieldBox>
         </div>
 

@@ -86,6 +86,7 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
           <FieldBox label="Due by">
             <input type="datetime-local" className={ctl} value={form.dueByLocal} onChange={(e) => set('dueByLocal', e.target.value)} />
           </FieldBox>
+          <p className="mt-1 text-[11px] text-inkSoft">Leave empty for no deadline</p>
           {errors.dueByLocal && <p data-testid="err-dueByLocal" className={errCls}>{errors.dueByLocal}</p>}
         </div>
         <div>

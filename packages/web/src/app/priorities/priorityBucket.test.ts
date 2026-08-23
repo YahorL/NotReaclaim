@@ -41,6 +41,22 @@ describe('sortBucket', () => {
     ];
     expect(sortBucket(tasks).map((t) => t.id)).toEqual(['early', 'late']);
   });
+  it('sorts undated tasks after dated ones at the same sortOrder', () => {
+    const tasks = [
+      { id: 'undated', sortOrder: 1, dueBy: null },
+      { id: 'dated', sortOrder: 1, dueBy: '2026-01-09T10:00:00.000Z' },
+    ];
+    expect(sortBucket(tasks).map((t) => t.id)).toEqual(['dated', 'undated']);
+  });
+
+  it('keeps sortOrder ahead of datedness', () => {
+    const tasks = [
+      { id: 'dated', sortOrder: 2, dueBy: '2026-01-09T10:00:00.000Z' },
+      { id: 'undated', sortOrder: 1, dueBy: null },
+    ];
+    expect(sortBucket(tasks).map((t) => t.id)).toEqual(['undated', 'dated']);
+  });
+
   it('does not mutate the original array', () => {
     const tasks = [
       { id: 'b', sortOrder: 2, dueBy: '2026-01-05T10:00:00.000Z' },

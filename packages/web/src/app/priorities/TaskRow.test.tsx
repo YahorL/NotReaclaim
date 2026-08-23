@@ -33,6 +33,13 @@ describe('TaskRow subtask badge', () => {
   });
 });
 
+describe('TaskRow due label', () => {
+  it('renders "No deadline" for a task without a due date', () => {
+    renderRow({ ...base, dueBy: null } as Task);
+    expect(screen.getByText(/No deadline/)).toBeInTheDocument();
+  });
+});
+
 describe('TaskRow subtask checklist', () => {
   it('renders one checkbox row per subtask, checked when done', () => {
     renderRow({ ...base, subtasks: twoSubtasks } as Task);

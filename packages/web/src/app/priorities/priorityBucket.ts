@@ -61,8 +61,11 @@ export function relativeDayTimeLabel(ms: number, now: number): string {
 }
 
 /** Within-bucket display order: user sortOrder, then due date. */
-export function sortBucket<T extends { sortOrder: number; dueBy: string }>(tasks: T[]): T[] {
-  return [...tasks].sort((a, b) => a.sortOrder - b.sortOrder || Date.parse(a.dueBy) - Date.parse(b.dueBy));
+// An undated task sorts last within its sortOrder: `Date.parse(null)` is NaN, and a NaN
+// comparator result leaves the order implementation-defined.
+export function sortBucket<T extends { sortOrder: number; dueBy: string | null }>(tasks: T[]): T[] {
+  const due = (t: T) => (t.dueBy ? Date.parse(t.dueBy) : Infinity);
+  return [...tasks].sort((a, b) => a.sortOrder - b.sortOrder || due(a) - due(b));
 }
 
 /** Completed column order: completedAt desc (nulls last). */

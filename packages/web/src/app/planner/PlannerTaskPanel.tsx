@@ -107,7 +107,9 @@ export function PlannerTaskPanel({ tasks, preview, nowMs, onComplete, onEdit, on
       const an = nextBlockMsForTask(a.id, preview) ?? Number.MAX_SAFE_INTEGER;
       const bn = nextBlockMsForTask(b.id, preview) ?? Number.MAX_SAFE_INTEGER;
       if (an !== bn) return an - bn;
-      return Date.parse(a.dueBy ?? '') - Date.parse(b.dueBy ?? '');
+      const ad = a.dueBy ? Date.parse(a.dueBy) : Infinity;
+      const bd = b.dueBy ? Date.parse(b.dueBy) : Infinity;
+      return ad - bd;
     }),
     [active, preview],
   );
