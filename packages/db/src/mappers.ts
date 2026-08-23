@@ -18,9 +18,12 @@ export function toFixedEvent(row: CalendarEvent): FixedEvent {
  * Map a task row to the engine's FlexibleTask (epoch-ms dueBy).
  *
  * A task with no due date is mapped to `fallbackDueBy` (core passes the horizon end).
- * That is exact, not a fudge: `placeItem` uses the deadline only as
+ * For PLACEMENT that is exact, not a fudge: `placeItem` uses the deadline only as
  * `start + size <= deadline`, and the free timeline is already clipped to the horizon,
- * so "no deadline" and "due at the horizon edge" are indistinguishable to the engine.
+ * so "no deadline" and "due at the horizon edge" cannot place differently.
+ * `dueBy` is ALSO the engine comparator's `tie` term (packages/scheduler/src/schedule.ts),
+ * so at equal priority and sortOrder an undated task sorts behind every dated one. That
+ * ordering consequence is intended: work with a real deadline goes first.
  */
 export function toFlexibleTask(row: Task, fallbackDueBy: number): FlexibleTask {
   return {

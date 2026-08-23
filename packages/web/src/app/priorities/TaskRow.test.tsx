@@ -34,6 +34,12 @@ describe('TaskRow subtask badge', () => {
 });
 
 describe('TaskRow due label', () => {
+  it('renders "Due <m/d>" for a task with a due date', () => {
+    renderRow(base as Task);
+    // Exact text: a doubled or dropped "Due " prefix must fail here.
+    expect(screen.getByText('Due 1/9')).toBeInTheDocument();
+  });
+
   it('renders "No deadline" for a task without a due date', () => {
     renderRow({ ...base, dueBy: null } as Task);
     expect(screen.getByText(/No deadline/)).toBeInTheDocument();

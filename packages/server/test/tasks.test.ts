@@ -172,7 +172,8 @@ describe('task routes', () => {
       payload: { title: 'Renamed' },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json().dueBy).not.toBeNull();
+    // Exact value, not just non-null: writing a DIFFERENT date would also be a bug.
+    expect(res.json().dueBy).toBe(taskBody.dueBy);
   });
 
   it('rejects a non-datetime notBefore with 400', async () => {

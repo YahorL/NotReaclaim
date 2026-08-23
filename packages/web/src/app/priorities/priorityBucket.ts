@@ -61,8 +61,8 @@ export function relativeDayTimeLabel(ms: number, now: number): string {
 }
 
 /** Within-bucket display order: user sortOrder, then due date. */
-// An undated task sorts last within its sortOrder: `Date.parse(null)` is NaN, and a NaN
-// comparator result leaves the order implementation-defined.
+// An undated task sorts last within its sortOrder: its due key is `Infinity`, which is
+// greater than every real timestamp.
 export function sortBucket<T extends { sortOrder: number; dueBy: string | null }>(tasks: T[]): T[] {
   const due = (t: T) => (t.dueBy ? Date.parse(t.dueBy) : Infinity);
   return [...tasks].sort((a, b) => a.sortOrder - b.sortOrder || due(a) - due(b));

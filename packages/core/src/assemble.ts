@@ -132,10 +132,12 @@ export async function assembleScheduleInput(
     if (!SCHEDULABLE_TASK_STATUSES.includes(t.status)) continue;
     if (startedTaskIds.has(t.id)) continue; // started → user-managed
     const flexible = toFlexibleTask(t, horizonEnd.getTime());
-    if (t.dueBy == null) undatedTaskIds.push(t.id);
     const spent = computeSpentMs(t.id, blocks, settings.requireStartToTrack, now);
     const remaining = flexible.durationMs - (taskCoverageMs.get(t.id) ?? 0) - spent;
     if (remaining <= 0) continue;
+    // Listed only once the task is known to reach the engine: one fully covered by pinned
+    // blocks never gets there, so it has nothing to be filtered out of downstream.
+    if (t.dueBy == null) undatedTaskIds.push(t.id);
     const resolvedId =
       t.categoryId && expandedByCategoryId.has(t.categoryId) ? t.categoryId : defaultCategoryId;
     let allowedWindows = resolvedId ? expandedByCategoryId.get(resolvedId)! : workingWindows;
@@ -193,19 +195,21 @@ export async function assembleScheduleInput(
     // or begun occurrence already took — is exactly the period's capacity.
     // Only PINNED occurrences are subtracted from `perPeriod`: a missed one may still be
     // re-placed on another eligible day of the same period if the target has room.
-    // A habit with no eligible day at all is a misconfiguration the user CAN fix, so it
-    // keeps its full target and still reports as unscheduled — proration is only meant to
-    // silence days the horizon put out of reach.
-    const dayWindows = h.eligibleDays.length > 0 ? (engineHabit.allowedWindows ?? []) : undefined;
+    // Proration must only silence what CLIPPING removed. A `perPeriod` larger than the
+    // habit's own weekly eligible-day count is a misconfiguration the user CAN fix (add
+    // eligible days, or ask for fewer), so that shortfall is added back to the capacity
+    // and keeps warning — including the `eligibleDays: []` case, where capacity is 0 and
+    // the shortfall alone carries the full target.
+    const dayWindows = engineHabit.allowedWindows;
+    const ineligibilityShortfall = Math.max(0, h.perPeriod - new Set(h.eligibleDays).size);
     engineHabit.periodTargets = engineHabit.periods.map((p, i) => {
-      if (!dayWindows) return Math.max(0, h.perPeriod - occurrences[i]!);
       const capacity = dayWindows.filter(
         (w) =>
           w.start < p.end &&
           w.end > p.start &&
           !consumed.some((t) => t >= w.start && t < w.end),
       ).length;
-      return Math.max(0, Math.min(h.perPeriod - occurrences[i]!, capacity));
+      return Math.max(0, Math.min(h.perPeriod - occurrences[i]!, capacity + ineligibilityShortfall));
     });
     habits.push(engineHabit);
   }

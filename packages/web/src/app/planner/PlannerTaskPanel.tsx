@@ -107,6 +107,7 @@ export function PlannerTaskPanel({ tasks, preview, nowMs, onComplete, onEdit, on
       const an = nextBlockMsForTask(a.id, preview) ?? Number.MAX_SAFE_INTEGER;
       const bn = nextBlockMsForTask(b.id, preview) ?? Number.MAX_SAFE_INTEGER;
       if (an !== bn) return an - bn;
+      // An undated task sorts last: its due key is `Infinity`, greater than any timestamp.
       const ad = a.dueBy ? Date.parse(a.dueBy) : Infinity;
       const bd = b.dueBy ? Date.parse(b.dueBy) : Infinity;
       return ad - bd;

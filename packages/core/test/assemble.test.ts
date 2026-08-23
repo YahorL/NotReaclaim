@@ -162,7 +162,7 @@ describe('assembleScheduleInput', () => {
     expect(input.habits.find((h) => h.id === 'h1')!.periodTargets).toEqual([7, 3]);
   });
 
-  it('prorates around ineligible weekdays, not just calendar days', async () => {
+  it('keeps warning about a perPeriod its eligible weekdays cannot reach in a full week', async () => {
     const now = utc('2026-01-05T00:00:00'); // Monday
     const input = await assembleScheduleInput(
       fakeRepos({
@@ -171,8 +171,25 @@ describe('assembleScheduleInput', () => {
       }),
       'u1', now,
     );
-    // Only Monday and Wednesday are eligible in this week.
-    expect(input.habits.find((h) => h.id === 'h1')!.periodTargets).toEqual([2]);
+    // Nothing is clipped here: the whole ISO week is inside the horizon. Asking for 5
+    // occurrences on only Mon+Wed is a misconfiguration the user can fix (add eligible
+    // days, or lower perPeriod), so the target stays 5 and 3 report as missed.
+    expect(input.habits.find((h) => h.id === 'h1')!.periodTargets).toEqual([5]);
+  });
+
+  it('silences only the clipped days when eligible weekdays are also too few', async () => {
+    const now = utc('2026-01-05T00:00:00'); // Monday
+    const input = await assembleScheduleInput(
+      fakeRepos({
+        settings: makeSettings({ horizonDays: 1 }), // horizon ends before Wednesday
+        habits: [makeHabit({ id: 'h1', perPeriod: 5, eligibleDays: [1, 3] })],
+      }),
+      'u1', now,
+    );
+    // Capacity is Monday alone (1); the ineligibility shortfall (5 - 2 eligible days = 3)
+    // is added back, so the target is 4: the 3 honest misconfiguration misses stay
+    // visible while the out-of-horizon Wednesday is silenced.
+    expect(input.habits.find((h) => h.id === 'h1')!.periodTargets).toEqual([4]);
   });
 
   it('drops a day already taken by a begun occurrence from the prorated target', async () => {
@@ -202,6 +219,8 @@ describe('assembleScheduleInput', () => {
       'u1', now,
     );
     // A misconfigured habit is actionable, unlike a day the horizon put out of reach.
+    // No special case does this: capacity is 0, but the ineligibility shortfall
+    // (perPeriod 3 - 0 eligible days) restores the full target.
     expect(input.habits.find((h) => h.id === 'h1')!.periodTargets).toEqual([3]);
   });
 

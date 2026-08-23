@@ -20,7 +20,7 @@ export function expandHabit(
   now: number,
   horizonDays: number,
   existingSlots?: Interval[],
-): EngineHabit {
+): EngineHabit & { allowedWindows: Interval[] } {
   assertValidZone(timezone);
   if (horizonDays <= 0) throw new InvalidHorizonError(horizonDays);
 
@@ -77,7 +77,7 @@ export function expandHabit(
     day = day.plus({ days: 1 });
   }
 
-  const result: EngineHabit = {
+  const result: EngineHabit & { allowedWindows: Interval[] } = {
     id: habit.id,
     title: habit.title,
     priority: habit.priority,
