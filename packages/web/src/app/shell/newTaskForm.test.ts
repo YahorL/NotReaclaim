@@ -50,6 +50,21 @@ describe('newTaskForm', () => {
     expect(out.categoryId).toBe('cat-9');
   });
 
+  it('accepts an empty due date', () => {
+    const validState = { ...defaultNewTaskForm(NOW), title: 'Write spec' };
+    expect(validateNewTaskForm({ ...validState, dueByLocal: '' }).ok).toBe(true);
+  });
+
+  it('emits a null dueBy for an empty due date', () => {
+    const validState = { ...defaultNewTaskForm(NOW), title: 'Write spec' };
+    expect(toCreateTaskInput({ ...validState, dueByLocal: '' }).dueBy).toBeNull();
+  });
+
+  it('still defaults a new task to seven days out', () => {
+    const s = defaultNewTaskForm(Date.parse('2026-01-05T12:00:00.000Z'));
+    expect(s.dueByLocal).not.toBe('');
+  });
+
   it('round-trips notBeforeLocal to notBefore (set and empty→null)', () => {
     const base = defaultNewTaskForm(Date.parse('2026-01-05T00:00:00.000Z'));
     expect(toCreateTaskInput({ ...base, title: 'X', notBeforeLocal: '' }).notBefore).toBeNull();

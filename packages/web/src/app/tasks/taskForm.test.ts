@@ -47,7 +47,25 @@ describe('taskForm', () => {
     expect(validateTaskForm(validState({ title: '   ' })).errors.title).toBeTruthy();
     expect(validateTaskForm(validState({ durationMs: 0 })).errors.durationMs).toBeTruthy();
     expect(validateTaskForm(validState({ minChunkMs: 8_000_000 })).errors.maxChunkMs).toBeTruthy();
-    expect(validateTaskForm(validState({ dueByLocal: '' })).errors.dueByLocal).toBeTruthy();
+    expect(validateTaskForm(validState({ dueByLocal: 'not-a-date' })).errors.dueByLocal).toBeTruthy();
+  });
+
+  it('accepts an empty due date', () => {
+    const s = validState({ dueByLocal: '' });
+    expect(validateTaskForm(s).ok).toBe(true);
+    expect(validateTaskForm(s).errors.dueByLocal).toBeUndefined();
+  });
+
+  it('emits a null dueBy for an empty due date', () => {
+    expect(toUpdateInput(validState({ dueByLocal: '' })).dueBy).toBeNull();
+  });
+
+  it('still rejects an unparseable due date', () => {
+    expect(validateTaskForm(validState({ dueByLocal: 'not-a-date' })).ok).toBe(false);
+  });
+
+  it('maps a null dueBy back to an empty field', () => {
+    expect(toFormState(task({ dueBy: null })).dueByLocal).toBe('');
   });
 
   it('toUpdateInput converts local due → ISO and passes categoryId (no status)', () => {

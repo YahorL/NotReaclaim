@@ -46,7 +46,7 @@ export function validateNewTaskForm(s: NewTaskFormState): { ok: boolean; errors:
   if (!(s.minChunkMs > 0)) errors.minChunkMs = 'Min must be positive';
   if (!(s.maxChunkMs > 0)) errors.maxChunkMs = 'Max must be positive';
   else if (s.split && s.minChunkMs > s.maxChunkMs) errors.maxChunkMs = 'Max must be ≥ min';
-  if (!s.dueByLocal || Number.isNaN(Date.parse(s.dueByLocal))) errors.dueByLocal = 'A valid due date is required';
+  if (s.dueByLocal && Number.isNaN(Date.parse(s.dueByLocal))) errors.dueByLocal = 'Enter a valid due date or leave it empty';
   return { ok: Object.keys(errors).length === 0, errors };
 }
 
@@ -57,7 +57,7 @@ export function toCreateTaskInput(s: NewTaskFormState): CreateTaskInput {
     title: s.title.trim(),
     priority: 4,
     durationMs: s.durationMs,
-    dueBy: localInputToIso(s.dueByLocal),
+    dueBy: s.dueByLocal ? localInputToIso(s.dueByLocal) : null,
     notBefore: s.notBeforeLocal ? localInputToIso(s.notBeforeLocal) : null,
     minChunkMs,
     maxChunkMs,

@@ -25,7 +25,7 @@ export interface Task {
   priority: number;
   sortOrder: number;
   durationMs: number;
-  dueBy: string;
+  dueBy: string | null;
   notBefore?: string | null;
   minChunkMs: number;
   maxChunkMs: number;
@@ -164,7 +164,7 @@ export interface CreateTaskInput {
   priority: number;
   sortOrder?: number;
   durationMs: number;
-  dueBy: string;
+  dueBy?: string | null;
   notBefore?: string | null;
   minChunkMs: number;
   maxChunkMs: number;

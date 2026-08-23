@@ -34,7 +34,7 @@ export function toFormState(t: Task): TaskFormState {
   return {
     title: t.title,
     durationMs: t.durationMs,
-    dueByLocal: isoToLocalInput(t.dueBy),
+    dueByLocal: t.dueBy ? isoToLocalInput(t.dueBy) : '',
     notBeforeLocal: t.notBefore ? isoToLocalInput(t.notBefore) : '',
     minChunkMs: t.minChunkMs,
     maxChunkMs: t.maxChunkMs,
@@ -51,7 +51,7 @@ export function validateTaskForm(s: TaskFormState): { ok: boolean; errors: TaskF
   if (!(s.minChunkMs > 0)) errors.minChunkMs = 'Min chunk must be positive';
   if (!(s.maxChunkMs > 0)) errors.maxChunkMs = 'Max chunk must be positive';
   else if (s.minChunkMs > s.maxChunkMs) errors.maxChunkMs = 'Max chunk must be ≥ min chunk';
-  if (!s.dueByLocal || Number.isNaN(Date.parse(s.dueByLocal))) errors.dueByLocal = 'A valid due date is required';
+  if (s.dueByLocal && Number.isNaN(Date.parse(s.dueByLocal))) errors.dueByLocal = 'Enter a valid due date or leave it empty';
   return { ok: Object.keys(errors).length === 0, errors };
 }
 
@@ -59,7 +59,7 @@ export function toUpdateInput(s: TaskFormState): UpdateTaskInput {
   return {
     title: s.title.trim(),
     durationMs: s.durationMs,
-    dueBy: localInputToIso(s.dueByLocal),
+    dueBy: s.dueByLocal ? localInputToIso(s.dueByLocal) : null,
     notBefore: s.notBeforeLocal ? localInputToIso(s.notBeforeLocal) : null,
     minChunkMs: s.minChunkMs,
     maxChunkMs: s.maxChunkMs,
