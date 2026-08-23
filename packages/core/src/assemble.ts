@@ -167,16 +167,36 @@ export async function assembleScheduleInput(
     const occurrences = engineHabit.periods.map(
       (p) => pinnedForHabit.filter((b) => b.start >= p.start && b.start < p.end).length,
     );
-    if (occurrences.some((count) => count > 0)) {
-      engineHabit.periodTargets = engineHabit.periods.map((_p, i) => Math.max(0, h.perPeriod - occurrences[i]!));
-    }
     // Pinned and begun occupy their day, so an auto occurrence never doubles up on it.
-    // `periodTargets` above stays PINNED-only on purpose: a missed occurrence may still
-    // be re-placed on another eligible day of the same period if the target has room.
     const consumed = [...pinnedForHabit.map((b) => b.start), ...begunForHabit];
     if (consumed.length > 0) {
       engineHabit.consumedSlotTimes = consumed.sort((a, b) => a - b);
     }
+
+    // Ask each period only for as many occurrences as it can actually hold. `expandHabit`
+    // clips the first and last week to the horizon, so a full `perPeriod` there would count
+    // occurrences for days that already elapsed (or lie past the horizon) as missed and warn
+    // the user about something they cannot act on. The engine caps a habit at one occurrence
+    // per allowed-window day, so this only drops attempts that were bound to fail: the blocks
+    // it places are unchanged. Windows are day-granular and emitted only for eligible days
+    // from today onward, so counting the ones this period overlaps — minus the days a pinned
+    // or begun occurrence already took — is exactly the period's capacity.
+    // Only PINNED occurrences are subtracted from `perPeriod`: a missed one may still be
+    // re-placed on another eligible day of the same period if the target has room.
+    // A habit with no eligible day at all is a misconfiguration the user CAN fix, so it
+    // keeps its full target and still reports as unscheduled — proration is only meant to
+    // silence days the horizon put out of reach.
+    const dayWindows = h.eligibleDays.length > 0 ? (engineHabit.allowedWindows ?? []) : undefined;
+    engineHabit.periodTargets = engineHabit.periods.map((p, i) => {
+      if (!dayWindows) return Math.max(0, h.perPeriod - occurrences[i]!);
+      const capacity = dayWindows.filter(
+        (w) =>
+          w.start < p.end &&
+          w.end > p.start &&
+          !consumed.some((t) => t >= w.start && t < w.end),
+      ).length;
+      return Math.max(0, Math.min(h.perPeriod - occurrences[i]!, capacity));
+    });
     habits.push(engineHabit);
   }
 

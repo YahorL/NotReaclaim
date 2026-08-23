@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { DateTime } from 'luxon';
 import { computeDesiredSchedule } from '../src/compute.js';
-import { fakeRepos, makeSettings, makeTask, makeHabit, makeBlock } from './fakes.js';
+import { fakeRepos, makeSettings, makeTask, makeHabit, makeBlock, makeEvent } from './fakes.js';
 
 const utc = (iso: string) => DateTime.fromISO(iso, { zone: 'utc' }).toMillis();
 
@@ -129,6 +129,30 @@ describe('computeDesiredSchedule', () => {
           workingHours: wh as unknown as ReturnType<typeof makeSettings>['workingHours'],
         }),
         habits: [makeHabit({ id: 'h1', status: 'active', eligibleDays: [], perPeriod: 1, chunkMs: 1800000 })],
+      }),
+      'u1', now,
+    );
+    expect(result.blocks.filter((b) => b.sourceType === 'habit')).toHaveLength(0);
+    expect(result.unscheduled.some((u) => u.sourceId === 'h1')).toBe(true);
+  });
+
+  it('still reports a habit whose only eligible day has no free time', async () => {
+    // Proration silences unreachable days; a reachable day with a full calendar must
+    // keep warning, since that is something the user can act on.
+    const now = utc('2026-01-05T00:00:00'); // Monday
+    const wh = [{ weekday: 1, startMinute: 540, endMinute: 1020 }];
+    const result = await computeDesiredSchedule(
+      fakeRepos({
+        settings: makeSettings({
+          timezone: 'utc', horizonDays: 1,
+          workingHours: wh as unknown as ReturnType<typeof makeSettings>['workingHours'],
+        }),
+        habits: [makeHabit({ id: 'h1', status: 'active', eligibleDays: [1], perPeriod: 1, chunkMs: 1800000 })],
+        events: [makeEvent({
+          id: 'busy-all-day',
+          startsAt: new Date(utc('2026-01-05T00:00:00')),
+          endsAt: new Date(utc('2026-01-06T00:00:00')),
+        })],
       }),
       'u1', now,
     );

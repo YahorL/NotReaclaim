@@ -123,7 +123,7 @@ describe('assembleScheduleInput', () => {
     expect(h1.periodTargets![0]).toBe(2);
   });
 
-  it('leaves habit periodTargets undefined when there is no pinned coverage', async () => {
+  it('keeps the full perPeriod when the period has enough eligible days', async () => {
     const now = utc('2026-01-05T00:00:00');
     const input = await assembleScheduleInput(
       fakeRepos({
@@ -132,7 +132,77 @@ describe('assembleScheduleInput', () => {
       }),
       'u1', now,
     );
-    expect(input.habits.find((h) => h.id === 'h1')!.periodTargets).toBeUndefined();
+    // Mon-Fri are all reachable, so nothing is prorated away.
+    expect(input.habits.find((h) => h.id === 'h1')!.periodTargets).toEqual([3]);
+  });
+
+  it('prorates the target of a week already partly elapsed', async () => {
+    const now = utc('2026-01-09T00:00:00'); // Friday: only Fri and Sat are left this week
+    const input = await assembleScheduleInput(
+      fakeRepos({
+        settings: makeSettings({ horizonDays: 2 }),
+        habits: [makeHabit({ id: 'h1', perPeriod: 7, eligibleDays: [0, 1, 2, 3, 4, 5, 6] })],
+      }),
+      'u1', now,
+    );
+    // Mon-Thu are history: asking for 7 would report 5 unreachable misses.
+    expect(input.habits.find((h) => h.id === 'h1')!.periodTargets).toEqual([2]);
+  });
+
+  it('prorates the target of a last week clipped by the horizon', async () => {
+    const now = utc('2026-01-05T00:00:00'); // Monday
+    const input = await assembleScheduleInput(
+      fakeRepos({
+        settings: makeSettings({ horizonDays: 10 }),
+        habits: [makeHabit({ id: 'h1', perPeriod: 7, eligibleDays: [0, 1, 2, 3, 4, 5, 6] })],
+      }),
+      'u1', now,
+    );
+    // Full first week, then Mon-Wed of the second before the horizon ends.
+    expect(input.habits.find((h) => h.id === 'h1')!.periodTargets).toEqual([7, 3]);
+  });
+
+  it('prorates around ineligible weekdays, not just calendar days', async () => {
+    const now = utc('2026-01-05T00:00:00'); // Monday
+    const input = await assembleScheduleInput(
+      fakeRepos({
+        settings: makeSettings({ horizonDays: 7 }),
+        habits: [makeHabit({ id: 'h1', perPeriod: 5, eligibleDays: [1, 3] })],
+      }),
+      'u1', now,
+    );
+    // Only Monday and Wednesday are eligible in this week.
+    expect(input.habits.find((h) => h.id === 'h1')!.periodTargets).toEqual([2]);
+  });
+
+  it('drops a day already taken by a begun occurrence from the prorated target', async () => {
+    const now = utc('2026-01-09T00:00:00'); // Friday
+    const input = await assembleScheduleInput(
+      fakeRepos({
+        settings: makeSettings({ horizonDays: 2 }),
+        habits: [makeHabit({ id: 'h1', perPeriod: 7, eligibleDays: [0, 1, 2, 3, 4, 5, 6] })],
+        blocks: [makeBlock({
+          id: 'begun-fri', taskId: null, habitId: 'h1', pinned: false,
+          startsAt: new Date(utc('2026-01-09T00:00:00')), endsAt: new Date(utc('2026-01-09T00:30:00')),
+        })],
+      }),
+      'u1', now,
+    );
+    // Friday is spoken for, so only Saturday is still placeable.
+    expect(input.habits.find((h) => h.id === 'h1')!.periodTargets).toEqual([1]);
+  });
+
+  it('does not prorate a habit with no eligible days, so it still reports as unscheduled', async () => {
+    const now = utc('2026-01-05T00:00:00');
+    const input = await assembleScheduleInput(
+      fakeRepos({
+        settings: makeSettings({ horizonDays: 7 }),
+        habits: [makeHabit({ id: 'h1', perPeriod: 3, eligibleDays: [] })],
+      }),
+      'u1', now,
+    );
+    // A misconfigured habit is actionable, unlike a day the horizon put out of reach.
+    expect(input.habits.find((h) => h.id === 'h1')!.periodTargets).toEqual([3]);
   });
 });
 
