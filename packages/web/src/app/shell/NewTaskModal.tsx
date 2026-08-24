@@ -60,7 +60,7 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
             <FieldBox label="Duration"><DurationStepper label="duration" valueMs={form.durationMs} onChange={(ms) => set('durationMs', ms)} /></FieldBox>
           </div>
           {/* Plain label, not a FieldBox: a bordered box costs ~30px the row doesn't have, and the Split toggle beside it is unboxed too. */}
-          <div className="flex min-w-0 flex-col gap-1">
+          <div className="flex shrink-0 flex-col gap-1">
             <span className="text-[13px] font-semibold text-inkSoft">Priority</span>
             <PriorityPicker value={form.priority} onChange={(p) => set('priority', p)} />
           </div>

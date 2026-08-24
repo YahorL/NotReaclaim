@@ -43,7 +43,7 @@ describe('newTaskForm', () => {
     expect(toCreateTaskInput({ ...base, title: 'X', priority: 2 }).priority).toBe(2);
   });
 
-  it('toCreateTaskInput uses priority 4 and split-off collapses min=max=duration', () => {
+  it('toCreateTaskInput passes the form priority through and split-off collapses min=max=duration', () => {
     const s = { ...defaultNewTaskForm(NOW), title: 'Write spec', durationMs: 3_600_000, split: false, minChunkMs: 1_800_000, maxChunkMs: 7_200_000 };
     const input = toCreateTaskInput(s);
     expect(input.priority).toBe(4);
