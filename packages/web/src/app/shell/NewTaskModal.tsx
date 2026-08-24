@@ -7,6 +7,7 @@ import {
 } from './newTaskForm';
 import { FieldBox } from '../components/FieldBox';
 import { DurationStepper } from '../components/DurationStepper';
+import { PriorityPicker } from '../components/PriorityPicker';
 
 const FALLBACK_WORKING_HOURS = [{ weekday: 1, startMinute: 540, endMinute: 1020 }];
 
@@ -54,11 +55,16 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
           </div>
         </div>
 
-        <div className="mb-3.5 flex items-center gap-4">
-          <div className="basis-[250px]">
+        <div className="mb-3.5 flex items-center gap-3">
+          <div className="basis-[195px]">
             <FieldBox label="Duration"><DurationStepper label="duration" valueMs={form.durationMs} onChange={(ms) => set('durationMs', ms)} /></FieldBox>
           </div>
-          <button type="button" onClick={() => set('split', !form.split)} className="flex items-center gap-2.5">
+          {/* Plain label, not a FieldBox: a bordered box costs ~30px the row doesn't have, and the Split toggle beside it is unboxed too. */}
+          <div className="flex min-w-0 flex-col gap-1">
+            <span className="text-[13px] font-semibold text-inkSoft">Priority</span>
+            <PriorityPicker value={form.priority} onChange={(p) => set('priority', p)} />
+          </div>
+          <button type="button" onClick={() => set('split', !form.split)} className="ml-auto flex shrink-0 items-center gap-2.5">
             <span className={`flex h-6 w-6 items-center justify-center rounded-md ${form.split ? 'bg-indigo text-white' : 'border-2 border-[#c7cad6]'}`}>{form.split && <Icons.check size={17} />}</span>
             <span className="text-[18px] font-bold text-ink">Split up</span>
           </button>
