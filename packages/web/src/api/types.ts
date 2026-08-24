@@ -157,6 +157,10 @@ export interface ReconcileResult {
   deleted: number;
   pinned: number;
   removed: number;
+  /** Google writes made for pinned blocks; absent from responses written before Review 27b. */
+  pinnedSynced?: number;
+  /** Pinned blocks whose Google write failed this cycle; absent from older responses. */
+  pinnedFailed?: number;
 }
 
 export interface CreateTaskInput {

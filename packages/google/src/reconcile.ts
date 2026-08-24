@@ -28,6 +28,10 @@ export interface ReconcileResult {
   deleted: number;
   pinned: number;
   removed: number;
+  /** Google writes made for PINNED blocks (created events + pushed app-side moves). */
+  pinnedSynced: number;
+  /** PINNED blocks whose Google write failed this cycle (skipped, retried next cycle). */
+  pinnedFailed: number;
 }
 
 /** Detect drift, recompute the desired schedule, and apply a keyed diff to Google + DB. */
@@ -43,7 +47,7 @@ export async function reconcile(deps: ReconcileDeps, userId: string, now: number
   if (!settings) throw new SettingsRequiredError(userId);
   const horizonEnd = now + settings.horizonDays * MS_PER_DAY;
 
-  const { pinned, removed } = await detectDrift(
+  const { pinned, removed, observed } = await detectDrift(
     { client: deps.client, scheduledBlocks: deps.scheduledBlocks },
     userId,
     calendarId,
@@ -67,9 +71,11 @@ export async function reconcile(deps: ReconcileDeps, userId: string, now: number
     },
   };
 
-  const { created, updated, deleted } = await applyDesiredSchedule(
-    deps.scheduledBlocks, userId, desired, { now, horizonEnd, mirror },
+  // `observed` is Google's pre-apply state: it lets the pinned pass push exactly the blocks
+  // the app moved, once, instead of re-writing every pinned event on every poll cycle.
+  const { created, updated, deleted, pinnedSynced, pinnedFailed } = await applyDesiredSchedule(
+    deps.scheduledBlocks, userId, desired, { now, horizonEnd, mirror, mirrorSnapshot: observed },
   );
 
-  return { created, updated, deleted, pinned, removed };
+  return { created, updated, deleted, pinned, removed, pinnedSynced, pinnedFailed };
 }

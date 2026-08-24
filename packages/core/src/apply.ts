@@ -1,4 +1,5 @@
 import type { ScheduledBlock as DbScheduledBlock, ScheduledBlockRepository } from '@notreclaim/db';
+import { toScheduledBlock } from '@notreclaim/db/mappers';
 import type { ScheduledBlock as EngineScheduledBlock, ScheduleResult } from '@notreclaim/scheduler';
 import { toScheduledBlockInput } from './bridge.js';
 import { computeDesiredSchedule } from './compute.js';
@@ -16,13 +17,39 @@ export interface ScheduleMirror {
 
 type BlocksRepo = Pick<ScheduledBlockRepository, 'listByUserInRange' | 'create' | 'update' | 'delete'>;
 
+/** What the external calendar currently holds for one mirrored event. */
+export interface MirrorEventState {
+  start: number;
+  end: number;
+  title: string | null;
+  /** External last-modification stamp (ms epoch), when the provider reports one. */
+  updatedAt?: number;
+}
+
+/**
+ * What the external calendar held at the start of this cycle, keyed by googleEventId
+ * (Google: the events detectDrift just listed). It is the only way the pinned pass can
+ * tell "the app moved this block" from "nothing changed", so pinned rows are pushed
+ * once per real change instead of on every poll.
+ */
+export type MirrorSnapshot = ReadonlyMap<string, MirrorEventState>;
+
 export interface ApplyScheduleOptions {
   now: number;
   horizonEnd: number;
   mirror?: ScheduleMirror;
+  mirrorSnapshot?: MirrorSnapshot;
 }
 
-export interface ApplyCounts { created: number; updated: number; deleted: number }
+export interface ApplyCounts {
+  created: number;
+  updated: number;
+  deleted: number;
+  /** External-calendar writes made for PINNED rows (creates + pushed moves). */
+  pinnedSynced: number;
+  /** PINNED rows whose external write threw and was swallowed (retried next cycle). */
+  pinnedFailed: number;
+}
 
 /** Apply a desired schedule to the DB as a keyed (engineKey) in-place diff. With a mirror, also writes the external calendar. Without one, blocks persist with null google fields. */
 export async function applyDesiredSchedule(
@@ -31,7 +58,7 @@ export async function applyDesiredSchedule(
   desired: ScheduleResult,
   opts: ApplyScheduleOptions,
 ): Promise<ApplyCounts> {
-  const { now, horizonEnd, mirror } = opts;
+  const { now, horizonEnd, mirror, mirrorSnapshot } = opts;
   // The keyed map must span ALL prior placements, not just [now, horizonEnd]: engine keys
   // (task:<id>:<chunk>, habit:<id>:<occurrence>) are horizon-relative and recur over time,
   // so a reissued key must MOVE its old (possibly past) row — unique (userId, engineKey) —
@@ -99,10 +126,82 @@ export async function applyDesiredSchedule(
     deleted += 1;
   }
 
-  return { created, updated, deleted };
+  const { synced: pinnedSynced, failed: pinnedFailed } = mirror
+    ? await mirrorPinnedBlocks(scheduledBlocks, userId, existing, { now, mirror, mirrorSnapshot })
+    : { synced: 0, failed: 0 };
+
+  return { created, updated, deleted, pinnedSynced, pinnedFailed };
 }
 
-export interface LocalPlanResult { created: number; updated: number; deleted: number; pinned: number; removed: number }
+/**
+ * Mirror PINNED rows, which the engine diff above cannot see.
+ *
+ * Pinned rows are detached from engine planning, so they never reach the create/update
+ * branches — which used to mean a block the user dropped on the planner (POST /schedule
+ * stores `{pinned:true, googleEventId:null}`) was silently never written to Google, by any
+ * cycle, ever. For these rows the APP is the source of truth: detectDrift only pulls a
+ * pinned row back from Google when the Google event was edited more recently, so anything
+ * still divergent here is an app-side move that must be pushed outbound.
+ *
+ * Every row is isolated: one external write that throws is counted and skipped, never
+ * allowed to reject the pass. A rejection here would abort the whole reconcile, so no
+ * `schedule.updated` would be emitted — one deterministically-failing row would leave a
+ * user with no live updates at all. A skipped row simply retries on the next cycle.
+ */
+async function mirrorPinnedBlocks(
+  scheduledBlocks: BlocksRepo,
+  userId: string,
+  existing: DbScheduledBlock[],
+  opts: { now: number; mirror: ScheduleMirror; mirrorSnapshot?: MirrorSnapshot },
+): Promise<{ synced: number; failed: number }> {
+  const { now, mirror, mirrorSnapshot } = opts;
+  let synced = 0;
+  let failed = 0;
+
+  for (const row of existing) {
+    if (!row.pinned) continue;
+    if (row.endsAt.getTime() <= now) continue; // ended: history, not worth a write
+    if (!row.taskId && !row.habitId) continue; // not a mappable placement
+    const block = toScheduledBlock(row); // engine id === row id (mappers.ts)
+
+    try {
+      if (row.googleEventId == null) {
+        const ids = await mirror.create(block);
+        // The row already exists — attach the external ids to it, never create a second one.
+        await scheduledBlocks.update(userId, row.id, {
+          googleEventId: ids.googleEventId,
+          googleCalendarId: ids.googleCalendarId,
+        });
+        synced += 1;
+        continue;
+      }
+
+      const snapshot = mirrorSnapshot?.get(row.googleEventId);
+      if (!snapshot) continue; // nothing observed this cycle: never push blind (that would churn every poll)
+      // One arbitration governs BOTH fields. detectDrift pulls a Google-newer TIME edit into
+      // the row, but it compares times only — a Google-side RENAME never reaches the row, so
+      // pushing here would silently overwrite the user's calendar edit with our stale title.
+      // Same rule as detectDrift's: whoever edited last wins; no stamp at all -> the app wins.
+      if (snapshot.updatedAt != null && snapshot.updatedAt > row.updatedAt.getTime()) continue;
+      const timesDiffer = snapshot.start !== row.startsAt.getTime() || snapshot.end !== row.endsAt.getTime();
+      // A null remote title carries no information (Google drops empty summaries), so only
+      // a title we actually saw can count as divergence.
+      const titleDiffers = snapshot.title != null && snapshot.title !== row.title;
+      if (!timesDiffer && !titleDiffers) continue;
+      await mirror.update(block, row);
+      synced += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+
+  return { synced, failed };
+}
+
+export interface LocalPlanResult {
+  created: number; updated: number; deleted: number; pinned: number; removed: number;
+  pinnedSynced: number; pinnedFailed: number;
+}
 
 /** Compute the desired schedule and persist it to the DB with no external sync (no Google). */
 export async function planLocally(
@@ -115,6 +214,7 @@ export async function planLocally(
   if (!settings) throw new SettingsRequiredError(userId);
   const horizonEnd = now + settings.horizonDays * MS_PER_DAY;
   const desired = await computeDesiredSchedule(repos, userId, now);
+  // No mirror locally, so nothing to push for pinned rows either.
   const { created, updated, deleted } = await applyDesiredSchedule(scheduledBlocks, userId, desired, { now, horizonEnd });
-  return { created, updated, deleted, pinned: 0, removed: 0 };
+  return { created, updated, deleted, pinned: 0, removed: 0, pinnedSynced: 0, pinnedFailed: 0 };
 }

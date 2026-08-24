@@ -120,7 +120,21 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
   app.delete('/schedule/:id', guard, async (request, reply) => {
     const { id } = idParamSchema.parse(request.params);
     // No reconcile here: deleting a block clears it from the planner. The task (if any)
-    // stays in Priorities and only reappears on an explicit re-plan.
+    // stays in Priorities and only reappears on an explicit re-plan. Skipping reconcile
+    // does mean nothing else will ever sweep the mirrored event, so remove it here —
+    // best-effort, exactly like the calendar routes: a Google failure must not block the
+    // local delete, and a row with no Google ids never even looks up a token.
+    const blockRow = await deps.repos.scheduledBlocks.findById(request.userId, id);
+    if (blockRow?.googleEventId && blockRow.googleCalendarId) {
+      try {
+        const accessToken = await deps.google.tokens.getAccessToken(request.userId, deps.now());
+        await deps.google.client.deleteEvent(accessToken, blockRow.googleCalendarId, blockRow.googleEventId);
+      } catch (err) {
+        // Not connected or a Google failure — the row still goes, so the Google copy may
+        // be orphaned on the Auto-scheduled calendar: log it.
+        app.log.warn({ err, blockId: id }, 'google write-back failed: block event not removed remotely');
+      }
+    }
     await deps.repos.scheduledBlocks.delete(request.userId, id);
     reply.code(204);
   });

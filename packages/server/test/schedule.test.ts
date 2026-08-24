@@ -98,6 +98,48 @@ describe('schedule routes', () => {
     expect(list.json()).toHaveLength(0);
   });
 
+  it('DELETE /schedule/:id also removes the mirrored Google event', async () => {
+    // Pinned blocks now carry googleEventIds, and nothing sweeps Google events without a
+    // row — so skipping this leaves the event orphaned on the Auto-scheduled calendar.
+    const deleted: Array<{ calendarId: string; googleEventId: string }> = [];
+    const { app } = buildTestApp({
+      blocks: [block({ pinned: true, googleEventId: 'g-1', googleCalendarId: 'cal-auto' })],
+      settings: settings(),
+      accessToken: 'access-1',
+      deleteEvent: async (_t, calendarId, googleEventId) => { deleted.push({ calendarId, googleEventId }); },
+    });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'DELETE', url: '/schedule/b1', headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(204);
+    expect(deleted).toEqual([{ calendarId: 'cal-auto', googleEventId: 'g-1' }]);
+  });
+
+  it('DELETE /schedule/:id still deletes the row when the Google call fails', async () => {
+    const { app } = buildTestApp({
+      blocks: [block({ pinned: true, googleEventId: 'g-1', googleCalendarId: 'cal-auto' })],
+      settings: settings(),
+      accessToken: 'access-1',
+      deleteEvent: async () => { throw new Error('google down'); },
+    });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'DELETE', url: '/schedule/b1', headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(204);
+    const list = await app.inject({ method: 'GET', url: '/schedule', headers: { authorization: `Bearer ${token}` } });
+    expect(list.json()).toHaveLength(0);
+  });
+
+  it('DELETE /schedule/:id never reaches for a token when the block has no Google event', async () => {
+    let tokenLookups = 0;
+    const { app } = buildTestApp({
+      blocks: [block()], settings: settings(),
+      getAccessToken: async () => { tokenLookups += 1; return 'access-1'; },
+    });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'DELETE', url: '/schedule/b1', headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(204);
+    expect(tokenLookups).toBe(0);
+  });
+
   it('DELETE /schedule/:id 404s for a block the user does not own', async () => {
     const { app } = buildTestApp({ blocks: [block()], settings: settings() });
     const token = await tokenFor(app);

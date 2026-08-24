@@ -33,7 +33,7 @@ describe('/ws (localhost smoke)', () => {
       ws.on('message', (d) => resolve(d.toString()));
       ws.on('error', reject);
     });
-    events.emit({ type: 'schedule.updated', userId: 'u1', counts: { created: 1, updated: 0, deleted: 0, pinned: 0, removed: 0 } });
+    events.emit({ type: 'schedule.updated', userId: 'u1', counts: { created: 1, updated: 0, deleted: 0, pinned: 0, removed: 0, pinnedSynced: 0, pinnedFailed: 0 } });
     const msg = JSON.parse(await received);
 
     expect(msg).toMatchObject({ type: 'schedule.updated', userId: 'u1' });

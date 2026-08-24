@@ -26,6 +26,6 @@ export { toGoogleEventWrite } from './writeback.js';
 export { ensureAutoScheduledCalendar } from './ensure-calendar.js';
 export type { EnsureCalendarDeps } from './ensure-calendar.js';
 export { detectDrift } from './detect-drift.js';
-export type { DriftDeps } from './detect-drift.js';
+export type { DriftDeps, DriftResult } from './detect-drift.js';
 export { reconcile } from './reconcile.js';
 export type { ReconcileDeps, ReconcileResult } from './reconcile.js';

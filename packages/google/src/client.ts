@@ -19,6 +19,8 @@ export interface GoogleEvent {
   summary: string | null;
   start: GoogleEventTime | null;
   end: GoogleEventTime | null;
+  /** RFC3339 last-modification time, Google's clock. Absent on some payloads/fixtures. */
+  updated?: string;
 }
 
 export interface ListEventsArgs {
