@@ -1,6 +1,7 @@
 import type { ScheduledBlock, ScheduledBlockRepository } from '@notreclaim/db';
-import type { MirrorSnapshot } from '@notreclaim/core';
+import type { MirrorEventState, MirrorSnapshot } from '@notreclaim/core';
 import type { GoogleClient, GoogleEvent } from './client.js';
+import { collectPages } from './pagination.js';
 
 export interface DriftDeps {
   client: Pick<GoogleClient, 'listEvents'>;
@@ -42,24 +43,30 @@ export async function detectDrift(
   now: number,
   horizonEnd: number,
 ): Promise<DriftResult> {
-  const res = await deps.client.listEvents({
+  // ALL pages, not just the first: the delete branch below hard-deletes any row whose
+  // event is absent from this listing, and Google caps a page at 250 events.
+  const { events } = await collectPages(deps.client, {
     accessToken,
     calendarId,
     timeMin: new Date(now).toISOString(),
     timeMax: new Date(horizonEnd).toISOString(),
   });
-  const byId = new Map(res.events.map((e) => [e.id, e]));
+  const byId = new Map(events.map((e) => [e.id, e]));
 
   // Snapshot Google's side before anything is written, so the caller can push the blocks
   // that still differ (see applyDesiredSchedule's pinned pass) without a second read.
-  const observed = new Map<string, { start: number; end: number; title: string | null }>();
-  for (const event of res.events) {
+  const observed = new Map<string, MirrorEventState>();
+  for (const event of events) {
     if (event.status === 'cancelled') continue;
     if (!event.start?.dateTime || !event.end?.dateTime) continue;
+    // The edit stamp travels with the entry: the pinned pass needs it to tell an app-side
+    // rename (push it) from a Google-side one (keep it) — times alone cannot say.
+    const updatedAt = event.updated ? Date.parse(event.updated) : NaN;
     observed.set(event.id, {
       start: new Date(event.start.dateTime).getTime(),
       end: new Date(event.end.dateTime).getTime(),
       title: event.summary,
+      updatedAt: Number.isFinite(updatedAt) ? updatedAt : undefined,
     });
   }
 

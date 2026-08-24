@@ -5,6 +5,7 @@ import type {
 } from '@notreclaim/db';
 import type { GoogleClient, GoogleEvent, ListEventsArgs } from './client.js';
 import { SyncTokenExpiredError } from './errors.js';
+import { collectPages } from './pagination.js';
 
 const PRIMARY = 'primary';
 
@@ -29,22 +30,6 @@ export interface SyncResult {
 function startOfTodayUtcIso(now: number): string {
   const d = new Date(now);
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())).toISOString();
-}
-
-async function collectPages(
-  client: GoogleClient,
-  baseArgs: ListEventsArgs,
-): Promise<{ events: GoogleEvent[]; nextSyncToken?: string }> {
-  const events: GoogleEvent[] = [];
-  let pageToken: string | undefined;
-  let nextSyncToken: string | undefined;
-  do {
-    const res = await client.listEvents({ ...baseArgs, pageToken });
-    events.push(...res.events);
-    pageToken = res.nextPageToken;
-    if (res.nextSyncToken) nextSyncToken = res.nextSyncToken;
-  } while (pageToken);
-  return { events, nextSyncToken };
 }
 
 /** Sync the user's primary calendar into CalendarEvent rows. */
