@@ -26,9 +26,10 @@ export function mapDomainError(error: unknown): MappedError {
   if (error instanceof GoogleNotConnectedError) {
     return { status: 409, code: 'google_not_connected', message: error.message };
   }
-  // The stored grant is dead — the user must re-consent, so this is a conflict, not a 500.
+  // The stored grant is unusable — the user must re-consent, so this is a conflict, not a 500.
+  // Google's own wording ("invalid_grant") is meaningless to a user, so it stays in the logs.
   if (error instanceof GoogleAuthError) {
-    return { status: 409, code: 'google_auth_broken', message: error.message };
+    return { status: 409, code: 'google_auth_broken', message: 'Google connection needs reconnecting' };
   }
   if (error instanceof GoogleApiError) {
     return { status: 502, code: 'google_api_error', message: error.message };

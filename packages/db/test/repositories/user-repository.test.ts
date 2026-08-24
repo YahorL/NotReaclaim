@@ -66,6 +66,25 @@ describe('UserRepository', () => {
     expect(cleared.googleAuthBrokenAt).toBeNull();
   });
 
+  it('setGoogleAuthBroken only writes when the flag actually flips', async () => {
+    const user = await repo.create({ email: 'cas@example.com' });
+    const brokenAt = new Date('2026-08-24T10:00:00.000Z');
+
+    expect(await repo.setGoogleAuthBroken(user.id, null)).toBe(false); // already clear
+    expect(await repo.setGoogleAuthBroken(user.id, brokenAt)).toBe(true);
+    // A racing second failure loses and must not overwrite the FIRST failure's timestamp.
+    expect(await repo.setGoogleAuthBroken(user.id, new Date('2026-08-24T11:00:00.000Z'))).toBe(false);
+    expect((await repo.findById(user.id))?.googleAuthBrokenAt?.toISOString()).toBe(brokenAt.toISOString());
+
+    expect(await repo.setGoogleAuthBroken(user.id, null)).toBe(true);
+    expect((await repo.findById(user.id))?.googleAuthBrokenAt).toBeNull();
+    expect(await repo.setGoogleAuthBroken(user.id, null)).toBe(false); // recovery announced once
+  });
+
+  it('setGoogleAuthBroken reports no write for a missing user', async () => {
+    expect(await repo.setGoogleAuthBroken('missing-user-id', new Date())).toBe(false);
+  });
+
   it('creates a user with a passwordHash and isAdmin', async () => {
     const user = await repo.create({ email: 'pw@example.com', passwordHash: 'argon$hash', isAdmin: true });
     const found = await repo.findById(user.id);

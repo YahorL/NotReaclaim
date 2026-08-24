@@ -40,5 +40,20 @@ describe('GoogleBrokenBanner', () => {
     expect(banner).toHaveTextContent(/google calendar sync is broken/i);
     fireEvent.click(screen.getByRole('button', { name: /reconnect/i }));
     await waitFor(() => expect(assign).toHaveBeenCalledWith('https://consent.example/again'));
+    expect(screen.queryByTestId('google-link-error')).toBeNull();
+  });
+
+  it('says so when the reconnect cannot be started', async () => {
+    // Without this the button is inert under a banner that promises recovery.
+    renderWithProviders(<GoogleBrokenBanner />, {
+      api: fakeApiClient({
+        getLinkGoogleUrl: async () => { throw new Error('offline'); },
+        getGoogleStatus: async () => ({ connected: true, brokenAt: '2026-08-24T10:00:00.000Z' }),
+      }),
+    });
+
+    await screen.findByTestId('google-broken-banner');
+    fireEvent.click(screen.getByRole('button', { name: /reconnect/i }));
+    expect(await screen.findByTestId('google-link-error')).toHaveTextContent(/could not start/i);
   });
 });

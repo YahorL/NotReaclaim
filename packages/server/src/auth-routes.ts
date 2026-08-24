@@ -42,14 +42,14 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
     const email = normalizeEmail(googleEmail);
     // A fresh grant always heals a broken connection — clear the flag, and announce it only
     // when it was actually set so clients don't see a status event on every ordinary link.
+    // The clear is the same conditional write the token service uses, so a concurrent refresh
+    // or a second callback can't announce the recovery twice.
     const link = async (userId: string) => {
-      const wasBroken = (await deps.repos.users.findById(userId))?.googleAuthBrokenAt != null;
       await deps.repos.users.update(userId, {
         googleId: googleUserId,
         googleRefreshToken: encryptedRefreshToken,
-        googleAuthBrokenAt: null,
       });
-      if (wasBroken) {
+      if (await deps.repos.users.setGoogleAuthBroken(userId, null)) {
         deps.events.emit({ type: 'google.status', userId, broken: false });
       }
     };

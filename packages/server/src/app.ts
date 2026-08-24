@@ -37,7 +37,7 @@ export interface AppDeps {
     calendarEvents: Pick<CalendarEventRepository, 'listByUserInRange' | 'create' | 'setGoogleIds' | 'findById' | 'update' | 'delete'>;
     categories: CategoryRepository;
     subtasks: SubtaskRepository;
-    users: Pick<UserRepository, 'findById' | 'findByEmail' | 'findByGoogleId' | 'create' | 'update'>;
+    users: Pick<UserRepository, 'findById' | 'findByEmail' | 'findByGoogleId' | 'create' | 'update' | 'setGoogleAuthBroken'>;
     invites: Pick<InviteCodeRepository, 'tryConsume'>;
   };
   google: {

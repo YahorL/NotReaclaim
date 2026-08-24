@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { useApi } from '../../api/ApiProvider';
 import { useGoogleStatusQuery } from '../../api/queries';
-import { startGoogleLink } from '../lib/googleLink';
+import { GOOGLE_LINK_FAILED, startGoogleLink } from '../lib/googleLink';
 
 /**
  * App-wide alert for a dead Google grant: sync is silently down until the user re-consents,
@@ -10,7 +11,13 @@ import { startGoogleLink } from '../lib/googleLink';
 export function GoogleBrokenBanner() {
   const api = useApi();
   const { data } = useGoogleStatusQuery();
+  const [linkFailed, setLinkFailed] = useState(false);
   if (!data?.connected || data.brokenAt == null) return null;
+
+  const reconnect = async () => {
+    setLinkFailed(false);
+    setLinkFailed(!(await startGoogleLink(api)));
+  };
 
   return (
     <div
@@ -22,11 +29,14 @@ export function GoogleBrokenBanner() {
       <span className="text-crit/80">Reconnect your account to resume syncing.</span>
       <button
         type="button"
-        onClick={() => { void startGoogleLink(api); }}
+        onClick={() => { void reconnect(); }}
         className="ml-auto rounded-[8px] bg-crit px-3 py-1 text-[12px] font-bold text-white hover:opacity-90"
       >
         Reconnect
       </button>
+      {linkFailed && (
+        <p data-testid="google-link-error" className="basis-full text-[11px] text-crit">{GOOGLE_LINK_FAILED}</p>
+      )}
     </div>
   );
 }

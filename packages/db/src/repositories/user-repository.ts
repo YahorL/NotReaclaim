@@ -48,6 +48,21 @@ export function createUserRepository(prisma: PrismaClient) {
       return rows.map((r) => r.id);
     },
 
+    /**
+     * Compare-and-set on the broken-connection flag: marking only matches a user whose flag is
+     * clear, clearing only one whose flag is set. Returns whether THIS call performed the
+     * transition, so concurrent refreshes (poll + mutation) can't double-announce it, overwrite
+     * the first failure's timestamp, or let a stale read resurrect an already-cleared flag.
+     */
+    async setGoogleAuthBroken(id: string, at: Date | null): Promise<boolean> {
+      const guard = at === null ? { not: null } : null;
+      const result = await prisma.user.updateMany({
+        where: { id, googleAuthBrokenAt: guard },
+        data: { googleAuthBrokenAt: at },
+      });
+      return result.count === 1;
+    },
+
     async update(id: string, data: UpdateUserInput): Promise<User> {
       try {
         const result = await prisma.user.updateMany({ where: { id }, data });

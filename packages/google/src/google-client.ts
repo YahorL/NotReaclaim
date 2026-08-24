@@ -1,6 +1,6 @@
 import { OAuth2Client } from 'google-auth-library';
 import type { GoogleClient, GoogleEvent, GoogleEventWrite, GoogleTokens, ListEventsArgs, ListEventsResult } from './client.js';
-import { GoogleApiError, GoogleAuthError, SyncTokenExpiredError } from './errors.js';
+import { GoogleApiError, GoogleAuthError, GoogleGrantRevokedError, SyncTokenExpiredError } from './errors.js';
 
 const SCOPES = ['openid', 'email', 'https://www.googleapis.com/auth/calendar'];
 const CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
@@ -17,6 +17,32 @@ interface RawGoogleEvent {
   start?: { dateTime?: string; date?: string };
   end?: { dateTime?: string; date?: string };
   updated?: string;
+}
+
+/** OAuth error bodies are JSON, but read a raw string body too rather than miss a revocation. */
+function oauthErrorCode(data: unknown): string | undefined {
+  let body = data;
+  if (typeof body === 'string') {
+    try { body = JSON.parse(body); } catch { return undefined; }
+  }
+  if (typeof body !== 'object' || body === null) return undefined;
+  const code = (body as { error?: unknown }).error;
+  return typeof code === 'string' ? code : undefined;
+}
+
+/**
+ * Distinguish a dead grant from a bad day at Google. google-auth-library rejects with a
+ * GaxiosError carrying `response.status` + parsed `response.data` (and, in newer versions,
+ * a top-level `status`); a DNS failure or timeout rejects with a bare Error and no response
+ * at all. Only HTTP 400/401 + `error: "invalid_grant"` means the refresh token is gone —
+ * 5xx, 429 and network errors are transient and must not raise a "reconnect" alert.
+ */
+function isRevokedGrant(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const { response, status } = error as { response?: { status?: number; data?: unknown }; status?: number };
+  const httpStatus = response?.status ?? status;
+  if (httpStatus !== 400 && httpStatus !== 401) return false;
+  return oauthErrorCode(response?.data) === 'invalid_grant';
 }
 
 function mapEvent(item: RawGoogleEvent): GoogleEvent {
@@ -94,7 +120,8 @@ export function createGoogleClient(config: GoogleClientConfig): GoogleClient {
         if (!credentials.access_token) throw new GoogleAuthError('No access token after refresh');
         return { accessToken: credentials.access_token, expiresAt: credentials.expiry_date ?? 0 };
       } catch (error) {
-        throw new GoogleAuthError(error instanceof Error ? error.message : 'Token refresh failed');
+        const message = error instanceof Error ? error.message : 'Token refresh failed';
+        throw isRevokedGrant(error) ? new GoogleGrantRevokedError(message) : new GoogleAuthError(message);
       }
     },
 

@@ -1,13 +1,13 @@
 import type { User, UserRepository } from '@notreclaim/db';
 import type { GoogleClient } from './client.js';
 import { decryptToken, encryptToken } from './encryption.js';
-import { GoogleAuthError, GoogleNotConnectedError } from './errors.js';
+import { GoogleGrantRevokedError, GoogleNotConnectedError } from './errors.js';
 
 const TOKEN_SKEW_MS = 60_000;
 
 export interface TokenServiceDeps {
   client: GoogleClient;
-  users: Pick<UserRepository, 'findById' | 'findByGoogleId' | 'create' | 'update'>;
+  users: Pick<UserRepository, 'findById' | 'findByGoogleId' | 'create' | 'update' | 'setGoogleAuthBroken'>;
   encryptionKey: Buffer;
   /**
    * Called only when the connection's health actually flips, so a caller can announce it
@@ -75,16 +75,18 @@ export function createTokenService(deps: TokenServiceDeps): TokenService {
         refreshed = await deps.client.refreshAccessToken(refreshToken);
       } catch (error) {
         // A dead grant is otherwise invisible to the user: record it (keeping the FIRST
-        // failure's timestamp) so the API/UI can ask for a re-connect.
-        if (error instanceof GoogleAuthError && user.googleAuthBrokenAt == null) {
-          await deps.users.update(userId, { googleAuthBrokenAt: new Date(now) });
+        // failure's timestamp) so the API/UI can ask for a re-connect. ONLY a revoked grant
+        // qualifies — a transient failure (outage, timeout, 429) must not raise that alert.
+        if (error instanceof GoogleGrantRevokedError && (await deps.users.setGoogleAuthBroken(userId, new Date(now)))) {
           deps.onAuthStatusChange?.(userId, true);
         }
         throw error;
       }
 
-      if (user.googleAuthBrokenAt != null) {
-        await deps.users.update(userId, { googleAuthBrokenAt: null });
+      // Attempt the clear unconditionally: the `user` snapshot predates the network call, and
+      // another refresh may have flagged the connection in the meantime. The conditional write
+      // is the source of truth for whether this is a real transition worth announcing.
+      if (await deps.users.setGoogleAuthBroken(userId, null)) {
         deps.onAuthStatusChange?.(userId, false);
       }
       cache.set(userId, refreshed);

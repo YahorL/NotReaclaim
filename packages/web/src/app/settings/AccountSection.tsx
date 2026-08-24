@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useApi } from '../../api/ApiProvider';
 import { ApiError } from '../../api/client';
 import { useGoogleStatusQuery } from '../../api/queries';
-import { startGoogleLink } from '../lib/googleLink';
+import { GOOGLE_LINK_FAILED, startGoogleLink } from '../lib/googleLink';
 
 export function AccountSection() {
   const api = useApi();
@@ -10,6 +10,7 @@ export function AccountSection() {
   const [password, setPassword] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [linkFailed, setLinkFailed] = useState(false);
 
   const savePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -17,7 +18,12 @@ export function AccountSection() {
     try { await api.setPassword(password); setPassword(''); setMsg('Password saved'); }
     catch (e2) { setErr(e2 instanceof ApiError ? e2.message : 'Failed'); }
   };
-  const linkGoogle = () => { void startGoogleLink(api); };
+  const linkGoogle = () => {
+    void (async () => {
+      setLinkFailed(false);
+      setLinkFailed(!(await startGoogleLink(api)));
+    })();
+  };
 
   // Until the status is known (loading, or the request failed) fall back to the plain connect
   // affordance — never claim a connection we haven't confirmed.
@@ -52,6 +58,9 @@ export function AccountSection() {
         </div>
       ) : (
         <button onClick={linkGoogle} className="mt-4 rounded border px-4 py-2">Connect Google (calendar sync)</button>
+      )}
+      {linkFailed && (
+        <p data-testid="google-link-error" className="mt-2 text-[12px] text-crit">{GOOGLE_LINK_FAILED}</p>
       )}
     </section>
   );

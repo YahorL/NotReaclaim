@@ -95,6 +95,27 @@ describe('auth', () => {
     expect(ctx.emitted).toContainEqual({ type: 'google.status', userId: 'u1', broken: false });
   });
 
+  it('announces the recovery once when two link callbacks land together', async () => {
+    // Both handlers read the broken user before either clears it, so a snapshot-driven emit
+    // fires twice; the conditional write is what makes the announcement single.
+    let open!: () => void;
+    const barrier = new Promise<void>((r) => { open = r; });
+    let arrived = 0;
+    const ctx = buildTestApp({
+      users: [{ id: 'u1', email: 'a@example.com', passwordHash: null, isAdmin: false, googleId: 'g-1', googleRefreshToken: 'stale', googleAuthBrokenAt: new Date('2026-08-24T10:00:00.000Z'), autoScheduledCalendarId: null, createdAt: new Date(0), updatedAt: new Date(0) } as never],
+      exchangeGate: async () => { if (++arrived === 2) open(); await barrier; },
+    });
+    await Promise.all([
+      ctx.app.inject({ method: 'GET', url: '/auth/google/callback?code=abc' }),
+      ctx.app.inject({ method: 'GET', url: '/auth/google/callback?code=def' }),
+    ]);
+
+    expect(ctx.emitted.filter((e) => e.type === 'google.status')).toEqual([
+      { type: 'google.status', userId: 'u1', broken: false },
+    ]);
+    expect((await ctx.users.findById('u1'))?.googleAuthBrokenAt).toBeNull();
+  });
+
   it('linking a healthy google account announces nothing', async () => {
     const ctx = buildTestApp(); // default seed: healthy u1
     await ctx.app.inject({ method: 'GET', url: '/auth/google/callback?code=abc' });

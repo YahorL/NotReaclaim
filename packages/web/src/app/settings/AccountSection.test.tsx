@@ -44,5 +44,17 @@ describe('AccountSection', () => {
     expect(await screen.findByTestId('google-broken')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /reconnect/i }));
     await waitFor(() => expect(assign).toHaveBeenCalledWith('https://consent.example/again'));
+    expect(screen.queryByTestId('google-link-error')).toBeNull();
+  });
+
+  it('says so when the link flow cannot be started', async () => {
+    renderWithProviders(<AccountSection />, {
+      api: fakeApiClient({
+        getLinkGoogleUrl: async () => { throw new Error('offline'); },
+        getGoogleStatus: disconnected,
+      }),
+    });
+    fireEvent.click(await screen.findByRole('button', { name: /connect google/i }));
+    expect(await screen.findByTestId('google-link-error')).toHaveTextContent(/could not start/i);
   });
 });

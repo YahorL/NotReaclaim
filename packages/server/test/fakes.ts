@@ -256,9 +256,20 @@ export function fakeUserRepo(seed: User[] = []) {
     async findByEmail(email: string) { return [...byId.values()].find((u) => u.email === email) ?? null; },
     async findByGoogleId(googleId: string) { return [...byId.values()].find((u) => u.googleId === googleId) ?? null; },
     async create(data: Partial<User>) { const u = make(data); byId.set(u.id, u); return u; },
+    // Copy-on-write like Prisma: a row already handed out must NOT change under its holder,
+    // or stale-snapshot races become invisible in tests.
     async update(id: string, data: Partial<User>) {
       const u = byId.get(id); if (!u) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`User ${id}`); }
-      Object.assign(u, data); return u;
+      const updated = { ...u, ...data }; byId.set(id, updated); return updated;
+    },
+    /** Mirrors the repository's conditional updateMany: false when the flag doesn't flip. */
+    async setGoogleAuthBroken(id: string, at: Date | null) {
+      const u = byId.get(id);
+      if (!u) return false;
+      const isBroken = u.googleAuthBrokenAt != null;
+      if (at === null ? !isBroken : isBroken) return false;
+      byId.set(id, { ...u, googleAuthBrokenAt: at });
+      return true;
     },
     _all: byId,
   };
@@ -298,6 +309,8 @@ export interface TestAppOptions {
   registrationMode?: 'closed' | 'invite' | 'open';
   validInvites?: string[];
   googleEmailVerified?: boolean;
+  /** Awaited on every OAuth code exchange — lets a test hold two link callbacks in flight. */
+  exchangeGate?: () => Promise<void>;
 }
 
 export function buildTestApp(opts: TestAppOptions = {}) {
@@ -344,7 +357,10 @@ export function buildTestApp(opts: TestAppOptions = {}) {
             id: 'u1', email: 'a@example.com', googleId: 'g-1', googleRefreshToken: 'enc',
             autoScheduledCalendarId: null, createdAt: new Date(0), updatedAt: new Date(0),
           } as User),
-        exchangeCodeForLink: async () => ({ email: 'a@example.com', emailVerified: opts.googleEmailVerified ?? true, googleUserId: 'g-1', encryptedRefreshToken: 'enc' }),
+        exchangeCodeForLink: async () => {
+          if (opts.exchangeGate) await opts.exchangeGate();
+          return { email: 'a@example.com', emailVerified: opts.googleEmailVerified ?? true, googleUserId: 'g-1', encryptedRefreshToken: 'enc' };
+        },
         getAccessToken: opts.getAccessToken ?? (async () => {
           if (!opts.accessToken) throw new Error('not connected');
           return opts.accessToken;
