@@ -25,10 +25,22 @@ export class GoogleApiError extends Error {
   }
 }
 
-/** OAuth/token refresh failure (e.g. revoked grant) — re-consent required. */
+/** OAuth/token failure. May be transient (outage, timeout) — see GoogleGrantRevokedError. */
 export class GoogleAuthError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'GoogleAuthError';
+  }
+}
+
+/**
+ * Google refused the stored refresh token itself (`invalid_grant`): the user revoked access,
+ * changed their password, or the grant expired. Unlike a plain GoogleAuthError this is
+ * permanent, so it — and only it — may flag the connection as broken and ask for a re-consent.
+ */
+export class GoogleGrantRevokedError extends GoogleAuthError {
+  constructor(message = 'Google refresh token was revoked or has expired') {
+    super(message);
+    this.name = 'GoogleGrantRevokedError';
   }
 }

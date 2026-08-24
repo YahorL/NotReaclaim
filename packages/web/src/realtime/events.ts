@@ -4,7 +4,8 @@ import { queryKeys } from '../api/queries';
 export type ServerEvent =
   | { type: 'schedule.updated'; userId: string; counts: unknown }
   | { type: 'sync.completed'; userId: string; sync: unknown; counts: unknown }
-  | { type: 'task.changed'; userId: string; taskId: string; action: 'created' | 'updated' | 'deleted' };
+  | { type: 'task.changed'; userId: string; taskId: string; action: 'created' | 'updated' | 'deleted' }
+  | { type: 'google.status'; userId: string; broken: boolean };
 
 /** Invalidate the query keys affected by a server event. Invalidating a root key (e.g.
  *  ['schedule']) matches every ['schedule', ...] key (including ['schedule','preview']) by prefix. */
@@ -20,6 +21,9 @@ export function invalidateForEvent(qc: QueryClient, event: ServerEvent): void {
     case 'task.changed':
       void qc.invalidateQueries({ queryKey: queryKeys.tasksRoot });
       void qc.invalidateQueries({ queryKey: queryKeys.scheduleRoot });
+      break;
+    case 'google.status':
+      void qc.invalidateQueries({ queryKey: queryKeys.googleStatusRoot });
       break;
   }
 }

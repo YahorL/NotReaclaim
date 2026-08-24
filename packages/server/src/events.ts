@@ -3,7 +3,9 @@ import type { ReconcileResult, SyncResult } from '@notreclaim/google';
 export type ServerEvent =
   | { type: 'schedule.updated'; userId: string; counts: ReconcileResult }
   | { type: 'sync.completed'; userId: string; sync: SyncResult; counts: ReconcileResult }
-  | { type: 'task.changed'; userId: string; taskId: string; action: 'created' | 'updated' | 'deleted' };
+  | { type: 'task.changed'; userId: string; taskId: string; action: 'created' | 'updated' | 'deleted' }
+  // Emitted only when the Google connection's health flips, so the UI can surface/clear the warning.
+  | { type: 'google.status'; userId: string; broken: boolean };
 
 export interface EventBus {
   emit(event: ServerEvent): void;

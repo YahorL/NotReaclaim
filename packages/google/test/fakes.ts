@@ -15,6 +15,7 @@ export function makeUser(over: Partial<User> = {}): User {
     email: 'a@example.com',
     googleId: null,
     googleRefreshToken: null,
+    googleAuthBrokenAt: null,
     autoScheduledCalendarId: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
@@ -34,6 +35,10 @@ export class FakeGoogleClient implements GoogleClient {
     emailVerified: true,
   };
   refreshResponses: Array<{ accessToken: string; expiresAt: number }> = [];
+  /** When set, every refreshAccessToken call throws it (e.g. a revoked grant). */
+  refreshError: Error | null = null;
+  /** When set, refreshes park here until it resolves — lets a test overlap two refreshes. */
+  refreshGate: Promise<void> | null = null;
   listQueue: Array<ListEventsResult | 'GONE'> = [];
   refreshCalls = 0;
   exchangeCalls = 0;
@@ -50,6 +55,8 @@ export class FakeGoogleClient implements GoogleClient {
 
   async refreshAccessToken(): Promise<{ accessToken: string; expiresAt: number }> {
     this.refreshCalls += 1;
+    if (this.refreshGate) await this.refreshGate;
+    if (this.refreshError) throw this.refreshError;
     return this.refreshResponses.shift() ?? { accessToken: 'access-refreshed', expiresAt: 0 };
   }
 
@@ -98,6 +105,7 @@ export function fakeUserRepo(seed: User[] = []) {
   const usersById = new Map<string, User>(seed.map((u) => [u.id, u]));
   let counter = seed.length;
   return {
+    updateCalls: 0,
     async findById(id: string): Promise<User | null> {
       return usersById.get(id) ?? null;
     },
@@ -111,11 +119,21 @@ export function fakeUserRepo(seed: User[] = []) {
       return user;
     },
     async update(id: string, data: Partial<User>): Promise<User> {
+      this.updateCalls += 1;
       const existing = usersById.get(id);
       if (!existing) throw new Error(`user ${id} not found`);
       const updated = { ...existing, ...data };
       usersById.set(id, updated);
       return updated;
+    },
+    /** Mirrors the repository's conditional updateMany: false when the flag doesn't flip. */
+    async setGoogleAuthBroken(id: string, at: Date | null): Promise<boolean> {
+      const existing = usersById.get(id);
+      if (!existing) return false;
+      const isBroken = existing.googleAuthBrokenAt != null;
+      if (at === null ? !isBroken : isBroken) return false;
+      usersById.set(id, { ...existing, googleAuthBrokenAt: at });
+      return true;
     },
   };
 }

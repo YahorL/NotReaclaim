@@ -3,6 +3,7 @@ export {
   SyncTokenExpiredError,
   GoogleApiError,
   GoogleAuthError,
+  GoogleGrantRevokedError,
 } from './errors.js';
 export { loadGoogleConfig, decodeEncryptionKey } from './config.js';
 export type { GoogleConfig } from './config.js';

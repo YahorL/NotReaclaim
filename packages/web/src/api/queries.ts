@@ -16,7 +16,15 @@ export const queryKeys = {
   settings: () => ['settings'] as const,
   categoriesRoot: ['categories'] as const,
   categories: () => ['categories'] as const,
+  googleStatusRoot: ['googleStatus'] as const,
+  googleStatus: () => ['googleStatus'] as const,
 };
+
+/** Health of the Google Calendar link; refreshed by the `google.status` WS event. */
+export function useGoogleStatusQuery() {
+  const api = useApi();
+  return useQuery({ queryKey: queryKeys.googleStatus(), queryFn: () => api.getGoogleStatus() });
+}
 
 export function useScheduleQuery(from?: string, to?: string) {
   const api = useApi();
