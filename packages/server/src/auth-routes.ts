@@ -26,14 +26,33 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
     return { url: deps.google.client.getConsentUrl(deps.config.googleRedirectUri, state) };
   });
 
+  app.get('/auth/google/status', { onRequest: [app.authenticate] }, async (request) => {
+    const user = await deps.repos.users.findById(request.userId);
+    return {
+      connected: user?.googleRefreshToken != null,
+      brokenAt: user?.googleAuthBrokenAt?.toISOString() ?? null,
+    };
+  });
+
   app.get('/auth/google/callback', async (request, reply) => {
     const { code, state: rawState } = authCallbackQuerySchema.parse(request.query);
     const state = readState(rawState);
     const { email: googleEmail, emailVerified, googleUserId, encryptedRefreshToken } =
       await deps.google.tokens.exchangeCodeForLink(code, deps.config.googleRedirectUri);
     const email = normalizeEmail(googleEmail);
-    const link = (userId: string) =>
-      deps.repos.users.update(userId, { googleId: googleUserId, googleRefreshToken: encryptedRefreshToken });
+    // A fresh grant always heals a broken connection — clear the flag, and announce it only
+    // when it was actually set so clients don't see a status event on every ordinary link.
+    const link = async (userId: string) => {
+      const wasBroken = (await deps.repos.users.findById(userId))?.googleAuthBrokenAt != null;
+      await deps.repos.users.update(userId, {
+        googleId: googleUserId,
+        googleRefreshToken: encryptedRefreshToken,
+        googleAuthBrokenAt: null,
+      });
+      if (wasBroken) {
+        deps.events.emit({ type: 'google.status', userId, broken: false });
+      }
+    };
 
     const finish = (userId: string) => {
       const token = signSession(app, userId);

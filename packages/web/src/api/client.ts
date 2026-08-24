@@ -3,7 +3,7 @@ import type {
   TaskStatus, CreateTaskInput, UpdateTaskInput, CreateHabitInput, UpdateHabitInput, SettingsInput,
   UpdateScheduledBlockInput, Category, CreateCategoryInput, UpdateCategoryInput,
   Subtask, CreateSubtaskInput, UpdateSubtaskInput,
-  CreateCalendarEventInput, UpdateCalendarEventInput, CreateScheduledBlockInput,
+  CreateCalendarEventInput, UpdateCalendarEventInput, CreateScheduledBlockInput, GoogleStatus,
 } from './types';
 
 export class ApiError extends Error {
@@ -54,6 +54,7 @@ export interface ApiClient {
   setPassword(password: string): Promise<void>;
   changeEmail(email: string): Promise<{ id: string; email: string }>;
   getLinkGoogleUrl(): Promise<{ url: string }>;
+  getGoogleStatus(): Promise<GoogleStatus>;
 }
 
 export function createApiClient(config: ApiClientConfig): ApiClient {
@@ -134,5 +135,6 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
     setPassword: (password) => request('POST', '/auth/set-password', { password }),
     changeEmail: (email) => request('PATCH', '/auth/email', { email }),
     getLinkGoogleUrl: () => request('GET', '/auth/google/link'),
+    getGoogleStatus: () => request('GET', '/auth/google/status'),
   };
 }

@@ -12,6 +12,7 @@ export interface UpdateUserInput {
   email?: string;
   googleId?: string | null;
   googleRefreshToken?: string | null;
+  googleAuthBrokenAt?: Date | null;
   autoScheduledCalendarId?: string | null;
   passwordHash?: string | null;
   isAdmin?: boolean;

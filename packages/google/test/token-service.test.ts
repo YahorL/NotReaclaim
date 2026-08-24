@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createTokenService } from '../src/token-service.js';
 import { decryptToken, encryptToken } from '../src/encryption.js';
-import { GoogleNotConnectedError } from '../src/errors.js';
+import { GoogleAuthError, GoogleNotConnectedError } from '../src/errors.js';
 import { FakeGoogleClient, fakeUserRepo, makeUser } from './fakes.js';
 
 const key = Buffer.alloc(32, 5);
@@ -43,6 +43,68 @@ describe('TokenService', () => {
     const users = fakeUserRepo([makeUser({ id: 'u1', googleRefreshToken: null })]);
     const svc = createTokenService({ client, users, encryptionKey: key });
     await expect(svc.getAccessToken('u1', 1000)).rejects.toBeInstanceOf(GoogleNotConnectedError);
+  });
+
+  it('getAccessToken marks the user broken and reports the transition when the refresh is rejected', async () => {
+    const client = new FakeGoogleClient();
+    client.refreshError = new GoogleAuthError('invalid_grant');
+    const users = fakeUserRepo([makeUser({ id: 'u1', googleRefreshToken: encryptToken('refresh-1', key) })]);
+    const transitions: Array<{ userId: string; broken: boolean }> = [];
+    const svc = createTokenService({
+      client, users, encryptionKey: key,
+      onAuthStatusChange: (userId, broken) => transitions.push({ userId, broken }),
+    });
+
+    await expect(svc.getAccessToken('u1', 1000)).rejects.toBeInstanceOf(GoogleAuthError);
+    expect((await users.findById('u1'))?.googleAuthBrokenAt).toEqual(new Date(1000));
+    expect(transitions).toEqual([{ userId: 'u1', broken: true }]);
+  });
+
+  it('getAccessToken keeps the original brokenAt and emits nothing on a repeat failure', async () => {
+    const client = new FakeGoogleClient();
+    client.refreshError = new GoogleAuthError('invalid_grant');
+    const users = fakeUserRepo([
+      makeUser({ id: 'u1', googleRefreshToken: encryptToken('refresh-1', key), googleAuthBrokenAt: new Date(500) }),
+    ]);
+    const transitions: Array<{ userId: string; broken: boolean }> = [];
+    const svc = createTokenService({
+      client, users, encryptionKey: key,
+      onAuthStatusChange: (userId, broken) => transitions.push({ userId, broken }),
+    });
+
+    await expect(svc.getAccessToken('u1', 9000)).rejects.toBeInstanceOf(GoogleAuthError);
+    expect((await users.findById('u1'))?.googleAuthBrokenAt).toEqual(new Date(500));
+    expect(transitions).toEqual([]);
+  });
+
+  it('getAccessToken clears a broken flag on a successful refresh and reports the recovery', async () => {
+    const client = new FakeGoogleClient();
+    const users = fakeUserRepo([
+      makeUser({ id: 'u1', googleRefreshToken: encryptToken('refresh-1', key), googleAuthBrokenAt: new Date(500) }),
+    ]);
+    const transitions: Array<{ userId: string; broken: boolean }> = [];
+    const svc = createTokenService({
+      client, users, encryptionKey: key,
+      onAuthStatusChange: (userId, broken) => transitions.push({ userId, broken }),
+    });
+
+    expect(await svc.getAccessToken('u1', 1000)).toBe('access-refreshed');
+    expect((await users.findById('u1'))?.googleAuthBrokenAt).toBeNull();
+    expect(transitions).toEqual([{ userId: 'u1', broken: false }]);
+  });
+
+  it('getAccessToken does not write on a healthy refresh', async () => {
+    const client = new FakeGoogleClient();
+    const users = fakeUserRepo([makeUser({ id: 'u1', googleRefreshToken: encryptToken('refresh-1', key) })]);
+    const transitions: unknown[] = [];
+    const svc = createTokenService({
+      client, users, encryptionKey: key,
+      onAuthStatusChange: () => transitions.push(1),
+    });
+
+    await svc.getAccessToken('u1', 1000);
+    expect(users.updateCalls).toBe(0);
+    expect(transitions).toEqual([]);
   });
 
   it('exchangeCodeForLink returns profile + encrypted refresh token without writing a user', async () => {

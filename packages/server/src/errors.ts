@@ -1,7 +1,7 @@
 import { ZodError } from 'zod';
 import { NotFoundError, ConflictError } from '@notreclaim/db';
 import { SettingsRequiredError } from '@notreclaim/core';
-import { GoogleNotConnectedError, GoogleApiError } from '@notreclaim/google';
+import { GoogleNotConnectedError, GoogleApiError, GoogleAuthError } from '@notreclaim/google';
 
 export interface MappedError {
   status: number;
@@ -25,6 +25,10 @@ export function mapDomainError(error: unknown): MappedError {
   }
   if (error instanceof GoogleNotConnectedError) {
     return { status: 409, code: 'google_not_connected', message: error.message };
+  }
+  // The stored grant is dead — the user must re-consent, so this is a conflict, not a 500.
+  if (error instanceof GoogleAuthError) {
+    return { status: 409, code: 'google_auth_broken', message: error.message };
   }
   if (error instanceof GoogleApiError) {
     return { status: 502, code: 'google_api_error', message: error.message };

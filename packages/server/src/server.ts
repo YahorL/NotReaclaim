@@ -32,7 +32,14 @@ async function main(): Promise<void> {
 
   const client = createGoogleClient({ clientId: googleConfig.clientId, clientSecret: googleConfig.clientSecret });
   const users = createUserRepository(prisma);
-  const tokens = createTokenService({ client, users, encryptionKey: googleConfig.encryptionKey });
+  // The bus is created up front so a token refresh can announce a broken/restored connection.
+  const bus = createEventBus();
+  const tokens = createTokenService({
+    client,
+    users,
+    encryptionKey: googleConfig.encryptionKey,
+    onAuthStatusChange: (userId, broken) => bus.emit({ type: 'google.status', userId, broken }),
+  });
 
   const settings = createSettingsRepository(prisma);
   const tasks = createTaskRepository(prisma);
@@ -45,7 +52,6 @@ async function main(): Promise<void> {
   const invites = createInviteCodeRepository(prisma);
 
   const schedulingRepos = { settings, calendarEvents, tasks, habits, scheduledBlocks, categories };
-  const bus = createEventBus();
 
   const reconcileBound = (userId: string, now: number) =>
     reconcile({ client, tokens, users, scheduledBlocks, schedulingRepos }, userId, now);

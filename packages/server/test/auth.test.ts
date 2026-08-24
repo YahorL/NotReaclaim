@@ -61,6 +61,46 @@ describe('auth', () => {
     expect(typeof ok.json().url).toBe('string');
   });
 
+  it('/auth/google/status reports a connected, healthy account', async () => {
+    const ctx = buildTestApp(); // default seed: u1 with a refresh token
+    const token = await tokenFor(ctx.app, 'u1');
+    const res = await ctx.app.inject({ method: 'GET', url: '/auth/google/status', headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ connected: true, brokenAt: null });
+  });
+
+  it('/auth/google/status reports a disconnected account and a broken one', async () => {
+    const off = buildTestApp({ users: [{ id: 'u1', email: 'a@example.com', passwordHash: null, isAdmin: false, googleId: null, googleRefreshToken: null, googleAuthBrokenAt: null, autoScheduledCalendarId: null, createdAt: new Date(0), updatedAt: new Date(0) } as never] });
+    const offRes = await off.app.inject({ method: 'GET', url: '/auth/google/status', headers: { authorization: `Bearer ${await tokenFor(off.app, 'u1')}` } });
+    expect(offRes.json()).toEqual({ connected: false, brokenAt: null });
+
+    const brokenAt = new Date('2026-08-24T10:00:00.000Z');
+    const broken = buildTestApp({ users: [{ id: 'u1', email: 'a@example.com', passwordHash: null, isAdmin: false, googleId: 'g-1', googleRefreshToken: 'enc', googleAuthBrokenAt: brokenAt, autoScheduledCalendarId: null, createdAt: new Date(0), updatedAt: new Date(0) } as never] });
+    const brokenRes = await broken.app.inject({ method: 'GET', url: '/auth/google/status', headers: { authorization: `Bearer ${await tokenFor(broken.app, 'u1')}` } });
+    expect(brokenRes.json()).toEqual({ connected: true, brokenAt: brokenAt.toISOString() });
+  });
+
+  it('/auth/google/status requires auth', async () => {
+    const { app } = buildTestApp();
+    expect((await app.inject({ method: 'GET', url: '/auth/google/status' })).statusCode).toBe(401);
+  });
+
+  it('linking a google account clears a broken flag and announces the recovery', async () => {
+    const ctx = buildTestApp({
+      users: [{ id: 'u1', email: 'a@example.com', passwordHash: null, isAdmin: false, googleId: 'g-1', googleRefreshToken: 'stale', googleAuthBrokenAt: new Date('2026-08-24T10:00:00.000Z'), autoScheduledCalendarId: null, createdAt: new Date(0), updatedAt: new Date(0) } as never],
+    });
+    const res = await ctx.app.inject({ method: 'GET', url: '/auth/google/callback?code=abc' });
+    expect(res.statusCode).toBe(200);
+    expect((await ctx.users.findById('u1'))?.googleAuthBrokenAt).toBeNull();
+    expect(ctx.emitted).toContainEqual({ type: 'google.status', userId: 'u1', broken: false });
+  });
+
+  it('linking a healthy google account announces nothing', async () => {
+    const ctx = buildTestApp(); // default seed: healthy u1
+    await ctx.app.inject({ method: 'GET', url: '/auth/google/callback?code=abc' });
+    expect(ctx.emitted.filter((e) => e.type === 'google.status')).toEqual([]);
+  });
+
   it('callback without a code is a 400', async () => {
     const { app } = buildTestApp();
     const res = await app.inject({ method: 'GET', url: '/auth/google/callback' });

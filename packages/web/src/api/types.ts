@@ -209,3 +209,6 @@ export interface UpdateScheduledBlockInput {
 export interface CreateCalendarEventInput { title: string; startsAt: string; endsAt: string; kind?: 'event' | 'blocked'; }
 export interface UpdateCalendarEventInput { title?: string; startsAt?: string; endsAt?: string; }
 export interface CreateScheduledBlockInput { taskId: string; startsAt: string; endsAt: string; }
+
+/** Health of the Google Calendar link. `brokenAt` is set once a token refresh was rejected. */
+export interface GoogleStatus { connected: boolean; brokenAt: string | null; }

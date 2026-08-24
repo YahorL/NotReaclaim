@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { screen, fireEvent } from '@testing-library/react';
+import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProviders, fakeApiClient } from '../test/fakes';
 import { AppShell } from './AppShell';
 
-function makeApi() {
+function makeApi(over: Parameters<typeof fakeApiClient>[0] = {}) {
   return fakeApiClient({
     getSchedule: async () => [],
     listTasks: async () => [],
@@ -11,8 +11,26 @@ function makeApi() {
     getSettings: async () => ({ workdayStart: '08:00', workdayEnd: '23:59', buffers: [] } as never),
     listCategories: async () => [],
     getSchedulePreview: async () => ({ blocks: [], unscheduled: [] }),
+    getGoogleStatus: async () => ({ connected: false, brokenAt: null }),
+    ...over,
   });
 }
+
+describe('AppShell google banner', () => {
+  it('shows the broken-connection banner above the page when Google auth is broken', async () => {
+    renderWithProviders(<AppShell />, {
+      api: makeApi({ getGoogleStatus: async () => ({ connected: true, brokenAt: '2026-08-24T10:00:00.000Z' }) }),
+    });
+    expect(await screen.findByTestId('google-broken-banner')).toBeInTheDocument();
+  });
+
+  it('shows no banner when Google is healthy', async () => {
+    renderWithProviders(<AppShell />, {
+      api: makeApi({ getGoogleStatus: async () => ({ connected: true, brokenAt: null }) }),
+    });
+    await waitFor(() => expect(screen.queryByTestId('google-broken-banner')).toBeNull());
+  });
+});
 
 describe('AppShell sidebar toggle', () => {
   beforeEach(() => {

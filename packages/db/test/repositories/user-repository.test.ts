@@ -56,6 +56,16 @@ describe('UserRepository', () => {
     expect(ids).toHaveLength(1);
   });
 
+  it('records and clears googleAuthBrokenAt', async () => {
+    const user = await repo.create({ email: 'broken@example.com' });
+    expect(user.googleAuthBrokenAt).toBeNull();
+    const brokenAt = new Date('2026-08-24T10:00:00.000Z');
+    const broken = await repo.update(user.id, { googleAuthBrokenAt: brokenAt });
+    expect(broken.googleAuthBrokenAt?.toISOString()).toBe(brokenAt.toISOString());
+    const cleared = await repo.update(user.id, { googleAuthBrokenAt: null });
+    expect(cleared.googleAuthBrokenAt).toBeNull();
+  });
+
   it('creates a user with a passwordHash and isAdmin', async () => {
     const user = await repo.create({ email: 'pw@example.com', passwordHash: 'argon$hash', isAdmin: true });
     const found = await repo.findById(user.id);

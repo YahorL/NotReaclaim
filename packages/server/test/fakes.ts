@@ -248,7 +248,7 @@ export function fakeUserRepo(seed: User[] = []) {
   let n = seed.length;
   const make = (data: Partial<User>): User => ({
     id: `u${++n}`, email: '', passwordHash: null, isAdmin: false, googleId: null,
-    googleRefreshToken: null, autoScheduledCalendarId: null,
+    googleRefreshToken: null, googleAuthBrokenAt: null, autoScheduledCalendarId: null,
     createdAt: new Date(0), updatedAt: new Date(0), ...data,
   } as User);
   return {
@@ -310,7 +310,8 @@ export function buildTestApp(opts: TestAppOptions = {}) {
   const categories = fakeCategoryRepo(opts.categories ?? []);
   const users = fakeUserRepo(opts.users ?? [{
     id: 'u1', email: 'a@example.com', passwordHash: null, isAdmin: false, googleId: 'g-1',
-    googleRefreshToken: 'enc', autoScheduledCalendarId: null, createdAt: new Date(0), updatedAt: new Date(0),
+    googleRefreshToken: 'enc', googleAuthBrokenAt: null, autoScheduledCalendarId: null,
+    createdAt: new Date(0), updatedAt: new Date(0),
   } as User]);
   const invites = fakeInviteRepo({ valid: new Set(opts.validInvites ?? []) });
   const reconcileCalls: Array<{ userId: string; now: number }> = [];

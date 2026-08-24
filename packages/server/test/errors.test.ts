@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { ZodError, z } from 'zod';
 import { NotFoundError, ConflictError } from '@notreclaim/db';
 import { SettingsRequiredError } from '@notreclaim/core';
-import { GoogleNotConnectedError, GoogleApiError } from '@notreclaim/google';
+import { GoogleNotConnectedError, GoogleApiError, GoogleAuthError } from '@notreclaim/google';
 import { mapDomainError } from '../src/errors.js';
 
 describe('mapDomainError', () => {
@@ -12,6 +12,10 @@ describe('mapDomainError', () => {
     expect(mapDomainError(new SettingsRequiredError('u1')).status).toBe(409);
     expect(mapDomainError(new GoogleNotConnectedError('u1')).status).toBe(409);
     expect(mapDomainError(new GoogleApiError(500, 'boom')).status).toBe(502);
+    expect(mapDomainError(new GoogleAuthError('invalid_grant'))).toMatchObject({
+      status: 409,
+      code: 'google_auth_broken',
+    });
     let zerr: unknown;
     try { z.object({ a: z.string() }).parse({}); } catch (e) { zerr = e; }
     expect(zerr).toBeInstanceOf(ZodError);

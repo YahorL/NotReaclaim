@@ -22,6 +22,12 @@ describe('invalidateForEvent', () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: ['calendarEvents'] });
   });
 
+  it('google.status invalidates the google-status query', () => {
+    const { qc, spy } = spyClient();
+    invalidateForEvent(qc, { type: 'google.status', userId: 'u1', broken: true });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['googleStatus'] });
+  });
+
   it('task.changed invalidates both tasks and schedule', () => {
     const { qc, spy } = spyClient();
     invalidateForEvent(qc, { type: 'task.changed', userId: 'u1', taskId: 't1', action: 'created' });

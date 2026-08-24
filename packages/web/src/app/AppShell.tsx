@@ -5,6 +5,7 @@ import { TopBar } from './shell/TopBar';
 import { useAuth } from '../auth/AuthContext';
 import { useWebSocket } from '../realtime/useWebSocket';
 import { NewTaskModal } from './shell/NewTaskModal';
+import { GoogleBrokenBanner } from './shell/GoogleBrokenBanner';
 
 export function AppShell() {
   const { token } = useAuth();
@@ -27,6 +28,7 @@ export function AppShell() {
       {!sidebarHidden && <Sidebar />}
       <main className="flex min-w-0 flex-1 flex-col">
         <TopBar onNewTask={() => setNewTaskOpen(true)} sidebarHidden={sidebarHidden} onToggleSidebar={toggleSidebar} />
+        <GoogleBrokenBanner />
         <div className="min-h-0 flex-1 overflow-auto">
           <Outlet />
         </div>
