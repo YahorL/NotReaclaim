@@ -7,5 +7,7 @@ export { assembleScheduleInput } from './assemble.js';
 export type { SchedulingRepositories } from './assemble.js';
 export { computeDesiredSchedule } from './compute.js';
 export { applyDesiredSchedule, planLocally } from './apply.js';
-export type { ScheduleMirror, ApplyScheduleOptions, ApplyCounts, LocalPlanResult } from './apply.js';
+export type {
+  ScheduleMirror, ApplyScheduleOptions, ApplyCounts, LocalPlanResult, MirrorSnapshot, MirrorEventState,
+} from './apply.js';
 export { round15, computeSpentMs } from './spent.js';

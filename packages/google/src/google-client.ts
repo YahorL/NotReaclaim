@@ -16,6 +16,7 @@ interface RawGoogleEvent {
   summary?: string;
   start?: { dateTime?: string; date?: string };
   end?: { dateTime?: string; date?: string };
+  updated?: string;
 }
 
 function mapEvent(item: RawGoogleEvent): GoogleEvent {
@@ -25,6 +26,7 @@ function mapEvent(item: RawGoogleEvent): GoogleEvent {
     summary: item.summary ?? null,
     start: item.start ?? null,
     end: item.end ?? null,
+    updated: item.updated,
   };
 }
 

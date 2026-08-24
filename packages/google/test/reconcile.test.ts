@@ -154,6 +154,86 @@ describe('reconcile', () => {
     expect(block.startsAt.toISOString()).toBe('2026-01-05T09:00:00.000Z');
   });
 
+  it('writes a Google event for a pinned block created in the app (POST /schedule state)', async () => {
+    // Regression: POST /schedule stores {pinned:true, googleEventId:null}; the engine diff
+    // skips pinned rows, so the block used to be invisible to Google forever.
+    const store = fakeScheduledBlockStore([
+      makeScheduledBlock({
+        id: 'b1', taskId: 't1', habitId: null, engineKey: null, pinned: true,
+        googleEventId: null, googleCalendarId: null, title: 'Dragged in',
+        startsAt: new Date('2026-01-05T11:00:00.000Z'), endsAt: new Date('2026-01-05T11:30:00.000Z'),
+      }),
+    ]);
+    const client = new FakeGoogleClient();
+    client.listQueue = [{ events: [] }];
+    const deps = buildDeps({ store, tasks: [makeTask({ id: 't1' })], client }); // 30-min task, fully covered
+
+    const result = await reconcile(deps, 'u1', NOW);
+
+    expect(result).toMatchObject({ created: 0, pinnedSynced: 1 });
+    expect(client.insertedEvents).toHaveLength(1);
+    expect(client.insertedEvents[0]).toMatchObject({
+      calendarId: 'cal-auto',
+      event: {
+        summary: 'Dragged in',
+        startDateTime: '2026-01-05T11:00:00.000Z',
+        endDateTime: '2026-01-05T11:30:00.000Z',
+      },
+    });
+    const block = store.all().find((b) => b.id === 'b1')!;
+    expect(block.googleEventId).toBe('g-evt-1');
+    expect(block.googleCalendarId).toBe('cal-auto');
+    expect(store.all()).toHaveLength(1); // updated in place, never re-created
+  });
+
+  it('pushes an app-side move of a pinned block to Google instead of reverting it', async () => {
+    const store = fakeScheduledBlockStore([
+      makeScheduledBlock({
+        id: 'b1', taskId: 't1', habitId: null, engineKey: null, pinned: true,
+        googleEventId: 'g1', googleCalendarId: 'cal-auto',
+        startsAt: new Date('2026-01-05T11:00:00.000Z'), endsAt: new Date('2026-01-05T11:30:00.000Z'),
+        updatedAt: new Date('2026-01-05T00:00:00.000Z'), // moved in the app just now
+      }),
+    ]);
+    const client = new FakeGoogleClient();
+    // Google still holds the pre-move 09:00 slot, last touched by us yesterday.
+    client.listQueue = [{ events: [{
+      id: 'g1', status: 'confirmed', summary: 'Focus',
+      start: { dateTime: '2026-01-05T09:00:00.000Z' }, end: { dateTime: '2026-01-05T09:30:00.000Z' },
+      updated: '2026-01-04T00:00:00.000Z',
+    }] }];
+    const deps = buildDeps({ store, tasks: [makeTask({ id: 't1' })], client });
+
+    const result = await reconcile(deps, 'u1', NOW);
+
+    expect(result).toMatchObject({ pinned: 0, pinnedSynced: 1 });
+    expect(client.updatedEvents).toHaveLength(1);
+    expect(client.updatedEvents[0]).toMatchObject({
+      calendarId: 'cal-auto', googleEventId: 'g1',
+      event: { startDateTime: '2026-01-05T11:00:00.000Z', endDateTime: '2026-01-05T11:30:00.000Z' },
+    });
+    expect(store.all().find((b) => b.id === 'b1')!.startsAt.toISOString()).toBe('2026-01-05T11:00:00.000Z');
+  });
+
+  it('makes no Google write for a pinned block already in sync (no per-cycle churn)', async () => {
+    const store = fakeScheduledBlockStore([
+      makeScheduledBlock({
+        id: 'b1', taskId: 't1', habitId: null, engineKey: null, pinned: true,
+        googleEventId: 'g1', googleCalendarId: 'cal-auto',
+        startsAt: new Date('2026-01-05T11:00:00.000Z'), endsAt: new Date('2026-01-05T11:30:00.000Z'),
+      }),
+    ]);
+    const client = new FakeGoogleClient();
+    client.listQueue = [{ events: googleEventsFromStore(store) }];
+    const deps = buildDeps({ store, tasks: [makeTask({ id: 't1' })], client });
+
+    const result = await reconcile(deps, 'u1', NOW);
+
+    expect(result.pinnedSynced).toBe(0);
+    expect(client.insertedEvents).toHaveLength(0);
+    expect(client.updatedEvents).toHaveLength(0);
+  });
+
   it('places only the remaining chunk when a pinned block partially covers a task', async () => {
     // 60-min task, 30 min already covered by a pinned block -> engine places ONE fresh 30-min chunk
     // that coexists with the pinned block (no collision, no duplicate of the covered time).
