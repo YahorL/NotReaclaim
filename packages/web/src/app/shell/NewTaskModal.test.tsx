@@ -27,6 +27,16 @@ describe('NewTaskModal', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
+  it('creates a task with the priority picked in the modal', async () => {
+    const createTask = vi.fn(async () => task());
+    renderWithProviders(<NewTaskModal now={() => NOW} onClose={vi.fn()} />, { api: fakeApiClient(api(createTask) as never) });
+    fireEvent.change(screen.getByPlaceholderText(/task name/i), { target: { value: 'Write spec' } });
+    fireEvent.click(screen.getByRole('button', { name: /high/i }));
+    expect(screen.getByRole('button', { name: /high/i })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
+    await waitFor(() => expect(createTask).toHaveBeenCalledWith(expect.objectContaining({ title: 'Write spec', priority: 2 })));
+  });
+
   it('does not create when the name is empty (Create disabled)', () => {
     const createTask = vi.fn(async () => task());
     renderWithProviders(<NewTaskModal now={() => NOW} onClose={vi.fn()} />, { api: fakeApiClient(api(createTask) as never) });

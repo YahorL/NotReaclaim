@@ -12,6 +12,7 @@ function atLocalTime(ms: number, hours: number, minutes: number): string {
 
 export interface NewTaskFormState {
   title: string;
+  priority: number;
   durationMs: number;
   split: boolean;
   minChunkMs: number;
@@ -27,6 +28,7 @@ export function defaultNewTaskForm(
 ): NewTaskFormState {
   return {
     title: '',
+    priority: 4,
     durationMs: 60 * 60_000,
     split: true,
     minChunkMs: settings?.defaultMinChunkMs ?? 30 * 60_000,
@@ -55,7 +57,7 @@ export function toCreateTaskInput(s: NewTaskFormState): CreateTaskInput {
   const maxChunkMs = s.split ? s.maxChunkMs : s.durationMs;
   return {
     title: s.title.trim(),
-    priority: 4,
+    priority: s.priority,
     durationMs: s.durationMs,
     dueBy: s.dueByLocal ? localInputToIso(s.dueByLocal) : null,
     notBefore: s.notBeforeLocal ? localInputToIso(s.notBeforeLocal) : null,
