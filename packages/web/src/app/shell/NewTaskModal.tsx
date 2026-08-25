@@ -42,7 +42,7 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex animate-fade items-start justify-center bg-[rgba(24,26,42,.35)] px-4 pt-[70px]" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex animate-fade items-start justify-center overflow-y-auto bg-[rgba(24,26,42,.35)] px-4 pt-[70px]" onClick={onClose}>
       <div className="w-full max-w-[500px] animate-pop rounded-[18px] bg-card px-[22px] pb-[22px] pt-5 shadow-modal" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-end">
           <button type="button" aria-label="Close" onClick={onClose} className="p-1 text-inkSoft"><Icons.close size={22} /></button>

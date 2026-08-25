@@ -32,7 +32,7 @@ export function SignIn() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4">
+    <div className="flex min-h-dvh flex-col items-center justify-center gap-4">
       <h1 className="text-2xl font-semibold">NotReclaim</h1>
       <p className="text-gray-500">Your calendar, auto-scheduled.</p>
       <form onSubmit={onPasswordSignIn} className="flex w-72 flex-col gap-2">

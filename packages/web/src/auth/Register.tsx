@@ -28,7 +28,7 @@ export function Register() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4">
+    <div className="flex min-h-dvh flex-col items-center justify-center gap-4">
       <h1 className="text-2xl font-semibold">Create your account</h1>
       <form onSubmit={onSubmit} className="flex w-72 flex-col gap-2">
         <label className="text-sm" htmlFor="email">Email</label>

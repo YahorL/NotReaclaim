@@ -15,9 +15,9 @@ export interface ToolbarProps {
 
 export function Toolbar({ query, setQuery, hideCompleted, setHideCompleted, colsVisible, setColsVisible }: ToolbarProps) {
   return (
-    <div className="flex items-center gap-3 pb-[18px] pl-[30px] pr-[26px] pt-1.5">
-      <div className="flex h-12 w-[430px] min-w-0 max-w-full items-center gap-2.5 rounded-[30px] border border-line bg-card px-5 shadow-card">
-        <Icons.search size={20} className="text-inkSoft" />
+    <div className="flex flex-wrap items-center gap-3 pb-[18px] pl-[30px] pr-[26px] pt-1.5 md:flex-nowrap">
+      <div className="flex h-12 w-full min-w-0 max-w-full items-center gap-2.5 rounded-[30px] border border-line bg-card px-5 shadow-card md:w-[430px]">
+        <Icons.search size={20} className="shrink-0 text-inkSoft" />
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search for something…" aria-label="Search tasks" className="min-w-0 flex-1 bg-transparent text-[16px] text-ink outline-none" />
       </div>
       <div className="flex-1" />

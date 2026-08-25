@@ -113,5 +113,7 @@ describe('NewTaskModal', () => {
     expect(dialog.classList.contains('w-[500px]')).toBe(false);
     // Overlay padding keeps the dialog off the viewport edges.
     expect(wrapper.classList.contains('px-4')).toBe(true);
+    // …and the overlay scrolls, so Create/Cancel stay reachable on short viewports.
+    expect(wrapper.classList.contains('overflow-y-auto')).toBe(true);
   });
 });
