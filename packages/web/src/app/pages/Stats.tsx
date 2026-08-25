@@ -59,13 +59,13 @@ export function Stats({ now = () => Date.now() }: { now?: () => number }) {
 
   return (
     <div className="flex flex-col gap-[18px] px-[30px] pb-10 pt-1">
-      <div className="flex gap-[18px]">
+      <div className="grid grid-cols-2 gap-[18px] md:flex">
         <StatCard label="Total scheduled" value={formatHours(sum.totalMs)} sub="this week" accent="text-indigo" />
         <StatCard label="Task time" value={formatHours(sum.taskMs)} sub="auto-scheduled" accent="text-kind-taskText" />
         <StatCard label="In meetings" value={formatHours(sum.meetingMs)} sub={`${mc} events`} accent="text-crit" />
         <StatCard label="Tasks done" value={`${comp.done} / ${comp.total}`} sub={`${comp.pct}% complete`} accent="text-low" />
       </div>
-      <div className="flex items-stretch gap-[18px]">
+      <div className="flex flex-col items-stretch gap-[18px] md:flex-row">
         <HoursByDayChart perDay={perDay} dayLabels={DAY_LABELS} />
         <TimeSplitDonut segments={segs} totalMs={sum.totalMs} />
       </div>

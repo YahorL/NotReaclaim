@@ -50,4 +50,20 @@ describe('Stats page', () => {
     await waitFor(() => expect(screen.getByText(/nothing scheduled yet/i)).toBeInTheDocument());
     expect(screen.queryByText('Total scheduled')).toBeNull();
   });
+
+  it('wraps the stat cards 2×2 below md and rows them at md+', async () => {
+    renderWithProviders(<Stats now={() => NOW} />, { api: api() });
+    await waitFor(() => expect(screen.getByText('Total scheduled')).toBeInTheDocument());
+    const row = screen.getAllByTestId('stat-card')[0]!.parentElement!;
+    expect(row.className).toContain('grid-cols-2');
+    expect(row.className).toContain('md:flex');
+  });
+
+  it('stacks the charts vertically below md and side-by-side at md+', async () => {
+    renderWithProviders(<Stats now={() => NOW} />, { api: api() });
+    await waitFor(() => expect(screen.getByTestId('hours-by-day')).toBeInTheDocument());
+    const row = screen.getByTestId('hours-by-day').parentElement!;
+    expect(row.className).toContain('flex-col');
+    expect(row.className).toContain('md:flex-row');
+  });
 });
