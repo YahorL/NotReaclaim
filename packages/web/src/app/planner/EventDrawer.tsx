@@ -81,7 +81,7 @@ export function EventDrawer({ event, onClose, zone = 'UTC' }: EventDrawerProps) 
     <aside
       ref={rootRef}
       data-testid="event-drawer"
-      className="w-[440px] shrink-0 space-y-2.5 rounded-[14px] border border-line bg-card p-4 shadow-pop max-h-[calc(100vh-100px)] overflow-y-auto"
+      className="w-[440px] shrink-0 space-y-2.5 rounded-[14px] border border-line bg-card p-4 shadow-pop max-h-[calc(100dvh-100px)] overflow-y-auto"
     >
       <h4 className="text-[15px] font-bold text-ink">Edit event</h4>
 

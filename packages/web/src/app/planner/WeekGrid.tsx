@@ -169,7 +169,7 @@ export function WeekGrid(props: WeekGridProps) {
           </div>
 
           {/* body grid (scrolls vertically; the day header above stays pinned) */}
-          <div ref={scrollRef} data-testid="hours-scroll" className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 230px)' }}>
+          <div ref={scrollRef} data-testid="hours-scroll" className="overflow-y-auto" style={{ maxHeight: 'calc(100dvh - 230px)' }}>
           <div className="grid" style={{ gridTemplateColumns: gridCols }}>
             <div data-testid="hour-gutter">
               {HOURS.map((h) => (

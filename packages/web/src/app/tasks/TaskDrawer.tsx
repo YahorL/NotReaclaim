@@ -36,7 +36,7 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
   const errCls = 'mt-0.5 text-[11px] text-crit';
 
   return (
-    <aside ref={rootRef} data-testid="task-drawer" className="w-[440px] shrink-0 space-y-2.5 rounded-[14px] border border-line bg-card p-4 shadow-pop max-h-[calc(100vh-100px)] overflow-y-auto">
+    <aside ref={rootRef} data-testid="task-drawer" className="w-[440px] shrink-0 space-y-2.5 rounded-[14px] border border-line bg-card p-4 shadow-pop max-h-[calc(100dvh-100px)] overflow-y-auto">
       <h4 className="text-[15px] font-bold text-ink">Edit task</h4>
 
       {(() => {

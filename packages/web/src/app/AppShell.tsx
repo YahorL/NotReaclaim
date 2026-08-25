@@ -26,7 +26,7 @@ export function AppShell() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-dvh overflow-hidden">
       {!sidebarHidden && <Sidebar />}
       <main className="flex min-w-0 flex-1 flex-col">
         <TopBar onNewTask={() => setNewTaskOpen(true)} sidebarHidden={sidebarHidden} onToggleSidebar={toggleSidebar} />
