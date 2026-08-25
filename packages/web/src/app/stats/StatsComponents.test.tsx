@@ -29,6 +29,21 @@ describe('HoursByDayChart', () => {
     expect(bars[0]).toHaveAttribute('data-kind', 'task');
     expect(bars[0]!.style.height).toBe('100px');
   });
+
+  it('lets the bar columns shrink below their 34px desktop width', () => {
+    const perDay: KindMs[] = Array.from({ length: 7 }, () => ({ task: 0, meeting: 0, habit: 0 }));
+    perDay[0] = { task: 4 * HOUR_MS, meeting: 0, habit: 0 };
+    render(<HoursByDayChart perDay={perDay} dayLabels={['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']} />);
+    const stack = screen.getAllByTestId('bar')[0]!.parentElement!;
+    const column = stack.parentElement!;
+    // the column may shrink past its min-content (the day label) width
+    expect(column.className).toContain('flex-1');
+    expect(column.className).toContain('min-w-0');
+    // the bar stack is fluid, capped at today's 34px so md+ is unchanged
+    expect(stack.className).toContain('w-full');
+    expect(stack.className).toContain('max-w-[34px]');
+    expect(stack.classList.contains('w-[34px]')).toBe(false); // token match: max-w-[34px] must not satisfy this
+  });
 });
 
 describe('TimeSplitDonut', () => {

@@ -19,8 +19,8 @@ export function HoursByDayChart({ perDay, dayLabels }: { perDay: KindMs[]; dayLa
             { kind: 'habit' as const, ms: d.habit },
           ]).filter((s) => s.ms > 0);
           return (
-            <div key={i} className="flex flex-1 flex-col items-center gap-2">
-              <div className="flex h-[200px] w-[34px] flex-col justify-end gap-0.5">
+            <div key={i} className="flex min-w-0 flex-1 flex-col items-center gap-2">
+              <div className="flex h-[200px] w-full max-w-[34px] flex-col justify-end gap-0.5">
                 {stack.map((s, j) => (
                   <div
                     key={s.kind}
