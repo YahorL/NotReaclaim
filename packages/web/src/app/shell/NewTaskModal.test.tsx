@@ -101,4 +101,17 @@ describe('NewTaskModal', () => {
     await waitFor(() => expect(createCategory).toHaveBeenCalledWith({ name: 'Deep Work', windows: [{ weekday: 1, startMinute: 540, endMinute: 1020 }] }));
     await waitFor(() => expect(screen.queryByTestId('new-category-name')).not.toBeInTheDocument());
   });
+
+  it('sizes the dialog fluidly so it fits narrow viewports', () => {
+    renderWithProviders(<NewTaskModal now={() => NOW} onClose={vi.fn()} />, { api: fakeApiClient(api() as never) });
+    const dialog = screen.getByLabelText('Close').closest('div.animate-pop') as HTMLElement;
+    const wrapper = dialog.parentElement as HTMLElement;
+
+    // Fluid up to 500px, never a fixed 500px that overflows a 390px viewport.
+    expect(dialog.classList.contains('w-full')).toBe(true);
+    expect(dialog.classList.contains('max-w-[500px]')).toBe(true);
+    expect(dialog.classList.contains('w-[500px]')).toBe(false);
+    // Overlay padding keeps the dialog off the viewport edges.
+    expect(wrapper.classList.contains('px-4')).toBe(true);
+  });
 });
