@@ -68,3 +68,36 @@ describe('AppShell sidebar toggle', () => {
     expect(screen.queryByTestId('sidebar')).toBeNull();
   });
 });
+
+describe('AppShell mobile chrome', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('mounts the mobile tab bar and the mobile top bar', () => {
+    renderWithProviders(<AppShell />, { api: makeApi() });
+    expect(screen.getByTestId('mobile-tab-bar')).toBeInTheDocument();
+    expect(screen.getByTestId('mobile-top-bar')).toBeInTheDocument();
+  });
+
+  it('hides the desktop top bar below md', () => {
+    renderWithProviders(<AppShell />, { api: makeApi() });
+    const header = screen.getByTestId('toggle-sidebar').closest('header')!;
+    expect(header.className).toContain('hidden');
+    expect(header.className).toContain('md:flex');
+  });
+
+  it('hides the sidebar below md while keeping it at md+', () => {
+    renderWithProviders(<AppShell />, { api: makeApi() });
+    const sidebar = screen.getByTestId('sidebar');
+    expect(sidebar.className).toContain('hidden');
+    expect(sidebar.className).toContain('md:flex');
+  });
+
+  it('pads the content area so the fixed tab bar never covers it on mobile', () => {
+    renderWithProviders(<AppShell />, { api: makeApi() });
+    const content = screen.getByTestId('shell-content');
+    expect(content.className).toContain('pb-[calc(56px_+_env(safe-area-inset-bottom))]');
+    expect(content.className).toContain('md:pb-0');
+  });
+});

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { screen, fireEvent } from '@testing-library/react';
+import { screen, fireEvent, within } from '@testing-library/react';
 import { App } from './App';
 import { renderWithProviders, fakeApiClient } from '../test/fakes';
 import { tokenStore } from '../auth/tokenStore';
@@ -25,16 +25,24 @@ describe('App routing', () => {
   it('renders the shell with nav links when authenticated', () => {
     tokenStore.set({ token: 'jwt', userId: 'u1' });
     renderWithProviders(<App />, { initialEntries: ['/'], api: authedApi() });
-    expect(screen.getByRole('link', { name: 'Planner' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Priorities' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Habits' })).toBeInTheDocument();
+    const sidebar = within(screen.getByTestId('sidebar'));
+    expect(sidebar.getByRole('link', { name: 'Planner' })).toBeInTheDocument();
+    expect(sidebar.getByRole('link', { name: 'Priorities' })).toBeInTheDocument();
+    expect(sidebar.getByRole('link', { name: 'Habits' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Tasks' })).toBeNull();
   });
 
   it('navigates to the Habits page via the sidebar', () => {
     tokenStore.set({ token: 'jwt', userId: 'u1' });
     renderWithProviders(<App />, { initialEntries: ['/'], api: authedApi() });
-    fireEvent.click(screen.getByRole('link', { name: 'Habits' }));
+    fireEvent.click(within(screen.getByTestId('sidebar')).getByRole('link', { name: 'Habits' }));
+    expect(screen.getByPlaceholderText(/add a habit/i)).toBeInTheDocument();
+  });
+
+  it('navigates to the Habits page via the mobile tab bar', () => {
+    tokenStore.set({ token: 'jwt', userId: 'u1' });
+    renderWithProviders(<App />, { initialEntries: ['/'], api: authedApi() });
+    fireEvent.click(within(screen.getByTestId('mobile-tab-bar')).getByRole('link', { name: 'Habits' }));
     expect(screen.getByPlaceholderText(/add a habit/i)).toBeInTheDocument();
   });
 

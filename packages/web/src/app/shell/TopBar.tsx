@@ -22,7 +22,7 @@ export function TopBar({ onNewTask, now = Date.now, sidebarHidden, onToggleSideb
   const { running, nextBlock } = useCurrentOrNext(nowMs);
 
   return (
-    <header className="flex h-[70px] shrink-0 items-center gap-3.5 bg-bg pl-[30px] pr-[26px]">
+    <header className="hidden h-[70px] shrink-0 items-center gap-3.5 bg-bg pl-[30px] pr-[26px] md:flex">
       {onToggleSidebar && (
         <button
           type="button"
