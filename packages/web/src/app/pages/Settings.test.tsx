@@ -1,9 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { Settings } from '../../api/types';
 import { ApiError } from '../../api/client';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 import { Settings as SettingsPage } from './Settings';
+import { tokenStore } from '../../auth/tokenStore';
 
 const settings = (over: Partial<Settings> = {}): Settings => ({
   id: 's1', userId: 'u1', timezone: 'UTC',
@@ -64,5 +65,35 @@ describe('Settings page', () => {
     const el = screen.getByTestId('app-version');
     expect(el).toHaveTextContent('NotReclaim dev');
     expect(el.textContent).not.toMatch(/built/i);
+  });
+});
+
+describe('Settings page — mobile-only rows', () => {
+  it('links to Buffers and Hours below md', async () => {
+    const api = fakeApiClient({ getSettings: async () => settings() } as never);
+    renderWithProviders(<SettingsPage />, { api });
+    await waitFor(() => expect(screen.getByTestId('settings-form')).toBeInTheDocument());
+    const links = screen.getByTestId('mobile-settings-links');
+    expect(links.className).toContain('md:hidden');
+    expect(within(links).getByRole('link', { name: 'Buffers' })).toHaveAttribute('href', '/buffers');
+    expect(within(links).getByRole('link', { name: 'Hours' })).toHaveAttribute('href', '/hours');
+  });
+
+  it('offers an account row with sign out below md', async () => {
+    const api = fakeApiClient({ getSettings: async () => settings() } as never);
+    renderWithProviders(<SettingsPage />, { api });
+    await waitFor(() => expect(screen.getByTestId('settings-form')).toBeInTheDocument());
+    const row = screen.getByTestId('mobile-account-row');
+    expect(row.className).toContain('md:hidden');
+    expect(within(row).getByRole('button', { name: /sign out/i })).toBeInTheDocument();
+  });
+
+  it('clears the stored session when the mobile Sign out is pressed', async () => {
+    tokenStore.set({ token: 'jwt', userId: 'u1' });
+    const api = fakeApiClient({ getSettings: async () => settings() } as never);
+    renderWithProviders(<SettingsPage />, { api });
+    await waitFor(() => expect(screen.getByTestId('settings-form')).toBeInTheDocument());
+    fireEvent.click(within(screen.getByTestId('mobile-account-row')).getByRole('button', { name: /sign out/i }));
+    expect(tokenStore.get()).toBeNull();
   });
 });
