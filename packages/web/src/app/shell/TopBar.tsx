@@ -2,8 +2,9 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Icons } from './icons';
 import { routeTitle } from './routeTitle';
 import { AccountMenu } from './AccountMenu';
-import { useScheduleQuery, useStartBlockMutation, useStopBlockMutation } from '../../api/queries';
+import { useStartBlockMutation, useStopBlockMutation } from '../../api/queries';
 import { relativeDayTimeLabel } from '../priorities/priorityBucket';
+import { useCurrentOrNext } from './currentOrNext';
 
 interface TopBarProps {
   onNewTask: () => void;
@@ -15,23 +16,10 @@ interface TopBarProps {
 export function TopBar({ onNewTask, now = Date.now, sidebarHidden, onToggleSidebar }: TopBarProps) {
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const scheduleQ = useScheduleQuery();
   const startBlock = useStartBlockMutation();
   const stopBlock = useStopBlockMutation();
   const nowMs = now();
-
-  const taskBlocks = (scheduleQ.data ?? []).filter((b) => b.taskId != null);
-  // "Running" = a task you've Started that hasn't ended. We don't also require start <= now:
-  // Start snaps the start to round15(now), which can land a few minutes in the future, and a
-  // started block is still the one you're working on. A block resized to end before now drops out.
-  const running = taskBlocks
-    .filter((b) => b.startedAt != null && Date.parse(b.endsAt) > nowMs)
-    .sort((a, b) => Date.parse(a.endsAt) - Date.parse(b.endsAt))[0] ?? null;
-  const nextBlock = running
-    ? null
-    : taskBlocks
-        .filter((b) => b.startedAt == null && Date.parse(b.startsAt) > nowMs)
-        .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))[0] ?? null;
+  const { running, nextBlock } = useCurrentOrNext(nowMs);
 
   return (
     <header className="flex h-[70px] shrink-0 items-center gap-3.5 bg-bg pl-[30px] pr-[26px]">
