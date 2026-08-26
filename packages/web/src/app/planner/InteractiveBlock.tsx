@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useLayoutEffect, type PointerEvent as Reac
 import { BASE, variantClass, type BlockKind } from './EventBlock';
 import { WINDOW_END_MIN, snapMinutes, pxToMinutes, minutesToPx, clampToWindow, shiftDays, clampDayDelta, formatHm, resizeHandleClass } from './weekModel';
 import { IDLE, beginPress, pressMove, pressArm, endPress, isArmed, isTap, LONG_PRESS_MS, type PressState } from './longPress';
+import { useEdgeAutoScroll } from './edgeScroll';
 
 const MIN_DURATION_MIN = 15;
 const HELD_TIMEOUT_MS = 1500;
@@ -41,13 +42,15 @@ export interface InteractiveBlockProps {
   zone?: string;
   /** Coarse pointer: a body move waits for a long press before it arms, and the tile lifts. */
   coarse?: boolean;
+  /** The vertically scrolling hours container, for edge auto-scroll and scroll compensation. */
+  getScrollContainer?: () => HTMLElement | null;
 }
 
 type DragMode = 'move' | 'resize';
 
 export function InteractiveBlock(props: InteractiveBlockProps) {
   // `id` is part of the props for the parent's onCommit binding; not read inside this component.
-  const { dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, leftPct = 0, widthPct = 100, startLabel, title, kind, pinned, onCommit, onUnpin, onDelete, onClick, deleteLabel = 'Delete block', dayCount = 7, accent, zone = 'UTC', coarse = false } = props;
+  const { dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, leftPct = 0, widthPct = 100, startLabel, title, kind, pinned, onCommit, onUnpin, onDelete, onClick, deleteLabel = 'Delete block', dayCount = 7, accent, zone = 'UTC', coarse = false, getScrollContainer } = props;
   // Refs hold the authoritative drag state; mutated directly so pointer handlers always
   // see the latest values regardless of React's batching/commit schedule.
   const modeRef = useRef<DragMode | null>(null);
@@ -81,6 +84,10 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
   const pressRef = useRef<PressState>(IDLE);
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const captureRef = useRef<{ el: HTMLElement; pointerId: number } | null>(null);
+  // scrollTop at drag start: auto-scroll moves the grid under a still finger, and that motion
+  // has to become part of the drag delta or the block would stay put while the view slides.
+  const scrollStartRef = useRef(0);
+  const edgeScroll = useEdgeAutoScroll(() => getScrollContainer?.() ?? null);
 
   // Clear the held preview when startMs/endMs change (the optimistic commit landed).
   // CRITICAL: clearing it here would, on its own, restore `transition-[top,height]` on the
@@ -183,6 +190,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
     startYRef.current = finite(e.clientY);
     startXRef.current = finite(e.clientX);
     colWidthRef.current = mode === 'move' ? (el.parentElement?.getBoundingClientRect().width ?? 0) : 0;
+    scrollStartRef.current = getScrollContainer?.()?.scrollTop ?? 0;
     clearPressTimer();
     if (isArmed(pressRef.current)) { armDrag(el, pointerId); return; }
     pressTimerRef.current = setTimeout(() => {
@@ -192,7 +200,14 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
     }, LONG_PRESS_MS);
   };
 
-  const snappedDy = (clientY: number): number => snapMinutes(pxToMinutes(finite(clientY) - startYRef.current));
+  /** How far the hours container has scrolled since the drag began (0 without a container). */
+  const scrollDelta = (): number => {
+    const el = getScrollContainer?.();
+    return el ? el.scrollTop - scrollStartRef.current : 0;
+  };
+
+  const snappedDy = (clientY: number): number =>
+    snapMinutes(pxToMinutes(finite(clientY) - startYRef.current + scrollDelta()));
 
   const snappedDx = (clientX: number): number => {
     const w = colWidthRef.current;
@@ -207,10 +222,12 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
       // Travelled before the long press armed → the user is scrolling. Hand the gesture back.
       clearPressTimer();
       releaseDrag();
+      edgeScroll.stop();
       resetDragState();
       return;
     }
     if (!isArmed(pressRef.current)) return; // still counting down: no preview, no capture
+    edgeScroll.update(finite(e.clientY));
     const min = snappedDy(e.clientY);
     if (modeRef.current === 'move') { setMoveMin(min); setDayDelta(snappedDx(e.clientX)); setGrowMin(0); }
     else { setGrowMin(min); setMoveMin(0); setDayDelta(0); }
@@ -230,6 +247,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
   const onPointerUp = (e: ReactPointerEvent<HTMLElement>) => {
     clearPressTimer();
     releaseDrag();
+    edgeScroll.stop();
     if (isTap(pressRef.current)) {
       // Released before the long press armed: a tap opens the drawer, it never commits.
       const tappedMode = modeRef.current;
@@ -273,7 +291,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
     }
   };
 
-  const onPointerCancel = () => { clearPressTimer(); releaseDrag(); pressRef.current = endPress(); resetDragState(); };
+  const onPointerCancel = () => { clearPressTimer(); releaseDrag(); edgeScroll.stop(); pressRef.current = endPress(); resetDragState(); };
 
   // During active drag, use live state deltas; otherwise show held preview
   const effectiveMoveMin = activeDrag ? moveMin : heldMove;

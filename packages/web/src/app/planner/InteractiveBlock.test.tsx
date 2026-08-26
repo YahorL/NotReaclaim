@@ -583,3 +583,42 @@ describe('InteractiveBlock on a coarse pointer', () => {
   });
 });
 
+describe('InteractiveBlock scroll compensation', () => {
+  /** The component only reads scrollTop / getBoundingClientRect, so a plain object is enough. */
+  function fakeScroller(): HTMLElement {
+    return {
+      scrollTop: 0,
+      getBoundingClientRect: () => ({ top: 0, bottom: 600, left: 0, right: 300, width: 300, height: 600, x: 0, y: 0, toJSON: () => ({}) }),
+    } as unknown as HTMLElement;
+  }
+
+  it('folds the container scroll during a drag into the committed move', () => {
+    const onCommit = vi.fn();
+    const scroller = fakeScroller();
+    render(
+      <InteractiveBlock
+        id="b1" dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
+        topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
+        onCommit={onCommit} getScrollContainer={() => scroller}
+      />,
+    );
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    // The finger stays put; the auto-scroll moved the grid one hour's worth underneath it.
+    scroller.scrollTop = PX_PER_60MIN;
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    expect(onCommit).toHaveBeenCalledWith({
+      startsAt: '2026-01-05T10:00:00.000Z', endsAt: '2026-01-05T11:00:00.000Z', pinned: true,
+    });
+  });
+
+  it('is a no-op without a container (every existing caller before this task)', () => {
+    const onCommit = renderBlock();
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+});
+

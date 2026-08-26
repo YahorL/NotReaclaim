@@ -254,6 +254,7 @@ export function WeekGrid(props: WeekGridProps) {
                           accent={accent}
                           zone={zone}
                           coarse={coarse}
+                          getScrollContainer={() => scrollRef.current}
                         />
                       );
                     }
@@ -276,6 +277,7 @@ export function WeekGrid(props: WeekGridProps) {
                           dayCount={days.length}
                           zone={zone}
                           coarse={coarse}
+                          getScrollContainer={() => scrollRef.current}
                         />
                       );
                     }
