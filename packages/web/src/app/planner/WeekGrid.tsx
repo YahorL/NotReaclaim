@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ScheduledBlock, CalendarEvent } from '../../api/types';
 import { EventBlock, type BlockKind } from './EventBlock';
 import { InteractiveBlock } from './InteractiveBlock';
-import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY, snapClickToSlot, WINDOW_START_MIN, WINDOW_END_MIN, TIME_GUTTER_PX, GRID_COLUMN_PX, dayAnchor, formatHm, weekdayLabel, dayOfMonth, hourRowLabel } from './weekModel';
+import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY, snapClickToSlot, WINDOW_START_MIN, WINDOW_END_MIN, GRID_COLUMN_PX, dayAnchor, formatHm, weekdayLabel, dayOfMonth, hourRowLabel, timeGutterPx, popoverAlign } from './weekModel';
 import { CreatePopover } from './CreatePopover';
 import { layoutOverlaps } from './overlapLayout';
 import { Icons } from '../shell/icons';
@@ -42,6 +42,8 @@ export interface WeekGridProps {
   dayStartMinute?: number;
   panelHidden?: boolean;
   onTogglePanel?: () => void;
+  /** Below-md layout: narrow gutter, wrapped toolbar, Tasks sheet button, no legend. */
+  compact?: boolean;
 }
 
 interface Item {
@@ -74,8 +76,8 @@ function toItems(blocks: ScheduledBlock[], events: CalendarEvent[], zone: string
 }
 
 export function WeekGrid(props: WeekGridProps) {
-  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit, onCommitEvent, onEditEvent, onDeleteBlock, onDeleteEvent, onScheduleTaskAt, accents = {}, zone = 'UTC', dayStartMinute = 0, panelHidden, onTogglePanel } = props;
-  const gridCols = `${TIME_GUTTER_PX}px repeat(${days.length}, minmax(0, 1fr))`;
+  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit, onCommitEvent, onEditEvent, onDeleteBlock, onDeleteEvent, onScheduleTaskAt, accents = {}, zone = 'UTC', dayStartMinute = 0, panelHidden, onTogglePanel, compact = false } = props;
+  const gridCols = `${timeGutterPx(compact)}px repeat(${days.length}, minmax(0, 1fr))`;
   const items = toItems(blocks, events, zone);
   const [creating, setCreating] = useState<{ dayIndex: number; startMin: number } | null>(null);
   // Live drop indicator while dragging a task card from the side panel over the grid.
@@ -107,12 +109,12 @@ export function WeekGrid(props: WeekGridProps) {
 
   return (
     <div className="flex flex-col">
-      <div className="mb-4 flex items-center gap-3">
+      <div className="mb-3 flex flex-wrap items-center gap-2 md:mb-4 md:gap-3">
         <div className="flex gap-1">
-          <button onClick={onPrev} aria-label="Previous" className="flex h-[38px] w-[38px] items-center justify-center rounded-[9px] border border-line bg-card text-[20px] text-inkSoft">‹</button>
-          <button onClick={onNext} aria-label="Next" className="flex h-[38px] w-[38px] items-center justify-center rounded-[9px] border border-line bg-card text-[20px] text-inkSoft">›</button>
+          <button onClick={onPrev} aria-label="Previous" className={`flex items-center justify-center rounded-[9px] border border-line bg-card text-[20px] text-inkSoft ${compact ? 'h-11 w-11' : 'h-[38px] w-[38px]'}`}>‹</button>
+          <button onClick={onNext} aria-label="Next" className={`flex items-center justify-center rounded-[9px] border border-line bg-card text-[20px] text-inkSoft ${compact ? 'h-11 w-11' : 'h-[38px] w-[38px]'}`}>›</button>
         </div>
-        <span className="text-[18px] font-bold text-ink">{weekLabel}</span>
+        <span className={`min-w-0 truncate font-bold text-ink ${compact ? 'text-[15px]' : 'text-[18px]'}`}>{weekLabel}</span>
         <button onClick={onToday} className="rounded-[9px] px-4 py-2 text-[14.5px] font-bold text-indigo hover:bg-indigoSoft">Today</button>
         <span className="flex-1" />
         <button
@@ -122,14 +124,24 @@ export function WeekGrid(props: WeekGridProps) {
         >
           {replanPending ? 'Re-planning…' : '↻ Re-plan'}
         </button>
-        <div className="ml-2 flex items-center gap-3">
+        {/* The legend needs ~700px of toolbar; below md it is dropped entirely (spec §4). */}
+        <div data-testid="grid-legend" className="ml-2 hidden items-center gap-3 md:flex">
           {LEGEND.map((l) => (
             <span key={l.label} className="flex items-center gap-1.5 text-[14px] font-semibold text-inkSoft">
               <span className={`h-[11px] w-[11px] rounded-[3px] ${l.swatch}`} /> {l.label}
             </span>
           ))}
         </div>
-        {onTogglePanel && (
+        {onTogglePanel && (compact ? (
+          <button
+            type="button"
+            data-testid="panel-sheet-toggle"
+            onClick={onTogglePanel}
+            className="shrink-0 rounded-[9px] border border-line bg-card px-3 py-2 text-[14px] font-bold text-ink"
+          >
+            Tasks
+          </button>
+        ) : (
           <button
             type="button"
             data-testid={panelHidden ? 'panel-show' : 'panel-hide'}
@@ -139,13 +151,13 @@ export function WeekGrid(props: WeekGridProps) {
           >
             <Icons.panelRight size={20} />
           </button>
-        )}
+        ))}
       </div>
 
       <div className="w-full">
         <div className="overflow-hidden rounded-[14px] border border-line bg-card">
           {/* header grid */}
-          <div className="grid border-b border-line" style={{ gridTemplateColumns: gridCols }}>
+          <div data-testid="day-header-row" className="grid border-b border-line" style={{ gridTemplateColumns: gridCols }}>
             <div />
             {days.map((d, i) => {
               const today = isToday(nowMs, d);
@@ -155,10 +167,10 @@ export function WeekGrid(props: WeekGridProps) {
                   key={d}
                   data-testid={`day-header-${i}`}
                   data-today={today}
-                  className="border-l border-line py-3 text-center"
+                  className={`border-l border-line text-center ${compact ? 'py-2' : 'py-3'}`}
                 >
-                  <div className="text-[13px] font-bold uppercase tracking-wide text-inkSoft">{weekdayLabel(d, zone)}</div>
-                  <div className="mt-0.5 text-[21px] font-extrabold">
+                  <div className={`font-bold uppercase tracking-wide text-inkSoft ${compact ? 'text-[11px]' : 'text-[13px]'}`}>{weekdayLabel(d, zone)}</div>
+                  <div className={`mt-0.5 font-extrabold ${compact ? 'text-[18px]' : 'text-[21px]'}`}>
                     {today
                       ? <span className="rounded-[9px] bg-indigo px-[9px] py-[1px] text-white">{date}</span>
                       : <span className="text-ink">{date}</span>}
@@ -169,12 +181,16 @@ export function WeekGrid(props: WeekGridProps) {
           </div>
 
           {/* body grid (scrolls vertically; the day header above stays pinned) */}
-          <div ref={scrollRef} data-testid="hours-scroll" className="overflow-y-auto" style={{ maxHeight: 'calc(100dvh - 230px)' }}>
+          {/* Height must be right under BOTH chromes. Desktop: 70px TopBar + p-4 + toolbar +
+              day header ≈ 230px (byte-identical to the value this used to carry inline).
+              Compact: 56px mobile top bar + 56px fixed tab bar + p-2 + toolbar + day header
+              ≈ 260px, plus the home-indicator inset. Tailwind turns `_` into a space. */}
+          <div ref={scrollRef} data-testid="hours-scroll" className="max-h-[calc(100dvh_-_260px_-_env(safe-area-inset-bottom))] overflow-y-auto md:max-h-[calc(100dvh_-_230px)]">
           <div className="grid" style={{ gridTemplateColumns: gridCols }}>
             <div data-testid="hour-gutter">
               {HOURS.map((h) => (
                 <div key={h} className="relative h-[58px]">
-                  <span className="absolute right-[10px] -top-[8px] text-[12px] font-semibold text-[#a6aab8]">{hourRowLabel(h, dayStartMinute)}</span>
+                  <span className={`absolute -top-[8px] font-semibold text-[#a6aab8] ${compact ? 'right-[6px] text-[10px]' : 'right-[10px] text-[12px]'}`}>{hourRowLabel(h, dayStartMinute)}</span>
                 </div>
               ))}
             </div>
@@ -290,7 +306,7 @@ export function WeekGrid(props: WeekGridProps) {
                       startMin={creating.startMin}
                       topPct={((creating.startMin - WINDOW_START_MIN) / (WINDOW_END_MIN - WINDOW_START_MIN)) * 100}
                       onClose={() => setCreating(null)}
-                      align={i <= 3 ? 'left' : 'right'}
+                      align={popoverAlign(i, days.length)}
                       zone={zone}
                     />
                   )}

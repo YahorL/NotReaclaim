@@ -334,3 +334,51 @@ describe('WeekGrid blocked time', () => {
     expect(onDeleteEvent).toHaveBeenCalledWith('e7');
   });
 });
+
+describe('WeekGrid compact (below md)', () => {
+  it('uses the 44px gutter when compact and the 64px gutter otherwise', () => {
+    const { unmount } = renderGrid({ days: [days[0]!], compact: true });
+    expect(screen.getByTestId('day-header-row').style.gridTemplateColumns).toMatch(/^44px /);
+    unmount();
+    renderGrid({ days: [days[0]!] });
+    expect(screen.getByTestId('day-header-row').style.gridTemplateColumns).toMatch(/^64px /);
+  });
+
+  it('sizes the hours-scroll for both chromes', () => {
+    renderGrid();
+    const scroller = screen.getByTestId('hours-scroll');
+    // mobile: 56px top bar + 56px tab bar + page padding + toolbar + day header, plus the inset
+    expect(scroller.className).toContain('max-h-[calc(100dvh_-_260px_-_env(safe-area-inset-bottom))]');
+    // desktop: byte-identical to the value the inline style used to carry
+    expect(scroller.className).toContain('md:max-h-[calc(100dvh_-_230px)]');
+    expect(scroller.getAttribute('style')).toBeNull();
+  });
+
+  it('hides the legend below md', () => {
+    renderGrid();
+    const legend = screen.getByTestId('grid-legend');
+    expect(legend.className).toContain('hidden');
+    expect(legend.className).toContain('md:flex');
+  });
+
+  it('compact swaps the panel toggle for a Tasks sheet button', () => {
+    const onTogglePanel = vi.fn();
+    renderGrid({ compact: true, onTogglePanel, panelHidden: false });
+    expect(screen.queryByTestId('panel-hide')).toBeNull();
+    const toggle = screen.getByTestId('panel-sheet-toggle');
+    fireEvent.click(toggle);
+    expect(onTogglePanel).toHaveBeenCalledTimes(1);
+  });
+
+  it('desktop keeps the panel hide/show toggle', () => {
+    renderGrid({ onTogglePanel: vi.fn(), panelHidden: false });
+    expect(screen.getByTestId('panel-hide')).toBeInTheDocument();
+    expect(screen.queryByTestId('panel-sheet-toggle')).toBeNull();
+  });
+
+  it('opens the create popover on the left of a one-day window', () => {
+    renderGridWithProviders({ days: [days[0]!], compact: true });
+    fireEvent.click(screen.getByTestId('day-col-0'), { clientY: 0 });
+    expect(screen.getByTestId('create-popover').className).toContain('left-1');
+  });
+});
