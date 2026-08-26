@@ -11,12 +11,15 @@ export interface SheetProps {
 
 /**
  * Bottom sheet for phones: full-width, anchored to the bottom edge, drag-handle header, backdrop
- * tap dismisses. Only rendered on the compact layout — desktop surfaces keep their inline panels.
+ * tap dismisses. Sits on the app's modal tier (`z-50`, same as NewTaskModal) — MobileTabBar is a
+ * z-40 bar pinned to the same bottom edge and rendered later in AppShell, so anything below z-50
+ * would let taps in the bottom strip fall through to the tabs and navigate away.
+ * Only rendered on the compact layout — desktop surfaces keep their inline panels.
  * Drawers (Task/Event/Habit) are NOT sheets yet; that is Phase 4.
  */
 export function Sheet({ label, onClose, children, heightClass = 'h-[70dvh]' }: SheetProps): ReactElement {
   return (
-    <div data-testid="sheet-backdrop" onClick={onClose} className="fixed inset-0 z-40 bg-black/30">
+    <div data-testid="sheet-backdrop" onClick={onClose} className="fixed inset-0 z-50 bg-black/30">
       <div
         data-testid="sheet"
         role="dialog"

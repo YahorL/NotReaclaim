@@ -9,6 +9,9 @@ describe('Sheet', () => {
     expect(sheet.className).toContain('bottom-0');
     expect(sheet.className).toContain('h-[70dvh]');
     expect(sheet.className).toContain('pb-[env(safe-area-inset-bottom)]');
+    // Modal tier: MobileTabBar is a z-40 bottom-anchored bar that renders later in AppShell's
+    // DOM, so a z-40 backdrop would let taps in the bottom strip fall through to the tabs.
+    expect(screen.getByTestId('sheet-backdrop').className).toContain('z-50');
     expect(screen.getByText('body')).toBeInTheDocument();
   });
 
