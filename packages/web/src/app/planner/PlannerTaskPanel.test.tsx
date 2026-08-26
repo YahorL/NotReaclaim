@@ -117,4 +117,14 @@ describe('PlannerTaskPanel', () => {
     expect(screen.getByTestId('planner-task-panel').className).toContain('w-[330px]');
   });
 
+  it('keeps the card actions visible on a coarse pointer', () => {
+    render(
+      <PlannerTaskPanel tasks={[task({ id: 'a', title: 'Do it' })]} preview={undefined} nowMs={NOW} coarse
+        onComplete={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} />,
+    );
+    const actions = screen.getByRole('button', { name: 'Edit Do it' }).parentElement!;
+    expect(actions.className).toContain('opacity-100');
+    expect(actions.className).not.toContain('opacity-0');
+  });
+
 });

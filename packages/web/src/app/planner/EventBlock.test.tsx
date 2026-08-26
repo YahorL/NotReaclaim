@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { EventBlock } from './EventBlock';
 
@@ -112,5 +112,17 @@ describe('EventBlock accent tinting', () => {
     expect(el.className).toContain('border-low');
     expect(el.className).toContain('text-kind-habitText');
     expect(el.style.borderColor).toBe('');
+  });
+});
+
+describe('EventBlock on a coarse pointer', () => {
+  it('shows the delete button without a hover', () => {
+    render(
+      <EventBlock title="Standup" kind="meeting" topPct={10} heightPct={5} startLabel="09:00"
+        onDelete={vi.fn()} coarse />,
+    );
+    const btn = screen.getByRole('button', { name: /delete event/i, hidden: true });
+    expect(btn.className).toContain('flex');
+    expect(btn.className).not.toContain('group-hover:flex');
   });
 });

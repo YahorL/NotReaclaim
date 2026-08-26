@@ -326,3 +326,34 @@ describe('CreatePopover due-default: week-out rule', () => {
     expect(dueInput.value).toBe('2026-01-15T23:59');
   });
 });
+
+describe('CreatePopover as a bottom sheet', () => {
+  it('compact pins the form to the viewport bottom with no anchored geometry', () => {
+    renderWithProviders(<CreatePopover {...baseProps} compact />, { api: fakeApiClient() });
+    const popover = screen.getByTestId('create-popover');
+    expect(popover.className).toContain('fixed');
+    expect(popover.className).toContain('bottom-0');
+    expect(popover.className).toContain('inset-x-0');
+    expect(popover.className).toContain('max-h-[85dvh]');
+    expect(popover.className).toContain('overflow-y-auto');
+    expect(popover.className).not.toContain('absolute');
+    // No inline top: an anchored percentage would stretch the sheet up the viewport.
+    expect(popover.style.top).toBe('');
+  });
+
+  it('compact ignores the anchored align rule', () => {
+    renderWithProviders(<CreatePopover {...baseProps} compact align="right" />, { api: fakeApiClient() });
+    const popover = screen.getByTestId('create-popover');
+    expect(popover.className).not.toContain('right-1');
+    expect(popover.className).not.toContain('left-1');
+  });
+
+  it('compact keeps the same form and the snapped slot', () => {
+    renderWithProviders(<CreatePopover {...baseProps} compact />, { api: fakeApiClient() });
+    expect(screen.getByTestId('slot-label').textContent).toMatch(/09:00.*09:30/);
+    expect(screen.getByTestId('mode-event')).toBeInTheDocument();
+    expect(screen.getByTestId('mode-task')).toBeInTheDocument();
+    expect(screen.getByTestId('mode-blocked')).toBeInTheDocument();
+    expect(screen.getByTestId('create-submit')).toBeInTheDocument();
+  });
+});

@@ -14,6 +14,8 @@ export interface PlannerTaskPanelProps {
   onDelete: (task: Task) => void;
   /** Rendered inside a bottom sheet: fill the sheet instead of holding the 330px desktop width. */
   compact?: boolean;
+  /** Coarse pointer: there is no hover, so the card's edit/delete stay visible. */
+  coarse?: boolean;
 }
 
 type Tab = 'priorities' | 'tasks';
@@ -24,8 +26,8 @@ function dueLabel(task: Task): string | null {
   return `Due ${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
 }
 
-function TaskCard({ task, nowMs, nextMs, atRisk, leftBorder, onComplete, onEdit, onDelete }: {
-  task: Task; nowMs: number; nextMs: number | null; atRisk: boolean; leftBorder: string;
+function TaskCard({ task, nowMs, nextMs, atRisk, leftBorder, coarse, onComplete, onEdit, onDelete }: {
+  task: Task; nowMs: number; nextMs: number | null; atRisk: boolean; leftBorder: string; coarse: boolean;
   onComplete: (t: Task) => void; onEdit: (t: Task) => void; onDelete: (t: Task) => void;
 }) {
   const due = dueLabel(task);
@@ -73,7 +75,7 @@ function TaskCard({ task, nowMs, nextMs, atRisk, leftBorder, onComplete, onEdit,
         })()}
       </div>
       <span className="shrink-0 rounded-full bg-bg px-2 py-0.5 text-[11.5px] font-semibold text-inkSoft">{formatDurationShort(task.durationMs)}</span>
-      <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+      <span className={`flex shrink-0 items-center gap-0.5 transition-opacity ${coarse ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
         <button type="button" aria-label={`Edit ${task.title}`} onClick={() => onEdit(task)} className="rounded-md p-1 text-inkSoft hover:bg-bg hover:text-ink">✎</button>
         <button type="button" aria-label={`Delete ${task.title}`} onClick={() => onDelete(task)} className="rounded-md p-1 text-inkSoft hover:bg-crit/10 hover:text-crit">×</button>
       </span>
@@ -81,7 +83,7 @@ function TaskCard({ task, nowMs, nextMs, atRisk, leftBorder, onComplete, onEdit,
   );
 }
 
-export function PlannerTaskPanel({ tasks, preview, nowMs, onComplete, onEdit, onDelete, compact = false }: PlannerTaskPanelProps) {
+export function PlannerTaskPanel({ tasks, preview, nowMs, onComplete, onEdit, onDelete, compact = false, coarse = false }: PlannerTaskPanelProps) {
   const [tab, setTab] = useState<Tab>('priorities');
 
   const active = useMemo(
@@ -120,7 +122,7 @@ export function PlannerTaskPanel({ tasks, preview, nowMs, onComplete, onEdit, on
   const card = (t: Task, leftBorder: string) => (
     <TaskCard
       key={t.id} task={t} nowMs={nowMs} nextMs={nextBlockMsForTask(t.id, preview)}
-      atRisk={atRiskIds.has(t.id)} leftBorder={leftBorder}
+      atRisk={atRiskIds.has(t.id)} leftBorder={leftBorder} coarse={coarse}
       onComplete={onComplete} onEdit={onEdit} onDelete={onDelete}
     />
   );

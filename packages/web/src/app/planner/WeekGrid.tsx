@@ -294,6 +294,7 @@ export function WeekGrid(props: WeekGridProps) {
                         startLabel={it.startLabel}
                         accent={accent}
                         onDelete={ev && onDeleteEvent ? () => onDeleteEvent(ev.id) : undefined}
+                        coarse={coarse}
                       />
                     );
                   })}
@@ -315,6 +316,7 @@ export function WeekGrid(props: WeekGridProps) {
                       onClose={() => setCreating(null)}
                       align={popoverAlign(i, days.length)}
                       zone={zone}
+                      compact={compact}
                     />
                   )}
                 </div>

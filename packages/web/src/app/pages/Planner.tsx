@@ -138,6 +138,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
     tasks: tasksQ.data ?? [],
     preview: preview.data,
     nowMs,
+    coarse,
     onComplete: onCompleteTask,
     onEdit: (t: Task) => openTaskDrawer(t.id),
     onDelete: onDeleteTask,

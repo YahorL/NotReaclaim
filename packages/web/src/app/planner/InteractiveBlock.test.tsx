@@ -581,6 +581,14 @@ describe('InteractiveBlock on a coarse pointer', () => {
       startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T11:00:00.000Z', pinned: true,
     });
   });
+
+  it('shows the delete button without a hover on touch', () => {
+    render(<InteractiveBlock {...coarseProps} onCommit={vi.fn()} onDelete={vi.fn()} />);
+    const btn = screen.getByRole('button', { name: /delete block/i, hidden: true });
+    expect(btn.className).toContain('flex');
+    expect(btn.className).not.toContain('hidden');
+    expect(btn.className).not.toContain('group-hover:flex');
+  });
 });
 
 describe('InteractiveBlock scroll compensation', () => {

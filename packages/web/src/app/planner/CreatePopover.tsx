@@ -15,6 +15,8 @@ export interface CreatePopoverProps {
   align?: 'left' | 'right';
   now?: () => number;
   zone?: string;
+  /** Below md: render as a viewport-fixed bottom sheet instead of a column-anchored popover. */
+  compact?: boolean;
 }
 
 type Mode = 'event' | 'task' | 'blocked';
@@ -22,7 +24,7 @@ type Mode = 'event' | 'task' | 'blocked';
 /** Blocked time is about the slot, not the label — an untitled entry just reads "Blocked". */
 const DEFAULT_BLOCKED_TITLE = 'Blocked';
 
-export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = 'left', now = () => Date.now(), zone = 'UTC' }: CreatePopoverProps) {
+export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = 'left', now = () => Date.now(), zone = 'UTC', compact = false }: CreatePopoverProps) {
   const [mode, setMode] = useState<Mode>('event');
   const [title, setTitle] = useState('');
   const [taskId, setTaskId] = useState('');
@@ -96,12 +98,17 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
     `flex-1 rounded-[8px] px-2 py-1.5 text-[14px] font-bold ${active ? 'bg-indigo text-white' : 'text-inkSoft hover:bg-bg'}`;
 
   return (
+    // Compact: a viewport-fixed sheet, so it escapes the hours-scroll `overflow-y-auto` that
+    // clips a 340px popover inside a ~150px column. The grid tap still sets the snapped slot;
+    // the sheet just shows it. Desktop keeps the anchored popover byte-for-byte.
     <div
       ref={ref}
       data-testid="create-popover"
       onClick={(e) => e.stopPropagation()}
-      className={`absolute z-40 w-[340px] animate-pop rounded-[14px] border border-line bg-card p-4 shadow-pop ${align === 'left' ? 'left-1' : 'right-1'}`}
-      style={{ top: `${Math.min(topPct, 78)}%` }}
+      className={compact
+        ? 'fixed inset-x-0 bottom-0 z-50 max-h-[85dvh] w-full animate-pop overflow-y-auto rounded-t-[16px] border-t border-line bg-card p-4 pb-[calc(16px_+_env(safe-area-inset-bottom))] shadow-pop'
+        : `absolute z-40 w-[340px] animate-pop rounded-[14px] border border-line bg-card p-4 shadow-pop ${align === 'left' ? 'left-1' : 'right-1'}`}
+      style={compact ? undefined : { top: `${Math.min(topPct, 78)}%` }}
     >
       <div className="mb-2 flex gap-1 rounded-[10px] bg-bg p-1">
         <button type="button" data-testid="mode-event" onClick={() => { setMode('event'); setTaskId(''); }} className={tabCls(mode === 'event')}>Event</button>

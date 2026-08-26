@@ -361,7 +361,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
           title="Delete"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className="absolute right-0.5 top-0.5 z-10 hidden h-4 w-4 items-center justify-center rounded-full bg-black/25 text-[11px] leading-none text-white group-hover:flex hover:bg-black/45"
+          className={`absolute right-0.5 top-0.5 z-10 h-4 w-4 items-center justify-center rounded-full bg-black/25 text-[11px] leading-none text-white hover:bg-black/45 ${coarse ? 'flex' : 'hidden group-hover:flex'}`}
         >
           ×
         </button>

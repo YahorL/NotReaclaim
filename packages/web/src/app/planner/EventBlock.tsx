@@ -30,9 +30,11 @@ export interface EventBlockProps {
   pinned?: boolean;
   accent?: string;
   onDelete?: () => void;
+  /** Coarse pointer: there is no hover, so the delete affordance is always visible. */
+  coarse?: boolean;
 }
 
-export function EventBlock({ title, kind, topPct, heightPct, leftPct = 0, widthPct = 100, startLabel, pinned = false, accent, onDelete }: EventBlockProps) {
+export function EventBlock({ title, kind, topPct, heightPct, leftPct = 0, widthPct = 100, startLabel, pinned = false, accent, onDelete, coarse = false }: EventBlockProps) {
   const locked = kind !== 'meeting' && pinned;
   const accentStyles = accent && kind !== 'meeting'
     ? pinned
@@ -54,7 +56,7 @@ export function EventBlock({ title, kind, topPct, heightPct, leftPct = 0, widthP
           aria-label="Delete event"
           title="Delete"
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className="absolute right-0.5 top-0.5 z-10 hidden h-4 w-4 items-center justify-center rounded-full bg-black/25 text-[11px] leading-none text-white group-hover:flex hover:bg-black/45"
+          className={`absolute right-0.5 top-0.5 z-10 h-4 w-4 items-center justify-center rounded-full bg-black/25 text-[11px] leading-none text-white hover:bg-black/45 ${coarse ? 'flex' : 'hidden group-hover:flex'}`}
         >
           ×
         </button>

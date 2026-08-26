@@ -376,9 +376,14 @@ describe('WeekGrid compact (below md)', () => {
     expect(screen.queryByTestId('panel-sheet-toggle')).toBeNull();
   });
 
-  it('opens the create popover on the left of a one-day window', () => {
+  // Superseded by Task 8: below md the create form is a viewport-fixed bottom sheet, so the
+  // column-anchored align no longer applies (popoverAlign itself stays covered in weekModel.test).
+  it('opens the create form as a bottom sheet in a one-day window', () => {
     renderGridWithProviders({ days: [days[0]!], compact: true });
     fireEvent.click(screen.getByTestId('day-col-0'), { clientY: 0 });
-    expect(screen.getByTestId('create-popover').className).toContain('left-1');
+    const popover = screen.getByTestId('create-popover');
+    expect(popover.className).toContain('fixed');
+    expect(popover.className).toContain('bottom-0');
+    expect(popover.className).not.toContain('left-1');
   });
 });
