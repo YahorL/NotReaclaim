@@ -7,6 +7,7 @@ import {
   minutesToPx, shiftDays, clampDayDelta, snapClickToSlot, localMidnight,
   daysThatFit, formatHm, weekdayLabel, dayOfMonth, dayAnchor, hourRowLabel,
   MOBILE_TIME_GUTTER_PX, MOBILE_MIN_DAY_COL_PX, timeGutterPx, popoverAlign, rangeLabel,
+  COARSE_RESIZE_MIN_SPAN_MIN, resizeHandleClass,
 } from './weekModel';
 
 const MON = Date.parse('2026-01-05T00:00:00.000Z'); // Monday 00:00 UTC
@@ -394,5 +395,26 @@ describe('rangeLabel', () => {
   it('renders first – last for a multi-day window', () => {
     expect(rangeLabel(dayColumns(MON))).toBe('Jan 5 – Jan 11');
     expect(rangeLabel(dayColumns(MON, 2))).toBe('Jan 5 – Jan 6');
+  });
+});
+
+describe('resizeHandleClass', () => {
+  const pct = (min: number) => (min / (WINDOW_END_MIN - WINDOW_START_MIN)) * 100;
+
+  it('a fine pointer always gets the 6px bar', () => {
+    expect(resizeHandleClass(pct(60), false)).toBe('h-1.5');
+    expect(resizeHandleClass(pct(15), false)).toBe('h-1.5');
+  });
+
+  it('a coarse pointer gets the 24px target on tiles of 30 minutes or more', () => {
+    expect(resizeHandleClass(pct(30), true)).toBe('h-6');
+    expect(resizeHandleClass(pct(60), true)).toBe('h-6');
+    expect(resizeHandleClass(pct(480), true)).toBe('h-6');
+  });
+
+  it('keeps the small target on short tiles a 24px handle would swallow', () => {
+    expect(resizeHandleClass(pct(15), true)).toBe('h-1.5');
+    expect(resizeHandleClass(pct(29), true)).toBe('h-1.5');
+    expect(COARSE_RESIZE_MIN_SPAN_MIN).toBe(30);
   });
 });

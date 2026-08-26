@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useLayoutEffect, type PointerEvent as ReactPointerEvent } from 'react';
 import { BASE, variantClass, type BlockKind } from './EventBlock';
-import { WINDOW_END_MIN, snapMinutes, pxToMinutes, minutesToPx, clampToWindow, shiftDays, clampDayDelta, formatHm } from './weekModel';
+import { WINDOW_END_MIN, snapMinutes, pxToMinutes, minutesToPx, clampToWindow, shiftDays, clampDayDelta, formatHm, resizeHandleClass } from './weekModel';
 import { IDLE, beginPress, pressMove, pressArm, endPress, isArmed, isTap, LONG_PRESS_MS, type PressState } from './longPress';
 
 const MIN_DURATION_MIN = 15;
@@ -359,10 +359,12 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
           {formatHm(previewStart, zone)} – {formatHm(previewEnd, zone)}
         </span>
       )}
+      {/* Invisible hit area; the visible bar is unchanged. `touch-none` on the handle means a
+          finger that lands here is a resize from the first pixel — no long press needed. */}
       <span
         data-testid="resize-handle"
         onPointerDown={begin('resize')}
-        className="absolute inset-x-0 bottom-0 h-1.5 cursor-ns-resize"
+        className={`absolute inset-x-0 bottom-0 cursor-ns-resize ${resizeHandleClass(heightPct, coarse)} ${coarse ? 'touch-none' : ''}`}
       />
     </div>
   );

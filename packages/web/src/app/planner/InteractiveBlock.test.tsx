@@ -545,5 +545,29 @@ describe('InteractiveBlock on a coarse pointer', () => {
     expect(el.style.transform).not.toContain('scale');
     expect(onCommit).toHaveBeenCalledTimes(1);
   });
+
+  it('gives a tall tile a 24px, scroll-proof resize target', () => {
+    render(<InteractiveBlock {...coarseProps} heightPct={4.1667} onCommit={vi.fn()} />); // 60 min
+    const handle = screen.getByTestId('resize-handle');
+    expect(handle.className).toContain('h-6');
+    expect(handle.className).toContain('touch-none');
+  });
+
+  it('keeps the small target on a 15-minute tile', () => {
+    render(<InteractiveBlock {...coarseProps} heightPct={1.0417} onCommit={vi.fn()} />); // 15 min
+    expect(screen.getByTestId('resize-handle').className).toContain('h-1.5');
+  });
+
+  it('resize drags immediately on touch — no long press', () => {
+    const onCommit = vi.fn();
+    render(<InteractiveBlock {...coarseProps} onCommit={onCommit} />);
+    const handle = screen.getByTestId('resize-handle');
+    fireEvent.pointerDown(handle, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientY: 200 + PX_PER_60MIN, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientY: 200 + PX_PER_60MIN, pointerId: 1 });
+    expect(onCommit).toHaveBeenCalledWith({
+      startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T11:00:00.000Z', pinned: true,
+    });
+  });
 });
 

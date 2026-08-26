@@ -240,3 +240,19 @@ export function rangeLabel(days: number[], zone = 'UTC'): string {
   const last = days[days.length - 1]!;
   return first === last ? fmt(first) : `${fmt(first)} – ${fmt(last)}`;
 }
+
+/**
+ * Minutes a tile must span before a coarse pointer earns the enlarged resize target. Below it a
+ * 24px handle would cover the whole tile (a 15-min block is 14.5px tall) and eat the tap that
+ * should open the drawer.
+ */
+export const COARSE_RESIZE_MIN_SPAN_MIN = 30;
+
+/** Literal Tailwind height class for the resize hit area. The visible bar never changes. */
+export function resizeHandleClass(heightPct: number, coarse: boolean): 'h-1.5' | 'h-6' {
+  if (!coarse) return 'h-1.5';
+  // The percent → minutes roundtrip is lossy: an exactly-30-minute tile comes back as
+  // 29.999999999999993, so compare with a tolerance far below one minute.
+  const spanMin = (heightPct / 100) * (WINDOW_END_MIN - WINDOW_START_MIN);
+  return spanMin >= COARSE_RESIZE_MIN_SPAN_MIN - 1e-6 ? 'h-6' : 'h-1.5';
+}
