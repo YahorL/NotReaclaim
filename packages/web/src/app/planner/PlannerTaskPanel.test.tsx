@@ -104,4 +104,17 @@ describe('PlannerTaskPanel', () => {
     expect(setData).toHaveBeenCalledWith('application/x-nr-task', 'drag-me');
   });
 
+  it('fills its container in the compact (bottom-sheet) layout', () => {
+    const { unmount } = render(
+      <PlannerTaskPanel tasks={[task()]} preview={undefined} nowMs={NOW} compact
+        onComplete={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} />,
+    );
+    const aside = screen.getByTestId('planner-task-panel');
+    expect(aside.className).toContain('w-full');
+    expect(aside.className).not.toContain('w-[330px]');
+    unmount();
+    renderPanel([task()]);
+    expect(screen.getByTestId('planner-task-panel').className).toContain('w-[330px]');
+  });
+
 });

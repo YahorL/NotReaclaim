@@ -15,7 +15,7 @@ export function UnscheduledWarning({ entries }: { entries: UnscheduledEntry[] })
     <div
       data-testid="unscheduled-warning"
       role="status"
-      className="mb-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-1.5 text-[12.5px] text-amber-800"
+      className="mb-2 flex w-full min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-1.5 text-[12.5px] text-amber-800"
     >
       <span className="font-bold">⚠ Couldn't schedule everything:</span>
       {shown.map((e, i) => (

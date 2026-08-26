@@ -136,6 +136,7 @@ export function WeekGrid(props: WeekGridProps) {
           <button
             type="button"
             data-testid="panel-sheet-toggle"
+            aria-expanded={!panelHidden}
             onClick={onTogglePanel}
             className="shrink-0 rounded-[9px] border border-line bg-card px-3 py-2 text-[14px] font-bold text-ink"
           >

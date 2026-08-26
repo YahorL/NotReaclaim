@@ -1,8 +1,9 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
 import type { ScheduledBlock, CalendarEvent, SchedulePreview, Task, Category, Habit } from '../../api/types';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 import { Planner } from './Planner';
+import { installMatchMedia, type FakeMatchMedia } from '../../test/matchMedia';
 
 const NOW = Date.parse('2026-01-07T12:00:00.000Z'); // Wednesday
 
@@ -242,5 +243,33 @@ describe('Planner', () => {
     )!;
     // Movable task → borderColor tinted
     expect(taskBlock.style.borderColor).toBe('rgb(91, 98, 227)');
+  });
+});
+
+describe('Planner compact layout', () => {
+  let mm: FakeMatchMedia | null = null;
+  beforeEach(() => { mm = installMatchMedia({ '(max-width: 767.98px)': true }); });
+  afterEach(() => { mm?.restore(); mm = null; });
+
+  it('does not render the task panel inline; the Tasks button opens it as a sheet', async () => {
+    const api = makeApi();
+    renderWithProviders(<Planner now={() => NOW} />, { api });
+    await waitFor(() => expect(screen.getByTestId('day-col-0')).toBeInTheDocument());
+    expect(screen.queryByTestId('planner-task-panel')).toBeNull();
+    const toggle = screen.getByTestId('panel-sheet-toggle');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(toggle);
+    expect(screen.getByRole('dialog', { name: 'Tasks' })).toBeInTheDocument();
+    expect(screen.getByTestId('planner-task-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('panel-sheet-toggle')).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('closes the task sheet on a backdrop tap', async () => {
+    const api = makeApi();
+    renderWithProviders(<Planner now={() => NOW} />, { api });
+    await waitFor(() => expect(screen.getByTestId('day-col-0')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('panel-sheet-toggle'));
+    fireEvent.click(screen.getByTestId('sheet-backdrop'));
+    expect(screen.queryByTestId('planner-task-panel')).toBeNull();
   });
 });

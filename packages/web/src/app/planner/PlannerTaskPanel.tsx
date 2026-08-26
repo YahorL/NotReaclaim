@@ -12,6 +12,8 @@ export interface PlannerTaskPanelProps {
   onComplete: (task: Task) => void;
   onEdit: (task: Task) => void;
   onDelete: (task: Task) => void;
+  /** Rendered inside a bottom sheet: fill the sheet instead of holding the 330px desktop width. */
+  compact?: boolean;
 }
 
 type Tab = 'priorities' | 'tasks';
@@ -79,7 +81,7 @@ function TaskCard({ task, nowMs, nextMs, atRisk, leftBorder, onComplete, onEdit,
   );
 }
 
-export function PlannerTaskPanel({ tasks, preview, nowMs, onComplete, onEdit, onDelete }: PlannerTaskPanelProps) {
+export function PlannerTaskPanel({ tasks, preview, nowMs, onComplete, onEdit, onDelete, compact = false }: PlannerTaskPanelProps) {
   const [tab, setTab] = useState<Tab>('priorities');
 
   const active = useMemo(
@@ -124,7 +126,7 @@ export function PlannerTaskPanel({ tasks, preview, nowMs, onComplete, onEdit, on
   );
 
   return (
-    <aside data-testid="planner-task-panel" className="flex w-[330px] shrink-0 flex-col overflow-hidden rounded-[14px] border border-line bg-bg/40">
+    <aside data-testid="planner-task-panel" className={`flex flex-col overflow-hidden rounded-[14px] border border-line bg-bg/40 ${compact ? 'min-h-0 w-full flex-1' : 'w-[330px] shrink-0'}`}>
       <div className="flex shrink-0 items-center gap-1 border-b border-line px-2 pt-2">
         {(['priorities', 'tasks'] as Tab[]).map((t) => (
           <button

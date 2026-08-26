@@ -2,8 +2,10 @@ import { useMemo, useState, useEffect, useRef } from 'react';
 import type { CalendarEvent, Task } from '../../api/types';
 import { ApiError } from '../../api/client';
 import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useHabitsQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation, useSettingsQuery } from '../../api/queries';
-import { dayColumns, daysThatFit, shiftDays, dayAnchor, clampToWindow, MS_PER_DAY, WINDOW_START_MIN, WINDOW_END_MIN } from '../planner/weekModel';
+import { dayColumns, daysThatFit, shiftDays, dayAnchor, clampToWindow, rangeLabel, MS_PER_DAY, WINDOW_START_MIN, WINDOW_END_MIN } from '../planner/weekModel';
 import { useElementWidth } from '../planner/useElementWidth';
+import { useCompactWidth } from '../lib/useMediaQuery';
+import { Sheet } from '../components/Sheet';
 import { WeekGrid } from '../planner/WeekGrid';
 import { PlannerTaskPanel } from '../planner/PlannerTaskPanel';
 import { UnscheduledWarning } from '../planner/UnscheduledWarning';
@@ -11,11 +13,6 @@ import { summarizeUnscheduled } from '../planner/unscheduledSummary';
 import { TaskDrawer } from '../tasks/TaskDrawer';
 import { EventDrawer } from '../planner/EventDrawer';
 import { labelBlocksWithSubtasks } from '../planner/blockLabels';
-
-function weekLabel(days: number[], zone = 'UTC'): string {
-  const fmt = (ms: number) => new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric', timeZone: zone });
-  return `${fmt(days[0]!)} – ${fmt(days[days.length - 1]!)}`;
-}
 
 export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const nowMs = now();
@@ -25,7 +22,10 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const dayStartMinute = settingsQ.data?.dayStartMinute ?? 0;
   const [viewStartMs, setViewStartMs] = useState(() => dayAnchor(nowMs, zone, dayStartMinute));
   const [gridRef, gridWidth] = useElementWidth<HTMLDivElement>();
-  const dayCount = daysThatFit(gridWidth);
+  // Viewport switch, not pane width: the grid pane is only ~640px on a 1280px desktop, so
+  // inferring "compact" from gridWidth would put a real desktop on the phone geometry.
+  const compact = useCompactWidth();
+  const dayCount = daysThatFit(gridWidth, compact);
   const days = useMemo(() => dayColumns(viewStartMs, dayCount, zone, dayStartMinute), [viewStartMs, dayCount, zone, dayStartMinute]);
   const fromIso = new Date(viewStartMs).toISOString();
   const toIso = new Date(viewStartMs + dayCount * MS_PER_DAY).toISOString();
@@ -46,6 +46,9 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   useEffect(() => {
     try { localStorage.setItem('nr.plannerPanelHidden', panelHidden ? '1' : '0'); } catch { /* ignore */ }
   }, [panelHidden]);
+  // On the compact layout the panel is a bottom sheet instead of an inline column; its
+  // open/closed state is per-visit, not persisted (the desktop hide toggle stays persisted).
+  const [taskSheetOpen, setTaskSheetOpen] = useState(false);
 
   const schedule = useScheduleQuery(fromIso, toIso);
   const calendar = useCalendarEventsQuery(fromIso, toIso);
@@ -129,15 +132,24 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
     );
   }
 
+  const panelProps = {
+    tasks: tasksQ.data ?? [],
+    preview: preview.data,
+    nowMs,
+    onComplete: onCompleteTask,
+    onEdit: (t: Task) => openTaskDrawer(t.id),
+    onDelete: onDeleteTask,
+  };
+
   return (
-    <div className="flex gap-3 p-4">
+    <div className="flex gap-3 p-2 md:p-4">
       <div ref={gridRef} className="min-w-0 flex-1">
         {isLoading && <div className="p-2 text-sm text-gray-500">Loading your days…</div>}
         <UnscheduledWarning entries={unscheduledEntries} />
         <WeekGrid
           days={days}
           nowMs={nowMs}
-          weekLabel={weekLabel(days, zone)}
+          weekLabel={rangeLabel(days, zone)}
           blocks={labeledBlocks}
           events={calendar.data ?? []}
           replanPending={replan.isPending}
@@ -154,20 +166,20 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           onDeleteEvent={(id) => deleteEvent.mutate(id)}
           onScheduleTaskAt={onScheduleTaskAt}
           accents={accents}
-          panelHidden={panelHidden}
-          onTogglePanel={() => setPanelHidden((h) => !h)}
+          compact={compact}
+          // Compact: the toggle reflects the sheet, so `panelHidden` (its aria-expanded source)
+          // must track the sheet rather than the persisted desktop hide flag.
+          panelHidden={compact ? !taskSheetOpen : panelHidden}
+          onTogglePanel={() => (compact ? setTaskSheetOpen((o) => !o) : setPanelHidden((h) => !h))}
         />
         {replan.isError && <p className="mt-2 text-sm text-red-600">Re-plan failed. Try again.</p>}
       </div>
-      {!panelHidden && (
-        <PlannerTaskPanel
-          tasks={tasksQ.data ?? []}
-          preview={preview.data}
-          nowMs={nowMs}
-          onComplete={onCompleteTask}
-          onEdit={(t) => openTaskDrawer(t.id)}
-          onDelete={onDeleteTask}
-        />
+      {/* Below md the panel never renders inline — it becomes the bottom sheet below. */}
+      {!compact && !panelHidden && <PlannerTaskPanel {...panelProps} />}
+      {compact && taskSheetOpen && (
+        <Sheet label="Tasks" onClose={() => setTaskSheetOpen(false)}>
+          <PlannerTaskPanel {...panelProps} compact />
+        </Sheet>
       )}
       {editing && (
         <div className="fixed right-3 top-[84px] z-40">
