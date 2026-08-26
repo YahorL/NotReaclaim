@@ -87,7 +87,18 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
   // scrollTop at drag start: auto-scroll moves the grid under a still finger, and that motion
   // has to become part of the drag delta or the block would stay put while the view slides.
   const scrollStartRef = useRef(0);
-  const edgeScroll = useEdgeAutoScroll(() => getScrollContainer?.() ?? null);
+  // The rAF loop scrolls the grid even when the finger is still, so it must also refresh the
+  // preview — otherwise the tile rides the content away from the finger and pointer-up would
+  // commit a position the held preview never showed. `dayDelta` is untouched: vertical scroll
+  // never changes x. (`snappedDy` is declared below; the closure only runs post-render.)
+  const edgeScroll = useEdgeAutoScroll(
+    () => getScrollContainer?.() ?? null,
+    (y) => {
+      const min = snappedDy(y);
+      if (modeRef.current === 'move') setMoveMin(min);
+      else if (modeRef.current) setGrowMin(min);
+    },
+  );
 
   // Clear the held preview when startMs/endMs change (the optimistic commit landed).
   // CRITICAL: clearing it here would, on its own, restore `transition-[top,height]` on the

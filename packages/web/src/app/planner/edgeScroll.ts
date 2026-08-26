@@ -35,16 +35,26 @@ export function edgeScrollStep(
  * rAF loop that scrolls a DI'd container while a drag hovers near its edges. The container is
  * supplied as a getter so the caller can pass a ref that is null on the first render, and so
  * tests can hand in a plain object.
+ *
+ * `onScrolled` fires after every frame that actually moved the container, with the last known
+ * pointer y. It is what keeps a *stationary* finger honest: no pointermove arrives while the
+ * finger rests in the edge zone, so without this callback the drag preview would freeze while
+ * the content slid out from under it (and pointer-up would then commit a delta the held preview
+ * never showed — the R10/R11 landing-jump class of bug).
  */
-export function useEdgeAutoScroll(getContainer: () => HTMLElement | null): {
+export function useEdgeAutoScroll(
+  getContainer: () => HTMLElement | null,
+  onScrolled?: (clientY: number) => void,
+): {
   update(clientY: number): void;
   stop(): void;
 } {
   const getRef = useRef(getContainer);
+  const cbRef = useRef(onScrolled);
   const yRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
 
-  useEffect(() => { getRef.current = getContainer; });
+  useEffect(() => { getRef.current = getContainer; cbRef.current = onScrolled; });
   useEffect(() => () => {
     if (rafRef.current != null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(rafRef.current);
   }, []);
@@ -60,7 +70,11 @@ export function useEdgeAutoScroll(getContainer: () => HTMLElement | null): {
         if (y == null || !el) return;
         const rect = el.getBoundingClientRect();
         const step = edgeScrollStep(y, rect.top, rect.bottom);
-        if (step !== 0) el.scrollTop += step;
+        // Outside the edge zone: stop spinning at 60fps for the rest of the drag. rafRef is
+        // already null, so the next update() (i.e. the next pointermove) restarts the loop.
+        if (step === 0) return;
+        el.scrollTop += step;
+        cbRef.current?.(y);
         rafRef.current = requestAnimationFrame(tick);
       };
       rafRef.current = requestAnimationFrame(tick);

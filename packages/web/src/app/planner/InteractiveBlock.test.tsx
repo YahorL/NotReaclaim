@@ -592,6 +592,8 @@ describe('InteractiveBlock scroll compensation', () => {
     } as unknown as HTMLElement;
   }
 
+  const fmt = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
   it('folds the container scroll during a drag into the committed move', () => {
     const onCommit = vi.fn();
     const scroller = fakeScroller();
@@ -619,6 +621,53 @@ describe('InteractiveBlock scroll compensation', () => {
     fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
     fireEvent.pointerUp(el, { clientX: 50, clientY: 100, pointerId: 1 });
     expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('a stationary finger in the edge zone keeps the preview in step with the auto-scroll', () => {
+    // The whole point of edge auto-scroll is a finger that rests near the edge: no pointermove
+    // arrives, so only the rAF tick can move the preview. If it does not, the tile rides the
+    // scrolling content away from the finger and pointer-up commits a jump.
+    const frames: FrameRequestCallback[] = [];
+    const realRaf = globalThis.requestAnimationFrame;
+    const realCaf = globalThis.cancelAnimationFrame;
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => frames.push(cb)) as unknown as typeof requestAnimationFrame;
+    globalThis.cancelAnimationFrame = (() => {}) as typeof cancelAnimationFrame;
+    try {
+      const onCommit = vi.fn();
+      const scroller = fakeScroller(); // rect top 0 / bottom 600 → bottom edge zone starts at 552
+      render(
+        <InteractiveBlock
+          id="b1" dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
+          topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
+          onCommit={onCommit} getScrollContainer={() => scroller}
+        />,
+      );
+      const el = screen.getByTestId('event-block');
+      fireEvent.pointerDown(el, { clientX: 50, clientY: 560, pointerId: 1 });
+      fireEvent.pointerMove(el, { clientX: 50, clientY: 590, pointerId: 1 });
+      // 30px of finger travel ≈ 31 min → snapped to +30.
+      expect(screen.getByTestId('drag-label')).toHaveTextContent(
+        `${fmt(START + 30 * 60_000)} – ${fmt(END + 30 * 60_000)}`,
+      );
+
+      // Now the finger stops. One auto-scroll frame fires — and nothing else.
+      const step = 12; // edgeScrollStep(590, 0, 600)
+      act(() => { frames.splice(0).forEach((cb) => cb(0)); });
+      expect(scroller.scrollTop).toBe(step);
+      // 30px of finger + 12px of scroll ≈ 43 min → snapped to +45, with no new pointermove.
+      expect(screen.getByTestId('drag-label')).toHaveTextContent(
+        `${fmt(START + 45 * 60_000)} – ${fmt(END + 45 * 60_000)}`,
+      );
+
+      // And the commit agrees with what the preview showed — no landing jump.
+      fireEvent.pointerUp(el, { clientX: 50, clientY: 590, pointerId: 1 });
+      expect(onCommit).toHaveBeenCalledWith({
+        startsAt: '2026-01-05T09:45:00.000Z', endsAt: '2026-01-05T10:45:00.000Z', pinned: true,
+      });
+    } finally {
+      globalThis.requestAnimationFrame = realRaf;
+      globalThis.cancelAnimationFrame = realCaf;
+    }
   });
 });
 
