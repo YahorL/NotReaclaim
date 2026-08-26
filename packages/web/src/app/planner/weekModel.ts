@@ -117,12 +117,34 @@ export const TIME_GUTTER_PX = 64;
 /** Minimum readable width (px) for one day column. */
 export const MIN_DAY_COL_PX = 120;
 
-/** How many day columns fit in `widthPx` (1..7). A negative width is the "not measured yet"
- *  sentinel (SSR/jsdom/before first paint) → show the full week. A measured width of 0 (e.g. the
- *  grid squeezed out by the side panels at a tiny viewport) is real → floor to a single day. */
-export function daysThatFit(widthPx: number): number {
+/** Time-gutter width on the compact (below-md) layout: smaller hour labels, less stolen width. */
+export const MOBILE_TIME_GUTTER_PX = 44;
+/**
+ * Minimum day-column width on the compact layout. Chosen so a 390px phone lands on ONE day even
+ * at full bleed (⌊(390−44)/175⌋ = 1) while a 430px phone gets two (⌊(430−44)/175⌋ = 2). The whole
+ * usable window is (173, 177]; 175 sits in the middle of it.
+ */
+export const MOBILE_MIN_DAY_COL_PX = 175;
+
+/** Gutter width for the layout in play. `compact` is the viewport switch, not the pane width. */
+export function timeGutterPx(compact = false): number {
+  return compact ? MOBILE_TIME_GUTTER_PX : TIME_GUTTER_PX;
+}
+
+/**
+ * How many day columns fit in `widthPx` (1..7). A negative width is the "not measured yet"
+ * sentinel (SSR/jsdom/before first paint) → show the full week. A measured width of 0 (e.g. the
+ * grid squeezed out by the side panels at a tiny viewport) is real → floor to a single day.
+ *
+ * `compact` selects the mobile constants. It is deliberately a parameter rather than something
+ * inferred from `widthPx`: the grid pane is only ~640px wide on a 1280px desktop (sidebar 280 +
+ * task panel 330), so a width-inferred switch would put a real desktop on the phone geometry.
+ */
+export function daysThatFit(widthPx: number, compact = false): number {
   if (widthPx < 0) return 7;
-  return Math.max(1, Math.min(7, Math.floor((widthPx - TIME_GUTTER_PX) / MIN_DAY_COL_PX)));
+  const gutter = timeGutterPx(compact);
+  const minCol = compact ? MOBILE_MIN_DAY_COL_PX : MIN_DAY_COL_PX;
+  return Math.max(1, Math.min(7, Math.floor((widthPx - gutter) / minCol)));
 }
 
 /** Round a minute value to the nearest `step` (default 15). */
@@ -199,4 +221,22 @@ export function clampToWindow(startMin: number, durationMin: number): { startMin
   if (s + durationMin > WINDOW_END_MIN) s = WINDOW_END_MIN - durationMin;
   s = Math.max(WINDOW_START_MIN, s);
   return { startMin: s, endMin: s + durationMin };
+}
+
+/**
+ * Which side of its day column the create-popover opens on. Columns in the first half open to
+ * the left so the popover grows into the grid rather than off-screen. Replaces WeekGrid's
+ * hardcoded `i <= 3`, which silently assumed a 7-day week.
+ */
+export function popoverAlign(dayIndex: number, dayCount: number): 'left' | 'right' {
+  return dayIndex <= Math.floor((dayCount - 1) / 2) ? 'left' : 'right';
+}
+
+/** Toolbar label for the rendered window: one date in the 1-day view, `first – last` otherwise. */
+export function rangeLabel(days: number[], zone = 'UTC'): string {
+  if (days.length === 0) return '';
+  const fmt = (ms: number) => new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric', timeZone: zone });
+  const first = days[0]!;
+  const last = days[days.length - 1]!;
+  return first === last ? fmt(first) : `${fmt(first)} – ${fmt(last)}`;
 }

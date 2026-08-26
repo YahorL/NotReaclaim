@@ -6,6 +6,7 @@ import {
   HOUR_ROW_PX, GRID_COLUMN_PX, snapMinutes, pxToMinutes, clampToWindow,
   minutesToPx, shiftDays, clampDayDelta, snapClickToSlot, localMidnight,
   daysThatFit, formatHm, weekdayLabel, dayOfMonth, dayAnchor, hourRowLabel,
+  MOBILE_TIME_GUTTER_PX, MOBILE_MIN_DAY_COL_PX, timeGutterPx, popoverAlign, rangeLabel,
 } from './weekModel';
 
 const MON = Date.parse('2026-01-05T00:00:00.000Z'); // Monday 00:00 UTC
@@ -331,5 +332,67 @@ describe('dayStartMinute — shifted day boundary (Review 20)', () => {
     expect([0, 9, 12, 13, 23].map((h) => hourRowLabel(h))).toEqual(['12a', '9a', '12p', '1p', '11p']);
     expect([0, 1, 20, 21, 23].map((h) => hourRowLabel(h, 180))).toEqual(['3a', '4a', '11p', '12a', '2a']);
     expect(hourRowLabel(0, 210)).toBe('3:30a');
+  });
+});
+
+describe('mobile geometry (Phase 2)', () => {
+  it('exports the mobile gutter and column-minimum constants', () => {
+    expect(MOBILE_TIME_GUTTER_PX).toBe(44);
+    expect(MOBILE_MIN_DAY_COL_PX).toBe(175);
+  });
+
+  it('timeGutterPx narrows the gutter only in the compact layout', () => {
+    expect(timeGutterPx()).toBe(64);
+    expect(timeGutterPx(false)).toBe(64);
+    expect(timeGutterPx(true)).toBe(44);
+  });
+
+  it('compact widths: a 390px phone shows one day, a 430px phone shows two', () => {
+    expect(daysThatFit(358, true)).toBe(1);  // 390 - p-4
+    expect(daysThatFit(374, true)).toBe(1);  // 390 - p-2
+    expect(daysThatFit(390, true)).toBe(1);  // full bleed
+    expect(daysThatFit(398, true)).toBe(2);  // 430 - p-4
+    expect(daysThatFit(414, true)).toBe(2);  // 430 - p-2
+    expect(daysThatFit(430, true)).toBe(2);  // full bleed
+    expect(daysThatFit(767, true)).toBe(4);  // widest compact viewport
+  });
+
+  it('compact keeps the unmeasured sentinel and the 1-day floor', () => {
+    expect(daysThatFit(-1, true)).toBe(7);
+    expect(daysThatFit(0, true)).toBe(1);
+    expect(daysThatFit(50, true)).toBe(1);
+  });
+
+  it('desktop widths are untouched by the new parameter', () => {
+    expect(daysThatFit(768)).toBe(5);
+    expect(daysThatFit(768, false)).toBe(5);
+    expect(daysThatFit(1280)).toBe(7);
+    expect(daysThatFit(640)).toBe(4);   // the real grid pane at 1280 with both side panels
+    expect(daysThatFit(640, false)).toBe(4);
+  });
+});
+
+describe('popoverAlign', () => {
+  it('reproduces the old hardcoded 7-day rule (i <= 3 opens left)', () => {
+    expect([0, 1, 2, 3, 4, 5, 6].map((i) => popoverAlign(i, 7)))
+      .toEqual(['left', 'left', 'left', 'left', 'right', 'right', 'right']);
+  });
+
+  it('follows the rendered day count in the narrow windows', () => {
+    expect(popoverAlign(0, 1)).toBe('left');
+    expect([0, 1].map((i) => popoverAlign(i, 2))).toEqual(['left', 'right']);
+    expect([0, 1, 2].map((i) => popoverAlign(i, 3))).toEqual(['left', 'left', 'right']);
+    expect([0, 1, 2, 3].map((i) => popoverAlign(i, 4))).toEqual(['left', 'left', 'right', 'right']);
+  });
+});
+
+describe('rangeLabel', () => {
+  it('renders a single date for a one-day window', () => {
+    expect(rangeLabel([MON])).toBe('Jan 5');
+  });
+
+  it('renders first – last for a multi-day window', () => {
+    expect(rangeLabel(dayColumns(MON))).toBe('Jan 5 – Jan 11');
+    expect(rangeLabel(dayColumns(MON, 2))).toBe('Jan 5 – Jan 6');
   });
 });
