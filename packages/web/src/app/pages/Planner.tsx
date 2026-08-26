@@ -4,7 +4,7 @@ import { ApiError } from '../../api/client';
 import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useHabitsQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation, useSettingsQuery } from '../../api/queries';
 import { dayColumns, daysThatFit, shiftDays, dayAnchor, clampToWindow, rangeLabel, MS_PER_DAY, WINDOW_START_MIN, WINDOW_END_MIN } from '../planner/weekModel';
 import { useElementWidth } from '../planner/useElementWidth';
-import { useCompactWidth } from '../lib/useMediaQuery';
+import { useCompactWidth, usePointerCoarse } from '../lib/useMediaQuery';
 import { Sheet } from '../components/Sheet';
 import { WeekGrid } from '../planner/WeekGrid';
 import { PlannerTaskPanel } from '../planner/PlannerTaskPanel';
@@ -25,6 +25,8 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   // Viewport switch, not pane width: the grid pane is only ~640px on a 1280px desktop, so
   // inferring "compact" from gridWidth would put a real desktop on the phone geometry.
   const compact = useCompactWidth();
+  // One media-query subscription for the whole page rather than one per tile.
+  const coarse = usePointerCoarse();
   const dayCount = daysThatFit(gridWidth, compact);
   const days = useMemo(() => dayColumns(viewStartMs, dayCount, zone, dayStartMinute), [viewStartMs, dayCount, zone, dayStartMinute]);
   const fromIso = new Date(viewStartMs).toISOString();
@@ -167,6 +169,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           onScheduleTaskAt={onScheduleTaskAt}
           accents={accents}
           compact={compact}
+          coarse={coarse}
           // Compact: the toggle reflects the sheet, so `panelHidden` (its aria-expanded source)
           // must track the sheet rather than the persisted desktop hide flag.
           panelHidden={compact ? !taskSheetOpen : panelHidden}

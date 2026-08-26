@@ -1,8 +1,9 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { InteractiveBlock } from './InteractiveBlock';
 import { GRID_COLUMN_PX } from './weekModel';
 import { minutesToPx } from './weekModel';
+import { LONG_PRESS_MS } from './longPress';
 
 const DAY = Date.parse('2026-01-05T00:00:00.000Z'); // local midnight (TZ=UTC)
 const START = Date.parse('2026-01-05T09:00:00.000Z');
@@ -454,6 +455,75 @@ describe('InteractiveBlock accent tinting', () => {
     expect(el.style.backgroundColor).toBe('rgb(91, 98, 227)');
     expect(el.className).not.toContain('bg-low');
     expect(el.className).toContain('text-white');
+  });
+});
+
+describe('InteractiveBlock on a coarse pointer', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  const coarseProps = {
+    id: 'b1', dayStartMs: DAY, dayIndex: 0, startMs: START, endMs: END,
+    topPct: 10, heightPct: 5, startLabel: '09:00', title: 'Write spec',
+    kind: 'task' as const, pinned: false, coarse: true,
+  };
+
+  it('a press released before the long press is a tap, not a drag', () => {
+    const onCommit = vi.fn();
+    const onClick = vi.fn();
+    render(<InteractiveBlock {...coarseProps} onCommit={onCommit} onClick={onClick} />);
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('moving before the timer disarms the press — the gesture stays a scroll', () => {
+    const onCommit = vi.fn();
+    render(<InteractiveBlock {...coarseProps} onCommit={onCommit} />);
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
+    expect(screen.queryByTestId('drag-label')).not.toBeInTheDocument();
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('after the long press the drag arms and commits the snapped move', () => {
+    const onCommit = vi.fn();
+    render(<InteractiveBlock {...coarseProps} onCommit={onCommit} />);
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    act(() => { vi.advanceTimersByTime(LONG_PRESS_MS); });
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
+    expect(screen.getByTestId('drag-label')).toBeInTheDocument();
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
+    expect(onCommit).toHaveBeenCalledWith({
+      startsAt: '2026-01-05T10:00:00.000Z', endsAt: '2026-01-05T11:00:00.000Z', pinned: true,
+    });
+  });
+
+  it('an armed coarse block lifts and stops the browser owning the gesture', () => {
+    render(<InteractiveBlock {...coarseProps} onCommit={vi.fn()} />);
+    const el = screen.getByTestId('event-block');
+    expect(el.className).toContain('touch-pan-y');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    act(() => { vi.advanceTimersByTime(LONG_PRESS_MS); });
+    expect(el.className).toContain('shadow-pop');
+    expect(el.style.transform).toContain('scale(1.02)');
+  });
+
+  it('a fine pointer keeps dragging immediately (no long press, no lift)', () => {
+    const onCommit = vi.fn();
+    render(<InteractiveBlock {...coarseProps} coarse={false} onCommit={onCommit} />);
+    const el = screen.getByTestId('event-block');
+    expect(el.className).not.toContain('touch-pan-y');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
+    expect(el.style.transform).not.toContain('scale');
+    expect(onCommit).toHaveBeenCalledTimes(1);
   });
 });
 

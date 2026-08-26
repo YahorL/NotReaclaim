@@ -1,11 +1,20 @@
 import { useState, useRef, useEffect, useLayoutEffect, type PointerEvent as ReactPointerEvent } from 'react';
 import { BASE, variantClass, type BlockKind } from './EventBlock';
 import { WINDOW_END_MIN, snapMinutes, pxToMinutes, minutesToPx, clampToWindow, shiftDays, clampDayDelta, formatHm } from './weekModel';
+import { IDLE, beginPress, pressMove, pressArm, endPress, isArmed, isTap, LONG_PRESS_MS, type PressState } from './longPress';
 
 const MIN_DURATION_MIN = 15;
 const HELD_TIMEOUT_MS = 1500;
 const iso = (ms: number): string => new Date(ms).toISOString();
 const finite = (n: number): number => (Number.isFinite(n) ? n : 0);
+
+/**
+ * Once a touch drag is armed the browser must stop treating the gesture as a scroll. `touch-action`
+ * is latched when the finger lands, so flipping a class at arm time is too late — the only way out
+ * mid-gesture is a non-passive touchmove listener that preventDefaults. Module-level so the
+ * add/remove pair always sees the same function identity.
+ */
+const blockTouchScroll = (e: TouchEvent): void => { e.preventDefault(); };
 
 export interface InteractiveBlockProps {
   id: string;
@@ -30,13 +39,15 @@ export interface InteractiveBlockProps {
   dayCount?: number;
   accent?: string;
   zone?: string;
+  /** Coarse pointer: a body move waits for a long press before it arms, and the tile lifts. */
+  coarse?: boolean;
 }
 
 type DragMode = 'move' | 'resize';
 
 export function InteractiveBlock(props: InteractiveBlockProps) {
   // `id` is part of the props for the parent's onCommit binding; not read inside this component.
-  const { dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, leftPct = 0, widthPct = 100, startLabel, title, kind, pinned, onCommit, onUnpin, onDelete, onClick, deleteLabel = 'Delete block', dayCount = 7, accent, zone = 'UTC' } = props;
+  const { dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, leftPct = 0, widthPct = 100, startLabel, title, kind, pinned, onCommit, onUnpin, onDelete, onClick, deleteLabel = 'Delete block', dayCount = 7, accent, zone = 'UTC', coarse = false } = props;
   // Refs hold the authoritative drag state; mutated directly so pointer handlers always
   // see the latest values regardless of React's batching/commit schedule.
   const modeRef = useRef<DragMode | null>(null);
@@ -65,6 +76,11 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
   // Safety timeout ref for held preview
   const heldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rafRef = useRef<number | null>(null);
+  // Touch gesture arming. On a fine pointer `pressRef` is 'armed' from pointerdown, so every
+  // branch below collapses to today's behaviour.
+  const pressRef = useRef<PressState>(IDLE);
+  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const captureRef = useRef<{ el: HTMLElement; pointerId: number } | null>(null);
 
   // Clear the held preview when startMs/endMs change (the optimistic commit landed).
   // CRITICAL: clearing it here would, on its own, restore `transition-[top,height]` on the
@@ -99,6 +115,9 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
     return () => {
       if (heldTimerRef.current) clearTimeout(heldTimerRef.current);
       if (rafRef.current != null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(rafRef.current);
+      if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+      const cap = captureRef.current;
+      if (cap) cap.el.removeEventListener('touchmove', blockTouchScroll);
     };
   }, []);
 
@@ -126,17 +145,48 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
     heldTimerRef.current = setTimeout(clearHeld, HELD_TIMEOUT_MS);
   };
 
+  const clearPressTimer = () => {
+    if (pressTimerRef.current) { clearTimeout(pressTimerRef.current); pressTimerRef.current = null; }
+  };
+
+  const armDrag = (el: HTMLElement, pointerId: number) => {
+    if (typeof el.setPointerCapture === 'function') {
+      try { el.setPointerCapture(pointerId); } catch { /* jsdom / unsupported */ }
+    }
+    el.addEventListener('touchmove', blockTouchScroll, { passive: false });
+    captureRef.current = { el, pointerId };
+    setActiveDrag(true);
+  };
+
+  const releaseDrag = () => {
+    const cap = captureRef.current;
+    captureRef.current = null;
+    if (!cap) return;
+    cap.el.removeEventListener('touchmove', blockTouchScroll);
+    if (typeof cap.el.releasePointerCapture === 'function') {
+      try { cap.el.releasePointerCapture(cap.pointerId); } catch { /* not captured */ }
+    }
+  };
+
   const begin = (mode: DragMode) => (e: ReactPointerEvent<HTMLElement>) => {
     e.stopPropagation();
     const el = e.currentTarget;
-    if (typeof el.setPointerCapture === 'function') {
-      try { el.setPointerCapture(e.pointerId); } catch { /* jsdom / unsupported */ }
-    }
+    const pointerId = e.pointerId;
+    // Only a body *move* on a coarse pointer waits: the resize handle is unambiguous, so it
+    // drags immediately on touch too.
+    const deferred = coarse && mode === 'move';
+    pressRef.current = beginPress(finite(e.clientX), finite(e.clientY), deferred);
     modeRef.current = mode;
     startYRef.current = finite(e.clientY);
     startXRef.current = finite(e.clientX);
     colWidthRef.current = mode === 'move' ? (el.parentElement?.getBoundingClientRect().width ?? 0) : 0;
-    setActiveDrag(true);
+    clearPressTimer();
+    if (isArmed(pressRef.current)) { armDrag(el, pointerId); return; }
+    pressTimerRef.current = setTimeout(() => {
+      pressTimerRef.current = null;
+      pressRef.current = pressArm(pressRef.current);
+      if (isArmed(pressRef.current)) armDrag(el, pointerId);
+    }, LONG_PRESS_MS);
   };
 
   const snappedDy = (clientY: number): number => snapMinutes(pxToMinutes(finite(clientY) - startYRef.current));
@@ -149,6 +199,15 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
 
   const onPointerMove = (e: ReactPointerEvent<HTMLElement>) => {
     if (!modeRef.current) return;
+    pressRef.current = pressMove(pressRef.current, finite(e.clientX), finite(e.clientY));
+    if (pressRef.current.phase === 'idle') {
+      // Travelled before the long press armed → the user is scrolling. Hand the gesture back.
+      clearPressTimer();
+      releaseDrag();
+      resetDragState();
+      return;
+    }
+    if (!isArmed(pressRef.current)) return; // still counting down: no preview, no capture
     const min = snappedDy(e.clientY);
     if (modeRef.current === 'move') { setMoveMin(min); setDayDelta(snappedDx(e.clientX)); setGrowMin(0); }
     else { setGrowMin(min); setMoveMin(0); setDayDelta(0); }
@@ -166,6 +225,17 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
   };
 
   const onPointerUp = (e: ReactPointerEvent<HTMLElement>) => {
+    clearPressTimer();
+    releaseDrag();
+    if (isTap(pressRef.current)) {
+      // Released before the long press armed: a tap opens the drawer, it never commits.
+      const tappedMode = modeRef.current;
+      pressRef.current = endPress();
+      resetDragState();
+      if (tappedMode === 'move') onClick?.();
+      return;
+    }
+    pressRef.current = endPress();
     const deltaMin = snappedDy(e.clientY);
     const deltaDays = modeRef.current === 'move' ? snappedDx(e.clientX) : 0;
     const mode = modeRef.current;
@@ -200,7 +270,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
     }
   };
 
-  const onPointerCancel = () => { resetDragState(); };
+  const onPointerCancel = () => { clearPressTimer(); releaseDrag(); pressRef.current = endPress(); resetDragState(); };
 
   // During active drag, use live state deltas; otherwise show held preview
   const effectiveMoveMin = activeDrag ? moveMin : heldMove;
@@ -230,6 +300,9 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
   //   the transform→0 + top→newTop swap paints with no animation — kills the jump-to-initial.
   // - idle: transition-[top,height] duration-300 ease-out (replan animations for actual replans)
   const held = heldMove !== 0 || heldGrow !== 0 || heldDay !== 0;
+  // Visual lift while a touch drag is live: shadow + a hair of scale, so the tile reads as
+  // "picked up". Scale rides the inline transform because an inline transform beats a utility.
+  const lifted = coarse && activeDrag;
   const transitionClass = activeDrag
     ? 'transition-transform duration-75'
     : (held || landing)
@@ -246,8 +319,8 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
-      className={`group ${BASE} ${activeDrag ? 'cursor-grabbing' : 'cursor-grab'} select-none ${variantClass(kind, pinned, accent)} ${transitionClass}`}
-      style={{ top: `${topPct}%`, height: `calc(${heightPct}% + ${heightDelta}px)`, left: `calc(${leftPct}% + 2px)`, width: `calc(${widthPct}% - 4px)`, transform: `translate(${transformX}px, ${transformY}px)`, ...accentStyles }}
+      className={`group ${BASE} ${activeDrag ? 'cursor-grabbing' : 'cursor-grab'} select-none ${coarse ? 'touch-pan-y' : ''} ${lifted ? 'shadow-pop' : ''} ${variantClass(kind, pinned, accent)} ${transitionClass}`}
+      style={{ top: `${topPct}%`, height: `calc(${heightPct}% + ${heightDelta}px)`, left: `calc(${leftPct}% + 2px)`, width: `calc(${widthPct}% - 4px)`, transform: `translate(${transformX}px, ${transformY}px)${lifted ? ' scale(1.02)' : ''}`, ...accentStyles }}
     >
       {onDelete && !activeDrag && (
         <button

@@ -44,6 +44,8 @@ export interface WeekGridProps {
   onTogglePanel?: () => void;
   /** Below-md layout: narrow gutter, wrapped toolbar, Tasks sheet button, no legend. */
   compact?: boolean;
+  /** Coarse pointer: long-press-armed drag, bigger resize target, always-visible actions. */
+  coarse?: boolean;
 }
 
 interface Item {
@@ -76,7 +78,7 @@ function toItems(blocks: ScheduledBlock[], events: CalendarEvent[], zone: string
 }
 
 export function WeekGrid(props: WeekGridProps) {
-  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit, onCommitEvent, onEditEvent, onDeleteBlock, onDeleteEvent, onScheduleTaskAt, accents = {}, zone = 'UTC', dayStartMinute = 0, panelHidden, onTogglePanel, compact = false } = props;
+  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit, onCommitEvent, onEditEvent, onDeleteBlock, onDeleteEvent, onScheduleTaskAt, accents = {}, zone = 'UTC', dayStartMinute = 0, panelHidden, onTogglePanel, compact = false, coarse = false } = props;
   const gridCols = `${timeGutterPx(compact)}px repeat(${days.length}, minmax(0, 1fr))`;
   const items = toItems(blocks, events, zone);
   const [creating, setCreating] = useState<{ dayIndex: number; startMin: number } | null>(null);
@@ -251,6 +253,7 @@ export function WeekGrid(props: WeekGridProps) {
                           dayCount={days.length}
                           accent={accent}
                           zone={zone}
+                          coarse={coarse}
                         />
                       );
                     }
@@ -272,6 +275,7 @@ export function WeekGrid(props: WeekGridProps) {
                           deleteLabel="Delete event"
                           dayCount={days.length}
                           zone={zone}
+                          coarse={coarse}
                         />
                       );
                     }
