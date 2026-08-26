@@ -5,6 +5,8 @@ export interface FakeMatchMedia {
   set(query: string, matches: boolean): void;
   /** Every query the code under test has asked about, in first-ask order. */
   queries(): string[];
+  /** How many listeners are currently registered for a query (0 if none) — leak detection. */
+  listenerCount(query: string): number;
   /** Put `window.matchMedia` back the way jsdom had it (undefined). */
   restore(): void;
 }
@@ -45,6 +47,7 @@ export function installMatchMedia(initial: Record<string, boolean> = {}): FakeMa
       for (const fn of listeners.get(query) ?? []) fn({ matches, media: query } as MediaQueryListEvent);
     },
     queries: () => [...asked],
+    listenerCount: (query) => listeners.get(query)?.size ?? 0,
     restore() {
       if (had) Object.defineProperty(window, 'matchMedia', { configurable: true, writable: true, value: previous });
       else delete (window as { matchMedia?: unknown }).matchMedia;

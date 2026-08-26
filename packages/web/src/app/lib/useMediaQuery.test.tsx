@@ -32,7 +32,9 @@ describe('useMediaQuery', () => {
   it('stops listening after unmount', () => {
     mm = installMatchMedia({ '(min-width: 900px)': false });
     const { result, unmount } = renderHook(() => useMediaQuery('(min-width: 900px)'));
+    expect(mm.listenerCount('(min-width: 900px)')).toBe(1);
     unmount();
+    expect(mm.listenerCount('(min-width: 900px)')).toBe(0); // the effect cleanup really ran
     act(() => { mm!.set('(min-width: 900px)', true); });
     expect(result.current).toBe(false); // no post-unmount state update
   });
