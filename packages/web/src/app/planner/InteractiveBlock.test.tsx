@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, createEvent } from '@testing-library/react';
 import { InteractiveBlock } from './InteractiveBlock';
 import { GRID_COLUMN_PX } from './weekModel';
 import { minutesToPx } from './weekModel';
@@ -512,6 +512,26 @@ describe('InteractiveBlock on a coarse pointer', () => {
     act(() => { vi.advanceTimersByTime(LONG_PRESS_MS); });
     expect(el.className).toContain('shadow-pop');
     expect(el.style.transform).toContain('scale(1.02)');
+  });
+
+  // jsdom has no PointerEvent, so a `pointerType` passed in fireEvent's init is dropped (the
+  // handler sees null — which is why every other test here is treated as touch). Defining it on
+  // the event object is what actually reaches React's synthetic event.
+  function firePointer(kind: 'pointerDown' | 'pointerMove' | 'pointerUp', el: Element, init: Record<string, unknown>, pointerType: string) {
+    const ev = createEvent[kind](el, init);
+    Object.defineProperty(ev, 'pointerType', { value: pointerType });
+    fireEvent(el, ev);
+  }
+
+  it('a mouse on a coarse-primary device (iPad + trackpad) drags immediately', () => {
+    const onCommit = vi.fn();
+    render(<InteractiveBlock {...coarseProps} onCommit={onCommit} />);
+    const el = screen.getByTestId('event-block');
+    // No advanceTimersByTime anywhere: a mouse never waits, whatever the primary pointer is.
+    firePointer('pointerDown', el, { clientX: 50, clientY: 100, pointerId: 1 }, 'mouse');
+    firePointer('pointerMove', el, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 }, 'mouse');
+    firePointer('pointerUp', el, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 }, 'mouse');
+    expect(onCommit).toHaveBeenCalledTimes(1);
   });
 
   it('a fine pointer keeps dragging immediately (no long press, no lift)', () => {

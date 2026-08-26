@@ -172,9 +172,12 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
     e.stopPropagation();
     const el = e.currentTarget;
     const pointerId = e.pointerId;
-    // Only a body *move* on a coarse pointer waits: the resize handle is unambiguous, so it
-    // drags immediately on touch too.
-    const deferred = coarse && mode === 'move';
+    // Deferral is decided per *event*, not per device: `coarse` is the primary-pointer media
+    // query, so an iPad with a trackpad reports coarse while the mouse drag in hand is fine.
+    // A mouse therefore never waits; a touch always does (including on a fine-primary
+    // touchscreen laptop, which is the behaviour we want anyway). Only a body *move* defers —
+    // the resize handle is an unambiguous target and drags immediately on touch too.
+    const deferred = (coarse || e.pointerType === 'touch') && e.pointerType !== 'mouse' && mode === 'move';
     pressRef.current = beginPress(finite(e.clientX), finite(e.clientY), deferred);
     modeRef.current = mode;
     startYRef.current = finite(e.clientY);
