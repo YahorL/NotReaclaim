@@ -248,7 +248,7 @@ export function rangeLabel(days: number[], zone = 'UTC'): string {
  */
 export const COARSE_RESIZE_MIN_SPAN_MIN = 30;
 
-/** Literal Tailwind height class for the resize hit area. The visible bar never changes. */
+/** Literal Tailwind height class for the resize hit area. It is invisible — only the target grows. */
 export function resizeHandleClass(heightPct: number, coarse: boolean): 'h-1.5' | 'h-6' {
   if (!coarse) return 'h-1.5';
   // The percent → minutes roundtrip is lossy: an exactly-30-minute tile comes back as

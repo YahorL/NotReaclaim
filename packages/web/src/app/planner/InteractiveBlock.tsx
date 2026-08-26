@@ -346,7 +346,9 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
               title="Unpin — let the scheduler move this"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => { e.stopPropagation(); onUnpin(); }}
-              className="mr-0.5 cursor-pointer border-0 bg-transparent p-0 leading-none"
+              // `relative z-10` keeps this in-flow button above the absolutely-positioned resize
+              // hit area, which on a coarse pointer covers the bottom 24px of a short tile.
+              className="relative z-10 mr-0.5 cursor-pointer border-0 bg-transparent p-0 leading-none"
             >
               🔒
             </button>
@@ -359,8 +361,8 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
           {formatHm(previewStart, zone)} – {formatHm(previewEnd, zone)}
         </span>
       )}
-      {/* Invisible hit area; the visible bar is unchanged. `touch-none` on the handle means a
-          finger that lands here is a resize from the first pixel — no long press needed. */}
+      {/* The tile's appearance is unchanged (the handle is a pure hit area). `touch-none` on it
+          means a finger that lands here is a resize from the first pixel — no long press. */}
       <span
         data-testid="resize-handle"
         onPointerDown={begin('resize')}

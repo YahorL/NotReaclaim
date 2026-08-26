@@ -558,6 +558,18 @@ describe('InteractiveBlock on a coarse pointer', () => {
     expect(screen.getByTestId('resize-handle').className).toContain('h-1.5');
   });
 
+  it('keeps the unpin button above the enlarged resize hit area', () => {
+    // A 30-min tile is 29px tall and the coarse handle covers its bottom 24px; without a
+    // stacking context of its own the in-flow 🔒 would sit under it and swallow the tap.
+    const onUnpin = vi.fn();
+    render(<InteractiveBlock {...coarseProps} heightPct={2.0833} pinned onUnpin={onUnpin} onCommit={vi.fn()} />);
+    const unpin = screen.getByRole('button', { name: /unpin/i });
+    expect(unpin.className).toContain('relative');
+    expect(unpin.className).toContain('z-10');
+    fireEvent.click(unpin);
+    expect(onUnpin).toHaveBeenCalledTimes(1);
+  });
+
   it('resize drags immediately on touch — no long press', () => {
     const onCommit = vi.fn();
     render(<InteractiveBlock {...coarseProps} onCommit={onCommit} />);
