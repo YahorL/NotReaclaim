@@ -3,6 +3,8 @@ import type { Task } from '../../api/types';
 import { ApiError } from '../../api/client';
 import { useTasksQuery, useSchedulePreviewQuery, useUpdateTaskMutation, useDeleteTaskMutation, useUpdateSubtaskMutation } from '../../api/queries';
 import { TaskDrawer } from '../tasks/TaskDrawer';
+import { DrawerHost } from '../components/DrawerHost';
+import { useCompactWidth } from '../lib/useMediaQuery';
 import { Toolbar } from '../priorities/Toolbar';
 import { Board, type BoardColumn } from '../priorities/Board';
 import { type BoardColumnKey, BUCKETS, priorityToBucket, nextBlockMsForTask, sortBucket, sortCompleted } from '../priorities/priorityBucket';
@@ -14,6 +16,7 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
   const updateM = useUpdateTaskMutation();
   const deleteM = useDeleteTaskMutation();
   const subtaskM = useUpdateSubtaskMutation();
+  const compact = useCompactWidth();
   const onToggleSubtask = (subtaskId: string, done: boolean) => subtaskM.mutate({ id: subtaskId, patch: { done } });
   const onReorderSubtask = (subtaskId: string, sortOrder: number) => subtaskM.mutate({ id: subtaskId, patch: { sortOrder } });
 
@@ -97,14 +100,14 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
         )}
       </div>
       {editing && (
-        <div className="fixed right-3 top-[84px] z-40">
+        <DrawerHost compact={compact} label="Edit task" onClose={() => setEditingId(null)} desktopClass="fixed right-3 top-[84px] z-50">
           <TaskDrawer
-            task={editing} saving={updateM.isPending}
+            task={editing} compact={compact} saving={updateM.isPending}
             error={updateM.error instanceof ApiError ? updateM.error : null}
             onSave={(patch) => updateM.mutate({ id: editing.id, patch }, { onSuccess: () => setEditingId(null) })}
             onCancel={() => setEditingId(null)}
           />
-        </div>
+        </DrawerHost>
       )}
     </div>
   );

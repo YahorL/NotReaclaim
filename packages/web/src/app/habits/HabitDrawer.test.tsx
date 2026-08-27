@@ -55,4 +55,14 @@ describe('HabitDrawer', () => {
     expect(drawer.className).toMatch(/max-h-\[calc/);
     expect(drawer.className).toContain('overflow-y-auto');
   });
+
+  it('compact drops the fixed 440px panel chrome and its own outside-dismiss', () => {
+    const onCancel = vi.fn();
+    render(<HabitDrawer habit={habit()} compact onSave={vi.fn()} onCancel={onCancel} />);
+    const drawer = screen.getByTestId('habit-drawer');
+    expect(drawer.className).toContain('w-full');
+    expect(drawer.className).not.toContain('w-[440px]');
+    fireEvent.mouseDown(document.body);
+    expect(onCancel).not.toHaveBeenCalled();
+  });
 });

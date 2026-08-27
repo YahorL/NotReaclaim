@@ -49,9 +49,11 @@ export interface TaskDrawerProps {
   onCancel: () => void;
   saving?: boolean;
   error?: ApiError | null;
+  /** Hosted in a full-screen Sheet below md: drop the 440px panel chrome and the self-dismiss. */
+  compact?: boolean;
 }
 
-export function TaskDrawer({ task, onSave, onCancel, saving = false, error = null }: TaskDrawerProps) {
+export function TaskDrawer({ task, onSave, onCancel, saving = false, error = null, compact = false }: TaskDrawerProps) {
   const [form, setForm] = useState<TaskFormState>(() => toFormState(task));
   const { ok, errors } = validateTaskForm(form);
   const categoriesQ = useCategoriesQuery();
@@ -61,7 +63,7 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
   const deleteSubtaskM = useDeleteSubtaskMutation();
   const [newSubtask, setNewSubtask] = useState('');
   const rootRef = useRef<HTMLElement>(null);
-  useClickOutside(rootRef, onCancel);
+  useClickOutside(rootRef, onCancel, !compact);
   const sensors = useAppSensors();
   const subtasks = task.subtasks ?? [];
   const onSubtaskDragEnd = (e: DragEndEvent) => {
@@ -74,7 +76,13 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
   const errCls = 'mt-0.5 text-[11px] text-crit';
 
   return (
-    <aside ref={rootRef} data-testid="task-drawer" className="w-[440px] shrink-0 space-y-2.5 rounded-[14px] border border-line bg-card p-4 shadow-pop max-h-[calc(100dvh-100px)] overflow-y-auto">
+    <aside
+      ref={rootRef}
+      data-testid="task-drawer"
+      className={compact
+        ? 'w-full space-y-2.5 p-2'
+        : 'w-[440px] shrink-0 space-y-2.5 rounded-[14px] border border-line bg-card p-4 shadow-pop max-h-[calc(100dvh-100px)] overflow-y-auto'}
+    >
       <h4 className="text-[15px] font-bold text-ink">Edit task</h4>
 
       {(() => {
@@ -94,9 +102,9 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
         );
       })()}
 
-      <div className="grid grid-cols-2 gap-2.5">
-        {/* Title — spans both columns */}
-        <div className="col-span-2">
+      <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
+        {/* Title — spans both columns at md+; col-span-2 in a one-column grid would conjure a second */}
+        <div className="col-span-1 md:col-span-2">
           <FieldBox label="Title">
             <input className={ctl} value={form.title} onChange={(e) => set('title', e.target.value)} />
           </FieldBox>

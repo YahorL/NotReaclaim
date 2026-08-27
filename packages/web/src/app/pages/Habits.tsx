@@ -6,6 +6,8 @@ import { missedByHabit } from '../planner/unscheduledSummary';
 import { QuickAdd } from '../components/QuickAdd';
 import { HabitRow } from '../habits/HabitRow';
 import { HabitDrawer } from '../habits/HabitDrawer';
+import { DrawerHost } from '../components/DrawerHost';
+import { useCompactWidth } from '../lib/useMediaQuery';
 import { defaultQuickAddInput } from '../habits/habitForm';
 
 export function Habits() {
@@ -14,6 +16,7 @@ export function Habits() {
   const updateM = useUpdateHabitMutation();
   const deleteM = useDeleteHabitMutation();
   const [editing, setEditing] = useState<Habit | null>(null);
+  const compact = useCompactWidth();
 
   const habits = habitsQ.data ?? [];
   // Same preview the planner banner reads (shared query key, no extra endpoint): habits whose
@@ -49,12 +52,17 @@ export function Habits() {
         </div>
       </div>
       {editing && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/20 p-4">
-          <HabitDrawer habit={editing} saving={updateM.isPending}
+        <DrawerHost
+          compact={compact}
+          label="Edit habit"
+          onClose={() => setEditing(null)}
+          desktopClass="fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-4"
+        >
+          <HabitDrawer habit={editing} compact={compact} saving={updateM.isPending}
             error={updateM.error instanceof ApiError ? updateM.error : null}
             onSave={(patch) => updateM.mutate({ id: editing.id, patch }, { onSuccess: () => setEditing(null) })}
             onCancel={() => setEditing(null)} />
-        </div>
+        </DrawerHost>
       )}
     </div>
   );

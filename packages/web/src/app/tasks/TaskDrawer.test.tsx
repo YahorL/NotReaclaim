@@ -127,11 +127,28 @@ describe('TaskDrawer layout', () => {
     expect(drawer.className).toContain('w-[440px]');
   });
 
-  it('field grid has grid grid-cols-2 class', () => {
+  it('field grid is one column on a phone and two at md+', () => {
     renderWithProviders(<TaskDrawer task={task()} onSave={vi.fn()} onCancel={vi.fn()} />, { api: emptyCategories() });
+    const grid = screen.getByTestId('task-drawer').querySelector('.grid') as HTMLElement;
+    expect(grid).not.toBeNull();
+    expect(grid.classList.contains('grid-cols-1')).toBe(true);      // 165px columns cannot hold a datetime input
+    expect(grid.classList.contains('md:grid-cols-2')).toBe(true);   // desktop two-column layout, unchanged
+  });
+
+  it('compact drops the fixed 440px panel chrome', () => {
+    renderWithProviders(<TaskDrawer task={task()} compact onSave={vi.fn()} onCancel={vi.fn()} />, { api: emptyCategories() });
     const drawer = screen.getByTestId('task-drawer');
-    // The field grid should exist inside the drawer
-    expect(drawer.querySelector('.grid.grid-cols-2')).not.toBeNull();
+    expect(drawer.className).toContain('w-full');
+    expect(drawer.className).not.toContain('w-[440px]');
+    // The host Sheet scrolls; a second scroll box here would trap the page inside the drawer.
+    expect(drawer.className).not.toContain('overflow-y-auto');
+  });
+
+  it('compact installs no outside-dismiss of its own', () => {
+    const onCancel = vi.fn();
+    renderWithProviders(<TaskDrawer task={task()} compact onSave={vi.fn()} onCancel={onCancel} />, { api: emptyCategories() });
+    fireEvent.mouseDown(document.body);
+    expect(onCancel).not.toHaveBeenCalled();
   });
 });
 

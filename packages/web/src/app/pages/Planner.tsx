@@ -11,6 +11,7 @@ import { useLivePointerY } from '../dnd/useLivePointerY';
 import { dayDropFromOver, draggedTaskId, scheduleDropResult, type DayDropTarget } from '../planner/scheduleDrop';
 import { shouldCollapseSheet } from '../planner/dragSheet';
 import { Sheet } from '../components/Sheet';
+import { DrawerHost } from '../components/DrawerHost';
 import { WeekGrid } from '../planner/WeekGrid';
 import { PlannerTaskPanel } from '../planner/PlannerTaskPanel';
 import { UnscheduledWarning } from '../planner/UnscheduledWarning';
@@ -173,9 +174,19 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
     nowMs,
     coarse,
     onComplete: onCompleteTask,
-    // Compact: the drawer is a z-40 fixed panel and the Tasks sheet is z-50, so editing from
-    // inside the sheet would paint the drawer behind it — close the sheet as we hand over.
-    onEdit: (t: Task) => { if (compact) setTaskSheetOpen(false); openTaskDrawer(t.id); },
+    // Compact: the Tasks sheet and the drawer are both z-50 modal sheets, and two stacked sheets
+    // would trap focus in the wrong one — close the sheet as we hand over.
+    onEdit: (t: Task) => {
+      if (compact) {
+        // Park focus on the toggle before the swap. The drawer's Sheet records the focused element
+        // during its render phase, and that is still the ✎ inside the Tasks sheet we are about to
+        // unmount — a detached node fails the Sheet's isConnected guard, so closing the drawer
+        // would strand focus on <body>. The toggle outlives both sheets.
+        document.querySelector<HTMLElement>('[data-testid="panel-sheet-toggle"]')?.focus();
+        setTaskSheetOpen(false);
+      }
+      openTaskDrawer(t.id);
+    },
     onDelete: onDeleteTask,
   };
 
@@ -232,24 +243,24 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
         </Sheet>
       )}
       {editing && (
-        <div className="fixed right-3 top-[84px] z-40">
+        <DrawerHost compact={compact} label="Edit task" onClose={() => setEditingId(null)} desktopClass="fixed right-3 top-[84px] z-50">
           <TaskDrawer
-            task={editing} saving={updateTask.isPending}
+            task={editing} compact={compact} saving={updateTask.isPending}
             error={updateTask.error instanceof ApiError ? updateTask.error : null}
             onSave={(patch) => updateTask.mutate({ id: editing.id, patch }, { onSuccess: () => setEditingId(null) })}
             onCancel={() => setEditingId(null)}
           />
-        </div>
+        </DrawerHost>
       )}
       {editingEvent && (
-        <div className="fixed right-3 top-[84px] z-40">
+        <DrawerHost compact={compact} label="Edit event" onClose={() => setEditingEventId(null)} desktopClass="fixed right-3 top-[84px] z-50">
           {/* Key on the event's times: a background refetch (or a drag) that moves the event
               remounts the drawer so its fields re-seed instead of holding stale values. */}
           <EventDrawer
             key={`${editingEvent.id}:${editingEvent.startsAt}:${editingEvent.endsAt}`}
-            event={editingEvent} zone={zone} onClose={() => setEditingEventId(null)}
+            event={editingEvent} compact={compact} zone={zone} onClose={() => setEditingEventId(null)}
           />
-        </div>
+        </DrawerHost>
       )}
     </div>
     <DragOverlay>

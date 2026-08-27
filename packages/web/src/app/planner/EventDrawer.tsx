@@ -22,20 +22,22 @@ export interface EventDrawerProps {
   onClose: () => void;
   /** Settings timezone the planner renders in — the drawer reads/writes wall-clock times in it. */
   zone?: string;
+  /** Hosted in a full-screen Sheet below md: drop the 440px panel chrome and the self-dismiss. */
+  compact?: boolean;
 }
 
 /**
  * Edit drawer for an app-created calendar event. Google-owned events mirror the remote
  * calendar and are not editable here, so the drawer renders nothing for them.
  */
-export function EventDrawer({ event, onClose, zone = 'UTC' }: EventDrawerProps) {
+export function EventDrawer({ event, onClose, zone = 'UTC', compact = false }: EventDrawerProps) {
   const seededStart = isoToZonedInput(event.startsAt, zone);
   const seededEnd = isoToZonedInput(event.endsAt, zone);
   const [title, setTitle] = useState(event.title);
   const [startLocal, setStartLocal] = useState(seededStart);
   const [endLocal, setEndLocal] = useState(seededEnd);
   const rootRef = useRef<HTMLElement>(null);
-  useClickOutside(rootRef, onClose);
+  useClickOutside(rootRef, onClose, !compact);
   const updateM = useUpdateCalendarEventMutation();
   const deleteM = useDeleteCalendarEventMutation();
 
@@ -81,13 +83,15 @@ export function EventDrawer({ event, onClose, zone = 'UTC' }: EventDrawerProps) 
     <aside
       ref={rootRef}
       data-testid="event-drawer"
-      className="w-[440px] shrink-0 space-y-2.5 rounded-[14px] border border-line bg-card p-4 shadow-pop max-h-[calc(100dvh-100px)] overflow-y-auto"
+      className={compact
+        ? 'w-full space-y-2.5 p-2'
+        : 'w-[440px] shrink-0 space-y-2.5 rounded-[14px] border border-line bg-card p-4 shadow-pop max-h-[calc(100dvh-100px)] overflow-y-auto'}
     >
       <h4 className="text-[15px] font-bold text-ink">Edit event</h4>
 
-      <div className="grid grid-cols-2 gap-2.5">
-        {/* Title — spans both columns */}
-        <div className="col-span-2">
+      <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
+        {/* Title — spans both columns at md+; col-span-2 in a one-column grid would conjure a second */}
+        <div className="col-span-1 md:col-span-2">
           <FieldBox label="Title">
             <input data-testid="event-title" className={ctl} value={title} onChange={(e) => setTitle(e.target.value)} />
           </FieldBox>

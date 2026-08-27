@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { ScheduledBlock, CalendarEvent, SchedulePreview, Task, Category, Habit } from '../../api/types';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 import { Planner } from './Planner';
@@ -230,6 +230,13 @@ describe('Planner compact layout', () => {
   beforeEach(() => { mm = installMatchMedia({ '(max-width: 767.98px)': true }); });
   afterEach(() => { mm?.restore(); mm = null; });
 
+  const compactTask = {
+    id: 't1', userId: 'u1', title: 'Write spec', priority: 2, sortOrder: 0,
+    durationMs: 3_600_000, dueBy: '2026-01-10T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1,
+    categoryId: null, notBefore: null, status: 'pending', completedAt: null, timeLoggedMs: 0,
+    createdAt: '', updatedAt: '', subtasks: [],
+  } as unknown as Task;
+
   it('does not render the task panel inline; the Tasks button opens it as a sheet', async () => {
     const api = makeApi();
     renderWithProviders(<Planner now={() => NOW} />, { api });
@@ -243,23 +250,50 @@ describe('Planner compact layout', () => {
     expect(screen.getByTestId('panel-sheet-toggle')).toHaveAttribute('aria-expanded', 'true');
   });
 
-  it('editing from the sheet closes the sheet and opens the task drawer', async () => {
-    // The drawer is a z-40 fixed panel and the sheet is z-50, so leaving the sheet open would
-    // paint the drawer behind it and the ✎ tap would read as broken.
-    const task = {
-      id: 't1', userId: 'u1', title: 'Write spec', priority: 2, sortOrder: 0,
-      durationMs: 3_600_000, dueBy: '2026-01-10T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1,
-      categoryId: null, notBefore: null, status: 'pending', completedAt: null, timeLoggedMs: 0,
-      createdAt: '', updatedAt: '', subtasks: [],
-    } as unknown as Task;
-    const api = makeApi({ listTasks: vi.fn(async () => [task]) });
+  it('editing from the sheet closes the Tasks sheet and opens the drawer as its own sheet', async () => {
+    // Two stacked modal sheets would trap focus in the wrong one, so the hand-over closes the
+    // Tasks sheet. Both are z-50 now; the drawer no longer paints behind the tab bar.
+    const api = makeApi({ listTasks: vi.fn(async () => [compactTask]) });
     renderWithProviders(<Planner now={() => NOW} />, { api });
     await waitFor(() => expect(screen.getByTestId('day-col-0')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('panel-sheet-toggle'));
     await waitFor(() => expect(screen.getByTestId('planner-task-panel')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: 'Edit Write spec' }));
-    expect(screen.queryByTestId('sheet-backdrop')).toBeNull();
-    expect(screen.getByTestId('task-drawer')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Tasks' })).toBeNull();
+    expect(screen.queryByTestId('planner-task-panel')).toBeNull();
+    const drawerSheet = screen.getByRole('dialog', { name: 'Edit task' });
+    expect(within(drawerSheet).getByTestId('task-drawer')).toBeInTheDocument();
+    expect(drawerSheet.className).toContain('h-dvh');
+  });
+
+  it('the task drawer sheet closes on a backdrop tap', async () => {
+    const api = makeApi({ listTasks: vi.fn(async () => [compactTask]) });
+    renderWithProviders(<Planner now={() => NOW} />, { api });
+    await waitFor(() => expect(screen.getByTestId('day-col-0')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('panel-sheet-toggle'));
+    await waitFor(() => expect(screen.getByTestId('planner-task-panel')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Write spec' }));
+    fireEvent.click(screen.getByTestId('sheet-backdrop'));
+    expect(screen.queryByTestId('task-drawer')).toBeNull();
+    // The ✎ that opened the drawer died with the Tasks sheet, so the drawer must have captured a
+    // survivor to hand focus back to — otherwise it strands on <body> and the tab order restarts.
+    expect(document.activeElement).toBe(screen.getByTestId('panel-sheet-toggle'));
+  });
+
+  it('the event drawer opens as a full-screen sheet on the compact layout', async () => {
+    const appEvent: CalendarEvent = {
+      id: 'e9', userId: 'u1', title: 'Coffee',
+      startsAt: '2026-01-07T15:00:00.000Z', endsAt: '2026-01-07T15:30:00.000Z',
+      googleCalendarId: null, googleEventId: null, source: 'app',
+    };
+    const api = makeApi({ getCalendarEvents: vi.fn(async () => [appEvent]) });
+    renderWithProviders(<Planner now={() => NOW} />, { api });
+    await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument());
+    const tile = screen.getAllByTestId('event-block').find((b) => b.textContent?.includes('Coffee'))!;
+    fireEvent.pointerDown(tile, { clientX: 40, clientY: 80, pointerId: 1 });
+    fireEvent.pointerUp(tile, { clientX: 40, clientY: 80, pointerId: 1 });
+    const sheet = screen.getByRole('dialog', { name: 'Edit event' });
+    expect(within(sheet).getByTestId('event-drawer')).toBeInTheDocument();
   });
 
   it('closes the task sheet on a backdrop tap', async () => {

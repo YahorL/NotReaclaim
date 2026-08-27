@@ -1,7 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { Task, SchedulePreview } from '../../api/types';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
+import { installMatchMedia, type FakeMatchMedia } from '../../test/matchMedia';
 import { Priorities } from './Priorities';
 
 const NOW = Date.parse('2026-01-07T12:00:00.000Z');
@@ -159,5 +160,20 @@ describe('Priorities board', () => {
     const doneRow = within(screen.getByTestId('column-completed')).getByTestId('task-row');
     expect(doneRow).not.toHaveAttribute('aria-roledescription');
     expect(doneRow).not.toHaveAttribute('draggable');
+  });
+});
+
+describe('Priorities compact layout', () => {
+  let mm: FakeMatchMedia | null = null;
+  beforeEach(() => { mm = installMatchMedia({ '(max-width: 767.98px)': true }); });
+  afterEach(() => { mm?.restore(); mm = null; });
+
+  it('opens the edit drawer as a full-screen sheet', async () => {
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
+    await waitFor(() => expect(screen.getByText('Critical thing')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Critical thing'));
+    const sheet = screen.getByRole('dialog', { name: 'Edit task' });
+    expect(sheet.className).toContain('h-dvh');
+    expect(within(sheet).getByTestId('task-drawer')).toBeInTheDocument();
   });
 });

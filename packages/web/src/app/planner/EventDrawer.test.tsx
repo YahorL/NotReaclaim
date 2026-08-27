@@ -158,4 +158,14 @@ describe('EventDrawer', () => {
     );
     expect(screen.queryByTestId('event-drawer')).toBeNull();
   });
+
+  it('compact drops the fixed 440px panel chrome and its own outside-dismiss', () => {
+    const onClose = vi.fn();
+    renderWithProviders(<EventDrawer event={appEvent()} compact onClose={onClose} />, { api: api() });
+    const drawer = screen.getByTestId('event-drawer');
+    expect(drawer.className).toContain('w-full');
+    expect(drawer.className).not.toContain('w-[440px]');
+    fireEvent.mouseDown(document.body);
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });

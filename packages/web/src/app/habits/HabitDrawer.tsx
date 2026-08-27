@@ -15,12 +15,14 @@ export interface HabitDrawerProps {
   onCancel: () => void;
   saving?: boolean;
   error?: ApiError | null;
+  /** Hosted in a full-screen Sheet below md: drop the 440px panel chrome and the self-dismiss. */
+  compact?: boolean;
 }
 
-export function HabitDrawer({ habit, onSave, onCancel, saving = false, error = null }: HabitDrawerProps) {
+export function HabitDrawer({ habit, onSave, onCancel, saving = false, error = null, compact = false }: HabitDrawerProps) {
   const [form, setForm] = useState<HabitFormState>(() => toFormState(habit));
   const rootRef = useRef<HTMLElement>(null);
-  useClickOutside(rootRef, onCancel);
+  useClickOutside(rootRef, onCancel, !compact);
   const { ok, errors } = validateHabitForm(form);
   const set = <K extends keyof HabitFormState>(k: K, v: HabitFormState[K]) => setForm((f) => ({ ...f, [k]: v }));
   const toggleDay = (d: number) =>
@@ -29,12 +31,18 @@ export function HabitDrawer({ habit, onSave, onCancel, saving = false, error = n
   const errCls = 'mt-0.5 text-[11px] text-crit';
 
   return (
-    <aside ref={rootRef} data-testid="habit-drawer" className="w-[440px] shrink-0 space-y-2.5 rounded-[14px] border border-line bg-card p-4 shadow-pop max-h-[calc(100dvh-100px)] overflow-y-auto">
+    <aside
+      ref={rootRef}
+      data-testid="habit-drawer"
+      className={compact
+        ? 'w-full space-y-2.5 p-2'
+        : 'w-[440px] shrink-0 space-y-2.5 rounded-[14px] border border-line bg-card p-4 shadow-pop max-h-[calc(100dvh-100px)] overflow-y-auto'}
+    >
       <h4 className="text-[15px] font-bold text-ink">Edit habit</h4>
 
-      <div className="grid grid-cols-2 gap-2.5">
-        {/* Title — spans both columns */}
-        <div className="col-span-2">
+      <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
+        {/* Title — spans both columns at md+; col-span-2 in a one-column grid would conjure a second */}
+        <div className="col-span-1 md:col-span-2">
           <FieldBox label="Title">
             <input className={ctl} value={form.title} onChange={(e) => set('title', e.target.value)} />
           </FieldBox>
@@ -80,10 +88,10 @@ export function HabitDrawer({ habit, onSave, onCancel, saving = false, error = n
             <input type="time" className={ctl} value={form.preferredEnd} onChange={(e) => set('preferredEnd', e.target.value)} />
           </FieldBox>
         </div>
-        {errors.preferredEnd && <p data-testid="err-preferredEnd" className={`col-span-2 ${errCls}`}>{errors.preferredEnd}</p>}
+        {errors.preferredEnd && <p data-testid="err-preferredEnd" className={`col-span-1 md:col-span-2 ${errCls}`}>{errors.preferredEnd}</p>}
 
-        {/* Eligible days — spans both columns */}
-        <div className="col-span-2">
+        {/* Eligible days — spans both columns at md+ */}
+        <div className="col-span-1 md:col-span-2">
           <FieldBox label="Eligible days">
             <div className="flex gap-1.5 pt-0.5">
               {DAY_LABELS.map((lbl, d) => (

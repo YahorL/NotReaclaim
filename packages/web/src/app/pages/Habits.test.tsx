@@ -1,7 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { Habit, SchedulePreview } from '../../api/types';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
+import { installMatchMedia, type FakeMatchMedia } from '../../test/matchMedia';
 import { Habits } from './Habits';
 
 const habit = (over: Partial<Habit> = {}): Habit => ({
@@ -69,5 +70,28 @@ describe('Habits page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'delete' }));
     fireEvent.click(screen.getByRole('button', { name: /yes/i }));
     await waitFor(() => expect(deleteHabit).toHaveBeenCalledWith('h1'));
+  });
+
+  it('paints the edit overlay on the modal tier, above the tab bar', async () => {
+    renderWithProviders(<Habits />, { api: makeApi() });
+    await waitFor(() => expect(screen.getByText('Run')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    // MobileTabBar is a fixed z-40 bar: a z-40 overlay lets its taps through to the tabs.
+    expect(screen.getByTestId('habit-drawer').parentElement!.className).toContain('z-50');
+  });
+});
+
+describe('Habits page compact layout', () => {
+  let mm: FakeMatchMedia | null = null;
+  beforeEach(() => { mm = installMatchMedia({ '(max-width: 767.98px)': true }); });
+  afterEach(() => { mm?.restore(); mm = null; });
+
+  it('opens the habit drawer as a full-screen sheet', async () => {
+    renderWithProviders(<Habits />, { api: makeApi() });
+    await waitFor(() => expect(screen.getByText('Run')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    const sheet = screen.getByRole('dialog', { name: 'Edit habit' });
+    expect(sheet.className).toContain('h-dvh');
+    expect(within(sheet).getByTestId('habit-drawer')).toBeInTheDocument();
   });
 });
