@@ -29,8 +29,15 @@ export function draggedTaskId(data: unknown): string | null {
 }
 
 /**
- * Viewport Y of the pointer mid-drag. dnd-kit reports the original activator event plus a running
- * translate rather than live coordinates, so the pointer is the sum of the two.
+ * Approximate viewport Y of the pointer in the DRAG-START frame of reference: dnd-kit reports the
+ * original activator event plus a running translate rather than live coordinates, so the pointer is
+ * the sum of the two.
+ *
+ * It is an approximation, not the truth: `delta` folds in a scroll adjustment whose tracked
+ * scrollable ancestors switch from the active node's to the over node's when a droppable is
+ * entered, without the offset baseline resetting — so the sum can jump by a container's scrollTop
+ * mid-drag. Callers should prefer a live `pointermove` reading (`useLivePointerY`) and fall back to
+ * this only for the first frame, before any move has been observed.
  */
 export function pointerClientY(activatorEvent: Event | null, delta: { y: number }): number | null {
   if (!activatorEvent) return null;
@@ -43,11 +50,16 @@ export function pointerClientY(activatorEvent: Event | null, delta: { y: number 
  * fraction → `snapClickToSlot` maths the grid's click-to-create has always used, so a dropped card
  * and a tapped slot land on identical times.
  *
- * `pointerY` is reconstructed from dnd-kit's scroll-adjusted `delta` and `overRect` is the rect as
- * measured at drag start (dnd-kit's default WhileDragging strategy does not re-measure on scroll).
- * That pairing is exact, not approximate: if the hours-scroll container scrolls by S mid-drag, the
- * reconstructed pointer is S too high and the stale rect top is S too low, and the two cancel.
- * Do NOT switch the planner context to MeasuringStrategy.Always — it would break the cancellation.
+ * BOTH INPUTS MUST BE LIVE, in the same (viewport) frame of reference: a live `pointerY` from a
+ * `pointermove` listener paired with an `overRect` re-measured while dragging. The planner's
+ * DndContext therefore REQUIRES `measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}`
+ * — pairing a live pointer with a drag-start rect (dnd-kit's default WhileDragging strategy) is
+ * off by whatever the hours-scroll container has scrolled since the drag began.
+ *
+ * The tempting mirror-image — a drag-start-frame pointer with a drag-start rect, letting the two
+ * stale offsets cancel — does NOT hold: dnd-kit's `delta` swaps the scrollable ancestors it adjusts
+ * for (active node's → over node's) the moment a column is entered while its offset baseline stays
+ * put, so the "cancellation" breaks exactly when the drag reaches the grid.
  */
 export function dayDropFromOver({ overData, overRect, pointerY }: {
   overData: unknown;

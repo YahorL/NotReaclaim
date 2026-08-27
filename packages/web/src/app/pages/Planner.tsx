@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
-import { DndContext, DragOverlay, type DragEndEvent, type DragMoveEvent, type DragStartEvent } from '@dnd-kit/core';
+import { DndContext, DragOverlay, MeasuringStrategy, type DragEndEvent, type DragMoveEvent, type DragStartEvent } from '@dnd-kit/core';
 import type { CalendarEvent, Task } from '../../api/types';
 import { ApiError } from '../../api/client';
 import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useHabitsQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation, useSettingsQuery } from '../../api/queries';
@@ -7,6 +7,7 @@ import { dayColumns, daysThatFit, shiftDays, dayAnchor, rangeLabel, MS_PER_DAY }
 import { useElementWidth } from '../planner/useElementWidth';
 import { useCompactWidth, usePointerCoarse } from '../lib/useMediaQuery';
 import { useDragToScheduleSensors, pointerFirstCollision } from '../dnd/sensors';
+import { useLivePointerY } from '../dnd/useLivePointerY';
 import { dayDropFromOver, draggedTaskId, pinnedBlockTimes, pointerClientY, type DayDropTarget } from '../planner/scheduleDrop';
 import { Sheet } from '../components/Sheet';
 import { WeekGrid } from '../planner/WeekGrid';
@@ -17,7 +18,10 @@ import { TaskDrawer } from '../tasks/TaskDrawer';
 import { EventDrawer } from '../planner/EventDrawer';
 import { labelBlocksWithSubtasks } from '../planner/blockLabels';
 
-/** dnd-kit reports an activator event plus a running translate; the pure helper turns that into Y. */
+/**
+ * Drag-start-frame fallback: activator event + running translate. Only used for the first frame of
+ * a drag, before the live pointer listener has seen a move — see useLivePointerY.
+ */
 function pointerClientYOf(e: { activatorEvent: Event; delta: { y: number } }): number | null {
   return pointerClientY(e.activatorEvent, e.delta);
 }
@@ -91,6 +95,9 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const [taskDrop, setTaskDrop] = useState<DayDropTarget | null>(null);
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
   const draggingTask = (tasksQ.data ?? []).find((t) => t.id === draggingTaskId) ?? null;
+  // Armed for the duration of a card drag. See useLivePointerY for why dnd-kit's own
+  // activatorEvent + delta cannot be trusted once a droppable is entered.
+  const livePointerY = useLivePointerY(draggingTaskId !== null);
 
   const onScheduleTaskAt = (taskId: string, dayStartMs: number, startMin: number) => {
     const task = (tasksQ.data ?? []).find((t) => t.id === taskId);
@@ -101,7 +108,9 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const targetFrom = (e: DragMoveEvent | DragEndEvent): DayDropTarget | null => dayDropFromOver({
     overData: e.over?.data.current ?? null,
     overRect: e.over?.rect ?? null,
-    pointerY: pointerClientYOf(e),
+    // Live pointer paired with a live rect (MeasuringStrategy.Always below). The drag-start-frame
+    // reconstruction is only the seed for the very first frame, before any pointermove has landed.
+    pointerY: livePointerY.current ?? pointerClientYOf(e),
   });
 
   const onDragStart = (e: DragStartEvent) => setDraggingTaskId(draggedTaskId(e.active.data.current));
@@ -175,6 +184,9 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
     <DndContext
       sensors={dragSensors}
       collisionDetection={pointerFirstCollision}
+      // The drop slot is computed from (live pointer − live column rect), so the rect must be
+      // re-measured while dragging: the hours-scroll container moves under the pointer.
+      measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
       onDragStart={onDragStart}
       onDragMove={onDragMove}
       onDragEnd={onDragEnd}
