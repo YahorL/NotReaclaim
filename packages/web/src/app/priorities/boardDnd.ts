@@ -1,3 +1,5 @@
+import type { DroppableContainer, DroppableContainers, KeyboardCoordinateGetter, UniqueIdentifier } from '@dnd-kit/core';
+import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import type { Task, UpdateTaskInput } from '../../api/types';
 import { type BucketKey, type BoardColumnKey, bucketToPriority, insertionSortOrder, priorityToBucket } from './priorityBucket';
 
@@ -28,6 +30,40 @@ export function overColumnKey(columns: BoardDropColumn[], overId: string | null)
   }
   return columns.find((c) => c.tasks.some((t) => t.id === overId))?.key ?? null;
 }
+
+/**
+ * The board's ArrowUp/ArrowDown getter: `sortableKeyboardCoordinates`, but blind to the `col:*`
+ * container droppables.
+ *
+ * The stock getter keeps every enabled droppable whose rect merely lies in the arrow's direction
+ * (`collisionRect.top > rect.top` for ArrowUp), and a column's rect starts above every card it
+ * holds — so a column is always a candidate. On the *first* card of a column that is fatal: no card
+ * is above it, the column is the only survivor, `closestCorners` returns it, and the overlay jumps
+ * to the column header while `over` becomes `col:<key>` — which `resolveBoardDrop`'s container
+ * branch reads as "append to the bottom of this column". ArrowUp on the top card silently sent it
+ * to the bottom.
+ *
+ * Dropping the containers from the *candidate* set fixes it without touching their droppable state:
+ * pointer drops still need the column rect to land in a column's empty area, and ArrowUp on the
+ * first card now correctly does nothing.
+ *
+ * The filtered collection is rebuilt through `droppableContainers.constructor` rather than a plain
+ * `Map`, because the getter calls `getEnabled()` and `get()` on it — dnd-kit's own reducer clones
+ * the collection the same way (`new DroppableContainersMap(state.droppable.containers)`), so this
+ * is the library's idiom rather than a workaround.
+ */
+export const boardKeyboardCoordinates: KeyboardCoordinateGetter = (event, args) => {
+  const containers = args.context.droppableContainers;
+  const cardsOnly = Array.from(containers.entries())
+    .filter(([id]) => !String(id).startsWith(COLUMN_DROPPABLE_PREFIX));
+  const CollectionCtor = containers.constructor as unknown as
+    new (entries: Iterable<[UniqueIdentifier, DroppableContainer]>) => DroppableContainers;
+
+  return sortableKeyboardCoordinates(event, {
+    ...args,
+    context: { ...args.context, droppableContainers: new CollectionCtor(cardsOnly) },
+  });
+};
 
 /**
  * Turn a dnd-kit drop into the board's existing `(taskId, to, index)` contract, where `index` is

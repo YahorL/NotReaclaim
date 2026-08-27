@@ -1,6 +1,6 @@
 import {
   KeyboardSensor, MouseSensor, TouchSensor, closestCenter, pointerWithin, useSensor, useSensors,
-  type CollisionDetection, type SensorDescriptor, type SensorOptions,
+  type CollisionDetection, type KeyboardCoordinateGetter, type SensorDescriptor, type SensorOptions,
 } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 
@@ -24,12 +24,19 @@ export const COARSE_DRAG_ACTIVATION = { delay: 250, tolerance: 8 };
  * `MouseSensor` rather than `PointerSensor` on purpose: a pointer sensor also receives touch
  * input, so its distance constraint would steal every touch scroll. Splitting mouse (onMouseDown)
  * from touch (onTouchStart) picks the right constraint per gesture rather than per device.
+ *
+ * `keyboardCoordinateGetter` defaults to the plain sortable getter, which is right for a surface
+ * whose only droppables are its list items. A surface that also registers *container* droppables
+ * (the board's `col:*` columns) passes its own getter, because the stock one would happily step the
+ * overlay onto a container — see `boardKeyboardCoordinates`.
  */
-export function useAppSensors(): SensorDescriptor<SensorOptions>[] {
+export function useAppSensors(
+  keyboardCoordinateGetter: KeyboardCoordinateGetter = sortableKeyboardCoordinates,
+): SensorDescriptor<SensorOptions>[] {
   return useSensors(
     useSensor(MouseSensor, { activationConstraint: FINE_DRAG_ACTIVATION }),
     useSensor(TouchSensor, { activationConstraint: COARSE_DRAG_ACTIVATION }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(KeyboardSensor, { coordinateGetter: keyboardCoordinateGetter }),
   );
 }
 

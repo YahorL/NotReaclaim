@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
+import type { ClientRect, DroppableContainer, UniqueIdentifier } from '@dnd-kit/core';
 import type { Task, UpdateTaskInput } from '../../api/types';
-import { columnDroppableId, overColumnKey, resolveBoardDrop, taskMovePatch, type BoardDropColumn } from './boardDnd';
+import { boardKeyboardCoordinates, columnDroppableId, overColumnKey, resolveBoardDrop, taskMovePatch, type BoardDropColumn } from './boardDnd';
 
 const cols: BoardDropColumn[] = [
   { key: 'critical', tasks: [{ id: 'c1' }] },
@@ -136,5 +138,70 @@ describe('board drop → PATCH (ported from the deleted Priorities drag tests)',
 
   it('dropping onto the completed column produces no patch', () => {
     expect(move(board, 'l1', 'col:completed')).toBeNull();
+  });
+});
+
+describe('boardKeyboardCoordinates', () => {
+  const rect = (top: number, height: number): ClientRect =>
+    ({ top, left: 0, height, width: 300, right: 300, bottom: top + height });
+
+  const rects = new Map<UniqueIdentifier, ClientRect>([
+    ['col:high', rect(0, 600)], // a column's rect always starts ABOVE every card it holds
+    ['a', rect(100, 60)],       // first card
+    ['b', rect(200, 60)],       // second card
+  ]);
+
+  /**
+   * A stand-in for dnd-kit's own `DroppableContainersMap`, which the package does not export as a
+   * value. Same shape (a Map subclass carrying `getEnabled`), which is exactly what makes this test
+   * load-bearing: `boardKeyboardCoordinates` rebuilds the filtered collection through
+   * `containers.constructor`, so if it ever rebuilt through a plain `Map` instead, the delegate's
+   * `getEnabled()` call would throw here rather than quietly regress.
+   */
+  class Containers extends Map<UniqueIdentifier, DroppableContainer> {
+    getEnabled() { return Array.from(this.values()).filter((c) => !c.disabled); }
+    toArray() { return Array.from(this.values()); }
+    getNodeFor(id: UniqueIdentifier) { return this.get(id)?.node.current ?? undefined; }
+  }
+
+  const container = (id: UniqueIdentifier): DroppableContainer => ({
+    id, key: id, disabled: false, data: { current: undefined },
+    // A real node is required: the getter reads `node.current` and walks its scroll ancestors.
+    node: { current: document.createElement('div') },
+    rect: { current: rects.get(id)! },
+  } as unknown as DroppableContainer);
+
+  const containers = new Containers([
+    ['col:high', container('col:high')], ['a', container('a')], ['b', container('b')],
+  ]);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const argsFor = (activeId: string): any => ({
+    active: activeId,
+    currentCoordinates: { x: 0, y: rects.get(activeId)!.top },
+    context: {
+      active: { id: activeId, data: { current: undefined }, rect: { current: { initial: null, translated: null } } },
+      collisionRect: rects.get(activeId)!,
+      droppableRects: rects,
+      droppableContainers: containers,
+      over: null,
+      scrollableAncestors: [],
+    },
+  });
+
+  const arrowUp = () => new KeyboardEvent('keydown', { code: 'ArrowUp' });
+
+  it('ArrowUp on the FIRST card of a column does nothing, where the stock getter jumps to the column', () => {
+    // The defect, reproduced: no card sits above 'a', so the only survivor of the stock getter's
+    // direction filter is the column container, and it returns the column's own origin — which the
+    // board reads as `over = col:high`, i.e. "append to the bottom of this column".
+    expect(sortableKeyboardCoordinates(arrowUp(), argsFor('a'))).toEqual({ x: 0, y: 0 });
+    // With the containers filtered out there is no candidate at all, so the card stays put.
+    expect(boardKeyboardCoordinates(arrowUp(), argsFor('a'))).toBeUndefined();
+  });
+
+  it('still steps onto the card above when there is one', () => {
+    // Filtering containers must not cost ordinary reordering: 'b' still walks up to 'a'.
+    expect(boardKeyboardCoordinates(arrowUp(), argsFor('b'))).toEqual({ x: 0, y: 100 });
   });
 });

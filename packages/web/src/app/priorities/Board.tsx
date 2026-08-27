@@ -3,7 +3,7 @@ import { DndContext, DragOverlay, type DragEndEvent, type DragOverEvent, type Dr
 import type { Task } from '../../api/types';
 import { type BoardColumnKey, BUCKET_META, priorityToBucket } from './priorityBucket';
 import { useAppSensors, pointerFirstCollision } from '../dnd/sensors';
-import { overColumnKey, resolveBoardDrop } from './boardDnd';
+import { boardKeyboardCoordinates, overColumnKey, resolveBoardDrop } from './boardDnd';
 import { Column } from './Column';
 
 export interface BoardColumn { key: BoardColumnKey; tasks: Task[]; }
@@ -21,7 +21,9 @@ export interface BoardProps {
 }
 
 export function Board({ columns, now, nextMsFor, onMove, onComplete, onEdit, onDelete, onToggleSubtask, onReorderSubtask }: BoardProps) {
-  const sensors = useAppSensors();
+  // The board registers container droppables (`col:*`) alongside the cards, so it needs the
+  // container-blind arrow getter — see `boardKeyboardCoordinates`.
+  const sensors = useAppSensors(boardKeyboardCoordinates);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overColumn, setOverColumn] = useState<BoardColumnKey | null>(null);
   const activeTask = columns.flatMap((c) => c.tasks).find((t) => t.id === activeId) ?? null;

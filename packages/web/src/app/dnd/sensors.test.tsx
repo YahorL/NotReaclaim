@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { MouseSensor, TouchSensor, KeyboardSensor, type ClientRect } from '@dnd-kit/core';
+import { MouseSensor, TouchSensor, KeyboardSensor, type ClientRect, type KeyboardCoordinateGetter } from '@dnd-kit/core';
+import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import {
   useAppSensors, useDragToScheduleSensors, pointerFirstCollision,
   FINE_DRAG_ACTIVATION, COARSE_DRAG_ACTIVATION,
@@ -55,6 +56,17 @@ describe('useAppSensors', () => {
   it('gives the keyboard sensor the sortable coordinate getter', () => {
     const { result } = renderHook(() => useAppSensors());
     expect(typeof (result.current[2]!.options as { coordinateGetter?: unknown }).coordinateGetter).toBe('function');
+    // The default is the stock sortable getter, not merely "some function": a surface with no
+    // container droppables must keep dnd-kit's own arrow behaviour.
+    expect((result.current[2]!.options as { coordinateGetter?: unknown }).coordinateGetter)
+      .toBe(sortableKeyboardCoordinates);
+  });
+
+  it('lets a surface override the keyboard coordinate getter', () => {
+    // The priorities board passes its own container-blind getter; every other caller keeps default.
+    const custom: KeyboardCoordinateGetter = () => ({ x: 1, y: 2 });
+    const { result } = renderHook(() => useAppSensors(custom));
+    expect((result.current[2]!.options as { coordinateGetter?: unknown }).coordinateGetter).toBe(custom);
   });
 });
 
