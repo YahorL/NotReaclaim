@@ -94,14 +94,15 @@ describe('PlannerTaskPanel', () => {
     expect(screen.getByTestId('panel-progress')).toHaveTextContent('1h / 2h');
   });
 
-  it('task cards are draggable and seed the dataTransfer with the task id', () => {
+  it('task cards are dnd-kit draggables keyed by the task id', () => {
     renderPanel([task({ id: 'drag-me', title: 'Grab me' })]);
     const card = screen.getByTestId('panel-task');
-    expect(card).toHaveAttribute('draggable', 'true');
-    const setData = vi.fn();
-    fireEvent.dragStart(card, { dataTransfer: { setData, effectAllowed: '' } });
-    expect(setData).toHaveBeenCalledWith('text/plain', 'drag-me');
-    expect(setData).toHaveBeenCalledWith('application/x-nr-task', 'drag-me');
+    expect(card).toHaveAttribute('aria-roledescription', 'draggable');
+    expect(card).toHaveAttribute('data-task-id', 'drag-me');
+    expect(card).not.toHaveAttribute('draggable');
+    // The card holds complete/edit/delete buttons, so dnd-kit's default role='button' would
+    // nest interactive content — it is a group that happens to be draggable.
+    expect(card).toHaveAttribute('role', 'group');
   });
 
   it('fills its container in the compact (bottom-sheet) layout', () => {

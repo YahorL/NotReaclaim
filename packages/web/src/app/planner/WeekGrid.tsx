@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useDroppable } from '@dnd-kit/core';
 import type { ScheduledBlock, CalendarEvent } from '../../api/types';
 import { EventBlock, type BlockKind } from './EventBlock';
 import { InteractiveBlock } from './InteractiveBlock';
@@ -6,6 +7,27 @@ import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY, snapClickToSlo
 import { CreatePopover } from './CreatePopover';
 import { layoutOverlaps } from './overlapLayout';
 import { Icons } from '../shell/icons';
+
+/**
+ * Registers a day column as a dnd-kit droppable without restructuring the grid: hooks cannot run
+ * inside the `days.map` loop, and the column has only a `border-l`, so an `inset-0` child has
+ * exactly the rect the old `slotFromEvent` measured. Collision detection is rect maths, never DOM
+ * hit-testing, so `pointer-events-none` keeps the column's click-to-create tap completely intact.
+ */
+function DayDropZone({ dayIndex, dayStartMs }: { dayIndex: number; dayStartMs: number }) {
+  const { setNodeRef } = useDroppable({
+    id: `day-col:${dayIndex}`,
+    data: { type: 'day-col', dayIndex, dayStartMs },
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      data-testid={`day-drop-${dayIndex}`}
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0"
+    />
+  );
+}
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i); // 24 hour rows, counted from the day start
 
@@ -34,7 +56,8 @@ export interface WeekGridProps {
   onEditEvent?: (event: CalendarEvent) => void;
   onDeleteBlock?: (id: string) => void;
   onDeleteEvent?: (id: string) => void;
-  onScheduleTaskAt?: (taskId: string, dayStartMs: number, startMin: number) => void;
+  /** Live drop target while a task card is dragged over the grid (owned by Planner's DndContext). */
+  taskDrop?: { dayIndex: number; startMin: number } | null;
   accents?: Record<string, string>;
   zone?: string;
   /** Minutes past local midnight that a day column starts at (0 = midnight). Labels/scroll only —
@@ -78,12 +101,10 @@ function toItems(blocks: ScheduledBlock[], events: CalendarEvent[], zone: string
 }
 
 export function WeekGrid(props: WeekGridProps) {
-  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit, onCommitEvent, onEditEvent, onDeleteBlock, onDeleteEvent, onScheduleTaskAt, accents = {}, zone = 'UTC', dayStartMinute = 0, panelHidden, onTogglePanel, compact = false, coarse = false } = props;
+  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit, onCommitEvent, onEditEvent, onDeleteBlock, onDeleteEvent, taskDrop = null, accents = {}, zone = 'UTC', dayStartMinute = 0, panelHidden, onTogglePanel, compact = false, coarse = false } = props;
   const gridCols = `${timeGutterPx(compact)}px repeat(${days.length}, minmax(0, 1fr))`;
   const items = toItems(blocks, events, zone);
   const [creating, setCreating] = useState<{ dayIndex: number; startMin: number } | null>(null);
-  // Live drop indicator while dragging a task card from the side panel over the grid.
-  const [taskDrop, setTaskDrop] = useState<{ dayIndex: number; startMin: number } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   // Where a day-header drag started. The header sits OUTSIDE hours-scroll, so a swipe here can
@@ -96,14 +117,6 @@ export function WeekGrid(props: WeekGridProps) {
     const minOfDay = Math.max(0, Math.min(WINDOW_END_MIN, (nowMs - dayAnchor(nowMs, zone, dayStartMinute)) / 60_000));
     el.scrollTop = Math.max(0, (minOfDay / (WINDOW_END_MIN - WINDOW_START_MIN)) * GRID_COLUMN_PX - 64);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- scroll to "now" once on mount
-  }, []);
-
-  // Always clear the drop indicator when any drag ends — covers ESC-cancel and drops that
-  // land off the grid, where no column `dragleave`/`drop` fires (dragend fires on the source).
-  useEffect(() => {
-    const clear = () => setTaskDrop(null);
-    window.addEventListener('dragend', clear);
-    return () => window.removeEventListener('dragend', clear);
   }, []);
 
   const slotFromEvent = (e: { currentTarget: HTMLElement; clientY: number }): number => {
@@ -241,27 +254,8 @@ export function WeekGrid(props: WeekGridProps) {
                     if ((e.target as HTMLElement).closest('[data-testid="event-block"],[data-testid="create-popover"]')) return;
                     setCreating({ dayIndex: i, startMin: slotFromEvent(e) });
                   }}
-                  onDragOver={(e) => {
-                    // Only react to task cards dragged from the side panel.
-                    if (!onScheduleTaskAt || !e.dataTransfer.types.includes('application/x-nr-task')) return;
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = 'copy';
-                    setTaskDrop({ dayIndex: i, startMin: slotFromEvent(e) });
-                  }}
-                  onDragLeave={(e) => {
-                    // Ignore leaves into child elements of the same column.
-                    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-                    setTaskDrop((p) => (p?.dayIndex === i ? null : p));
-                  }}
-                  onDrop={(e) => {
-                    if (!onScheduleTaskAt) return;
-                    const taskId = e.dataTransfer.getData('application/x-nr-task') || e.dataTransfer.getData('text/plain');
-                    setTaskDrop(null);
-                    if (!taskId) return;
-                    e.preventDefault();
-                    onScheduleTaskAt(taskId, d, slotFromEvent(e));
-                  }}
                 >
+                  <DayDropZone dayIndex={i} dayStartMs={d} />
                   {HOURS.map((h) => <div key={h} className="h-[58px] border-t border-[#f1f2f6]" />)}
                   {dayItems.map((it) => {
                     const pos = placeInDay(it.startMs, it.endMs, d);

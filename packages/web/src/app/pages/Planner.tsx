@@ -1,10 +1,13 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
+import { DndContext, DragOverlay, type DragEndEvent, type DragMoveEvent, type DragStartEvent } from '@dnd-kit/core';
 import type { CalendarEvent, Task } from '../../api/types';
 import { ApiError } from '../../api/client';
 import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useHabitsQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation, useSettingsQuery } from '../../api/queries';
-import { dayColumns, daysThatFit, shiftDays, dayAnchor, clampToWindow, rangeLabel, MS_PER_DAY, WINDOW_START_MIN, WINDOW_END_MIN } from '../planner/weekModel';
+import { dayColumns, daysThatFit, shiftDays, dayAnchor, rangeLabel, MS_PER_DAY } from '../planner/weekModel';
 import { useElementWidth } from '../planner/useElementWidth';
 import { useCompactWidth, usePointerCoarse } from '../lib/useMediaQuery';
+import { useDragToScheduleSensors, pointerFirstCollision } from '../dnd/sensors';
+import { dayDropFromOver, draggedTaskId, pinnedBlockTimes, pointerClientY, type DayDropTarget } from '../planner/scheduleDrop';
 import { Sheet } from '../components/Sheet';
 import { WeekGrid } from '../planner/WeekGrid';
 import { PlannerTaskPanel } from '../planner/PlannerTaskPanel';
@@ -13,6 +16,11 @@ import { summarizeUnscheduled } from '../planner/unscheduledSummary';
 import { TaskDrawer } from '../tasks/TaskDrawer';
 import { EventDrawer } from '../planner/EventDrawer';
 import { labelBlocksWithSubtasks } from '../planner/blockLabels';
+
+/** dnd-kit reports an activator event plus a running translate; the pure helper turns that into Y. */
+function pointerClientYOf(e: { activatorEvent: Event; delta: { y: number } }): number | null {
+  return pointerClientY(e.activatorEvent, e.delta);
+}
 
 export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const nowMs = now();
@@ -78,18 +86,32 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const onCompleteTask = (t: Task) => updateTask.mutate({ id: t.id, patch: { status: t.status === 'completed' ? 'pending' : 'completed' } });
   const onDeleteTask = (t: Task) => deleteTask.mutate(t.id, { onSuccess: () => { if (editingId === t.id) setEditingId(null); } });
 
-  // Drag a task card from the side panel onto a day column → create a pinned block at the slot.
+  // Drag a task card from the side panel / Tasks sheet onto a day column → pinned block at the slot.
+  const dragSensors = useDragToScheduleSensors();
+  const [taskDrop, setTaskDrop] = useState<DayDropTarget | null>(null);
+  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
+  const draggingTask = (tasksQ.data ?? []).find((t) => t.id === draggingTaskId) ?? null;
+
   const onScheduleTaskAt = (taskId: string, dayStartMs: number, startMin: number) => {
     const task = (tasksQ.data ?? []).find((t) => t.id === taskId);
     if (!task) return;
-    const windowSpan = WINDOW_END_MIN - WINDOW_START_MIN;
-    const durationMin = Math.min(Math.max(15, Math.round(task.durationMs / 60_000)), windowSpan);
-    const { startMin: s, endMin: e } = clampToWindow(startMin, durationMin);
-    createBlock.mutate({
-      taskId,
-      startsAt: new Date(dayStartMs + s * 60_000).toISOString(),
-      endsAt: new Date(dayStartMs + e * 60_000).toISOString(),
-    });
+    createBlock.mutate({ taskId, ...pinnedBlockTimes({ durationMs: task.durationMs, dayStartMs, startMin }) });
+  };
+
+  const targetFrom = (e: DragMoveEvent | DragEndEvent): DayDropTarget | null => dayDropFromOver({
+    overData: e.over?.data.current ?? null,
+    overRect: e.over?.rect ?? null,
+    pointerY: pointerClientYOf(e),
+  });
+
+  const onDragStart = (e: DragStartEvent) => setDraggingTaskId(draggedTaskId(e.active.data.current));
+  const onDragMove = (e: DragMoveEvent) => setTaskDrop(draggedTaskId(e.active.data.current) ? targetFrom(e) : null);
+  const endDrag = () => { setTaskDrop(null); setDraggingTaskId(null); };
+  const onDragEnd = (e: DragEndEvent) => {
+    const taskId = draggedTaskId(e.active.data.current);
+    const target = taskId ? targetFrom(e) : null;
+    endDrag();
+    if (taskId && target) onScheduleTaskAt(taskId, target.dayStartMs, target.startMin);
   };
 
   const labeledBlocks = useMemo(
@@ -150,6 +172,14 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   // itself from real layout instead of a hard-coded chrome constant. AppShell's shell-content
   // already reserves the fixed tab bar in its padding, so nothing here has to know about it.
   return (
+    <DndContext
+      sensors={dragSensors}
+      collisionDetection={pointerFirstCollision}
+      onDragStart={onDragStart}
+      onDragMove={onDragMove}
+      onDragEnd={onDragEnd}
+      onDragCancel={endDrag}
+    >
     <div className="flex h-full min-h-0 gap-3 p-2 md:p-4">
       <div ref={gridRef} className="flex min-h-0 min-w-0 flex-1 flex-col">
         {isLoading && <div className="shrink-0 p-2 text-sm text-gray-500">Loading your days…</div>}
@@ -172,7 +202,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           onCommitEvent={(id, patch) => updateEvent.mutate({ id, ...patch })}
           onEditEvent={openEventDrawer}
           onDeleteEvent={(id) => deleteEvent.mutate(id)}
-          onScheduleTaskAt={onScheduleTaskAt}
+          taskDrop={taskDrop}
           accents={accents}
           compact={compact}
           coarse={coarse}
@@ -211,5 +241,16 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
         </div>
       )}
     </div>
+    <DragOverlay>
+      {draggingTask ? (
+        <div
+          data-testid="schedule-drag-overlay"
+          className="rounded-[10px] border border-line bg-card px-3 py-2 text-[14px] font-bold text-ink shadow-pop"
+        >
+          {draggingTask.title}
+        </div>
+      ) : null}
+    </DragOverlay>
+    </DndContext>
   );
 }

@@ -83,27 +83,6 @@ describe('Planner', () => {
     await waitFor(() => expect(screen.getByText('Write spec: outline')).toBeInTheDocument());
   });
 
-  it('dragging a task from the panel onto a day column creates a pinned block at the slot', async () => {
-    const createScheduledBlock = vi.fn(async () => blocks[0]!);
-    const taskRow: Task = {
-      id: 't1', userId: 'u1', title: 'Deep work', priority: 2, sortOrder: 0,
-      durationMs: 3_600_000, dueBy: '2026-01-10T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1,
-      categoryId: null, status: 'pending', completedAt: null, timeLoggedMs: 0, createdAt: '', updatedAt: '', subtasks: [],
-    };
-    const api = makeApi({ listTasks: vi.fn(async () => [taskRow]), createScheduledBlock });
-    renderWithProviders(<Planner now={() => NOW} />, { api });
-    await waitFor(() => expect(screen.getByText('Deep work')).toBeInTheDocument()); // task loaded into the panel
-    const col = screen.getByTestId('day-col-0'); // today 2026-01-07 (TZ=UTC); jsdom 0-height → 00:00 slot
-    const dt = { types: ['application/x-nr-task'], getData: (t: string) => (t === 'application/x-nr-task' ? 't1' : ''), dropEffect: '' };
-    fireEvent.drop(col, { clientY: 100, dataTransfer: dt });
-    await waitFor(() => expect(createScheduledBlock).toHaveBeenCalledTimes(1));
-    expect(createScheduledBlock).toHaveBeenCalledWith({
-      taskId: 't1',
-      startsAt: '2026-01-07T00:00:00.000Z',
-      endsAt: '2026-01-07T01:00:00.000Z',
-    });
-  });
-
   it('hides and re-shows the right task panel', async () => {
     const api = makeApi();
     renderWithProviders(<Planner now={() => NOW} />, { api });

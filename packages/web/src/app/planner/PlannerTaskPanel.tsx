@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
+import { useDraggable } from '@dnd-kit/core';
 import type { Task, SchedulePreview, UnscheduledItem } from '../../api/types';
 import { formatDurationShort } from '../lib/duration';
+import { PANEL_TASK_DRAG_TYPE } from './scheduleDrop';
 import {
   BUCKETS, BUCKET_META, priorityToBucket, sortBucket, relativeDayTimeLabel, nextBlockMsForTask,
 } from '../priorities/priorityBucket';
@@ -33,19 +35,25 @@ function TaskCard({ task, nowMs, nextMs, atRisk, leftBorder, coarse, onComplete,
   const due = dueLabel(task);
   const next = nextMs != null ? `Next: ${relativeDayTimeLabel(nextMs, nowMs)}` : null;
   const meta = [due, next].filter(Boolean).join(' · ');
+  // The overlay card follows the pointer, so this one stays put and only dims.
+  // role=group: dnd-kit would otherwise default the card to role="button", nesting the
+  // complete/edit/delete buttons inside a button.
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
+    id: `panel-task:${task.id}`,
+    data: { type: PANEL_TASK_DRAG_TYPE, taskId: task.id },
+    attributes: { role: 'group' },
+  });
   return (
     <div
+      // Both refs: registering the card as its own activator is what keeps key/pointer events
+      // originating in its buttons treated as descendants rather than as drag activations.
+      ref={(n) => { setNodeRef(n); setActivatorNodeRef(n); }}
       data-testid="panel-task"
-      draggable
-      onDragStart={(e) => {
-        // Firefox aborts HTML5 drags without setData; the custom type lets the grid
-        // distinguish a task-card drag from anything else during dragover.
-        e.dataTransfer.setData('text/plain', task.id);
-        e.dataTransfer.setData('application/x-nr-task', task.id);
-        e.dataTransfer.effectAllowed = 'copy';
-      }}
+      data-task-id={task.id}
+      {...attributes}
+      {...listeners}
       title="Drag onto the calendar to schedule"
-      className={`group relative flex cursor-grab items-center gap-2.5 border-l-[3px] ${leftBorder} rounded-r-[10px] border-y border-r border-line bg-card px-3 py-2.5 shadow-card active:cursor-grabbing`}
+      className={`group relative flex cursor-grab items-center gap-2.5 border-l-[3px] ${leftBorder} rounded-r-[10px] border-y border-r border-line bg-card px-3 py-2.5 shadow-card active:cursor-grabbing ${isDragging ? 'opacity-40' : ''}`}
     >
       <button
         type="button"

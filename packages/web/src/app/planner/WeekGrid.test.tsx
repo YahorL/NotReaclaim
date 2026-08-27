@@ -147,32 +147,22 @@ describe('WeekGrid', () => {
     expect(onDeleteEvent).toHaveBeenCalledWith('e1');
   });
 
-  it('dropping a task card on a day column calls onScheduleTaskAt with the day + slot', () => {
-    const onScheduleTaskAt = vi.fn();
-    renderGrid({ onScheduleTaskAt });
-    const col = screen.getByTestId('day-col-0');
-    const dt = {
-      types: ['application/x-nr-task'],
-      getData: (t: string) => (t === 'application/x-nr-task' ? 'task-1' : ''),
-      dropEffect: '',
-    };
-    fireEvent.dragOver(col, { clientY: 100, dataTransfer: dt });
-    // indicator appears for the hovered column
-    expect(screen.getByTestId('task-drop-indicator')).toBeInTheDocument();
-    fireEvent.drop(col, { clientY: 100, dataTransfer: dt });
-    expect(onScheduleTaskAt).toHaveBeenCalledTimes(1);
-    const [taskId, dayStartMs, startMin] = onScheduleTaskAt.mock.calls[0]!;
-    expect(taskId).toBe('task-1');
-    expect(dayStartMs).toBe(days[0]);
-    expect(typeof startMin).toBe('number');
+  it('registers a drop zone spanning each day column', () => {
+    renderGrid();
+    const zone = screen.getByTestId('day-drop-0');
+    expect(screen.getByTestId('day-col-0').contains(zone)).toBe(true);
+    // Rect maths only: the zone must never eat the column's click-to-create tap.
+    expect(zone.className).toContain('pointer-events-none');
+    expect(zone.className).toContain('absolute');
+    expect(zone.className).toContain('inset-0');
   });
 
-  it('ignores dragover that is not a task card (no indicator)', () => {
-    const onScheduleTaskAt = vi.fn();
-    renderGrid({ onScheduleTaskAt });
-    const col = screen.getByTestId('day-col-0');
-    fireEvent.dragOver(col, { clientY: 100, dataTransfer: { types: ['text/plain'], getData: () => '', dropEffect: '' } });
-    expect(screen.queryByTestId('task-drop-indicator')).toBeNull();
+  it('renders the drop indicator from the taskDrop prop and highlights that column', () => {
+    renderGrid({ taskDrop: { dayIndex: 1, startMin: 360 } });
+    const indicator = screen.getByTestId('task-drop-indicator');
+    expect(indicator.style.top).toBe('25%'); // 06:00 of a 24h column
+    expect(screen.getByTestId('day-col-1').className).toContain('bg-indigoSoft/60');
+    expect(screen.getByTestId('day-col-0').className).not.toContain('bg-indigoSoft/60');
   });
 
   it('puts the hour grid in a scroll container, below the day header', () => {
