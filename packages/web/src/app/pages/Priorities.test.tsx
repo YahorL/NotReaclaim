@@ -29,8 +29,6 @@ function makeApi(over = {}) {
   } as never);
 }
 
-const dataTransfer = () => ({ setData: vi.fn(), getData: vi.fn(), effectAllowed: '', dropEffect: '' });
-
 describe('Priorities board', () => {
   it('groups tasks into their priority columns', async () => {
     renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
@@ -81,76 +79,6 @@ describe('Priorities board', () => {
     expect(within(col).queryByText('Critical thing')).toBeNull();
   });
 
-  it('reprioritizes via drag and drop', async () => {
-    const updateTask = vi.fn(async () => task());
-    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ updateTask }) });
-    await waitFor(() => expect(screen.getByText('Low thing')).toBeInTheDocument());
-    const row = screen.getByText('Low thing').closest('[data-testid="task-row"]')! as HTMLElement;
-    const target = screen.getByTestId('column-critical');
-    const dt = dataTransfer();
-    fireEvent.dragStart(row, { dataTransfer: dt });
-    // Firefox fix: dragstart must call setData so the drag is not aborted
-    expect(dt.setData).toHaveBeenCalledWith('text/plain', 'l1');
-    fireEvent.dragOver(target, { dataTransfer: dt });
-    fireEvent.drop(target, { dataTransfer: dt });
-    // critical has one task (sortOrder:0); drop to bottom → sortOrder 0+1=1; cross-column → priority: 1
-    await waitFor(() => expect(updateTask).toHaveBeenCalledWith('l1', { priority: 1, sortOrder: 1 }));
-  });
-
-  it('reorders within a column via drag (midpoint sortOrder, same priority)', async () => {
-    const updateTask = vi.fn(async () => task());
-    const listTasks = vi.fn(async () => [
-      task({ id: 'a', title: 'Alpha', priority: 2, sortOrder: 1 }),
-      task({ id: 'b', title: 'Beta', priority: 2, sortOrder: 2 }),
-      task({ id: 'c', title: 'Gamma', priority: 2, sortOrder: 3 }),
-    ]);
-    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateTask }) });
-    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
-    const rows = screen.getAllByTestId('task-row');
-    const dt = dataTransfer();
-    // jsdom rects are all-zero so r.height > 0 short-circuits and any clientY means "insert above the hovered row"
-    // drag Gamma over the TOP half of Alpha → insertion index 0 → sortOrder 1 - 1 = 0
-    fireEvent.dragStart(rows[2]!, { dataTransfer: dt });
-    fireEvent.dragOver(rows[0]!, { dataTransfer: dt, clientY: 0 });
-    fireEvent.drop(screen.getByTestId('column-high'), { dataTransfer: dt });
-    await waitFor(() => expect(updateTask).toHaveBeenCalledWith('c', { sortOrder: 0 }));
-  });
-
-  it('drags the first task DOWN within a column without off-by-one', async () => {
-    const updateTask = vi.fn(async () => task());
-    const listTasks = vi.fn(async () => [
-      task({ id: 'a', title: 'Alpha', priority: 2, sortOrder: 1 }),
-      task({ id: 'b', title: 'Beta', priority: 2, sortOrder: 2 }),
-      task({ id: 'c', title: 'Gamma', priority: 2, sortOrder: 3 }),
-    ]);
-    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateTask }) });
-    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
-    const rows = screen.getAllByTestId('task-row');
-    const dt = dataTransfer();
-    // jsdom rects are all-zero so r.height > 0 short-circuits and any clientY means "insert above the hovered row"
-    // drag Alpha over Gamma (insert above Gamma, i.e. between Beta and Gamma)
-    fireEvent.dragStart(rows[0]!, { dataTransfer: dt });
-    fireEvent.dragOver(rows[2]!, { dataTransfer: dt, clientY: 0 });
-    fireEvent.drop(screen.getByTestId('column-high'), { dataTransfer: dt });
-    // index 2 in the rendered list; Alpha removed from neighbors AND sits above → adjusted to 1 → midpoint(Beta=2, Gamma=3) = 2.5
-    await waitFor(() => expect(updateTask).toHaveBeenCalledWith('a', { sortOrder: 2.5 }));
-  });
-
-  it('cross-column drop sets priority AND a bottom sortOrder', async () => {
-    const updateTask = vi.fn(async () => task());
-    const listTasks = vi.fn(async () => [
-      task({ id: 'a', title: 'Alpha', priority: 2, sortOrder: 1 }),
-      task({ id: 'l', title: 'Lonely', priority: 4, sortOrder: 7 }),
-    ]);
-    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateTask }) });
-    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
-    const dt = dataTransfer();
-    fireEvent.dragStart(screen.getAllByTestId('task-row')[0]!, { dataTransfer: dt }); // Alpha
-    fireEvent.dragOver(screen.getByTestId('column-low'), { dataTransfer: dt });       // empty area of low column
-    fireEvent.drop(screen.getByTestId('column-low'), { dataTransfer: dt });
-    await waitFor(() => expect(updateTask).toHaveBeenCalledWith('a', { priority: 4, sortOrder: 8 })); // below Lonely
-  });
-
   it('opens the edit drawer from the row menu and deletes', async () => {
     const deleteTask = vi.fn(async () => undefined);
     renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ deleteTask }) });
@@ -192,54 +120,6 @@ describe('Priorities board', () => {
     expect(within(screen.getByTestId('column-low')).queryByText('Done thing')).toBeNull();
   });
 
-  it('dragging a pending task onto the backlog column patches {status:"backlog", sortOrder}', async () => {
-    const updateTask = vi.fn(async () => task());
-    const listTasks = vi.fn(async () => [
-      task({ id: 'p1', title: 'Pending task', priority: 4, sortOrder: 5 }),
-    ]);
-    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateTask }) });
-    await waitFor(() => expect(screen.getByText('Pending task')).toBeInTheDocument());
-    const row = screen.getByText('Pending task').closest('[data-testid="task-row"]')! as HTMLElement;
-    const dt = dataTransfer();
-    fireEvent.dragStart(row, { dataTransfer: dt });
-    fireEvent.dragOver(screen.getByTestId('column-backlog'), { dataTransfer: dt });
-    fireEvent.drop(screen.getByTestId('column-backlog'), { dataTransfer: dt });
-    await waitFor(() => expect(updateTask).toHaveBeenCalledWith('p1', { status: 'backlog', sortOrder: expect.any(Number) }));
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((updateTask.mock.calls[0] as any[])[1]).not.toHaveProperty('priority');
-  });
-
-  it('dragging a backlog task to a bucket column patches {status:"pending", priority, sortOrder}', async () => {
-    const updateTask = vi.fn(async () => task());
-    const listTasks = vi.fn(async () => [
-      task({ id: 'b1', title: 'Backlog task', priority: 4, sortOrder: 3, status: 'backlog' }),
-    ]);
-    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateTask }) });
-    await waitFor(() => expect(screen.getByText('Backlog task')).toBeInTheDocument());
-    const row = screen.getByText('Backlog task').closest('[data-testid="task-row"]')! as HTMLElement;
-    const dt = dataTransfer();
-    fireEvent.dragStart(row, { dataTransfer: dt });
-    fireEvent.dragOver(screen.getByTestId('column-critical'), { dataTransfer: dt });
-    fireEvent.drop(screen.getByTestId('column-critical'), { dataTransfer: dt });
-    await waitFor(() => expect(updateTask).toHaveBeenCalledWith('b1', {
-      status: 'pending', priority: 1, sortOrder: expect.any(Number),
-    }));
-  });
-
-  it('dropping onto the completed column does nothing (no updateTask call)', async () => {
-    const updateTask = vi.fn(async () => task());
-    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ updateTask }) });
-    await waitFor(() => expect(screen.getByText('Low thing')).toBeInTheDocument());
-    const row = screen.getByText('Low thing').closest('[data-testid="task-row"]')! as HTMLElement;
-    const dt = dataTransfer();
-    fireEvent.dragStart(row, { dataTransfer: dt });
-    fireEvent.dragOver(screen.getByTestId('column-completed'), { dataTransfer: dt });
-    fireEvent.drop(screen.getByTestId('column-completed'), { dataTransfer: dt });
-    // allow any async flush
-    await new Promise((r) => setTimeout(r, 20));
-    expect(updateTask).not.toHaveBeenCalled();
-  });
-
   it('hide-completed hides the Completed column entirely', async () => {
     renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
     await waitFor(() => expect(screen.getByTestId('column-completed')).toBeInTheDocument());
@@ -269,5 +149,15 @@ describe('Priorities board', () => {
     fireEvent.click(screen.getByTestId('card-subtask-s1'));
     await waitFor(() => expect(updateSubtask).toHaveBeenCalledWith('s1', { done: true }));
     expect(screen.queryByTestId('task-drawer')).not.toBeInTheDocument();
+  });
+
+  it('board cards are dnd-kit sortables, except in the Completed column', async () => {
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
+    await waitFor(() => expect(screen.getByText('Low thing')).toBeInTheDocument());
+    const active = screen.getByText('Low thing').closest('[data-testid="task-row"]')!;
+    expect(active).toHaveAttribute('aria-roledescription', 'sortable');
+    const doneRow = within(screen.getByTestId('column-completed')).getByTestId('task-row');
+    expect(doneRow).not.toHaveAttribute('aria-roledescription');
+    expect(doneRow).not.toHaveAttribute('draggable');
   });
 });

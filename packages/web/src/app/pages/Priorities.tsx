@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
-import type { Task, UpdateTaskInput } from '../../api/types';
+import type { Task } from '../../api/types';
 import { ApiError } from '../../api/client';
 import { useTasksQuery, useSchedulePreviewQuery, useUpdateTaskMutation, useDeleteTaskMutation, useUpdateSubtaskMutation } from '../../api/queries';
 import { TaskDrawer } from '../tasks/TaskDrawer';
 import { Toolbar } from '../priorities/Toolbar';
 import { Board, type BoardColumn } from '../priorities/Board';
-import { type BucketKey, type BoardColumnKey, BUCKETS, priorityToBucket, bucketToPriority, nextBlockMsForTask, sortBucket, sortCompleted, insertionSortOrder } from '../priorities/priorityBucket';
+import { type BoardColumnKey, BUCKETS, priorityToBucket, nextBlockMsForTask, sortBucket, sortCompleted } from '../priorities/priorityBucket';
+import { taskMovePatch } from '../priorities/boardDnd';
 
 export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
   const tasksQ = useTasksQuery();
@@ -63,30 +64,13 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
   const onDelete = (t: Task) => deleteM.mutate(t.id, { onSuccess: () => { if (editingId === t.id) setEditingId(null); } });
 
   const onMove = (taskId: string, to: BoardColumnKey, index: number) => {
-    const all = tasksQ.data ?? [];
-    const t = all.find((x) => x.id === taskId);
+    const t = (tasksQ.data ?? []).find((x) => x.id === taskId);
     if (!t) return;
-
-    if (to === 'completed') return; // completed column rejects drops
-
-    const column = columns.find((c) => c.key === to);
-    const colTasks = column?.tasks ?? [];
-    const sourceIndex = colTasks.findIndex((x) => x.id === taskId);
-    const adjustedIndex = sourceIndex !== -1 && sourceIndex < index ? index - 1 : index;
-    const neighbors = colTasks.filter((x) => x.id !== taskId);
-    const sortOrder = insertionSortOrder(neighbors, adjustedIndex);
-
-    if (to === 'backlog') {
-      updateM.mutate({ id: taskId, patch: { status: 'backlog', sortOrder } });
-    } else {
-      // Dropping on a bucket column
-      const targetBucket = to as BucketKey;
-      const patch: UpdateTaskInput = { sortOrder };
-      if (priorityToBucket(t.priority) !== targetBucket) patch.priority = bucketToPriority(targetBucket);
-      // If task was backlog or completed, reactivate it
-      if (t.status === 'backlog' || t.status === 'completed') patch.status = 'pending';
-      updateM.mutate({ id: taskId, patch });
-    }
+    const patch = taskMovePatch({
+      taskId, task: t, to, index,
+      columnTasks: columns.find((c) => c.key === to)?.tasks ?? [],
+    });
+    if (patch) updateM.mutate({ id: taskId, patch });
   };
 
   return (

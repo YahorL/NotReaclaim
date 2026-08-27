@@ -5,12 +5,12 @@ import type { Task } from '../../api/types';
 
 const base = { id: 't', userId: 'u', title: 'T', priority: 1, sortOrder: 0, durationMs: 1, dueBy: '2026-01-09T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1, categoryId: null, status: 'pending', completedAt: null, timeLoggedMs: 0, createdAt: '', updatedAt: '' };
 const noop = () => {};
-function renderRow(task: Task, over: { onEdit?: (t: Task) => void; onToggleSubtask?: (id: string, done: boolean) => void; onReorderSubtask?: (subtaskId: string, sortOrder: number) => void; onDragStart?: (taskId: string) => void; onDragEnd?: () => void } = {}) {
+function renderRow(task: Task, over: { onEdit?: (t: Task) => void; onToggleSubtask?: (id: string, done: boolean) => void; onReorderSubtask?: (subtaskId: string, sortOrder: number) => void; draggable?: boolean } = {}) {
   return render(
     <TaskRow
-      task={task} columnKey="critical" nextMs={null} now={Date.parse('2026-01-05T00:00:00.000Z')} dragging={false}
+      task={task} columnKey="critical" nextMs={null} now={Date.parse('2026-01-05T00:00:00.000Z')}
+      draggable={over.draggable ?? true}
       onComplete={noop} onEdit={over.onEdit ?? noop} onDelete={noop}
-      onDragStart={over.onDragStart ?? noop} onDragEnd={over.onDragEnd ?? noop}
       onToggleSubtask={over.onToggleSubtask ?? noop}
       onReorderSubtask={over.onReorderSubtask ?? noop}
     />,
@@ -116,5 +116,15 @@ describe('TaskRow card subtask drag handles', () => {
     const rowEv = createEvent.keyDown(row, { code: 'Space', key: ' ', bubbles: true, cancelable: true });
     fireEvent(row, rowEv);
     expect(rowEv.defaultPrevented).toBe(true);
+  });
+});
+
+describe('TaskRow sortable wiring', () => {
+  it('carries the sortable attributes when draggable and none when not', () => {
+    const { unmount } = renderRow(base as Task);
+    expect(screen.getByTestId('task-row')).toHaveAttribute('aria-roledescription', 'sortable');
+    unmount();
+    renderRow(base as Task, { draggable: false });
+    expect(screen.getByTestId('task-row')).not.toHaveAttribute('aria-roledescription');
   });
 });

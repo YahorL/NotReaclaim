@@ -49,19 +49,28 @@ export interface TaskRowProps {
   columnKey: BoardColumnKey;
   nextMs: number | null;
   now: number;
-  dragging: boolean;
+  /** False in the Completed column: no sortable listeners, no drag affordance. */
   draggable?: boolean;
   muted?: boolean;
   onComplete: (task: Task) => void;
   onEdit: (task: Task) => void;
   onDelete: (task: Task) => void;
-  onDragStart: (taskId: string) => void;
-  onDragEnd: () => void;
   onToggleSubtask: (subtaskId: string, done: boolean) => void;
   onReorderSubtask: (subtaskId: string, sortOrder: number) => void;
 }
 
-export function TaskRow({ task, columnKey, nextMs, now, dragging, draggable = true, muted = false, onComplete, onEdit, onDelete, onDragStart, onDragEnd, onToggleSubtask, onReorderSubtask }: TaskRowProps) {
+export function TaskRow({ task, columnKey, nextMs, now, draggable = true, muted = false, onComplete, onEdit, onDelete, onToggleSubtask, onReorderSubtask }: TaskRowProps) {
+  const {
+    attributes: cardAttributes, listeners: cardListeners, setNodeRef: setCardRef,
+    setActivatorNodeRef: setCardActivatorRef,
+    transform: cardTransform, transition: cardTransition, isDragging,
+  } = useSortable({
+    id: task.id,
+    disabled: !draggable,
+    // dnd-kit owns the in-drag reflow; `useFlip` (in Column) owns post-PATCH re-sorts. Leaving
+    // both on would double-animate the same movement.
+    animateLayoutChanges: () => false,
+  });
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const subtaskSensors = useAppSensors();
@@ -84,12 +93,16 @@ export function TaskRow({ task, columnKey, nextMs, now, dragging, draggable = tr
 
   return (
     <div
+      // Both refs: the KeyboardSensor only ignores keys coming from descendants when the card is
+      // registered as its own activator node. Without it, Space/Enter on the ✓ button, the kebab
+      // or a checklist checkbox would be preventDefault'd into a card drag.
+      ref={(n) => { setCardRef(n); setCardActivatorRef(n); }}
       data-testid="task-row" data-task-id={task.id} data-bucket={columnKey}
-      draggable={draggable}
-      onDragStart={(e) => { if (!draggable) return; if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', task.id); } onDragStart(task.id); }}
-      onDragEnd={onDragEnd}
+      style={{ transform: CSS.Transform.toString(cardTransform), transition: cardTransition }}
+      {...(draggable ? cardAttributes : {})}
+      {...(draggable ? cardListeners : {})}
       onClick={() => onEdit(task)}
-      className={`flex items-start gap-3 border-t border-l-4 border-t-line ${colMeta.leftBorder} bg-card last:rounded-b-xl py-3.5 pl-4 pr-3.5 transition-colors hover:bg-[#fafbfc] ${draggable ? 'cursor-grab' : 'cursor-default'} ${dragging ? 'opacity-40' : muted ? 'opacity-70' : done ? 'opacity-45' : ''}`}
+      className={`flex items-start gap-3 border-t border-l-4 border-t-line ${colMeta.leftBorder} bg-card last:rounded-b-xl py-3.5 pl-4 pr-3.5 transition-colors hover:bg-[#fafbfc] ${draggable ? 'cursor-grab' : 'cursor-default'} ${isDragging ? 'opacity-40' : muted ? 'opacity-70' : done ? 'opacity-45' : ''}`}
     >
       <button
         type="button" aria-label="complete"
