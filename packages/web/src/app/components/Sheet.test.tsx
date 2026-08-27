@@ -56,3 +56,90 @@ describe('Sheet collapsed for a drag', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 });
+
+describe('Sheet a11y', () => {
+  it('is a modal dialog that takes focus on mount', () => {
+    render(<Sheet label="Tasks" onClose={vi.fn()}><p>body</p></Sheet>);
+    const sheet = screen.getByTestId('sheet');
+    expect(sheet).toHaveAttribute('aria-modal', 'true');
+    expect(sheet).toHaveAttribute('tabindex', '-1');
+    expect(document.activeElement).toBe(sheet);
+  });
+
+  it('does not steal focus from an autoFocus field inside it', () => {
+    // React applies autoFocus during the commit phase, before this component's passive effect —
+    // so the create form's title input must keep the focus it just took.
+    render(<Sheet label="New entry" onClose={vi.fn()}><input autoFocus data-testid="inner-field" /></Sheet>);
+    expect(document.activeElement).toBe(screen.getByTestId('inner-field'));
+  });
+
+  it('closes on Escape', () => {
+    const onClose = vi.fn();
+    render(<Sheet label="Tasks" onClose={onClose}><p>body</p></Sheet>);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns focus to whatever opened it when it unmounts', () => {
+    const opener = document.createElement('button');
+    document.body.appendChild(opener);
+    opener.focus();
+    const { unmount } = render(<Sheet label="Tasks" onClose={vi.fn()}><p>body</p></Sheet>);
+    expect(document.activeElement).not.toBe(opener);
+    unmount();
+    expect(document.activeElement).toBe(opener);
+    opener.remove();
+  });
+
+  it('keeps Tab inside the sheet in both directions', () => {
+    render(
+      <Sheet label="Tasks" onClose={vi.fn()}>
+        <button>first</button>
+        <button>last</button>
+      </Sheet>,
+    );
+    const close = screen.getByTestId('sheet-close'); // first focusable in DOM order
+    const last = screen.getByText('last');
+    last.focus();
+    fireEvent.keyDown(last, { key: 'Tab' });
+    expect(document.activeElement).toBe(close);
+    fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(last);
+  });
+
+  it('gives the close control a 44px touch target', () => {
+    render(<Sheet label="Tasks" onClose={vi.fn()}><p>body</p></Sheet>);
+    const close = screen.getByTestId('sheet-close');
+    expect(close.className).toContain('h-11');
+    expect(close.className).toContain('w-11');
+  });
+});
+
+describe('Sheet variants', () => {
+  it('fullScreen fills the viewport with square top corners', () => {
+    render(<Sheet label="Edit task" onClose={vi.fn()} fullScreen><p>body</p></Sheet>);
+    const sheet = screen.getByTestId('sheet');
+    expect(sheet.className).toContain('h-dvh');
+    expect(sheet.className).not.toContain('h-[70dvh]');
+    expect(sheet.className).not.toContain('rounded-t-[18px]');
+  });
+
+  it('scrolls its body only when asked to', () => {
+    const { unmount } = render(<Sheet label="Tasks" onClose={vi.fn()}><p>body</p></Sheet>);
+    const plain = screen.getByText('body').parentElement!;
+    expect(plain.className).toContain('overflow-hidden');
+    expect(plain.className).toContain('overscroll-contain');
+    unmount();
+    render(<Sheet label="New entry" onClose={vi.fn()} scrollBody><p>body</p></Sheet>);
+    const scrolling = screen.getByText('body').parentElement!;
+    expect(scrolling.className).toContain('overflow-y-auto');
+    expect(scrolling.className).toContain('overscroll-contain');
+  });
+
+  it('carries no transform unless it is collapsed', () => {
+    // A standing transform makes the sheet the containing block for every `fixed` descendant —
+    // and from this phase on, sheets contain drawers. Regression guard for 92e0c8a M1.
+    render(<Sheet label="Tasks" onClose={vi.fn()}><p>body</p></Sheet>);
+    expect(screen.getByTestId('sheet').className).not.toContain('translate-y');
+  });
+});
