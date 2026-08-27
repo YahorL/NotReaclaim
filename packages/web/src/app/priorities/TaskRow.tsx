@@ -1,11 +1,47 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Task } from '../../api/types';
+import { DndContext, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import type { Task, Subtask } from '../../api/types';
 import { Icons } from '../shell/icons';
-import { type BoardColumnKey, columnMeta, relativeDayTimeLabel, insertionSortOrder } from './priorityBucket';
+import { useAppSensors, pointerFirstCollision } from '../dnd/sensors';
+import { subtaskDropSortOrder } from '../tasks/subtaskDnd';
+import { type BoardColumnKey, columnMeta, relativeDayTimeLabel } from './priorityBucket';
 
 function dueShort(iso: string | null): string {
   if (!iso) return 'No deadline';
   return `Due ${new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric' }).format(new Date(iso))}`;
+}
+
+function SortableCardSubtask({ subtask, onToggle }: { subtask: Subtask; onToggle: () => void }) {
+  // role=listitem: dnd-kit would otherwise default the row to role="button", which drops the
+  // checklist out of its own semantics and nests the checkbox inside a button.
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
+    useSortable({ id: subtask.id, attributes: { role: 'listitem' } });
+  return (
+    <li
+      // Both refs: the KeyboardSensor only ignores keys coming from descendants when the row is
+      // registered as its own activator node, otherwise Space/Enter on the checkbox is
+      // preventDefault'd into a drag instead of toggling the subtask.
+      ref={(n) => { setNodeRef(n); setActivatorNodeRef(n); }}
+      data-testid={`card-subtask-li-${subtask.id}`}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      {...attributes}
+      {...listeners}
+      className={`flex flex-col ${isDragging ? 'opacity-40' : ''}`}
+    >
+      <div className="flex items-center gap-2 text-[13px]">
+        <input
+          type="checkbox"
+          data-testid={`card-subtask-${subtask.id}`}
+          checked={subtask.done}
+          onChange={onToggle}
+          className="h-3.5 w-3.5 accent-indigo"
+        />
+        <span className={subtask.done ? 'text-inkSoft line-through' : 'text-ink'}>{subtask.title}</span>
+      </div>
+    </li>
+  );
 }
 
 export interface TaskRowProps {
@@ -28,8 +64,7 @@ export interface TaskRowProps {
 export function TaskRow({ task, columnKey, nextMs, now, dragging, draggable = true, muted = false, onComplete, onEdit, onDelete, onDragStart, onDragEnd, onToggleSubtask, onReorderSubtask }: TaskRowProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const [subtaskDragId, setSubtaskDragId] = useState<string | null>(null);
-  const [subtaskOverIndex, setSubtaskOverIndex] = useState<number | null>(null);
+  const subtaskSensors = useAppSensors();
   useEffect(() => {
     if (!menuOpen) return;
     const onDown = (e: MouseEvent) => { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false); };
@@ -41,6 +76,11 @@ export function TaskRow({ task, columnKey, nextMs, now, dragging, draggable = tr
   const subtasks = task.subtasks ?? [];
   const subtaskDone = subtasks.filter((s) => s.done).length;
   const colMeta = columnMeta(columnKey);
+  const onSubtaskDragEnd = (e: DragEndEvent) => {
+    if (!e.over) return;
+    const sortOrder = subtaskDropSortOrder(subtasks, String(e.active.id), String(e.over.id));
+    if (sortOrder !== null) onReorderSubtask(String(e.active.id), sortOrder);
+  };
 
   return (
     <div
@@ -69,59 +109,18 @@ export function TaskRow({ task, columnKey, nextMs, now, dragging, draggable = tr
           )}
         </div>
         {subtasks.length > 0 && (
-          <ul data-testid="card-subtasks" className="mt-1.5 space-y-1" onClick={(e) => e.stopPropagation()}>
-            {subtasks.map((s, i) => (
-              <li
-                key={s.id}
-                draggable
-                onDragStart={(e) => {
-                  e.stopPropagation();
-                  if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', s.id); }
-                  setSubtaskDragId(s.id);
-                }}
-                onDragEnd={(e) => { e.stopPropagation(); setSubtaskDragId(null); setSubtaskOverIndex(null); }}
-                onDragOver={(e) => {
-                  if (subtaskDragId === null) return;
-                  e.preventDefault();
-                  e.stopPropagation();
-                  const r = e.currentTarget.getBoundingClientRect();
-                  const idx = r.height > 0 && e.clientY >= r.top + r.height / 2 ? i + 1 : i;
-                  setSubtaskOverIndex(idx);
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  if (subtaskDragId === null || subtaskOverIndex === null) return;
-                  const srcIndex = subtasks.findIndex((x) => x.id === subtaskDragId);
-                  let insertIdx = subtaskOverIndex;
-                  if (srcIndex !== -1 && srcIndex < insertIdx) insertIdx -= 1;
-                  const others = subtasks.filter((x) => x.id !== subtaskDragId);
-                  const sortOrder = insertionSortOrder(others, insertIdx);
-                  onReorderSubtask(subtaskDragId, sortOrder);
-                  setSubtaskDragId(null);
-                  setSubtaskOverIndex(null);
-                }}
-                className="flex flex-col"
-              >
-                {subtaskOverIndex === i && subtaskDragId !== null && subtaskDragId !== s.id && (
-                  <div className="mb-0.5 h-0.5 bg-indigo" />
-                )}
-                <div className="flex items-center gap-2 text-[13px]">
-                  <input
-                    type="checkbox"
-                    data-testid={`card-subtask-${s.id}`}
-                    checked={s.done}
-                    onChange={() => onToggleSubtask(s.id, !s.done)}
-                    className="h-3.5 w-3.5 accent-indigo"
-                  />
-                  <span className={s.done ? 'text-inkSoft line-through' : 'text-ink'}>{s.title}</span>
-                </div>
-              </li>
-            ))}
-            {subtaskOverIndex === subtasks.length && subtaskDragId !== null && (
-              <li><div className="h-0.5 bg-indigo" /></li>
-            )}
-          </ul>
+          // Nested inside the board's DndContext (Task 4). Safe: dnd-kit stamps `dndKit` on the
+          // native event when a sensor captures it, so the enclosing card's activator declines —
+          // structurally what the old stopPropagation calls were doing by hand.
+          <DndContext sensors={subtaskSensors} collisionDetection={pointerFirstCollision} onDragEnd={onSubtaskDragEnd}>
+            <SortableContext items={subtasks.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+              <ul data-testid="card-subtasks" className="mt-1.5 space-y-1" onClick={(e) => e.stopPropagation()}>
+                {subtasks.map((s) => (
+                  <SortableCardSubtask key={s.id} subtask={s} onToggle={() => onToggleSubtask(s.id, !s.done)} />
+                ))}
+              </ul>
+            </SortableContext>
+          </DndContext>
         )}
       </div>
       <div ref={menuRef} className="relative" onClick={(e) => e.stopPropagation()}>

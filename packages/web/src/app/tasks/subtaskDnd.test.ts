@@ -41,3 +41,22 @@ describe('subtaskDropSortOrder', () => {
     expect(subtaskDropSortOrder([{ id: 'only', sortOrder: 3 }], 'only', 'only')).toBeNull();
   });
 });
+
+describe('subtaskDropSortOrder — card checklist cases', () => {
+  const three = [
+    { id: 's1', sortOrder: 10 },
+    { id: 's2', sortOrder: 20 },
+    { id: 's3', sortOrder: 30 },
+  ];
+
+  it('dragging the last subtask onto the first lands above it', () => {
+    // Ported verbatim from the deleted TaskRow HTML5 test: 10 - 1 = 9.
+    expect(subtaskDropSortOrder(three, 's3', 's1')).toBe(9);
+  });
+
+  it('dragging the first subtask onto the last lands BELOW it', () => {
+    // Semantic change from the HTML5 path (which said 25): a downward drag now lands after the
+    // hovered row, so the value is past the tail => 30 + 1 = 31.
+    expect(subtaskDropSortOrder(three, 's1', 's3')).toBe(31);
+  });
+});

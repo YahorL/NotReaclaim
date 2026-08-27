@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, createEvent } from '@testing-library/react';
 import { TaskRow } from './TaskRow';
 import type { Task } from '../../api/types';
 
@@ -82,61 +82,39 @@ const threeSubtasks = [
   { id: 's3', taskId: 't', title: 'third', done: false, sortOrder: 30 },
 ];
 
-describe('TaskRow card subtask drag-reorder', () => {
-  it('dragging last subtask above first calls onReorderSubtask(id, first.sortOrder-1)', () => {
-    const onReorderSubtask = vi.fn();
-    renderRow({ ...base, subtasks: threeSubtasks } as Task, { onReorderSubtask });
-    const lis = screen.getAllByRole('listitem');
-    const dt = { setData: vi.fn(), effectAllowed: '', dropEffect: '' };
-    // drag s3 (last)
-    fireEvent.dragStart(lis[2]!, { dataTransfer: dt });
-    // dragOver s1 with zero-height rect → inserts above s1 → index 0
-    fireEvent.dragOver(lis[0]!, { dataTransfer: dt, clientY: 0 });
-    fireEvent.drop(lis[0]!, { dataTransfer: dt });
-    // others after removing s3 = [s1(10), s2(20)]; insert at index 0 → 10 - 1 = 9
-    expect(onReorderSubtask).toHaveBeenCalledWith('s3', 9);
+describe('TaskRow card subtask drag handles', () => {
+  it('each checklist row is a dnd-kit sortable with a stable testid', () => {
+    renderRow({ ...base, subtasks: threeSubtasks } as Task);
+    const first = screen.getByTestId('card-subtask-li-s1');
+    expect(first).toHaveAttribute('aria-roledescription', 'sortable');
+    // dnd-kit defaults a draggable to role="button"; on an <li> inside the card that destroys the
+    // list semantics and nests the checkbox inside a button role, so the row keeps role=listitem.
+    expect(first).toHaveAttribute('role', 'listitem');
+    expect(first).toHaveAttribute('tabindex', '0');
+    expect(screen.getByTestId('card-subtask-li-s3')).toBeInTheDocument();
   });
 
-  it('dragging first subtask downward (over third) calls onReorderSubtask with midpoint', () => {
-    const onReorderSubtask = vi.fn();
-    renderRow({ ...base, subtasks: threeSubtasks } as Task, { onReorderSubtask });
-    const lis = screen.getAllByRole('listitem');
-    const dt = { setData: vi.fn(), effectAllowed: '', dropEffect: '' };
-    // drag s1 (first)
-    fireEvent.dragStart(lis[0]!, { dataTransfer: dt });
-    // dragOver s3 with zero-height rect → inserts above s3 → index 2 in full list
-    fireEvent.dragOver(lis[2]!, { dataTransfer: dt, clientY: 0 });
-    fireEvent.drop(lis[2]!, { dataTransfer: dt });
-    // src index 0, insert index 2 → since srcIndex(0) < insertIdx(2), adjustedIdx = 2-1 = 1
-    // others after removing s1 = [s2(20), s3(30)]; insert at index 1 → midpoint(20,30) = 25
-    expect(onReorderSubtask).toHaveBeenCalledWith('s1', 25);
+  it('drops the native HTML5 drag attributes from the checklist', () => {
+    renderRow({ ...base, subtasks: threeSubtasks } as Task);
+    for (const id of ['s1', 's2', 's3']) {
+      expect(screen.getByTestId(`card-subtask-li-${id}`)).not.toHaveAttribute('draggable');
+    }
   });
 
-  it('subtask dragStart does NOT trigger the task-card drag (stopPropagation)', () => {
-    const onDragStart = vi.fn();
-    const onReorderSubtask = vi.fn();
-    renderRow({ ...base, subtasks: threeSubtasks } as Task, { onDragStart, onReorderSubtask });
-    const lis = screen.getAllByRole('listitem');
-    const dt = { setData: vi.fn(), effectAllowed: '', dropEffect: '' };
-    fireEvent.dragStart(lis[0]!, { dataTransfer: dt });
-    expect(onDragStart).not.toHaveBeenCalled();
-  });
-
-  it('task-card drag still works after a subtask drag ends', () => {
-    const onDragStart = vi.fn();
-    const onDragEnd = vi.fn();
-    const onReorderSubtask = vi.fn();
-    renderRow({ ...base, subtasks: threeSubtasks } as Task, { onDragStart, onDragEnd, onReorderSubtask });
-    const lis = screen.getAllByRole('listitem');
-    const dt = { setData: vi.fn(), effectAllowed: '', dropEffect: '' };
-    // do a subtask drag+end
-    fireEvent.dragStart(lis[0]!, { dataTransfer: dt });
-    fireEvent.dragEnd(lis[0]!, { dataTransfer: dt });
-    // now drag the card row itself
-    const row = screen.getByTestId('task-row');
-    const rowDt = { setData: vi.fn(), effectAllowed: '', dropEffect: '' };
-    fireEvent.dragStart(row, { dataTransfer: rowDt });
-    expect(onDragStart).toHaveBeenCalledWith('t');
-    expect(rowDt.setData).toHaveBeenCalledWith('text/plain', 't');
+  it('Space on a checklist checkbox is not swallowed by the keyboard drag sensor', () => {
+    renderRow({ ...base, subtasks: threeSubtasks } as Task);
+    // The row carries the KeyboardSensor's onKeyDown, so a Space keydown from the checkbox bubbles
+    // into it. dnd-kit only ignores descendants when the row registered itself via
+    // setActivatorNodeRef; without that it preventDefaults the key and the checkbox goes dead.
+    const box = screen.getByTestId('card-subtask-s1');
+    const ev = createEvent.keyDown(box, { code: 'Space', key: ' ', bubbles: true, cancelable: true });
+    fireEvent(box, ev);
+    expect(ev.defaultPrevented).toBe(false);
+    // ...while the same key on the row itself is claimed by the sensor, i.e. the row is still the
+    // activator and keyboard reordering works.
+    const row = screen.getByTestId('card-subtask-li-s1');
+    const rowEv = createEvent.keyDown(row, { code: 'Space', key: ' ', bubbles: true, cancelable: true });
+    fireEvent(row, rowEv);
+    expect(rowEv.defaultPrevented).toBe(true);
   });
 });
