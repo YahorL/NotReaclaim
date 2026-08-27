@@ -7,7 +7,7 @@ import {
   minutesToPx, shiftDays, clampDayDelta, snapClickToSlot, localMidnight,
   daysThatFit, formatHm, weekdayLabel, dayOfMonth, dayAnchor, hourRowLabel,
   MOBILE_TIME_GUTTER_PX, MOBILE_MIN_DAY_COL_PX, timeGutterPx, popoverAlign, rangeLabel,
-  COARSE_RESIZE_MIN_SPAN_MIN, resizeHandleClass,
+  COARSE_RESIZE_MIN_SPAN_MIN, resizeHandleClass, SWIPE_MIN_PX, swipeDecision,
 } from './weekModel';
 
 const MON = Date.parse('2026-01-05T00:00:00.000Z'); // Monday 00:00 UTC
@@ -416,5 +416,30 @@ describe('resizeHandleClass', () => {
     expect(resizeHandleClass(pct(15), true)).toBe('h-1.5');
     expect(resizeHandleClass(pct(29), true)).toBe('h-1.5');
     expect(COARSE_RESIZE_MIN_SPAN_MIN).toBe(30);
+  });
+});
+
+describe('swipeDecision', () => {
+  it('ignores a swipe shorter than the threshold', () => {
+    expect(swipeDecision(-20, 0)).toBe(0);
+    expect(swipeDecision(47, 0)).toBe(0);
+    expect(swipeDecision(0, 0)).toBe(0);
+  });
+
+  it('a leftward swipe pages forward, a rightward swipe pages back', () => {
+    expect(swipeDecision(-120, 4)).toBe(1);
+    expect(swipeDecision(120, -4)).toBe(-1);
+  });
+
+  it('ignores a mostly-vertical drag so it cannot steal a scroll', () => {
+    expect(swipeDecision(-60, 200)).toBe(0);
+    expect(swipeDecision(-60, 39)).toBe(1);   // 60 >= 39 * 1.5
+    expect(swipeDecision(-60, 41)).toBe(0);   // 60 <  41 * 1.5
+  });
+
+  it('takes a tunable threshold', () => {
+    expect(swipeDecision(-30, 0)).toBe(0);
+    expect(swipeDecision(-30, 0, 20)).toBe(1);
+    expect(SWIPE_MIN_PX).toBe(48);
   });
 });

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ScheduledBlock, CalendarEvent } from '../../api/types';
 import { EventBlock, type BlockKind } from './EventBlock';
 import { InteractiveBlock } from './InteractiveBlock';
-import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY, snapClickToSlot, WINDOW_START_MIN, WINDOW_END_MIN, GRID_COLUMN_PX, dayAnchor, formatHm, weekdayLabel, dayOfMonth, hourRowLabel, timeGutterPx, popoverAlign } from './weekModel';
+import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY, snapClickToSlot, WINDOW_START_MIN, WINDOW_END_MIN, GRID_COLUMN_PX, dayAnchor, formatHm, weekdayLabel, dayOfMonth, hourRowLabel, timeGutterPx, popoverAlign, swipeDecision } from './weekModel';
 import { CreatePopover } from './CreatePopover';
 import { layoutOverlaps } from './overlapLayout';
 import { Icons } from '../shell/icons';
@@ -86,6 +86,9 @@ export function WeekGrid(props: WeekGridProps) {
   const [taskDrop, setTaskDrop] = useState<{ dayIndex: number; startMin: number } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Where a day-header drag started. The header sits OUTSIDE hours-scroll, so a swipe here can
+  // never fight the vertical hour scrolling; the ratio guard in swipeDecision covers diagonals.
+  const swipeOriginRef = useRef<{ x: number; y: number } | null>(null);
   // On mount, scroll so the current time-of-day sits near the top (a little context above).
   useEffect(() => {
     const el = scrollRef.current;
@@ -160,7 +163,24 @@ export function WeekGrid(props: WeekGridProps) {
       <div className="w-full">
         <div className="overflow-hidden rounded-[14px] border border-line bg-card">
           {/* header grid */}
-          <div data-testid="day-header-row" className="grid border-b border-line" style={{ gridTemplateColumns: gridCols }}>
+          <div
+            data-testid="day-header-row"
+            className="grid border-b border-line"
+            style={{ gridTemplateColumns: gridCols }}
+            onTouchStart={(e) => {
+              const t = e.touches[0];
+              swipeOriginRef.current = t ? { x: t.clientX, y: t.clientY } : null;
+            }}
+            onTouchEnd={(e) => {
+              const origin = swipeOriginRef.current;
+              swipeOriginRef.current = null;
+              const t = e.changedTouches[0];
+              if (!origin || !t) return;
+              const pages = swipeDecision(t.clientX - origin.x, t.clientY - origin.y);
+              if (pages === 1) onNext();
+              else if (pages === -1) onPrev();
+            }}
+          >
             <div />
             {days.map((d, i) => {
               const today = isToday(nowMs, d);

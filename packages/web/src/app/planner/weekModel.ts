@@ -256,3 +256,16 @@ export function resizeHandleClass(heightPct: number, coarse: boolean): 'h-1.5' |
   const spanMin = (heightPct / 100) * (WINDOW_END_MIN - WINDOW_START_MIN);
   return spanMin >= COARSE_RESIZE_MIN_SPAN_MIN - 1e-6 ? 'h-6' : 'h-1.5';
 }
+
+/** Minimum horizontal travel before a day-header drag counts as a page swipe. */
+export const SWIPE_MIN_PX = 48;
+
+/**
+ * How many pages a header swipe moves: +1 forward (swipe left), −1 back (swipe right), 0 when the
+ * gesture is too short or too vertical. The 1.5× ratio guard keeps a diagonal scroll from paging.
+ */
+export function swipeDecision(dx: number, dy: number, minPx = SWIPE_MIN_PX): -1 | 0 | 1 {
+  if (Math.abs(dx) < minPx) return 0;
+  if (Math.abs(dx) < Math.abs(dy) * 1.5) return 0;
+  return dx < 0 ? 1 : -1;
+}

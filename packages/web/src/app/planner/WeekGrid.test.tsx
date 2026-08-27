@@ -386,4 +386,28 @@ describe('WeekGrid compact (below md)', () => {
     expect(popover.className).toContain('bottom-0');
     expect(popover.className).not.toContain('left-1');
   });
+
+  it('swiping the day header left pages forward and right pages back', () => {
+    const onNext = vi.fn();
+    const onPrev = vi.fn();
+    renderGrid({ compact: true, onNext, onPrev });
+    const header = screen.getByTestId('day-header-row');
+    fireEvent.touchStart(header, { touches: [{ clientX: 300, clientY: 20 }] });
+    fireEvent.touchEnd(header, { changedTouches: [{ clientX: 120, clientY: 24 }] });
+    expect(onNext).toHaveBeenCalledTimes(1);
+    fireEvent.touchStart(header, { touches: [{ clientX: 120, clientY: 20 }] });
+    fireEvent.touchEnd(header, { changedTouches: [{ clientX: 300, clientY: 24 }] });
+    expect(onPrev).toHaveBeenCalledTimes(1);
+  });
+
+  it('a mostly-vertical drag on the header does not page', () => {
+    const onNext = vi.fn();
+    const onPrev = vi.fn();
+    renderGrid({ compact: true, onNext, onPrev });
+    const header = screen.getByTestId('day-header-row');
+    fireEvent.touchStart(header, { touches: [{ clientX: 300, clientY: 20 }] });
+    fireEvent.touchEnd(header, { changedTouches: [{ clientX: 240, clientY: 320 }] });
+    expect(onNext).not.toHaveBeenCalled();
+    expect(onPrev).not.toHaveBeenCalled();
+  });
 });
