@@ -18,10 +18,16 @@ function SortableSubtask({ subtask, onToggle, onDelete }: {
   onToggle: () => void;
   onDelete: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: subtask.id });
+  // role=listitem: dnd-kit would otherwise default the row to role="button", which drops the list
+  // out of its own semantics and nests the checkbox and delete control inside a button.
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
+    useSortable({ id: subtask.id, attributes: { role: 'listitem' } });
   return (
     <li
-      ref={setNodeRef}
+      // Both refs: the KeyboardSensor only ignores keys coming from descendants when the row is
+      // registered as its own activator node, otherwise Space/Enter on the checkbox or the delete
+      // button is preventDefault'd into a drag instead of operating the control.
+      ref={(n) => { setNodeRef(n); setActivatorNodeRef(n); }}
       data-testid={`subtask-li-${subtask.id}`}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       {...attributes}

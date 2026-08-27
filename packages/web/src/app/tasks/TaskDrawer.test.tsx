@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { createEvent, fireEvent, screen, waitFor } from '@testing-library/react';
 import type { Task } from '../../api/types';
 import { ApiError } from '../../api/client';
 import { TaskDrawer } from './TaskDrawer';
@@ -148,9 +148,30 @@ describe('TaskDrawer subtask drag handles', () => {
     const second = screen.getByTestId('subtask-li-s2');
     expect(first).toHaveAttribute('aria-roledescription', 'sortable');
     expect(second).toHaveAttribute('aria-roledescription', 'sortable');
+    // dnd-kit defaults a draggable to role="button"; on an <li> that destroys the list semantics
+    // and nests the checkbox/delete control inside a button role, so the row keeps role=listitem.
+    expect(first).toHaveAttribute('role', 'listitem');
     // Keyboard reordering comes free with the KeyboardSensor; the row must be focusable for it.
     expect(first).toHaveAttribute('tabindex', '0');
     expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('Space on a subtask control is not swallowed by the keyboard drag sensor', () => {
+    const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue([]) } as never);
+    renderWithProviders(<TaskDrawer task={task({ id: 't', subtasks }) as never} onSave={() => {}} onCancel={() => {}} />, { api });
+    // The row carries the KeyboardSensor's onKeyDown, so a Space keydown from the delete button
+    // bubbles into it. dnd-kit only ignores descendants when the row registered itself via
+    // setActivatorNodeRef; without that it preventDefaults the key and the button goes dead.
+    const del = screen.getByTestId('subtask-delete-s1');
+    const ev = createEvent.keyDown(del, { code: 'Space', key: ' ', bubbles: true, cancelable: true });
+    fireEvent(del, ev);
+    expect(ev.defaultPrevented).toBe(false);
+    // ...while the same key on the row itself is claimed by the sensor, i.e. the row is still the
+    // activator and keyboard reordering works.
+    const row = screen.getByTestId('subtask-li-s1');
+    const rowEv = createEvent.keyDown(row, { code: 'Space', key: ' ', bubbles: true, cancelable: true });
+    fireEvent(row, rowEv);
+    expect(rowEv.defaultPrevented).toBe(true);
   });
 
   it('no longer uses native HTML5 drag attributes or an insert line', () => {
