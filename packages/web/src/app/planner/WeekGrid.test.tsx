@@ -40,7 +40,7 @@ function renderGrid(props: Partial<WeekGridProps> = {}) {
   );
 }
 
-function renderGridWithProviders(props: Partial<WeekGridProps> = {}) {
+function renderGridWithProviders(props: Partial<WeekGridProps> = {}, api = fakeApiClient()) {
   return renderWithProviders(
     <WeekGrid
       days={days} nowMs={WED_NOON} weekLabel="Jan 5 – 11"
@@ -48,7 +48,7 @@ function renderGridWithProviders(props: Partial<WeekGridProps> = {}) {
       onPrev={vi.fn()} onToday={vi.fn()} onNext={vi.fn()} onReplan={vi.fn()} onCommit={vi.fn()}
       {...props}
     />,
-    { api: fakeApiClient() },
+    { api },
   );
 }
 
@@ -399,15 +399,42 @@ describe('WeekGrid compact (below md)', () => {
     expect(screen.queryByTestId('panel-sheet-toggle')).toBeNull();
   });
 
-  // Superseded by Task 8: below md the create form is a viewport-fixed bottom sheet, so the
-  // column-anchored align no longer applies (popoverAlign itself stays covered in weekModel.test).
-  it('opens the create form as a bottom sheet in a one-day window', () => {
+  // Below md the create form is a dismissible Sheet, so the column-anchored align no longer
+  // applies (popoverAlign itself stays covered in weekModel.test).
+  it('opens the create form inside a dismissible sheet, hoisted out of the day column', () => {
     renderGridWithProviders({ days: [days[0]!], compact: true });
     fireEvent.click(screen.getByTestId('day-col-0'), { clientY: 0 });
-    const popover = screen.getByTestId('create-popover');
-    expect(popover.className).toContain('fixed');
-    expect(popover.className).toContain('bottom-0');
-    expect(popover.className).not.toContain('left-1');
+    const dialog = screen.getByRole('dialog', { name: 'New entry' });
+    expect(within(dialog).getByTestId('create-popover')).toBeInTheDocument();
+    // Hoisted: a backdrop rendered inside the column would bubble its dismissing click straight
+    // back into the column's click-to-create handler.
+    expect(within(screen.getByTestId('day-col-0')).queryByTestId('create-popover')).toBeNull();
+  });
+
+  it('a backdrop tap dismisses the create sheet without re-opening it at another slot', () => {
+    // The user's report, end to end: the form opened at a slot and could not be closed, because
+    // its own outside-dismiss unmounted it before the tap's click, which then hit the column
+    // underneath and re-opened it at a different slot.
+    const createCalendarEvent = vi.fn(async () => ({ id: 'e-never' }));
+    renderGridWithProviders({ days: [days[0]!], compact: true }, fakeApiClient({ createCalendarEvent } as never));
+    fireEvent.click(screen.getByTestId('day-col-0'), { clientY: 0 });
+    expect(screen.getByTestId('create-popover')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('sheet-backdrop'));
+    expect(screen.queryByTestId('create-popover')).toBeNull();
+    expect(screen.queryByTestId('sheet-backdrop')).toBeNull();
+    expect(createCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it('the create sheet closes on its ✕ and on Escape', () => {
+    renderGridWithProviders({ days: [days[0]!], compact: true });
+    fireEvent.click(screen.getByTestId('day-col-0'), { clientY: 0 });
+    fireEvent.click(screen.getByTestId('sheet-close'));
+    expect(screen.queryByTestId('create-popover')).toBeNull();
+    fireEvent.click(screen.getByTestId('day-col-0'), { clientY: 0 });
+    // Escape is the DIALOG's own keystroke (it holds focus), never the document's — a document
+    // listener would dismiss a sheet sitting under a stacked modal.
+    fireEvent.keyDown(screen.getByTestId('sheet'), { key: 'Escape' });
+    expect(screen.queryByTestId('create-popover')).toBeNull();
   });
 
   it('swiping the day header left pages forward and right pages back', () => {

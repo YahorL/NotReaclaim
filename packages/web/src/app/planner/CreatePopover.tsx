@@ -15,7 +15,10 @@ export interface CreatePopoverProps {
   align?: 'left' | 'right';
   now?: () => number;
   zone?: string;
-  /** Below md: render as a viewport-fixed bottom sheet instead of a column-anchored popover. */
+  /**
+   * Below md: render as plain form content — the host `Sheet` owns the chrome, the backdrop,
+   * Escape and dismissal. Off, this is the column-anchored desktop popover.
+   */
   compact?: boolean;
 }
 
@@ -61,12 +64,17 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
   const apiError = [createTaskM.error, createEventM.error, createBlockM.error].find((e) => e instanceof ApiError) as ApiError | undefined;
 
   useEffect(() => {
+    // Inside the compact sheet the Sheet owns dismissal (backdrop tap, ✕, Escape). A second
+    // outside-dismiss here would fire on POINTERDOWN and unmount the form before the tap's
+    // click — which would then land on the day column underneath and re-open the form at
+    // another slot. That is exactly the "I can't close it" report this sheet fixes.
+    if (compact) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     const onDown = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
     document.addEventListener('keydown', onKey);
     document.addEventListener('mousedown', onDown);
     return () => { document.removeEventListener('keydown', onKey); document.removeEventListener('mousedown', onDown); };
-  }, [onClose]);
+  }, [onClose, compact]);
 
   const submit = () => {
     if (pending || (!titleOptional && !existingChosen && !title.trim()) || (showNewTaskFields && !dueLocal)) return;
@@ -98,15 +106,14 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
     `flex-1 rounded-[8px] px-2 py-1.5 text-[14px] font-bold ${active ? 'bg-indigo text-white' : 'text-inkSoft hover:bg-bg'}`;
 
   return (
-    // Compact: a viewport-fixed sheet, so it escapes the hours-scroll `overflow-y-auto` that
-    // clips a 340px popover inside a ~150px column. The grid tap still sets the snapped slot;
-    // the sheet just shows it. Desktop keeps the anchored popover byte-for-byte.
+    // Compact: plain content inside a `Sheet` — the sheet supplies the backdrop, the ✕, Escape,
+    // the z-50 tier and the scroll. Desktop keeps the column-anchored popover byte-for-byte.
     <div
       ref={ref}
       data-testid="create-popover"
       onClick={(e) => e.stopPropagation()}
       className={compact
-        ? 'fixed inset-x-0 bottom-0 z-50 max-h-[85dvh] w-full animate-pop overflow-y-auto rounded-t-[16px] border-t border-line bg-card p-4 pb-[calc(16px_+_env(safe-area-inset-bottom))] shadow-pop'
+        ? 'p-2'
         : `absolute z-40 w-[340px] animate-pop rounded-[14px] border border-line bg-card p-4 shadow-pop ${align === 'left' ? 'left-1' : 'right-1'}`}
       style={compact ? undefined : { top: `${Math.min(topPct, 78)}%` }}
     >

@@ -6,6 +6,7 @@ import { InteractiveBlock } from './InteractiveBlock';
 import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY, snapClickToSlot, WINDOW_START_MIN, WINDOW_END_MIN, GRID_COLUMN_PX, dayAnchor, formatHm, weekdayLabel, dayOfMonth, hourRowLabel, timeGutterPx, popoverAlign, swipeDecision } from './weekModel';
 import { CreatePopover } from './CreatePopover';
 import { layoutOverlaps } from './overlapLayout';
+import { Sheet } from '../components/Sheet';
 import { Icons } from '../shell/icons';
 
 /**
@@ -105,6 +106,9 @@ export function WeekGrid(props: WeekGridProps) {
   const gridCols = `${timeGutterPx(compact)}px repeat(${days.length}, minmax(0, 1fr))`;
   const items = toItems(blocks, events, zone);
   const [creating, setCreating] = useState<{ dayIndex: number; startMin: number } | null>(null);
+  // `topPct` is ignored on the compact path (the sheet is viewport-anchored); the day anchor is
+  // not — it is what the created entry's timestamps are built from.
+  const creatingDayMs = creating ? days[creating.dayIndex] : undefined;
 
   const scrollRef = useRef<HTMLDivElement>(null);
   // Where a day-header drag started. The header sits OUTSIDE hours-scroll, so a swipe here can
@@ -335,7 +339,7 @@ export function WeekGrid(props: WeekGridProps) {
                       style={{ top: `${((taskDrop.startMin - WINDOW_START_MIN) / (WINDOW_END_MIN - WINDOW_START_MIN)) * 100}%` }}
                     />
                   )}
-                  {creating?.dayIndex === i && (
+                  {creating?.dayIndex === i && !compact && (
                     <CreatePopover
                       dayStartMs={d}
                       startMin={creating.startMin}
@@ -343,7 +347,6 @@ export function WeekGrid(props: WeekGridProps) {
                       onClose={() => setCreating(null)}
                       align={popoverAlign(i, days.length)}
                       zone={zone}
-                      compact={compact}
                     />
                   )}
                 </div>
@@ -353,6 +356,24 @@ export function WeekGrid(props: WeekGridProps) {
           </div>
         </div>
       </div>
+
+      {/* Compact: the create form is a viewport sheet, hoisted OUT of the day column on purpose.
+          React events follow the DOM tree, so a backdrop rendered inside the column would bubble
+          its dismissing click into the column's click-to-create handler and re-open the form at
+          another slot — the "I can't close it" report. `days[dayIndex]` is re-read here because
+          a resize can shrink `days` while the form is open. */}
+      {compact && creating && creatingDayMs !== undefined && (
+        <Sheet label="New entry" onClose={() => setCreating(null)} scrollBody>
+          <CreatePopover
+            dayStartMs={creatingDayMs}
+            startMin={creating.startMin}
+            topPct={0}
+            onClose={() => setCreating(null)}
+            zone={zone}
+            compact
+          />
+        </Sheet>
+      )}
     </div>
   );
 }

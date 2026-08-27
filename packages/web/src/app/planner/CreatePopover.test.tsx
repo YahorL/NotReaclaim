@@ -328,17 +328,27 @@ describe('CreatePopover due-default: week-out rule', () => {
 });
 
 describe('CreatePopover as a bottom sheet', () => {
-  it('compact pins the form to the viewport bottom with no anchored geometry', () => {
+  it('compact renders plain content — the Sheet owns the chrome', () => {
     renderWithProviders(<CreatePopover {...baseProps} compact />, { api: fakeApiClient() });
     const popover = screen.getByTestId('create-popover');
-    expect(popover.className).toContain('fixed');
-    expect(popover.className).toContain('bottom-0');
-    expect(popover.className).toContain('inset-x-0');
-    expect(popover.className).toContain('max-h-[85dvh]');
-    expect(popover.className).toContain('overflow-y-auto');
+    // No self-positioning: a form that positions itself cannot be dismissed by a backdrop it
+    // does not have. The host Sheet supplies fixed/bottom-0/z-50/backdrop/✕/Escape.
+    expect(popover.className).not.toContain('fixed');
     expect(popover.className).not.toContain('absolute');
-    // No inline top: an anchored percentage would stretch the sheet up the viewport.
+    expect(popover.className).not.toContain('bottom-0');
+    expect(popover.className).not.toContain('w-[340px]');
     expect(popover.style.top).toBe('');
+  });
+
+  it('compact installs no outside-dismiss of its own', () => {
+    // The bug the user hit: a pointerdown-outside close unmounts the form BEFORE the tap's
+    // click, and that click then lands on the day column and re-opens the form at a new slot.
+    const onClose = vi.fn();
+    renderWithProviders(<CreatePopover {...baseProps} compact onClose={onClose} />, { api: fakeApiClient() });
+    fireEvent.mouseDown(document.body);
+    fireEvent.pointerDown(document.body);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it('compact ignores the anchored align rule', () => {
