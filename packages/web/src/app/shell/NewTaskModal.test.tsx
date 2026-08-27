@@ -116,4 +116,29 @@ describe('NewTaskModal', () => {
     // …and the overlay scrolls, so Create/Cancel stay reachable on short viewports.
     expect(wrapper.classList.contains('overflow-y-auto')).toBe(true);
   });
+
+  it('reserves the mobile bar height below md and the desktop bar at md+', () => {
+    renderWithProviders(<NewTaskModal now={() => NOW} onClose={vi.fn()} />, { api: fakeApiClient(api() as never) });
+    const wrapper = (screen.getByLabelText('Close').closest('div.animate-pop') as HTMLElement).parentElement!;
+    // MobileTopBar is h-14 (56px); pt-[70px] was a desktop-TopBar constant, ~14px too tall here.
+    expect(wrapper.classList.contains('pt-14')).toBe(true);
+    expect(wrapper.classList.contains('md:pt-[70px]')).toBe(true);
+    expect(wrapper.classList.contains('pt-[70px]')).toBe(false);
+  });
+
+  it('goes near-full-screen below md and keeps its natural height at md+', () => {
+    renderWithProviders(<NewTaskModal now={() => NOW} onClose={vi.fn()} />, { api: fakeApiClient(api() as never) });
+    const dialog = screen.getByLabelText('Close').closest('div.animate-pop') as HTMLElement;
+    expect(dialog.classList.contains('min-h-[calc(100dvh_-_88px)]')).toBe(true);
+    expect(dialog.classList.contains('md:min-h-0')).toBe(true);
+  });
+
+  it('wraps the duration/priority/split row below md', () => {
+    renderWithProviders(<NewTaskModal now={() => NOW} onClose={vi.fn()} />, { api: fakeApiClient(api() as never) });
+    // basis-[195px] + a shrink-0 2x2 picker + a shrink-0 Split toggle = ~429px of children in a
+    // 358px content box at 390: the row must be allowed to break instead of clipping.
+    const row = screen.getByRole('group', { name: 'Priority' }).closest('div.flex.flex-wrap') as HTMLElement;
+    expect(row).not.toBeNull();
+    expect(row.classList.contains('md:flex-nowrap')).toBe(true);
+  });
 });

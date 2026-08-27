@@ -42,8 +42,10 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex animate-fade items-start justify-center overflow-y-auto bg-[rgba(24,26,42,.35)] px-4 pt-[70px]" onClick={onClose}>
-      <div className="w-full max-w-[500px] animate-pop rounded-[18px] bg-card px-[22px] pb-[22px] pt-5 shadow-modal" onClick={(e) => e.stopPropagation()}>
+    /* pt: MobileTopBar is 56px (h-14), the desktop TopBar 70px. px-4 stays on both — 16px
+       gutters are what makes this "near-full-screen" rather than edge-to-edge. */
+    <div className="fixed inset-0 z-50 flex animate-fade items-start justify-center overflow-y-auto bg-[rgba(24,26,42,.35)] px-4 pt-14 md:pt-[70px]" onClick={onClose}>
+      <div className="w-full max-w-[500px] min-h-[calc(100dvh_-_88px)] animate-pop rounded-[18px] bg-card px-[22px] pb-[22px] pt-5 shadow-modal md:min-h-0" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-end">
           <button type="button" aria-label="Close" onClick={onClose} className="p-1 text-inkSoft"><Icons.close size={22} /></button>
         </div>
@@ -55,7 +57,7 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
           </div>
         </div>
 
-        <div className="mb-3.5 flex items-center gap-3">
+        <div className="mb-3.5 flex flex-wrap items-center gap-3 gap-y-3 md:flex-nowrap">
           <div className="basis-[195px]">
             <FieldBox label="Duration"><DurationStepper label="duration" valueMs={form.durationMs} onChange={(ms) => set('durationMs', ms)} /></FieldBox>
           </div>
