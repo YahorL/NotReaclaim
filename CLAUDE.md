@@ -63,6 +63,6 @@ Design specs for every feature/review round live in `docs/superpowers/specs/`; d
 - Backend packages use explicit `.js` extensions on relative imports (ESM). `packages/web` imports are extensionless and never `import React` (automatic JSX runtime; named hook imports are fine).
 - Tailwind v3: literal utility class strings only (JIT can't see computed names).
 - Repositories are factory functions over a shared `prisma` instance; server/core code depends on narrow repo interfaces (`Pick<...>`) for testability.
-- Frontend drag-and-drop uses native HTML5 DnD; `dragstart` must call `dataTransfer.setData` or Firefox won't drag.
+- Frontend drag-and-drop: **list / cross-container DnD uses dnd-kit** (`@dnd-kit/core` + `@dnd-kit/sortable`; shared sensors and collision strategy in `packages/web/src/app/dnd/sensors.ts` — `MouseSensor` 4px + `TouchSensor` 250ms/8px + `KeyboardSensor`). **Continuous geometric drag (planner blocks) uses raw pointer events** (`InteractiveBlock`). Drop decisions live in pure modules (`boardDnd.ts`, `subtaskDnd.ts`, `scheduleDrop.ts`) because jsdom cannot drive a real gesture — component tests assert wiring, gestures are verified live.
 - Do not commit local-only files: `seed-dev.mjs`, `.env.run`, `packages/db/.env*`, `design_handoff_notreclaim/`, `review/`.
 - This dev machine has no sudo: Node lives in `~/.local`, and Postgres is a userspace cluster.
