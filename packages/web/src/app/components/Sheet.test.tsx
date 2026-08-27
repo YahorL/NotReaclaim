@@ -44,6 +44,8 @@ describe('Sheet collapsed for a drag', () => {
     expect(sheet.className).toContain('translate-y-[calc(100%_-_56px)]');
     // Unmounting the children would drop the dragged card out of the DOM and abort the drag.
     expect(screen.getByText('body')).toBeInTheDocument();
+    // The grid underneath is the drag target and is NOT hidden from AT while the sheet is a strip.
+    expect(sheet).toHaveAttribute('aria-modal', 'false');
   });
 
   it('lets the grid underneath receive the drag and does not dismiss on a stray click', () => {
@@ -76,8 +78,27 @@ describe('Sheet a11y', () => {
   it('closes on Escape', () => {
     const onClose = vi.fn();
     render(<Sheet label="Tasks" onClose={onClose}><p>body</p></Sheet>);
-    fireEvent.keyDown(document, { key: 'Escape' });
+    // Fired on the sheet itself, which holds focus after mount -- Escape is the dialog's own
+    // keystroke, not the document's. See the stacking test below for why that matters.
+    fireEvent.keyDown(screen.getByTestId('sheet'), { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores Escape pressed in a modal stacked above it', () => {
+    // AppShell renders NewTaskModal as a SIBLING of the sheet, so on compact a modal can sit over
+    // an open Tasks sheet -- and a document-level listener would let Escape dismiss the invisible
+    // sheet behind it. The focus trap means the topmost surface owns the keystroke.
+    const onClose = vi.fn();
+    render(
+      <>
+        <Sheet label="Tasks" onClose={onClose}><p>body</p></Sheet>
+        <button data-testid="stacked-above">modal</button>
+      </>,
+    );
+    const above = screen.getByTestId('stacked-above');
+    above.focus();
+    fireEvent.keyDown(above, { key: 'Escape' });
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it('returns focus to whatever opened it when it unmounts', () => {

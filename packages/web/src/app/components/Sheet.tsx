@@ -36,8 +36,8 @@ export interface SheetProps {
 
 /**
  * The app's one modal shell for phones: full-width, anchored to the bottom edge, drag-handle
- * header with a ✕, backdrop tap dismisses, Escape dismisses, focus is taken on mount, trapped
- * while open and returned on unmount.
+ * header with a ✕, backdrop tap dismisses, Escape dismisses it while it holds focus, focus is
+ * taken on mount, trapped while open and returned on unmount.
  *
  * Sits on the modal tier (`z-50`, same as NewTaskModal) — MobileTabBar is a z-40 bar pinned to the
  * same bottom edge and rendered later in AppShell, so anything below z-50 would let taps in the
@@ -56,12 +56,6 @@ export function Sheet({ label, onClose, children, fullScreen = false, scrollBody
   // the cleanup runs, dropping focus to <body>. This lazy initializer runs before either.
   const [previousFocus] = useState<Element | null>(() => document.activeElement);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
   // Initial focus + focus return, once per mount. The containment check keeps an `autoFocus`ed
   // field inside the sheet: React applies autoFocus in the commit phase, before this passive
   // effect runs, so stealing it back would fight the create form for the caret.
@@ -75,12 +69,19 @@ export function Sheet({ label, onClose, children, fullScreen = false, scrollBody
     };
   }, [previousFocus]);
 
+  // Escape and Tab are the dialog's OWN keystrokes, deliberately not the document's. A document
+  // listener fires on every mounted sheet at once: AppShell renders NewTaskModal as a sibling, so
+  // on compact a modal can sit over an open sheet and Escape would dismiss the sheet behind it --
+  // and Task 3 stacks a drawer in a sheet. The focus trap makes the topmost surface the one that
+  // receives the key. A collapsed sheet has focus out on the grid mid-drag, so Escape reaches
+  // dnd-kit and cancels the drag instead of closing the sheet: also intended.
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape') { onClose(); return; }
     if (e.key !== 'Tab') return;
     const el = dialogRef.current;
     if (!el) return;
+    // Never empty: the close button below is unconditional, always enabled, and matches FOCUSABLE.
     const items = Array.from(el.querySelectorAll<HTMLElement>(FOCUSABLE));
-    if (items.length === 0) { e.preventDefault(); return; }
     const first = items[0]!;
     const last = items[items.length - 1]!;
     const active = document.activeElement;
@@ -103,7 +104,9 @@ export function Sheet({ label, onClose, children, fullScreen = false, scrollBody
         ref={dialogRef}
         data-testid="sheet"
         role="dialog"
-        aria-modal="true"
+        // Collapsed, the sheet is a strip over a live grid the user is dragging on -- claiming the
+        // rest of the page is inert would be a lie to assistive tech.
+        aria-modal={!collapsed}
         aria-label={label}
         tabIndex={-1}
         onKeyDown={onKeyDown}
