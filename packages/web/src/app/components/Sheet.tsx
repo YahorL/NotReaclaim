@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactElement, type ReactNode } from 'react';
 
 /**
  * Everything a browser will Tab to inside the sheet. `[tabindex="-1"]` is excluded on purpose:
@@ -50,6 +50,11 @@ export interface SheetProps {
  */
 export function Sheet({ label, onClose, children, fullScreen = false, scrollBody = false, collapsed = false }: SheetProps): ReactElement {
   const dialogRef = useRef<HTMLDivElement>(null);
+  // Captured during the RENDER phase, on purpose. React applies a child's `autoFocus` in the
+  // commit phase, so reading `document.activeElement` from the mount effect below would record
+  // that child instead of the element that opened the sheet -- and a child is detached by the time
+  // the cleanup runs, dropping focus to <body>. This lazy initializer runs before either.
+  const [previousFocus] = useState<Element | null>(() => document.activeElement);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -62,10 +67,13 @@ export function Sheet({ label, onClose, children, fullScreen = false, scrollBody
   // effect runs, so stealing it back would fight the create form for the caret.
   useEffect(() => {
     const el = dialogRef.current;
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     if (el && !el.contains(document.activeElement)) el.focus();
-    return () => { previous?.focus(); };
-  }, []);
+    return () => {
+      // Skip a node that has since left the document -- refocusing it would be a silent no-op that
+      // strands focus on <body>, and there is nothing better to aim at.
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
+    };
+  }, [previousFocus]);
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (e.key !== 'Tab') return;

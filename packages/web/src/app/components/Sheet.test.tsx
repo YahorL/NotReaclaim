@@ -91,6 +91,22 @@ describe('Sheet a11y', () => {
     opener.remove();
   });
 
+  it('returns focus to the opener even when a field inside autoFocused', () => {
+    // The opener must be captured during render, before React's commit phase moves focus to the
+    // autoFocused input -- capturing at effect time would record the input, which is detached by
+    // the time the cleanup runs, dropping focus to <body> instead of back to the opener.
+    const opener = document.createElement('button');
+    document.body.appendChild(opener);
+    opener.focus();
+    const { unmount } = render(
+      <Sheet label="New entry" onClose={vi.fn()} scrollBody><input autoFocus data-testid="inner-field" /></Sheet>,
+    );
+    expect(document.activeElement).toBe(screen.getByTestId('inner-field'));
+    unmount();
+    expect(document.activeElement).toBe(opener);
+    opener.remove();
+  });
+
   it('keeps Tab inside the sheet in both directions', () => {
     render(
       <Sheet label="Tasks" onClose={vi.fn()}>

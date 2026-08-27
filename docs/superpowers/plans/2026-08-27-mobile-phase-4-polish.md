@@ -32,7 +32,7 @@
 
 ## Global Constraints
 
-- Web suite **baseline: 653 tests / 72 files green** (`npm test -w @notreclaim/web`, verified 2026-08-27 on `main` at `92e0c8a`). It must be green after **every** task; the expected count is stated per task. Final expected: **706 tests / 75 files**. Per-task arithmetic: 653 → **662** (T1, +9) → **665** (T2, +3) → **677** (T3, +12) → **680** (T4, +3) → **684** (T5, +4) → **697** (T6, +13) → **706** (T7, +9) → 706 (T8, no test changes). New test files: `components/useClickOutside.test.tsx` (T3), `components/DurationStepper.test.tsx` (T6), `dnd/announcements.test.ts` (T7). If a step legitimately needs one more or one fewer test than budgeted, **edit this ledger line in the same commit** rather than letting the arithmetic drift.
+- Web suite **baseline: 653 tests / 72 files green** (`npm test -w @notreclaim/web`, verified 2026-08-27 on `main` at `92e0c8a`). It must be green after **every** task; the expected count is stated per task. Final expected: **707 tests / 75 files**. Per-task arithmetic: 653 → **663** (T1, +10) → **666** (T2, +3) → **678** (T3, +12) → **681** (T4, +3) → **685** (T5, +4) → **698** (T6, +13) → **707** (T7, +9) → 707 (T8, no test changes). *(T1 budgeted +9, landed +10: a controller-ruled fix during T1 added a tenth test — focus return to the opener when a field inside the sheet autoFocuses. Every downstream figure is the original +1.)* New test files: `components/useClickOutside.test.tsx` (T3), `components/DurationStepper.test.tsx` (T6), `dnd/announcements.test.ts` (T7). If a step legitimately needs one more or one fewer test than budgeted, **edit this ledger line in the same commit** rather than letting the arithmetic drift.
 - Tests run under `TZ=UTC` via the package `test` script — never bypass it.
 - **Desktop at `md+` with a fine pointer is behaviour- and pixel-identical.** Every compact behaviour is behind `useCompactWidth()` (false in jsdom, false at ≥768px) or a `md:` utility that restores today's value; every touch affordance is behind the `coarse:` variant, which a mouse never matches. A touch laptop at `md+` *does* get bigger tap targets — that is spec §1's deliberate input/width split, not a desktop regression.
 - **This phase edits pre-existing tests.** Every such edit is listed explicitly, by file and by test name, in the step that makes it; no task may rewrite a test that is not named in its own step list. **Nothing is deleted.** The complete ledger:
@@ -306,7 +306,7 @@ npm test -w @notreclaim/web -- src/app/components/Sheet.test.tsx
 npm test -w @notreclaim/web
 ```
 
-  Expected: `Sheet.test.tsx` 15 tests pass; suite **662 tests / 72 files**.
+  Expected: `Sheet.test.tsx` 16 tests pass; suite **663 tests / 72 files**. (15/662 as first written; the controller-ruled render-phase focus-capture fix added the sixteenth.)
 
 - [ ] Type-check (the `heightClass` removal must not orphan a call site):
 
