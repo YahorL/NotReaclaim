@@ -1,5 +1,8 @@
 import { useRef, useState } from 'react';
-import type { Task, UpdateTaskInput } from '../../api/types';
+import { DndContext, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import type { Task, Subtask, UpdateTaskInput } from '../../api/types';
 import type { ApiError } from '../../api/client';
 import { FieldBox } from '../components/FieldBox';
 import { DurationStepper } from '../components/DurationStepper';
@@ -7,7 +10,32 @@ import { formatDurationShort } from '../lib/duration';
 import { useClickOutside } from '../components/useClickOutside';
 import { type TaskFormState, toFormState, validateTaskForm, toUpdateInput } from './taskForm';
 import { useCategoriesQuery, useCreateSubtaskMutation, useUpdateSubtaskMutation, useDeleteSubtaskMutation } from '../../api/queries';
-import { insertionSortOrder } from '../priorities/priorityBucket';
+import { useAppSensors, pointerFirstCollision } from '../dnd/sensors';
+import { subtaskDropSortOrder } from './subtaskDnd';
+
+function SortableSubtask({ subtask, onToggle, onDelete }: {
+  subtask: Subtask;
+  onToggle: () => void;
+  onDelete: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: subtask.id });
+  return (
+    <li
+      ref={setNodeRef}
+      data-testid={`subtask-li-${subtask.id}`}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      {...attributes}
+      {...listeners}
+      className={`flex flex-col ${isDragging ? 'opacity-40' : ''}`}
+    >
+      <div className="flex items-center gap-2 text-[14px]">
+        <input type="checkbox" data-testid={`subtask-toggle-${subtask.id}`} checked={subtask.done} onChange={onToggle} className="h-4 w-4 accent-indigo" />
+        <span className={`flex-1 ${subtask.done ? 'text-inkSoft line-through' : 'text-ink'}`}>{subtask.title}</span>
+        <button type="button" data-testid={`subtask-delete-${subtask.id}`} aria-label="delete subtask" onClick={onDelete} className="text-[13px] font-bold text-crit">×</button>
+      </div>
+    </li>
+  );
+}
 
 export interface TaskDrawerProps {
   task: Task;
@@ -28,9 +56,13 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
   const [newSubtask, setNewSubtask] = useState('');
   const rootRef = useRef<HTMLElement>(null);
   useClickOutside(rootRef, onCancel);
-  const [dragId, setDragId] = useState<string | null>(null);
-  const [overIndex, setOverIndex] = useState<number | null>(null);
+  const sensors = useAppSensors();
   const subtasks = task.subtasks ?? [];
+  const onSubtaskDragEnd = (e: DragEndEvent) => {
+    if (!e.over) return;
+    const sortOrder = subtaskDropSortOrder(subtasks, String(e.active.id), String(e.over.id));
+    if (sortOrder !== null) updateSubtaskM.mutate({ id: String(e.active.id), patch: { sortOrder } });
+  };
   const set = <K extends keyof TaskFormState>(k: K, v: TaskFormState[K]) => setForm((f) => ({ ...f, [k]: v }));
   const ctl = 'w-full bg-transparent text-[16px] font-bold text-ink outline-none';
   const errCls = 'mt-0.5 text-[11px] text-crit';
@@ -113,50 +145,20 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
 
       <div>
         <span className="mb-1 block text-[13px] font-semibold text-inkSoft">Subtasks</span>
-        <ul className="mb-1.5 space-y-1.5">
-          {subtasks.map((s, i) => (
-            <li
-              key={s.id}
-              data-testid={`subtask-li-${s.id}`}
-              draggable
-              onDragStart={(e) => { if (e.dataTransfer) e.dataTransfer.setData('text/plain', s.id); setDragId(s.id); }}
-              onDragEnd={() => { setDragId(null); setOverIndex(null); }}
-              onDragOver={(e) => {
-                if (dragId === null) return;
-                e.preventDefault();
-                e.stopPropagation();
-                const r = e.currentTarget.getBoundingClientRect();
-                const idx = r.height > 0 && e.clientY >= r.top + r.height / 2 ? i + 1 : i;
-                setOverIndex(idx);
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                if (dragId === null || overIndex === null) return;
-                const srcIndex = subtasks.findIndex((x) => x.id === dragId);
-                let insertIdx = overIndex;
-                if (srcIndex !== -1 && srcIndex < insertIdx) insertIdx -= 1;
-                const others = subtasks.filter((x) => x.id !== dragId);
-                const sortOrder = insertionSortOrder(others, insertIdx);
-                updateSubtaskM.mutate({ id: dragId, patch: { sortOrder } });
-                setDragId(null);
-                setOverIndex(null);
-              }}
-              className="flex flex-col"
-            >
-              {overIndex === i && dragId !== null && dragId !== s.id && (
-                <div data-testid="subtask-insert-line" className="h-0.5 bg-indigo mb-1" />
-              )}
-              <div className="flex items-center gap-2 text-[14px]">
-                <input type="checkbox" data-testid={`subtask-toggle-${s.id}`} checked={s.done} onChange={() => updateSubtaskM.mutate({ id: s.id, patch: { done: !s.done } })} className="h-4 w-4 accent-indigo" />
-                <span className={`flex-1 ${s.done ? 'text-inkSoft line-through' : 'text-ink'}`}>{s.title}</span>
-                <button type="button" data-testid={`subtask-delete-${s.id}`} aria-label="delete subtask" onClick={() => deleteSubtaskM.mutate(s.id)} className="text-[13px] font-bold text-crit">×</button>
-              </div>
-            </li>
-          ))}
-          {overIndex === subtasks.length && dragId !== null && (
-            <li><div data-testid="subtask-insert-line" className="h-0.5 bg-indigo" /></li>
-          )}
-        </ul>
+        <DndContext sensors={sensors} collisionDetection={pointerFirstCollision} onDragEnd={onSubtaskDragEnd}>
+          <SortableContext items={subtasks.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+            <ul className="mb-1.5 space-y-1.5">
+              {subtasks.map((s) => (
+                <SortableSubtask
+                  key={s.id}
+                  subtask={s}
+                  onToggle={() => updateSubtaskM.mutate({ id: s.id, patch: { done: !s.done } })}
+                  onDelete={() => deleteSubtaskM.mutate(s.id)}
+                />
+              ))}
+            </ul>
+          </SortableContext>
+        </DndContext>
         <div className="flex gap-1.5">
           <input data-testid="subtask-input" value={newSubtask} onChange={(e) => setNewSubtask(e.target.value)} placeholder="Add subtask…" className="min-w-0 flex-1 rounded-[9px] border-[1.5px] border-line px-2.5 py-1.5 text-[14px] outline-none focus:border-indigo" />
           <button type="button" data-testid="subtask-add" disabled={!newSubtask.trim() || createSubtaskM.isPending}
