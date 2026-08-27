@@ -46,14 +46,19 @@ export function useDragToScheduleSensors(): SensorDescriptor<SensorOptions>[] {
 }
 
 /**
- * Pointer-first collision detection with a centre-distance fallback.
+ * Pointer drags resolve strictly by `pointerWithin`; only keyboard drags fall back to
+ * `closestCenter`.
  *
  * `pointerWithin` is what nested targets want: hovering a card inside a column returns both, sorted
  * by distance from the pointer to the rect corners, so the small card wins and the tall column only
- * wins in its own empty area — exactly the old dragover/`stopPropagation` layering. But it returns
- * nothing without pointer coordinates, which is every keyboard drag, so fall back to `closestCenter`.
+ * wins in its own empty area — exactly the old dragover/`stopPropagation` layering.
+ *
+ * The fallback is gated on `pointerCoordinates == null` (a keyboard drag, where `pointerWithin` can
+ * only ever return `[]`) rather than on an empty result, because `closestCenter` always names *some*
+ * enabled droppable. Running it for a pointer drag turned "released over nothing" into a silent move
+ * to whichever column happened to be nearest — off the board entirely, or over the Completed column,
+ * whose droppable is disabled on purpose. Returning `pointerWithin`'s empty array instead leaves
+ * `over` null, which every drop handler already treats as a no-op, restoring the HTML5 behaviour.
  */
-export const pointerFirstCollision: CollisionDetection = (args) => {
-  const withinPointer = pointerWithin(args);
-  return withinPointer.length > 0 ? withinPointer : closestCenter(args);
-};
+export const pointerFirstCollision: CollisionDetection = (args) =>
+  (args.pointerCoordinates == null ? closestCenter(args) : pointerWithin(args));

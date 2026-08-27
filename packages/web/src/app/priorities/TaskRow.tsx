@@ -67,6 +67,11 @@ export function TaskRow({ task, columnKey, nextMs, now, draggable = true, muted 
   } = useSortable({
     id: task.id,
     disabled: !draggable,
+    // role=group: dnd-kit would otherwise default the card to role="button", which nests the ✓
+    // button, the kebab menu and the subtask checkboxes inside a button. The card is a plain div
+    // in a TasksCard, not a `ul > li`, so listitem is wrong too; group is the honest role for a
+    // container of controls, and dnd-kit keeps aria-roledescription and tabindex either way.
+    attributes: { role: 'group' },
     // dnd-kit owns the in-drag reflow; `useFlip` (in Column) owns post-PATCH re-sorts. Leaving
     // both on would double-animate the same movement.
     animateLayoutChanges: () => false,

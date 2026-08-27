@@ -123,6 +123,9 @@ describe('TaskRow sortable wiring', () => {
   it('carries the sortable attributes when draggable and none when not', () => {
     const { unmount } = renderRow(base as Task);
     expect(screen.getByTestId('task-row')).toHaveAttribute('aria-roledescription', 'sortable');
+    // dnd-kit defaults a draggable to role="button"; on the card that nests the ✓ button, the
+    // kebab menu and the subtask checkboxes inside a button role, so the card keeps role=group.
+    expect(screen.getByTestId('task-row')).toHaveAttribute('role', 'group');
     unmount();
     renderRow(base as Task, { draggable: false });
     expect(screen.getByTestId('task-row')).not.toHaveAttribute('aria-roledescription');

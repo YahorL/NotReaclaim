@@ -80,4 +80,11 @@ describe('pointerFirstCollision', () => {
     const hits = pointerFirstCollision(collisionArgs(null));
     expect(hits.length).toBe(2); // pointerWithin would have returned []
   });
+
+  it('returns nothing when the pointer is inside no droppable at all', () => {
+    // An off-target pointer drop must produce no `over`, so the drop handler no-ops exactly as the
+    // old HTML5 path did. The centre-distance fallback would instead have named the nearest
+    // enabled droppable and silently moved the card there.
+    expect(pointerFirstCollision(collisionArgs({ x: 5000, y: 5000 }))).toEqual([]);
+  });
 });
