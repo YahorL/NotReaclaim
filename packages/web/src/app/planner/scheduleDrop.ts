@@ -1,4 +1,3 @@
-import { getEventCoordinates } from '@dnd-kit/utilities';
 import { clampToWindow, snapClickToSlot, WINDOW_END_MIN, WINDOW_START_MIN } from './weekModel';
 
 /** Marks a drag that started on a task card in the planner side panel / Tasks sheet. */
@@ -29,37 +28,21 @@ export function draggedTaskId(data: unknown): string | null {
 }
 
 /**
- * Approximate viewport Y of the pointer in the DRAG-START frame of reference: dnd-kit reports the
- * original activator event plus a running translate rather than live coordinates, so the pointer is
- * the sum of the two.
- *
- * It is an approximation, not the truth: `delta` folds in a scroll adjustment whose tracked
- * scrollable ancestors switch from the active node's to the over node's when a droppable is
- * entered, without the offset baseline resetting — so the sum can jump by a container's scrollTop
- * mid-drag. Callers should prefer a live `pointermove` reading (`useLivePointerY`) and fall back to
- * this only for the first frame, before any move has been observed.
- */
-export function pointerClientY(activatorEvent: Event | null, delta: { y: number }): number | null {
-  if (!activatorEvent) return null;
-  const coords = getEventCoordinates(activatorEvent);
-  return coords ? coords.y + delta.y : null;
-}
-
-/**
  * Which day column and which 15-minute slot a drag is currently over. Uses the same
  * fraction → `snapClickToSlot` maths the grid's click-to-create has always used, so a dropped card
  * and a tapped slot land on identical times.
  *
- * BOTH INPUTS MUST BE LIVE, in the same (viewport) frame of reference: a live `pointerY` from a
- * `pointermove` listener paired with an `overRect` re-measured while dragging. The planner's
- * DndContext therefore REQUIRES `measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}`
- * — pairing a live pointer with a drag-start rect (dnd-kit's default WhileDragging strategy) is
- * off by whatever the hours-scroll container has scrolled since the drag began.
+ * `pointerY` MUST be a live viewport reading from a `pointermove`/`touchmove` listener
+ * (`useLivePointerY`), never dnd-kit's `activatorEvent + delta`: that pair is in the drag-START
+ * frame of reference and jumps by a container's scrollTop the moment a droppable is entered (see
+ * `useLivePointerY` for the mechanism).
  *
- * The tempting mirror-image — a drag-start-frame pointer with a drag-start rect, letting the two
- * stale offsets cancel — does NOT hold: dnd-kit's `delta` swaps the scrollable ancestors it adjusts
- * for (active node's → over node's) the moment a column is entered while its offset baseline stays
- * put, so the "cancellation" breaks exactly when the drag reaches the grid.
+ * Pairing it with dnd-kit's `over.rect` is exact even though the rect was measured when the drag
+ * began, and needs no `MeasuringStrategy.Always`: droppable rects are instances of dnd-kit's `Rect`
+ * class, whose `top`/`bottom` are getters that re-read the scrollable ancestors' current scroll
+ * offsets and subtract the drift since measurement. Reading `overRect.top` therefore yields today's
+ * viewport coordinate, in the same frame as the live pointer. (`MeasuringStrategy` only feeds
+ * dnd-kit's `isDisabled()`, which gates re-measurement OUTSIDE a drag — during one it is inert.)
  */
 export function dayDropFromOver({ overData, overRect, pointerY }: {
   overData: unknown;

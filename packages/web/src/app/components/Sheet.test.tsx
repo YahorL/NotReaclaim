@@ -36,3 +36,23 @@ describe('Sheet', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('Sheet collapsed for a drag', () => {
+  it('slides down to a strip while keeping its children mounted', () => {
+    render(<Sheet label="Tasks" onClose={vi.fn()} collapsed><p>body</p></Sheet>);
+    const sheet = screen.getByTestId('sheet');
+    expect(sheet.className).toContain('translate-y-[calc(100%_-_56px)]');
+    // Unmounting the children would drop the dragged card out of the DOM and abort the drag.
+    expect(screen.getByText('body')).toBeInTheDocument();
+  });
+
+  it('lets the grid underneath receive the drag and does not dismiss on a stray click', () => {
+    const onClose = vi.fn();
+    render(<Sheet label="Tasks" onClose={onClose} collapsed><p>body</p></Sheet>);
+    const backdrop = screen.getByTestId('sheet-backdrop');
+    expect(backdrop.className).toContain('pointer-events-none');
+    expect(backdrop.className).not.toContain('bg-black/30');
+    fireEvent.click(backdrop);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+});

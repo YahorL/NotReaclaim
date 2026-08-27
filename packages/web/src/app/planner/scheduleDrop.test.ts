@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dayDropFromOver, draggedTaskId, pinnedBlockTimes, pointerClientY, PANEL_TASK_DRAG_TYPE } from './scheduleDrop';
+import { dayDropFromOver, draggedTaskId, pinnedBlockTimes, PANEL_TASK_DRAG_TYPE } from './scheduleDrop';
 
 const DAY = Date.parse('2026-01-07T00:00:00.000Z');
 const dayCol = { type: 'day-col', dayIndex: 2, dayStartMs: DAY };
@@ -13,17 +13,6 @@ describe('draggedTaskId', () => {
     expect(draggedTaskId({ type: 'sortable' })).toBeNull();
     expect(draggedTaskId(undefined)).toBeNull();
     expect(draggedTaskId(null)).toBeNull();
-  });
-});
-
-describe('pointerClientY', () => {
-  it('adds the drag delta to the activator event coordinates', () => {
-    const ev = new MouseEvent('mousedown', { clientX: 10, clientY: 200 });
-    expect(pointerClientY(ev, { y: 45 })).toBe(245);
-  });
-
-  it('is null without an activator event', () => {
-    expect(pointerClientY(null, { y: 45 })).toBeNull();
   });
 });
 

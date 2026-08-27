@@ -7,6 +7,11 @@ function pointerMove(clientY: number) {
   window.dispatchEvent(new MouseEvent('pointermove', { clientY, bubbles: true }));
 }
 
+/** jsdom has no TouchEvent/Touch constructors either; the handler only reads `touches[0].clientY`. */
+function touchMove(clientY: number) {
+  window.dispatchEvent(Object.assign(new Event('touchmove', { bubbles: true }), { touches: [{ clientY }] }));
+}
+
 describe('useLivePointerY', () => {
   it('is null until the pointer moves', () => {
     const { result } = renderHook(() => useLivePointerY(true));
@@ -19,6 +24,14 @@ describe('useLivePointerY', () => {
     expect(result.current.current).toBe(240);
     pointerMove(915);
     expect(result.current.current).toBe(915);
+  });
+
+  it('tracks touchmove too, in case pointermove delivery is cut short', () => {
+    // A pointercancel (browser scroll/gesture takeover) stops pointermove while dnd-kit's own
+    // touchmove-driven drag keeps going — without this the drop slot freezes at the last pointer.
+    const { result } = renderHook(() => useLivePointerY(true));
+    touchMove(430);
+    expect(result.current.current).toBe(430);
   });
 
   it('ignores the pointer while disarmed', () => {

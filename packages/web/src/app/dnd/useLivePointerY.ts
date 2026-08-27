@@ -12,8 +12,11 @@ import { useEffect, useRef, type MutableRefObject } from 'react';
  * when the task list itself was scrolled). A window listener has no such frame of reference
  * problem: it is simply where the pointer is.
  *
- * `pointermove` alone covers mouse, pen and touch on every browser this app targets, so no
- * separate `touchmove` listener is armed.
+ * `pointermove` covers mouse, pen and touch, but `touchmove` is armed alongside it: on the touch
+ * path a `pointercancel` (the browser claiming the gesture for a scroll) stops pointer-event
+ * delivery while dnd-kit's TouchSensor keeps the drag alive off `touchmove`, which would otherwise
+ * freeze the drop slot at wherever the pointer was cancelled. Both write the same ref, so whichever
+ * stream is still flowing wins.
  */
 export function useLivePointerY(active: boolean): MutableRefObject<number | null> {
   const ref = useRef<number | null>(null);
@@ -22,10 +25,16 @@ export function useLivePointerY(active: boolean): MutableRefObject<number | null
       ref.current = null;
       return;
     }
-    const onMove = (e: Event) => { ref.current = (e as MouseEvent).clientY; };
+    const onMove = (e: Event) => {
+      // A touchend/touchcancel-shaped event carries no touches — leave the last good reading alone.
+      const y = 'touches' in e ? (e as TouchEvent).touches[0]?.clientY : (e as MouseEvent).clientY;
+      if (typeof y === 'number') ref.current = y;
+    };
     window.addEventListener('pointermove', onMove, { passive: true });
+    window.addEventListener('touchmove', onMove, { passive: true });
     return () => {
       window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('touchmove', onMove);
       // Never let one drag's last position seed the next drag's first frame.
       ref.current = null;
     };

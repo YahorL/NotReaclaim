@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
-import { DndContext, DragOverlay, MeasuringStrategy, type DragEndEvent, type DragMoveEvent, type DragStartEvent } from '@dnd-kit/core';
+import { DndContext, DragOverlay, type DragEndEvent, type DragMoveEvent, type DragStartEvent } from '@dnd-kit/core';
 import type { CalendarEvent, Task } from '../../api/types';
 import { ApiError } from '../../api/client';
 import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useHabitsQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation, useSettingsQuery } from '../../api/queries';
@@ -8,7 +8,8 @@ import { useElementWidth } from '../planner/useElementWidth';
 import { useCompactWidth, usePointerCoarse } from '../lib/useMediaQuery';
 import { useDragToScheduleSensors, pointerFirstCollision } from '../dnd/sensors';
 import { useLivePointerY } from '../dnd/useLivePointerY';
-import { dayDropFromOver, draggedTaskId, pinnedBlockTimes, pointerClientY, type DayDropTarget } from '../planner/scheduleDrop';
+import { dayDropFromOver, draggedTaskId, pinnedBlockTimes, type DayDropTarget } from '../planner/scheduleDrop';
+import { shouldCollapseSheet } from '../planner/dragSheet';
 import { Sheet } from '../components/Sheet';
 import { WeekGrid } from '../planner/WeekGrid';
 import { PlannerTaskPanel } from '../planner/PlannerTaskPanel';
@@ -17,14 +18,6 @@ import { summarizeUnscheduled } from '../planner/unscheduledSummary';
 import { TaskDrawer } from '../tasks/TaskDrawer';
 import { EventDrawer } from '../planner/EventDrawer';
 import { labelBlocksWithSubtasks } from '../planner/blockLabels';
-
-/**
- * Drag-start-frame fallback: activator event + running translate. Only used for the first frame of
- * a drag, before the live pointer listener has seen a move — see useLivePointerY.
- */
-function pointerClientYOf(e: { activatorEvent: Event; delta: { y: number } }): number | null {
-  return pointerClientY(e.activatorEvent, e.delta);
-}
 
 export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const nowMs = now();
@@ -63,6 +56,9 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   // On the compact layout the panel is a bottom sheet instead of an inline column; its
   // open/closed state is per-visit, not persisted (the desktop hide toggle stays persisted).
   const [taskSheetOpen, setTaskSheetOpen] = useState(false);
+  // Dropped to a strip while a card is dragged out of the sheet, so the grid below is visible and
+  // droppable. Cleared on drag end and on cancel; never persisted.
+  const [sheetCollapsed, setSheetCollapsed] = useState(false);
 
   const schedule = useScheduleQuery(fromIso, toIso);
   const calendar = useCalendarEventsQuery(fromIso, toIso);
@@ -108,14 +104,19 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const targetFrom = (e: DragMoveEvent | DragEndEvent): DayDropTarget | null => dayDropFromOver({
     overData: e.over?.data.current ?? null,
     overRect: e.over?.rect ?? null,
-    // Live pointer paired with a live rect (MeasuringStrategy.Always below). The drag-start-frame
-    // reconstruction is only the seed for the very first frame, before any pointermove has landed.
-    pointerY: livePointerY.current ?? pointerClientYOf(e),
+    // Live pointer only. There is no drag-start-frame fallback: reconstructing the pointer from
+    // activatorEvent + delta is exactly the poisoned value the live listener exists to replace, so
+    // "no move seen yet" must mean "no target yet" rather than a wrong one. See useLivePointerY.
+    pointerY: livePointerY.current,
   });
 
-  const onDragStart = (e: DragStartEvent) => setDraggingTaskId(draggedTaskId(e.active.data.current));
+  const onDragStart = (e: DragStartEvent) => {
+    const taskId = draggedTaskId(e.active.data.current);
+    setDraggingTaskId(taskId);
+    if (shouldCollapseSheet({ compact, sheetOpen: taskSheetOpen, isTaskDrag: taskId !== null })) setSheetCollapsed(true);
+  };
   const onDragMove = (e: DragMoveEvent) => setTaskDrop(draggedTaskId(e.active.data.current) ? targetFrom(e) : null);
-  const endDrag = () => { setTaskDrop(null); setDraggingTaskId(null); };
+  const endDrag = () => { setTaskDrop(null); setDraggingTaskId(null); setSheetCollapsed(false); };
   const onDragEnd = (e: DragEndEvent) => {
     const taskId = draggedTaskId(e.active.data.current);
     const target = taskId ? targetFrom(e) : null;
@@ -184,9 +185,6 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
     <DndContext
       sensors={dragSensors}
       collisionDetection={pointerFirstCollision}
-      // The drop slot is computed from (live pointer − live column rect), so the rect must be
-      // re-measured while dragging: the hours-scroll container moves under the pointer.
-      measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
       onDragStart={onDragStart}
       onDragMove={onDragMove}
       onDragEnd={onDragEnd}
@@ -228,7 +226,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
       {/* Below md the panel never renders inline — it becomes the bottom sheet below. */}
       {!compact && !panelHidden && <PlannerTaskPanel {...panelProps} />}
       {compact && taskSheetOpen && (
-        <Sheet label="Tasks" onClose={() => setTaskSheetOpen(false)}>
+        <Sheet label="Tasks" onClose={() => setTaskSheetOpen(false)} collapsed={sheetCollapsed}>
           <PlannerTaskPanel {...panelProps} compact />
         </Sheet>
       )}

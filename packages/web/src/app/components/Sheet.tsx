@@ -7,6 +7,12 @@ export interface SheetProps {
   children: ReactNode;
   /** Literal Tailwind height class for the sheet body (JIT-visible at every call site). */
   heightClass?: string;
+  /**
+   * Slide the sheet down to a strip and make the backdrop inert, for the duration of a drag that
+   * started inside it. The children stay mounted on purpose: unmounting the dragged card would
+   * remove dnd-kit's active draggable node and abort the gesture.
+   */
+  collapsed?: boolean;
 }
 
 /**
@@ -17,15 +23,19 @@ export interface SheetProps {
  * Only rendered on the compact layout — desktop surfaces keep their inline panels.
  * Drawers (Task/Event/Habit) are NOT sheets yet; that is Phase 4.
  */
-export function Sheet({ label, onClose, children, heightClass = 'h-[70dvh]' }: SheetProps): ReactElement {
+export function Sheet({ label, onClose, children, heightClass = 'h-[70dvh]', collapsed = false }: SheetProps): ReactElement {
   return (
-    <div data-testid="sheet-backdrop" onClick={onClose} className="fixed inset-0 z-50 bg-black/30">
+    <div
+      data-testid="sheet-backdrop"
+      onClick={collapsed ? undefined : onClose}
+      className={collapsed ? 'pointer-events-none fixed inset-0 z-50' : 'fixed inset-0 z-50 bg-black/30'}
+    >
       <div
         data-testid="sheet"
         role="dialog"
         aria-label={label}
         onClick={(e) => e.stopPropagation()}
-        className={`absolute inset-x-0 bottom-0 flex ${heightClass} flex-col rounded-t-[18px] border-t border-line bg-card pb-[env(safe-area-inset-bottom)] shadow-pop`}
+        className={`pointer-events-auto absolute inset-x-0 bottom-0 flex ${heightClass} flex-col rounded-t-[18px] border-t border-line bg-card pb-[env(safe-area-inset-bottom)] shadow-pop transition-transform duration-200 ${collapsed ? 'translate-y-[calc(100%_-_56px)]' : 'translate-y-0'}`}
       >
         <div className="flex shrink-0 items-center justify-between px-3 pt-2">
           <span className="w-10" />
