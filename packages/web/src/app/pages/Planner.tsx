@@ -140,14 +140,19 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
     nowMs,
     coarse,
     onComplete: onCompleteTask,
-    onEdit: (t: Task) => openTaskDrawer(t.id),
+    // Compact: the drawer is a z-40 fixed panel and the Tasks sheet is z-50, so editing from
+    // inside the sheet would paint the drawer behind it — close the sheet as we hand over.
+    onEdit: (t: Task) => { if (compact) setTaskSheetOpen(false); openTaskDrawer(t.id); },
     onDelete: onDeleteTask,
   };
 
+  // `h-full` hands the shell's content height down the flex chain so the hours-scroll can size
+  // itself from real layout instead of a hard-coded chrome constant. AppShell's shell-content
+  // already reserves the fixed tab bar in its padding, so nothing here has to know about it.
   return (
-    <div className="flex gap-3 p-2 md:p-4">
-      <div ref={gridRef} className="min-w-0 flex-1">
-        {isLoading && <div className="p-2 text-sm text-gray-500">Loading your days…</div>}
+    <div className="flex h-full min-h-0 gap-3 p-2 md:p-4">
+      <div ref={gridRef} className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {isLoading && <div className="shrink-0 p-2 text-sm text-gray-500">Loading your days…</div>}
         <UnscheduledWarning entries={unscheduledEntries} />
         <WeekGrid
           days={days}
@@ -176,7 +181,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           panelHidden={compact ? !taskSheetOpen : panelHidden}
           onTogglePanel={() => (compact ? setTaskSheetOpen((o) => !o) : setPanelHidden((h) => !h))}
         />
-        {replan.isError && <p className="mt-2 text-sm text-red-600">Re-plan failed. Try again.</p>}
+        {replan.isError && <p className="mt-2 shrink-0 text-sm text-red-600">Re-plan failed. Try again.</p>}
       </div>
       {/* Below md the panel never renders inline — it becomes the bottom sheet below. */}
       {!compact && !panelHidden && <PlannerTaskPanel {...panelProps} />}

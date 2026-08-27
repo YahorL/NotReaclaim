@@ -113,26 +113,38 @@ export function WeekGrid(props: WeekGridProps) {
   };
 
   return (
-    <div className="flex flex-col">
-      <div className="mb-3 flex flex-wrap items-center gap-2 md:mb-4 md:gap-3">
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* Wraps to two rows on a phone by design; `md:flex-nowrap` keeps the desktop toolbar on the
+          single ~38px row it had before the compact styles landed. */}
+      <div className="mb-3 flex shrink-0 flex-wrap items-center gap-2 md:mb-4 md:flex-nowrap md:gap-3">
         <div className="flex gap-1">
           <button onClick={onPrev} aria-label="Previous" className={`flex items-center justify-center rounded-[9px] border border-line bg-card text-[20px] text-inkSoft ${compact ? 'h-11 w-11' : 'h-[38px] w-[38px]'}`}>‹</button>
           <button onClick={onNext} aria-label="Next" className={`flex items-center justify-center rounded-[9px] border border-line bg-card text-[20px] text-inkSoft ${compact ? 'h-11 w-11' : 'h-[38px] w-[38px]'}`}>›</button>
         </div>
-        <span className={`min-w-0 truncate font-bold text-ink ${compact ? 'text-[15px]' : 'text-[18px]'}`}>{weekLabel}</span>
+        {/* Compact keeps `min-w-0 truncate` (its row can wrap and the label may be long); on md the
+            row cannot wrap, and without `md:shrink-0` the truncation happily eats the range label
+            down to zero width — measured: label invisible at a 626px pane. The legend gives instead. */}
+        <span className={`min-w-0 truncate font-bold text-ink md:shrink-0 ${compact ? 'text-[15px]' : 'text-[18px]'}`}>{weekLabel}</span>
         <button onClick={onToday} className="rounded-[9px] px-4 py-2 text-[14.5px] font-bold text-indigo hover:bg-indigoSoft">Today</button>
         <span className="flex-1" />
+        {/* `shrink-0 whitespace-nowrap`: with the row no longer wrapping on md, a narrow grid pane
+            (626px at 1280 with the task panel open) otherwise squeezes this button to 53px and
+            wraps "↻ Re-plan" onto three lines. The legend is the one element allowed to give. */}
         <button
           onClick={onReplan}
           disabled={replanPending}
-          className="rounded-[9px] bg-indigo px-3 py-2 text-[14px] font-bold text-white disabled:opacity-50"
+          className="shrink-0 whitespace-nowrap rounded-[9px] bg-indigo px-3 py-2 text-[14px] font-bold text-white disabled:opacity-50"
         >
           {replanPending ? 'Re-planning…' : '↻ Re-plan'}
         </button>
-        {/* The legend needs ~700px of toolbar; below md it is dropped entirely (spec §4). */}
-        <div data-testid="grid-legend" className="ml-2 hidden items-center gap-3 md:flex">
+        {/* The legend needs ~700px of toolbar; below md it is dropped entirely (spec §4). It is the
+            one element that gives when the row cannot wrap: the grid pane is only 626px at 1280
+            with the task panel open, ~200px short of the full toolbar. `min-w-0` lets it shrink,
+            and wrapping inside a one-line-tall clip drops whole chips off the end rather than
+            splitting a chip across two lines (which is what pushed the toolbar to 42px). */}
+        <div data-testid="grid-legend" className="ml-2 hidden max-h-[22px] min-w-0 flex-wrap items-center gap-3 overflow-hidden md:flex">
           {LEGEND.map((l) => (
-            <span key={l.label} className="flex items-center gap-1.5 text-[14px] font-semibold text-inkSoft">
+            <span key={l.label} className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[14px] font-semibold text-inkSoft">
               <span className={`h-[11px] w-[11px] rounded-[3px] ${l.swatch}`} /> {l.label}
             </span>
           ))}
@@ -160,12 +172,12 @@ export function WeekGrid(props: WeekGridProps) {
         ))}
       </div>
 
-      <div className="w-full">
-        <div className="overflow-hidden rounded-[14px] border border-line bg-card">
+      <div className="flex min-h-0 w-full flex-1 flex-col">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[14px] border border-line bg-card">
           {/* header grid */}
           <div
             data-testid="day-header-row"
-            className="grid border-b border-line"
+            className="grid shrink-0 border-b border-line"
             style={{ gridTemplateColumns: gridCols }}
             onTouchStart={(e) => {
               const t = e.touches[0];
@@ -204,11 +216,12 @@ export function WeekGrid(props: WeekGridProps) {
           </div>
 
           {/* body grid (scrolls vertically; the day header above stays pinned) */}
-          {/* Height must be right under BOTH chromes. Desktop: 70px TopBar + p-4 + toolbar +
-              day header ≈ 230px (byte-identical to the value this used to carry inline).
-              Compact: 56px mobile top bar + 56px fixed tab bar + p-2 + toolbar + day header
-              ≈ 260px, plus the home-indicator inset. Tailwind turns `_` into a space. */}
-          <div ref={scrollRef} data-testid="hours-scroll" className="max-h-[calc(100dvh_-_260px_-_env(safe-area-inset-bottom))] overflow-y-auto md:max-h-[calc(100dvh_-_230px)]">
+          {/* The height comes from the flex chain (Planner h-full → grid pane → this card), NOT
+              from a chrome constant: toolbars wrap, banners appear and the mobile top bar differs,
+              so any `100dvh - Npx` guess is wrong on some viewport. shell-content's padding already
+              reserves the fixed tab bar. `min-h-[240px]` floors degenerate cases (a zero-height
+              ancestor) so the grid falls back to the outer scroll instead of collapsing. */}
+          <div ref={scrollRef} data-testid="hours-scroll" className="min-h-[240px] flex-1 overflow-y-auto">
           <div className="grid" style={{ gridTemplateColumns: gridCols }}>
             <div data-testid="hour-gutter">
               {HOURS.map((h) => (

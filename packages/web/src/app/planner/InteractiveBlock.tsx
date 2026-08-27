@@ -168,6 +168,9 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
   };
 
   const armDrag = (el: HTMLElement, pointerId: number) => {
+    // Idempotent: arming while a capture is already live would leak the previous element's
+    // touchmove listener and lose its capture handle. Releasing first makes re-arming safe.
+    releaseDrag();
     if (typeof el.setPointerCapture === 'function') {
       try { el.setPointerCapture(pointerId); } catch { /* jsdom / unsupported */ }
     }
@@ -188,6 +191,11 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
 
   const begin = (mode: DragMode) => (e: ReactPointerEvent<HTMLElement>) => {
     e.stopPropagation();
+    // A second finger landing while the first already owns a capture is ignored outright: the
+    // drag refs (startY/startX/mode) are single-slot, so letting pointer 2 re-seed them would
+    // make pointer 1's move/up compute its delta against pointer 2's origin and commit a bogus
+    // time. First pointer down wins until it lifts or cancels.
+    if (captureRef.current !== null) return;
     const el = e.currentTarget;
     const pointerId = e.pointerId;
     // Deferral is decided per *event*, not per device: `coarse` is the primary-pointer media

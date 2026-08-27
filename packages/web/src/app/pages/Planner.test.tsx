@@ -264,6 +264,25 @@ describe('Planner compact layout', () => {
     expect(screen.getByTestId('panel-sheet-toggle')).toHaveAttribute('aria-expanded', 'true');
   });
 
+  it('editing from the sheet closes the sheet and opens the task drawer', async () => {
+    // The drawer is a z-40 fixed panel and the sheet is z-50, so leaving the sheet open would
+    // paint the drawer behind it and the ✎ tap would read as broken.
+    const task = {
+      id: 't1', userId: 'u1', title: 'Write spec', priority: 2, sortOrder: 0,
+      durationMs: 3_600_000, dueBy: '2026-01-10T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1,
+      categoryId: null, notBefore: null, status: 'pending', completedAt: null, timeLoggedMs: 0,
+      createdAt: '', updatedAt: '', subtasks: [],
+    } as unknown as Task;
+    const api = makeApi({ listTasks: vi.fn(async () => [task]) });
+    renderWithProviders(<Planner now={() => NOW} />, { api });
+    await waitFor(() => expect(screen.getByTestId('day-col-0')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('panel-sheet-toggle'));
+    await waitFor(() => expect(screen.getByTestId('planner-task-panel')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Write spec' }));
+    expect(screen.queryByTestId('sheet-backdrop')).toBeNull();
+    expect(screen.getByTestId('task-drawer')).toBeInTheDocument();
+  });
+
   it('closes the task sheet on a backdrop tap', async () => {
     const api = makeApi();
     renderWithProviders(<Planner now={() => NOW} />, { api });

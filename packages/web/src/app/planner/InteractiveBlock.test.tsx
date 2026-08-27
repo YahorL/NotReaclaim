@@ -111,6 +111,29 @@ describe('InteractiveBlock', () => {
     );
   });
 
+  it('a second pointer landing mid-drag is ignored — the first pointer keeps the gesture', () => {
+    const onCommit = renderBlock();
+    const handle = screen.getByTestId('resize-handle');
+    const el = screen.getByTestId('event-block');
+    // Pointer 1 grabs the resize handle: `resize` never defers, so the capture is live at once.
+    fireEvent.pointerDown(handle, { clientY: 200, pointerId: 1 });
+    // Pointer 2 lands on the tile body 4h lower. jsdom does not implement pointer capture, so it
+    // cannot retarget this event the way a browser would — what we CAN assert is the thing the
+    // capture would otherwise hide: the drag refs (mode / startY) are single-slot, and a second
+    // `begin()` would re-seed them to 'move' from y=432. So we read the *committed geometry*:
+    // measured from pointer 1's origin (200) it is a +5h resize; measured from pointer 2's it
+    // would be a +1h move. One is proof of ownership, the other of the bug.
+    fireEvent.pointerDown(el, { clientY: 200 + 4 * PX_PER_60MIN, pointerId: 2 });
+    fireEvent.pointerMove(el, { clientY: 200 + 5 * PX_PER_60MIN, pointerId: 2 });
+    fireEvent.pointerUp(el, { clientY: 200 + 5 * PX_PER_60MIN, pointerId: 2 });
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onCommit).toHaveBeenCalledWith({
+      startsAt: '2026-01-05T09:00:00.000Z', // start untouched → still a resize, i.e. pointer 1's
+      endsAt: '2026-01-05T15:00:00.000Z',   // 10:00 + 5h, delta measured from y=200
+      pinned: true,
+    });
+  });
+
   it('label disappears after release', () => {
     renderBlock();
     const el = screen.getByTestId('event-block');

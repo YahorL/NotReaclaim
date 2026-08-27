@@ -344,14 +344,47 @@ describe('WeekGrid compact (below md)', () => {
     expect(screen.getByTestId('day-header-row').style.gridTemplateColumns).toMatch(/^64px /);
   });
 
-  it('sizes the hours-scroll for both chromes', () => {
+  it('sizes the hours-scroll from the flex chain, not a chrome constant', () => {
     renderGrid();
     const scroller = screen.getByTestId('hours-scroll');
-    // mobile: 56px top bar + 56px tab bar + page padding + toolbar + day header, plus the inset
-    expect(scroller.className).toContain('max-h-[calc(100dvh_-_260px_-_env(safe-area-inset-bottom))]');
-    // desktop: byte-identical to the value the inline style used to carry
-    expect(scroller.className).toContain('md:max-h-[calc(100dvh_-_230px)]');
+    expect(scroller.className).toContain('flex-1');
+    expect(scroller.className).toContain('min-h-[240px]');
+    // Load-bearing negative assertion: this used to be `max-h-[calc(100dvh - Npx)]`, and every
+    // chrome change (mobile top bar, tab bar, a wrapped toolbar, the unscheduled banner) made
+    // the constant wrong on some viewport. Measured 136.5px of grid under the tab bar at
+    // 390×844. Sizing now flows from Planner's `h-full` down the flex chain — if this fails,
+    // the fix is to repair the chain, NOT to bump a new constant back in.
+    expect(scroller.className).not.toContain('max-h-[calc(');
     expect(scroller.getAttribute('style')).toBeNull();
+  });
+
+  it('keeps the flex chain that gives the hours-scroll its height', () => {
+    const { container } = renderGrid();
+    const root = container.firstElementChild as HTMLElement;
+    expect(root.className).toContain('min-h-0');
+    expect(root.className).toContain('flex-1');
+    // The card wrapper (parent of the day header) must pass the height through, and the
+    // toolbar / day header must not absorb it.
+    const card = screen.getByTestId('day-header-row').parentElement as HTMLElement;
+    expect(card.className).toContain('min-h-0');
+    expect(card.className).toContain('flex-1');
+    expect(screen.getByTestId('day-header-row').className).toContain('shrink-0');
+  });
+
+  it('keeps the desktop toolbar on one row', () => {
+    renderGrid();
+    const toolbar = screen.getByText('Today').parentElement as HTMLElement;
+    // Compact is allowed to wrap; md must not (a wrapped desktop toolbar measured 86px/2 rows).
+    expect(toolbar.className).toContain('flex-wrap');
+    expect(toolbar.className).toContain('md:flex-nowrap');
+    // Nowrap makes the row's items shrinkable instead of wrappable, so the three that must keep
+    // their geometry say so; the legend is the only element left to give (it clips to one line).
+    expect(screen.getByRole('button', { name: /re-plan/i }).className).toContain('shrink-0');
+    expect(screen.getByText('Jan 5 – 11').className).toContain('md:shrink-0');
+    const legend = screen.getByTestId('grid-legend');
+    expect(legend.className).toContain('min-w-0');
+    expect(legend.className).toContain('overflow-hidden');
+    expect(legend.className).toContain('max-h-[22px]');
   });
 
   it('hides the legend below md', () => {
