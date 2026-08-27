@@ -74,3 +74,31 @@ export function pinnedBlockTimes({ durationMs, dayStartMs, startMin }: {
     endsAt: new Date(dayStartMs + e * 60_000).toISOString(),
   };
 }
+
+/**
+ * The whole drag-end decision as one pure function: the `createScheduledBlock` payload a released
+ * drag produces, or null when it produces nothing (the drag was not a panel task card, it was
+ * released outside every day column, or the task has since vanished from the list).
+ *
+ * Composing `draggedTaskId` + `dayDropFromOver` + `pinnedBlockTimes` here rather than in
+ * `Planner.onDragEnd` keeps the only write path of this gesture testable without a synthetic
+ * dnd-kit drag: the caller is left with "compute, clear drag state, fire the mutation".
+ */
+export function scheduleDropResult({ activeData, overData, overRect, pointerY, tasks }: {
+  activeData: unknown;
+  overData: unknown;
+  overRect: { top: number; height: number } | null;
+  pointerY: number | null;
+  tasks: readonly { id: string; durationMs: number }[];
+}): { taskId: string; startsAt: string; endsAt: string } | null {
+  const taskId = draggedTaskId(activeData);
+  if (taskId === null) return null;
+  const target = dayDropFromOver({ overData, overRect, pointerY });
+  if (target === null) return null;
+  const task = tasks.find((t) => t.id === taskId);
+  if (!task) return null;
+  return {
+    taskId,
+    ...pinnedBlockTimes({ durationMs: task.durationMs, dayStartMs: target.dayStartMs, startMin: target.startMin }),
+  };
+}

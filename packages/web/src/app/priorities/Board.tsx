@@ -58,7 +58,11 @@ export function Board({ columns, now, nextMsFor, onMove, onComplete, onEdit, onD
         ))}
       </div>
       {/* The board is inside a horizontally scrolling pane, so a card dragged between columns
-          would be clipped by that scroll container. The overlay is portalled above everything. */}
+          would be clipped by that scroll container. DragOverlay is NOT portalled — it renders
+          right here — but it is position:fixed, so it escapes the pane by being positioned
+          against the viewport. That only holds while no ancestor carries a transform/filter/
+          perspective (or `will-change` / `contain: paint`): any of those makes the ancestor the
+          containing block for fixed descendants and the overlay gets clipped again. */}
       <DragOverlay>
         {activeTask ? (
           <div

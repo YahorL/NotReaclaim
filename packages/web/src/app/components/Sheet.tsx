@@ -11,6 +11,11 @@ export interface SheetProps {
    * Slide the sheet down to a strip and make the backdrop inert, for the duration of a drag that
    * started inside it. The children stay mounted on purpose: unmounting the dragged card would
    * remove dnd-kit's active draggable node and abort the gesture.
+   *
+   * The `duration-200` transition on that slide is load-bearing, not decoration: collapsing
+   * instantly would move the sheet within the drag's very first commit, and dnd-kit's
+   * layout-shift scroll compensation would read that as the page scrolling under the pointer and
+   * translate the dragged overlay by the same amount.
    */
   collapsed?: boolean;
 }
@@ -35,7 +40,7 @@ export function Sheet({ label, onClose, children, heightClass = 'h-[70dvh]', col
         role="dialog"
         aria-label={label}
         onClick={(e) => e.stopPropagation()}
-        className={`pointer-events-auto absolute inset-x-0 bottom-0 flex ${heightClass} flex-col rounded-t-[18px] border-t border-line bg-card pb-[env(safe-area-inset-bottom)] shadow-pop transition-transform duration-200 ${collapsed ? 'translate-y-[calc(100%_-_56px)]' : 'translate-y-0'}`}
+        className={`pointer-events-auto absolute inset-x-0 bottom-0 flex ${heightClass} flex-col rounded-t-[18px] border-t border-line bg-card pb-[env(safe-area-inset-bottom)] shadow-pop transition-transform duration-200 ${collapsed ? 'translate-y-[calc(100%_-_56px)]' : ''}`}
       >
         <div className="flex shrink-0 items-center justify-between px-3 pt-2">
           <span className="w-10" />

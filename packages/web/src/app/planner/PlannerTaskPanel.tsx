@@ -38,15 +38,20 @@ function TaskCard({ task, nowMs, nextMs, atRisk, leftBorder, coarse, onComplete,
   // The overlay card follows the pointer, so this one stays put and only dims.
   // role=group: dnd-kit would otherwise default the card to role="button", nesting the
   // complete/edit/delete buttons inside a button.
+  // tabIndex=-1 overrides dnd-kit's default 0: this surface is pointer/touch-only (no
+  // KeyboardSensor — see useDragToScheduleSensors), so a focusable card would be a dead tab stop
+  // whose "press space bar to lift" description promises a gesture nothing here implements.
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
     id: `panel-task:${task.id}`,
     data: { type: PANEL_TASK_DRAG_TYPE, taskId: task.id },
-    attributes: { role: 'group' },
+    attributes: { role: 'group', tabIndex: -1 },
   });
   return (
     <div
-      // Both refs: registering the card as its own activator is what keeps key/pointer events
-      // originating in its buttons treated as descendants rather than as drag activations.
+      // Both refs on the same element: the activator node is what dnd-kit restores focus to after
+      // a drag (it falls back to the first focusable descendant, i.e. the ✓ button, since the card
+      // itself is not focusable) and what a KeyboardSensor would require an activation keydown to
+      // originate on — declaring it keeps that contract true if this surface ever gains one.
       ref={(n) => { setNodeRef(n); setActivatorNodeRef(n); }}
       data-testid="panel-task"
       data-task-id={task.id}

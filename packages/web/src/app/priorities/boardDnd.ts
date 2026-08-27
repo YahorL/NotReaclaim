@@ -47,6 +47,11 @@ export function overColumnKey(columns: BoardDropColumn[], overId: string | null)
  * pointer drops still need the column rect to land in a column's empty area, and ArrowUp on the
  * first card now correctly does nothing.
  *
+ * Known limitation: with the containers filtered out, a keyboard drag can only ever land on a card,
+ * so an EMPTY column is unreachable by keyboard (it has no cards to aim at). Accepted — the board
+ * was 0% keyboard-accessible before this getter existed, and the alternative (keeping columns as
+ * candidates) silently teleports the top card of every column to the bottom on ArrowUp.
+ *
  * The filtered collection is rebuilt through `droppableContainers.constructor` rather than a plain
  * `Map`, because the getter calls `getEnabled()` and `get()` on it — dnd-kit's own reducer clones
  * the collection the same way (`new DroppableContainersMap(state.droppable.containers)`), so this
@@ -73,6 +78,12 @@ export const boardKeyboardCoordinates: KeyboardCoordinateGetter = (event, args) 
  *
  * A same-column downward drag inserts *after* the hovered card, matching what dnd-kit's live
  * preview showed; an upward drag inserts before it, exactly as the old HTML5 path did.
+ *
+ * A drop that would not move the card returns null instead of a drop. Every drop PATCHes a fresh
+ * midpoint `sortOrder`, which the server answers with a full replan — so releasing a card on
+ * itself, or on its own column's empty area when it is already last, must not reach the wire. The
+ * keyboard path makes this cheap to hit: Space to lift and Space to drop, with no arrow key in
+ * between, is a no-movement drop.
  */
 export function resolveBoardDrop(
   columns: BoardDropColumn[],
@@ -87,13 +98,18 @@ export function resolveBoardDrop(
   const activeIndex = fromColumn.tasks.findIndex((t) => t.id === activeId);
 
   const target = columns.find((c) => c.key === to)!;
+  const sameColumn = fromColumn.key === to;
   const isContainerDrop = overId!.startsWith(COLUMN_DROPPABLE_PREFIX);
-  if (isContainerDrop) return { taskId: activeId, to, index: target.tasks.length };
+  if (isContainerDrop) {
+    // "Append to the bottom" is a no-op when the card already is the bottom.
+    if (sameColumn && activeIndex === fromColumn.tasks.length - 1) return null;
+    return { taskId: activeId, to, index: target.tasks.length };
+  }
 
   const overIndex = target.tasks.findIndex((t) => t.id === overId);
   if (overIndex === -1) return null;
-  const sameColumn = fromColumn.key === to;
   const index = sameColumn && activeIndex < overIndex ? overIndex + 1 : overIndex;
+  if (sameColumn && index === activeIndex) return null;
   return { taskId: activeId, to, index };
 }
 

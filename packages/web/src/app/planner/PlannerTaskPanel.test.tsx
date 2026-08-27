@@ -103,6 +103,9 @@ describe('PlannerTaskPanel', () => {
     // The card holds complete/edit/delete buttons, so dnd-kit's default role='button' would
     // nest interactive content — it is a group that happens to be draggable.
     expect(card).toHaveAttribute('role', 'group');
+    // No KeyboardSensor on this surface: dnd-kit's default tabIndex=0 would make every card a
+    // tab stop announcing a space-bar lift that does nothing.
+    expect(card).toHaveAttribute('tabindex', '-1');
   });
 
   it('fills its container in the compact (bottom-sheet) layout', () => {

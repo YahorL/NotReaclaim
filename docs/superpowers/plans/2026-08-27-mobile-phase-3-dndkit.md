@@ -30,7 +30,7 @@ New dependencies, **pinned to the latest stable releases** (verified against the
 
 ## Global Constraints
 
-- Web suite **baseline: 589 tests / 66 files green** (`npm test -w @notreclaim/web`, verified 2026-08-27 on `main` at `e67f218`). It must be green after **every** task; the expected count is stated per task. Final expected: **637 tests / 71 files**. The per-task arithmetic: 589 → **597** (T1, +8) → **603** (T2, +6) → **602** (T3, +2 −4 +2 −1) → **618** (T4, +21 +1 +1 −7) → **630** (T5, +13 −1) → **637** (T6, +5 +2) → 637 (T7, docs only).
+- Web suite **baseline: 589 tests / 66 files green** (`npm test -w @notreclaim/web`, verified 2026-08-27 on `main` at `e67f218`). It must be green after **every** task; the expected count is stated per task. Final expected: **653 tests / 72 files** (fix rounds added tests; ledger reconciles). The per-task arithmetic: 589 → **597** (T1, +8) → **603** (T2, +6) → **602** (T3, +2 −4 +2 −1) → **618** (T4, +21 +1 +1 −7) → **630** (T5, +13 −1) → **637** (T6, +5 +2) → 637 (T7, docs only).
 - Tests run under `TZ=UTC` via the package `test` script — never bypass it.
 - **This phase edits pre-existing tests** (unlike Phase 2). That is expected — the deleted tests fire synthetic HTML5 drag events at machinery that no longer exists. **Discipline:** every such edit is listed explicitly, by file and by test name, in the step that makes it; no task may delete or rewrite a test that is not named in its own step list; a deleted assertion must reappear either as a pure test with the *same numbers* or as a documented semantic change. The complete ledger:
 

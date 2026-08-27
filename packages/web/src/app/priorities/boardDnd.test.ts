@@ -51,6 +51,16 @@ describe('resolveBoardDrop', () => {
     expect(resolveBoardDrop(cols, 'l1', 'b')).toEqual({ taskId: 'l1', to: 'high', index: 1 });
   });
 
+  it('is null when a card is dropped on itself — no movement, no replan', () => {
+    expect(resolveBoardDrop(cols, 'b', 'b')).toBeNull();
+  });
+
+  it('is null when a card is dropped on its own column and is already last', () => {
+    expect(resolveBoardDrop(cols, 'c', 'col:high')).toBeNull();
+    // Still a real move for any card that is not already at the bottom.
+    expect(resolveBoardDrop(cols, 'a', 'col:high')).toEqual({ taskId: 'a', to: 'high', index: 3 });
+  });
+
   it('is null when the drag is released outside every target', () => {
     expect(resolveBoardDrop(cols, 'a', null)).toBeNull();
   });

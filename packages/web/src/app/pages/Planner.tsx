@@ -8,7 +8,7 @@ import { useElementWidth } from '../planner/useElementWidth';
 import { useCompactWidth, usePointerCoarse } from '../lib/useMediaQuery';
 import { useDragToScheduleSensors, pointerFirstCollision } from '../dnd/sensors';
 import { useLivePointerY } from '../dnd/useLivePointerY';
-import { dayDropFromOver, draggedTaskId, pinnedBlockTimes, type DayDropTarget } from '../planner/scheduleDrop';
+import { dayDropFromOver, draggedTaskId, scheduleDropResult, type DayDropTarget } from '../planner/scheduleDrop';
 import { shouldCollapseSheet } from '../planner/dragSheet';
 import { Sheet } from '../components/Sheet';
 import { WeekGrid } from '../planner/WeekGrid';
@@ -95,12 +95,6 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   // activatorEvent + delta cannot be trusted once a droppable is entered.
   const livePointerY = useLivePointerY(draggingTaskId !== null);
 
-  const onScheduleTaskAt = (taskId: string, dayStartMs: number, startMin: number) => {
-    const task = (tasksQ.data ?? []).find((t) => t.id === taskId);
-    if (!task) return;
-    createBlock.mutate({ taskId, ...pinnedBlockTimes({ durationMs: task.durationMs, dayStartMs, startMin }) });
-  };
-
   const targetFrom = (e: DragMoveEvent | DragEndEvent): DayDropTarget | null => dayDropFromOver({
     overData: e.over?.data.current ?? null,
     overRect: e.over?.rect ?? null,
@@ -118,10 +112,17 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const onDragMove = (e: DragMoveEvent) => setTaskDrop(draggedTaskId(e.active.data.current) ? targetFrom(e) : null);
   const endDrag = () => { setTaskDrop(null); setDraggingTaskId(null); setSheetCollapsed(false); };
   const onDragEnd = (e: DragEndEvent) => {
-    const taskId = draggedTaskId(e.active.data.current);
-    const target = taskId ? targetFrom(e) : null;
+    // Decide first, clear second: `endDrag` disarms the live pointer listener, so the reading the
+    // drop depends on has to be taken while the drag is still live.
+    const drop = scheduleDropResult({
+      activeData: e.active.data.current,
+      overData: e.over?.data.current ?? null,
+      overRect: e.over?.rect ?? null,
+      pointerY: livePointerY.current,
+      tasks: tasksQ.data ?? [],
+    });
     endDrag();
-    if (taskId && target) onScheduleTaskAt(taskId, target.dayStartMs, target.startMin);
+    if (drop) createBlock.mutate(drop);
   };
 
   const labeledBlocks = useMemo(

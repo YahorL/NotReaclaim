@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dayDropFromOver, draggedTaskId, pinnedBlockTimes, PANEL_TASK_DRAG_TYPE } from './scheduleDrop';
+import { dayDropFromOver, draggedTaskId, pinnedBlockTimes, scheduleDropResult, PANEL_TASK_DRAG_TYPE } from './scheduleDrop';
 
 const DAY = Date.parse('2026-01-07T00:00:00.000Z');
 const dayCol = { type: 'day-col', dayIndex: 2, dayStartMs: DAY };
@@ -68,5 +68,33 @@ describe('pinnedBlockTimes', () => {
   it('floors a sub-15-minute task at 15 minutes', () => {
     const { startsAt, endsAt } = pinnedBlockTimes({ durationMs: 60_000, dayStartMs: DAY, startMin: 600 });
     expect(Date.parse(endsAt) - Date.parse(startsAt)).toBe(15 * 60_000);
+  });
+});
+
+describe('scheduleDropResult', () => {
+  const tasks = [{ id: 'drag-me', durationMs: 3_600_000 }];
+  const drag = { type: PANEL_TASK_DRAG_TYPE, taskId: 'drag-me' };
+  const args = { activeData: drag, overData: dayCol, overRect: { top: 0, height: 1392 }, pointerY: 0, tasks };
+
+  it('turns a card released on a day column into the createScheduledBlock payload', () => {
+    // Same numbers as the deleted Planner drop integration test: jsdom's 0-height column put the
+    // pointer at the very top of the day, so a 1h task lands at 00:00–01:00.
+    expect(scheduleDropResult(args)).toEqual({
+      taskId: 'drag-me',
+      startsAt: '2026-01-07T00:00:00.000Z',
+      endsAt: '2026-01-07T01:00:00.000Z',
+    });
+  });
+
+  it('is null when the drag did not start on a task card', () => {
+    expect(scheduleDropResult({ ...args, activeData: { type: 'sortable' } })).toBeNull();
+  });
+
+  it('is null when the card was released outside every day column', () => {
+    expect(scheduleDropResult({ ...args, overData: null, overRect: null })).toBeNull();
+  });
+
+  it('is null when the dragged task is no longer in the list', () => {
+    expect(scheduleDropResult({ ...args, tasks: [] })).toBeNull();
   });
 });
