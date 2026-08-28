@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { DndContext, DragOverlay, type DragEndEvent, type DragOverEvent, type DragStartEvent } from '@dnd-kit/core';
 import type { Task } from '../../api/types';
-import { type BoardColumnKey, BUCKET_META, priorityToBucket } from './priorityBucket';
+import { type BoardColumnKey, BUCKET_META, columnMeta, priorityToBucket } from './priorityBucket';
+import { makeAnnouncements } from '../dnd/announcements';
 import { useAppSensors, pointerFirstCollision } from '../dnd/sensors';
 import { boardKeyboardCoordinates, overColumnKey, resolveBoardDrop } from './boardDnd';
 import { Column } from './Column';
@@ -38,9 +39,21 @@ export function Board({ columns, now, nextMsFor, onMove, onComplete, onEdit, onD
     if (drop) onMove(drop.taskId, drop.to, drop.index);
   };
 
+  // The board's ids are cuids and `col:<key>` strings; without this a screen reader narrates
+  // "Picked up draggable item cm4x8…". Keyboard dragging is real here, so the stock
+  // screenReaderInstructions stay — only the announcements change.
+  const announcements = useMemo(() => {
+    const titleOf = (id: string) => columns.flatMap((c) => c.tasks).find((t) => t.id === id)?.title ?? null;
+    return makeAnnouncements(titleOf, (id) => {
+      const key = overColumnKey(columns, id);
+      return key ? `the ${columnMeta(key).label} column` : titleOf(id);
+    });
+  }, [columns]);
+
   return (
     <DndContext
       sensors={sensors}
+      accessibility={{ announcements }}
       collisionDetection={pointerFirstCollision}
       onDragStart={onDragStart}
       onDragOver={onDragOver}

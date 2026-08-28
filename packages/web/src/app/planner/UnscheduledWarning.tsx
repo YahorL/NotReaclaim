@@ -1,6 +1,9 @@
+import { useCompactWidth } from '../lib/useMediaQuery';
 import type { UnscheduledEntry } from './unscheduledSummary';
 
 const MAX_SHOWN = 3;
+/** A phone gets one: three chips plus "+N more" measured 101px / 4 lines at 390px. */
+const MAX_SHOWN_COMPACT = 1;
 
 /**
  * Compact amber banner above the week grid: what the engine could not fit. Amber, not the
@@ -8,9 +11,12 @@ const MAX_SHOWN = 3;
  * disappears on its own as soon as a replan schedules everything.
  */
 export function UnscheduledWarning({ entries }: { entries: UnscheduledEntry[] }) {
+  // Above the early return: hooks may not be skipped when the banner has nothing to say.
+  const compact = useCompactWidth();
   if (entries.length === 0) return null;
-  const shown = entries.slice(0, MAX_SHOWN);
-  const rest = entries.slice(MAX_SHOWN);
+  const max = compact ? MAX_SHOWN_COMPACT : MAX_SHOWN;
+  const shown = entries.slice(0, max);
+  const rest = entries.slice(max);
   return (
     <div
       data-testid="unscheduled-warning"

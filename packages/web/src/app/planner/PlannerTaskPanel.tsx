@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import type { Task, SchedulePreview, UnscheduledItem } from '../../api/types';
 import { formatDurationShort } from '../lib/duration';
-import { PANEL_TASK_DRAG_TYPE } from './scheduleDrop';
+import { PANEL_TASK_DRAG_TYPE, panelTaskDraggableId } from './scheduleDrop';
 import {
   BUCKETS, BUCKET_META, priorityToBucket, sortBucket, relativeDayTimeLabel, nextBlockMsForTask,
 } from '../priorities/priorityBucket';
@@ -42,16 +42,17 @@ function TaskCard({ task, nowMs, nextMs, atRisk, leftBorder, coarse, onComplete,
   // KeyboardSensor — see useDragToScheduleSensors), so a focusable card would be a dead tab stop
   // whose "press space bar to lift" description promises a gesture nothing here implements.
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
-    id: `panel-task:${task.id}`,
+    id: panelTaskDraggableId(task.id),
     data: { type: PANEL_TASK_DRAG_TYPE, taskId: task.id },
     attributes: { role: 'group', tabIndex: -1 },
   });
   return (
     <div
       // Both refs on the same element: the activator node is what dnd-kit restores focus to after
-      // a drag (it falls back to the first focusable descendant, i.e. the ✓ button, since the card
-      // itself is not focusable) and what a KeyboardSensor would require an activation keydown to
-      // originate on — declaring it keeps that contract true if this surface ever gains one.
+      // a drag — `findFirstFocusableNode` matches `*[tabindex]`, so `tabIndex: -1` keeps this card
+      // programmatically focusable while removing the dead tab stop — and it is what a
+      // KeyboardSensor would require an activation keydown to originate on, which keeps that
+      // contract true if this surface ever gains one.
       ref={(n) => { setNodeRef(n); setActivatorNodeRef(n); }}
       data-testid="panel-task"
       data-task-id={task.id}

@@ -14,6 +14,13 @@ describe('StatCard', () => {
     expect(card).toHaveTextContent('this week');
     expect(card.querySelector('.text-indigo')).not.toBeNull();
   });
+
+  it('shrinks the stat value below md so it stays on one line', () => {
+    render(<StatCard label="Total scheduled" value="12h 30m" sub="this week" accent="text-indigo" />);
+    const value = screen.getByText('12h 30m');
+    expect(value.className).toContain('text-[28px]');
+    expect(value.className).toContain('md:text-[36px]');
+  });
 });
 
 describe('HoursByDayChart', () => {

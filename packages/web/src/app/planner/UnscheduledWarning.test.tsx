@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { installMatchMedia } from '../../test/matchMedia';
 import { UnscheduledWarning } from './UnscheduledWarning';
 
 const entry = (key: string, label: string) => ({ key, label });
+const five = [entry('a', 'A (1h left)'), entry('b', 'B (1h left)'), entry('c', 'C (1h left)'), entry('d', 'D (1h left)'), entry('e', 'E (2 missed)')];
 
 describe('UnscheduledWarning', () => {
   it('renders nothing when everything fits', () => {
@@ -33,5 +35,20 @@ describe('UnscheduledWarning', () => {
     expect(screen.queryByText('D (1h left)')).toBeNull();
     const more = screen.getByText('+2 more');
     expect(more).toHaveAttribute('title', 'D (1h left), E (2 missed)');
+  });
+
+  it('still shows three entries and a +2 on a desktop banner', () => {
+    render(<UnscheduledWarning entries={five} />);
+    expect(screen.getByText('C (1h left)')).toBeInTheDocument();
+    expect(screen.getByText('+2 more')).toBeInTheDocument();
+  });
+
+  it('shows a single entry below md — the banner measured 101px over four lines at 390px', () => {
+    const mm = installMatchMedia({ '(max-width: 767.98px)': true });
+    render(<UnscheduledWarning entries={five} />);
+    expect(screen.getByText('A (1h left)')).toBeInTheDocument();
+    expect(screen.queryByText('B (1h left)')).toBeNull();
+    expect(screen.getByText('+4 more')).toBeInTheDocument();
+    mm.restore();
   });
 });

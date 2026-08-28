@@ -3,6 +3,12 @@ import { clampToWindow, snapClickToSlot, WINDOW_END_MIN, WINDOW_START_MIN } from
 /** Marks a drag that started on a task card in the planner side panel / Tasks sheet. */
 export const PANEL_TASK_DRAG_TYPE = 'panel-task';
 
+/** dnd-kit id for a task card in the planner panel / Tasks sheet. Prefixed so it can never
+ *  collide with a bare task id used elsewhere (the board's sortables are bare ids). */
+export function panelTaskDraggableId(taskId: string): string {
+  return `panel-task:${taskId}`;
+}
+
 export interface PanelTaskDragData {
   type: typeof PANEL_TASK_DRAG_TYPE;
   taskId: string;

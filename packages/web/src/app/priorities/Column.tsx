@@ -37,7 +37,7 @@ export function Column({ columnKey, tasks, now, nextMsFor, isTarget, onComplete,
     <div
       ref={setNodeRef}
       data-testid={`column-${columnKey}`}
-      className={`shrink-0 transition-[width] ${collapsed ? 'w-[250px]' : 'w-[372px]'}`}
+      className={`shrink-0 snap-start transition-[width] ${collapsed ? 'w-[250px]' : 'w-[min(372px,85vw)]'}`}
     >
       <div className="mb-3 flex items-center pr-1">
         <span className="flex-1 text-[16.5px] font-bold text-inkSoft">{meta.label}</span>

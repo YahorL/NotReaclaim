@@ -3,12 +3,13 @@ import { DndContext, DragOverlay, type DragEndEvent, type DragMoveEvent, type Dr
 import type { CalendarEvent, Task } from '../../api/types';
 import { ApiError } from '../../api/client';
 import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useHabitsQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation, useSettingsQuery } from '../../api/queries';
-import { dayColumns, daysThatFit, shiftDays, dayAnchor, rangeLabel, MS_PER_DAY } from '../planner/weekModel';
+import { dayColumns, daysThatFit, shiftDays, dayAnchor, rangeLabel, weekdayLabel, MS_PER_DAY } from '../planner/weekModel';
 import { useElementWidth } from '../planner/useElementWidth';
 import { useCompactWidth, usePointerCoarse } from '../lib/useMediaQuery';
 import { useDragToScheduleSensors, pointerFirstCollision } from '../dnd/sensors';
+import { makeAnnouncements, POINTER_ONLY_DRAG_INSTRUCTIONS } from '../dnd/announcements';
 import { useLivePointerY } from '../dnd/useLivePointerY';
-import { dayDropFromOver, draggedTaskId, scheduleDropResult, type DayDropTarget } from '../planner/scheduleDrop';
+import { dayDropFromOver, draggedTaskId, panelTaskDraggableId, scheduleDropResult, type DayDropTarget } from '../planner/scheduleDrop';
 import { shouldCollapseSheet } from '../planner/dragSheet';
 import { Sheet } from '../components/Sheet';
 import { DrawerHost } from '../components/DrawerHost';
@@ -126,6 +127,21 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
     if (drop) createBlock.mutate(drop);
   };
 
+  // Without this a screen reader hears the raw draggable id ("panel-task:cm4x8…") and dnd-kit's
+  // stock instructions, which promise a space-bar lift this pointer-only surface cannot honour.
+  const dragAccessibility = useMemo(() => ({
+    screenReaderInstructions: POINTER_ONLY_DRAG_INSTRUCTIONS,
+    announcements: makeAnnouncements(
+      (id) => (tasksQ.data ?? []).find((t) => panelTaskDraggableId(t.id) === id)?.title ?? null,
+      (id) => {
+        const m = /^day-col:(\d+)$/.exec(id);
+        const i = m ? Number(m[1]) : -1;
+        const day = days[i];
+        return day === undefined ? null : weekdayLabel(day, zone);
+      },
+    ),
+  }), [tasksQ.data, days, zone]);
+
   const labeledBlocks = useMemo(
     () => labelBlocksWithSubtasks(schedule.data ?? [], tasksQ.data ?? []),
     [schedule.data, tasksQ.data],
@@ -196,6 +212,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   return (
     <DndContext
       sensors={dragSensors}
+      accessibility={dragAccessibility}
       collisionDetection={pointerFirstCollision}
       onDragStart={onDragStart}
       onDragMove={onDragMove}

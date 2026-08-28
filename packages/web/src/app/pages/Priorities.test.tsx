@@ -161,6 +161,20 @@ describe('Priorities board', () => {
     expect(doneRow).not.toHaveAttribute('aria-roledescription');
     expect(doneRow).not.toHaveAttribute('draggable');
   });
+
+  it('sizes the columns to a phone and snaps the pane to them', async () => {
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
+    await waitFor(() => expect(screen.getByTestId('column-critical')).toBeInTheDocument());
+    const column = screen.getByTestId('column-critical');
+    // min(): 372px on any viewport wider than ~438px, so desktop is unchanged.
+    expect(column.className).toContain('w-[min(372px,85vw)]');
+    expect(column.className).toContain('snap-start');
+    const pane = column.closest('.overflow-auto') as HTMLElement;
+    expect(pane.className).toContain('snap-x');
+    expect(pane.className).toContain('snap-mandatory');
+    expect(pane.className).toContain('md:snap-none');  // no snapping under a mouse
+    expect(pane.className).toContain('overscroll-contain');
+  });
 });
 
 describe('Priorities compact layout', () => {

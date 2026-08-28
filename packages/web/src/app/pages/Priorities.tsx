@@ -83,7 +83,7 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
         hideCompleted={hideCompleted} setHideCompleted={setHideCompleted}
         colsVisible={colsVisible} setColsVisible={setColsVisible}
       />
-      <div className="min-h-0 flex-1 overflow-auto px-[30px] pb-10">
+      <div className="min-h-0 flex-1 snap-x snap-mandatory overflow-auto overscroll-contain px-[30px] pb-10 md:snap-none">
         {tasksQ.isLoading && <p className="text-sm text-inkSoft">Loading tasks…</p>}
         {tasksQ.isError && (
           <p className="text-sm">

@@ -223,6 +223,15 @@ describe('Planner', () => {
     // Movable task → borderColor tinted
     expect(taskBlock.style.borderColor).toBe('rgb(91, 98, 227)');
   });
+
+  it('tells screen readers the truth about the drag surface', async () => {
+    renderWithProviders(<Planner now={() => NOW} />, { api: makeApi() });
+    await waitFor(() => expect(screen.getByTestId('day-col-0')).toBeInTheDocument());
+    // dnd-kit renders its instructions into a visually hidden node; the stock text tells the
+    // user to press the space bar, and this surface has no KeyboardSensor.
+    expect(screen.getByText(/pointer or touch only/i)).toBeInTheDocument();
+    expect(screen.queryByText(/press the space bar/i)).toBeNull();
+  });
 });
 
 describe('Planner compact layout', () => {
