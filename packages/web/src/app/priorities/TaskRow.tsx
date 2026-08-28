@@ -31,8 +31,13 @@ function SortableCardSubtask({ subtask, onToggle }: { subtask: Subtask; onToggle
       className={`flex flex-col ${isDragging ? 'opacity-40' : ''}`}
     >
       <div className="flex items-center gap-2 text-[13px]">
-        {/* Negative margin cancels the padding, so a 40px touch area costs no layout on desktop. */}
-        <label className="flex items-center coarse:-m-2.5 coarse:p-2.5">
+        {/* Negative margins cancel the padding, so the halo costs no layout on desktop. The halo
+            is deliberately NOT symmetric: 10px sideways (40px wide, nothing is adjacent there) but
+            only 4px vertically, because checklist rows stack. Rows are 20px on coarse and the ul
+            opens to an 8px gap, so a 28px-tall box exactly meets its neighbour — a symmetric 10px
+            halo would be 40px tall against a 24px pitch and each label would steal the taps of the
+            checkbox above it. */}
+        <label className="flex items-center coarse:-mx-2.5 coarse:px-2.5 coarse:-my-1 coarse:py-1">
           <input
             type="checkbox"
             data-testid={`card-subtask-${subtask.id}`}
@@ -135,7 +140,9 @@ export function TaskRow({ task, columnKey, nextMs, now, draggable = true, muted 
           // structurally what the old stopPropagation calls were doing by hand.
           <DndContext sensors={subtaskSensors} collisionDetection={pointerFirstCollision} onDragEnd={onSubtaskDragEnd}>
             <SortableContext items={subtasks.map((s) => s.id)} strategy={verticalListSortingStrategy}>
-              <ul data-testid="card-subtasks" className="mt-1.5 space-y-1" onClick={(e) => e.stopPropagation()}>
+              {/* space-y-2 on coarse is the second half of the checkbox-halo fix: it lifts the
+                  row pitch from 24px to 28px so the padded labels above abut instead of overlap. */}
+              <ul data-testid="card-subtasks" className="mt-1.5 space-y-1 coarse:space-y-2" onClick={(e) => e.stopPropagation()}>
                 {subtasks.map((s) => (
                   <SortableCardSubtask key={s.id} subtask={s} onToggle={() => onToggleSubtask(s.id, !s.done)} />
                 ))}

@@ -81,9 +81,22 @@ describe('TaskRow subtask checklist', () => {
     const box = screen.getByTestId('card-subtask-s1');
     expect(box.className).toContain('coarse:h-5');
     expect(box.className).toContain('coarse:w-5');
-    expect(box.parentElement!.className).toContain('coarse:-m-2.5'); // padded label, no layout shift
-    expect(box.parentElement!.className).toContain('coarse:p-2.5');
+    // The halo is split: 10px horizontally (40px wide, nothing adjacent) but only 4px
+    // vertically, because the checklist rows stack. A symmetric 10px halo would make each
+    // label's 40px box overlap the row above it and steal its taps.
+    expect(box.parentElement!.className).toContain('coarse:-mx-2.5');
+    expect(box.parentElement!.className).toContain('coarse:px-2.5');
+    expect(box.parentElement!.className).toContain('coarse:-my-1');
+    expect(box.parentElement!.className).toContain('coarse:py-1');
+    expect(box.parentElement!.className).not.toContain('coarse:-m-2.5');
+    expect(box.parentElement!.className).not.toContain('coarse:p-2.5');
     expect(screen.getByRole('button', { name: 'task menu' }).className).toContain('coarse:p-3.5');
+  });
+
+  it('opens the checklist row pitch to match the taller coarse hit boxes', () => {
+    renderRow({ ...base, subtasks: twoSubtasks } as Task);
+    // 20px row + 8px gap = a 28px pitch, exactly the halo height: adjacent, never overlapping.
+    expect(screen.getByTestId('card-subtasks').className).toContain('coarse:space-y-2');
   });
 });
 

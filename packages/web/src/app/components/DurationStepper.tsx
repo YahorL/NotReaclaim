@@ -17,11 +17,13 @@ export function DurationStepper({ valueMs, onChange, disabled = false, label, si
   return (
     <div className="flex items-center">
       <span className="flex-1 text-[18px] font-bold">{durationLabel(valueMs)}</span>
-      {/* Padding grows each 26px icon box to ~38px; the tighter coarse gap keeps the pair
-          inside the same field box rather than pushing the label out. */}
+      {/* Padding is sized for the SMALLER caller, not the default: TaskDrawer, HabitDrawer and
+          CreatePopover — the primary touch surfaces — all pass size={22}, so p-2.5 buys 42px
+          there and 46px at the default 26. The tighter coarse gap keeps the pair inside the same
+          field box rather than pushing the label out. */}
       <div className="flex gap-2 text-indigo coarse:gap-1">
-        <button type="button" aria-label={`decrease ${label}`} disabled={disabled} onClick={() => onChange(Math.max(STEP, valueMs - STEP))} className="disabled:opacity-40 coarse:p-1.5"><Icons.minusCircle size={size} /></button>
-        <button type="button" aria-label={`increase ${label}`} disabled={disabled} onClick={() => onChange(valueMs + STEP)} className="disabled:opacity-40 coarse:p-1.5"><Icons.plusCircle size={size} /></button>
+        <button type="button" aria-label={`decrease ${label}`} disabled={disabled} onClick={() => onChange(Math.max(STEP, valueMs - STEP))} className="disabled:opacity-40 coarse:p-2.5"><Icons.minusCircle size={size} /></button>
+        <button type="button" aria-label={`increase ${label}`} disabled={disabled} onClick={() => onChange(valueMs + STEP)} className="disabled:opacity-40 coarse:p-2.5"><Icons.plusCircle size={size} /></button>
       </div>
     </div>
   );

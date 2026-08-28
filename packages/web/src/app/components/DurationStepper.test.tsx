@@ -14,9 +14,11 @@ describe('DurationStepper', () => {
   });
 
   it('grows both step buttons on a coarse pointer without moving the icons', () => {
-    render(<DurationStepper label="duration" valueMs={15 * 60_000} onChange={vi.fn()} />);
+    // Sized for the SMALLER caller: every drawer/popover passes size={22}, so the padding must
+    // clear the floor there (22 + 20 = 42px), not just at the default 26 (46px).
+    render(<DurationStepper label="duration" size={22} valueMs={15 * 60_000} onChange={vi.fn()} />);
     for (const name of ['decrease duration', 'increase duration']) {
-      expect(screen.getByRole('button', { name }).className).toContain('coarse:p-1.5');
+      expect(screen.getByRole('button', { name }).className).toContain('coarse:p-2.5');
     }
     expect(screen.getByRole('button', { name: 'decrease duration' }).parentElement!.className).toContain('coarse:gap-1');
   });
