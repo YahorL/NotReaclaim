@@ -32,7 +32,7 @@
 
 ## Global Constraints
 
-- Web suite **baseline: 653 tests / 72 files green** (`npm test -w @notreclaim/web`, verified 2026-08-27 on `main` at `92e0c8a`). It must be green after **every** task; the expected count is stated per task. Final expected: **708 tests / 75 files**. Per-task arithmetic: 653 → **664** (T1, +11) → **667** (T2, +3) → **679** (T3, +12) → **682** (T4, +3) → **686** (T5, +4) → **699** (T6, +13) → **708** (T7, +9) → 708 (T8, no test changes). *(T1 budgeted +9, landed +11: two controller-ruled fixes during T1 each added a test — focus return to the opener when a field inside the sheet autoFocuses, and Escape being ignored when a modal is stacked above the sheet. Every downstream figure is the original +2; no other task's own delta changed.)* New test files: `components/useClickOutside.test.tsx` (T3), `components/DurationStepper.test.tsx` (T6), `dnd/announcements.test.ts` (T7). If a step legitimately needs one more or one fewer test than budgeted, **edit this ledger line in the same commit** rather than letting the arithmetic drift.
+- Web suite **baseline: 653 tests / 72 files green** (`npm test -w @notreclaim/web`, verified 2026-08-27 on `main` at `92e0c8a`). It must be green after **every** task; the expected count is stated per task. Final expected: **709 tests / 75 files**. Per-task arithmetic: 653 → **664** (T1, +11) → **667** (T2, +3) → **679** (T3, +12) → **682** (T4, +3) → **686** (T5, +4) → **700** (T6, +14) → **709** (T7, +9) → 709 (T8, no test changes). *(T1 budgeted +9, landed +11: two controller-ruled fixes during T1 each added a test — focus return to the opener when a field inside the sheet autoFocuses, and Escape being ignored when a modal is stacked above the sheet. T6 budgeted +13, landed +14: a review-ruled fix to the coarse checklist halo needed a second lever — `coarse:space-y-2` on the `ul` to open the row pitch — and that pitch is half the no-overlap invariant, so it got its own assertion rather than riding on the label's. Every downstream figure carries these deltas; no other task's own delta changed.)* New test files: `components/useClickOutside.test.tsx` (T3), `components/DurationStepper.test.tsx` (T6), `dnd/announcements.test.ts` (T7). If a step legitimately needs one more or one fewer test than budgeted, **edit this ledger line in the same commit** rather than letting the arithmetic drift.
 - Tests run under `TZ=UTC` via the package `test` script — never bypass it.
 - **Desktop at `md+` with a fine pointer is behaviour- and pixel-identical.** Every compact behaviour is behind `useCompactWidth()` (false in jsdom, false at ≥768px) or a `md:` utility that restores today's value; every touch affordance is behind the `coarse:` variant, which a mouse never matches. A touch laptop at `md+` *does* get bigger tap targets — that is spec §1's deliberate input/width split, not a desktop regression.
 - **This phase edits pre-existing tests.** Every such edit is listed explicitly, by file and by test name, in the step that makes it; no task may rewrite a test that is not named in its own step list. **Nothing is deleted.** The complete ledger:
@@ -1490,7 +1490,7 @@ cd ../.. && npm test -w @notreclaim/web
 npm run build -w @notreclaim/web
 ```
 
-  Expected: one `@media (pointer: coarse)` block containing every swept utility; suite **699 tests / 74 files**; build clean. If the block is missing entirely, the plugin import is the suspect — `tailwind.config.js` is ESM and Tailwind loads it through jiti, which resolves the bare `tailwindcss/plugin` specifier from the hoisted root `node_modules`.
+  Expected: one `@media (pointer: coarse)` block containing every swept utility; suite **700 tests / 74 files**; build clean. If the block is missing entirely, the plugin import is the suspect — `tailwind.config.js` is ESM and Tailwind loads it through jiti, which resolves the bare `tailwindcss/plugin` specifier from the hoisted root `node_modules`.
 
 - [ ] Commit:
 
@@ -1810,7 +1810,7 @@ npm test -w @notreclaim/web
 npm run build -w @notreclaim/web
 ```
 
-  Expected: **708 tests / 75 files**, build clean.
+  Expected: **709 tests / 75 files**, build clean.
 
 - [ ] Commit:
 
@@ -1850,7 +1850,7 @@ npm test -w @notreclaim/web
 npm run build
 ```
 
-  Expected: web **708 tests / 75 files** green; every workspace builds. (`@notreclaim/db` integration tests need `packages/db/.env.test`; run them only from the main checkout, never from a worktree.)
+  Expected: web **709 tests / 75 files** green; every workspace builds. (`@notreclaim/db` integration tests need `packages/db/.env.test`; run them only from the main checkout, never from a worktree.)
 
 - [ ] Confirm no stray desktop-only regressions slipped in — these greps must all come back empty:
 
