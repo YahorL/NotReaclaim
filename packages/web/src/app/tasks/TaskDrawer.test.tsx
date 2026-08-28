@@ -44,12 +44,12 @@ describe('TaskDrawer', () => {
     expect(screen.getByTestId('err-maxChunkMs')).toBeInTheDocument();
   });
 
-  it('closes (onCancel) on a mousedown outside the drawer, but not inside it', () => {
+  it('closes (onCancel) on a pointerdown outside the drawer, but not inside it', () => {
     const onCancel = vi.fn();
     renderWithProviders(<TaskDrawer task={task()} onSave={vi.fn()} onCancel={onCancel} />, { api: emptyCategories() });
-    fireEvent.mouseDown(screen.getByTestId('task-drawer')); // inside → stays open
+    fireEvent.pointerDown(screen.getByTestId('task-drawer')); // inside → stays open
     expect(onCancel).not.toHaveBeenCalled();
-    fireEvent.mouseDown(document.body); // outside → closes
+    fireEvent.pointerDown(document.body); // outside → closes
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
@@ -147,7 +147,7 @@ describe('TaskDrawer layout', () => {
   it('compact installs no outside-dismiss of its own', () => {
     const onCancel = vi.fn();
     renderWithProviders(<TaskDrawer task={task()} compact onSave={vi.fn()} onCancel={onCancel} />, { api: emptyCategories() });
-    fireEvent.mouseDown(document.body);
+    fireEvent.pointerDown(document.body); // the event the hook listens to since the pointerdown flip
     expect(onCancel).not.toHaveBeenCalled();
   });
 });

@@ -327,6 +327,15 @@ describe('CreatePopover due-default: week-out rule', () => {
   });
 });
 
+describe('CreatePopover outside-dismiss', () => {
+  it('the desktop popover still dismisses on an outside pointerdown', () => {
+    const onClose = vi.fn();
+    renderWithProviders(<CreatePopover {...baseProps} onClose={onClose} />, { api: fakeApiClient() });
+    fireEvent.pointerDown(document.body);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('CreatePopover as a bottom sheet', () => {
   it('compact renders plain content — the Sheet owns the chrome', () => {
     renderWithProviders(<CreatePopover {...baseProps} compact />, { api: fakeApiClient() });

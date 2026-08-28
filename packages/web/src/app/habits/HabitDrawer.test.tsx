@@ -62,7 +62,7 @@ describe('HabitDrawer', () => {
     const drawer = screen.getByTestId('habit-drawer');
     expect(drawer.className).toContain('w-full');
     expect(drawer.className).not.toContain('w-[440px]');
-    fireEvent.mouseDown(document.body);
+    fireEvent.pointerDown(document.body); // the event the hook listens to since the pointerdown flip
     expect(onCancel).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, fireEvent } from '@testing-library/react';
 import { renderWithProviders } from '../../test/fakes';
 import type { BoardColumnKey } from './priorityBucket';
 import { Toolbar } from './Toolbar';
@@ -40,5 +40,13 @@ describe('Priorities Toolbar', () => {
     renderToolbar();
     const icon = screen.getByLabelText('Search tasks').parentElement!.querySelector('svg')!;
     expect(icon.classList.contains('shrink-0')).toBe(true);
+  });
+
+  it('a dropdown closes on an outside pointerdown', () => {
+    renderToolbar();
+    fireEvent.click(screen.getByRole('button', { name: /filter/i }));
+    expect(screen.getByText('Hide completed')).toBeInTheDocument();
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByText('Hide completed')).toBeNull();
   });
 });

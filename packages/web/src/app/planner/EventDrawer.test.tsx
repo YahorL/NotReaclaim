@@ -97,12 +97,12 @@ describe('EventDrawer', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
-  it('closes on a mousedown outside the drawer, but not inside it', () => {
+  it('closes on a pointerdown outside the drawer, but not inside it', () => {
     const onClose = vi.fn();
     renderWithProviders(<EventDrawer event={appEvent()} zone="UTC" onClose={onClose} />, { api: api() });
-    fireEvent.mouseDown(screen.getByTestId('event-drawer'));
+    fireEvent.pointerDown(screen.getByTestId('event-drawer'));
     expect(onClose).not.toHaveBeenCalled();
-    fireEvent.mouseDown(document.body);
+    fireEvent.pointerDown(document.body);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -165,7 +165,7 @@ describe('EventDrawer', () => {
     const drawer = screen.getByTestId('event-drawer');
     expect(drawer.className).toContain('w-full');
     expect(drawer.className).not.toContain('w-[440px]');
-    fireEvent.mouseDown(document.body);
+    fireEvent.pointerDown(document.body); // the event the hook listens to since the pointerdown flip
     expect(onClose).not.toHaveBeenCalled();
   });
 });

@@ -19,13 +19,15 @@ describe('useClickOutside', () => {
     const onOutside = vi.fn();
     render(<Probe onOutside={onOutside} />);
     fireEvent.mouseDown(screen.getByTestId('outside'));
+    expect(onOutside).not.toHaveBeenCalled();   // touch never delivers a timely mousedown
+    fireEvent.pointerDown(screen.getByTestId('outside'));
     expect(onOutside).toHaveBeenCalledTimes(1);
   });
 
   it('does not fire when the press lands inside the ref', () => {
     const onOutside = vi.fn();
     render(<Probe onOutside={onOutside} />);
-    fireEvent.mouseDown(screen.getByTestId('inside'));
+    fireEvent.pointerDown(screen.getByTestId('inside'));
     expect(onOutside).not.toHaveBeenCalled();
   });
 
@@ -34,7 +36,7 @@ describe('useClickOutside', () => {
     // press and hand the following click to whatever sits under the backdrop.
     const onOutside = vi.fn();
     render(<Probe onOutside={onOutside} enabled={false} />);
-    fireEvent.mouseDown(screen.getByTestId('outside'));
+    fireEvent.pointerDown(screen.getByTestId('outside'));
     expect(onOutside).not.toHaveBeenCalled();
   });
 });

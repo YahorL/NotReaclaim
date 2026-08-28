@@ -44,6 +44,14 @@ describe('TopBar (bare render)', () => {
     fireEvent.click(screen.getByRole('button', { name: /account menu/i }));
     expect(screen.getByRole('button', { name: /sign out/i })).toBeInTheDocument();
   });
+
+  it('the account menu closes on an outside pointerdown', () => {
+    renderTopBar();
+    fireEvent.click(screen.getByRole('button', { name: /account menu/i }));
+    expect(screen.getByRole('button', { name: /sign out/i })).toBeInTheDocument();
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole('button', { name: /sign out/i })).toBeNull();
+  });
 });
 
 describe('TopBar Next-task indicator', () => {

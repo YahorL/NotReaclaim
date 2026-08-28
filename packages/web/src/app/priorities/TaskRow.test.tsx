@@ -76,6 +76,16 @@ describe('TaskRow subtask checklist', () => {
   });
 });
 
+describe('TaskRow menu outside-dismiss', () => {
+  it('the row menu closes on an outside pointerdown', () => {
+    renderRow(base as Task);
+    fireEvent.click(screen.getByRole('button', { name: 'task menu' }));
+    expect(screen.getByText('Delete')).toBeInTheDocument();
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByText('Delete')).toBeNull();
+  });
+});
+
 const threeSubtasks = [
   { id: 's1', taskId: 't', title: 'first', done: false, sortOrder: 10 },
   { id: 's2', taskId: 't', title: 'second', done: false, sortOrder: 20 },
