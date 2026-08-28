@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import type { ClientRect, DroppableContainer, UniqueIdentifier } from '@dnd-kit/core';
 import type { Task, UpdateTaskInput } from '../../api/types';
-import { boardKeyboardCoordinates, columnDroppableId, overColumnKey, resolveBoardDrop, taskMovePatch, type BoardDropColumn } from './boardDnd';
+import { boardDropTargetName, boardKeyboardCoordinates, columnDroppableId, overColumnKey, resolveBoardDrop, taskMovePatch, type BoardDropColumn } from './boardDnd';
 
 const cols: BoardDropColumn[] = [
   { key: 'critical', tasks: [{ id: 'c1' }] },
@@ -31,6 +31,29 @@ describe('columnDroppableId / overColumnKey', () => {
   it('is null for no target and for an unknown id', () => {
     expect(overColumnKey(cols, null)).toBeNull();
     expect(overColumnKey(cols, 'ghost')).toBeNull();
+  });
+});
+
+describe('boardDropTargetName', () => {
+  const titleOf = (id: string) => ({ a: 'Write spec', b: 'Ship it' }[id] ?? null);
+
+  it('names a card by its own title, never by the column that holds it', () => {
+    // Load-bearing: dnd-kit's live region is useState-backed and aria-atomic, so an announcement
+    // byte-identical to the previous one mutates no DOM and is never spoken. Resolving card ids
+    // through `overColumnKey` gave every card in a column the same sentence, which made a
+    // within-column keyboard reorder — the main keyboard flow — silent from the second step on.
+    expect(boardDropTargetName(cols, 'a', titleOf)).toBe('Write spec');
+    expect(boardDropTargetName(cols, 'b', titleOf)).toBe('Ship it');
+  });
+
+  it('names a container droppable by its column', () => {
+    expect(boardDropTargetName(cols, 'col:high', titleOf)).toBe('the High priority column');
+    expect(boardDropTargetName(cols, 'col:backlog', titleOf)).toBe('the Backlog column');
+  });
+
+  it('is null when neither lookup knows the id, so the caller can fall back to it', () => {
+    expect(boardDropTargetName(cols, 'ghost', titleOf)).toBeNull();
+    expect(boardDropTargetName(cols, 'col:ghost', titleOf)).toBeNull();
   });
 });
 

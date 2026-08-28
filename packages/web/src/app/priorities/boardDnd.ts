@@ -1,7 +1,7 @@
 import type { DroppableContainer, DroppableContainers, KeyboardCoordinateGetter, UniqueIdentifier } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import type { Task, UpdateTaskInput } from '../../api/types';
-import { type BucketKey, type BoardColumnKey, bucketToPriority, insertionSortOrder, priorityToBucket } from './priorityBucket';
+import { type BucketKey, type BoardColumnKey, bucketToPriority, columnMeta, insertionSortOrder, priorityToBucket } from './priorityBucket';
 
 /** Column droppables are prefixed so a drop id is unambiguously a column, not a card. */
 export const COLUMN_DROPPABLE_PREFIX = 'col:';
@@ -29,6 +29,27 @@ export function overColumnKey(columns: BoardDropColumn[], overId: string | null)
     return columns.some((c) => c.key === key) ? (key as BoardColumnKey) : null;
   }
   return columns.find((c) => c.tasks.some((t) => t.id === overId))?.key ?? null;
+}
+
+/**
+ * What a drag announcement should call the thing under the pointer: a container droppable is "the
+ * High priority column", anything else is the card's own title (`null` when the caller's title
+ * lookup does not know it either, leaving it to fall back to the raw id).
+ *
+ * Only `col:`-prefixed ids may take the column branch. `overColumnKey` deliberately resolves a CARD
+ * id to the column holding it — right for a drop, fatal for an announcement: every card in a column
+ * would produce the same sentence, and dnd-kit's live region is `useState`-backed and aria-atomic,
+ * so an announcement identical to the previous one mutates no DOM and is never spoken. Naming cards
+ * by their column made a within-column keyboard reorder silent from the second arrow key onwards.
+ */
+export function boardDropTargetName(
+  columns: BoardDropColumn[],
+  overId: string,
+  titleOf: (id: string) => string | null,
+): string | null {
+  if (!overId.startsWith(COLUMN_DROPPABLE_PREFIX)) return titleOf(overId);
+  const key = overColumnKey(columns, overId);
+  return key ? `the ${columnMeta(key).label} column` : null;
 }
 
 /**

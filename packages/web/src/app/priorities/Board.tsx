@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
 import { DndContext, DragOverlay, type DragEndEvent, type DragOverEvent, type DragStartEvent } from '@dnd-kit/core';
 import type { Task } from '../../api/types';
-import { type BoardColumnKey, BUCKET_META, columnMeta, priorityToBucket } from './priorityBucket';
+import { type BoardColumnKey, BUCKET_META, priorityToBucket } from './priorityBucket';
 import { makeAnnouncements } from '../dnd/announcements';
 import { useAppSensors, pointerFirstCollision } from '../dnd/sensors';
-import { boardKeyboardCoordinates, overColumnKey, resolveBoardDrop } from './boardDnd';
+import { boardDropTargetName, boardKeyboardCoordinates, overColumnKey, resolveBoardDrop } from './boardDnd';
 import { Column } from './Column';
 
 export interface BoardColumn { key: BoardColumnKey; tasks: Task[]; }
@@ -44,10 +44,7 @@ export function Board({ columns, now, nextMsFor, onMove, onComplete, onEdit, onD
   // screenReaderInstructions stay — only the announcements change.
   const announcements = useMemo(() => {
     const titleOf = (id: string) => columns.flatMap((c) => c.tasks).find((t) => t.id === id)?.title ?? null;
-    return makeAnnouncements(titleOf, (id) => {
-      const key = overColumnKey(columns, id);
-      return key ? `the ${columnMeta(key).label} column` : titleOf(id);
-    });
+    return makeAnnouncements(titleOf, (id) => boardDropTargetName(columns, id, titleOf));
   }, [columns]);
 
   return (
