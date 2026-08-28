@@ -70,6 +70,10 @@ export interface WeekGridProps {
   compact?: boolean;
   /** Coarse pointer: long-press-armed drag, bigger resize target, always-visible actions. */
   coarse?: boolean;
+  /** Coarse pointers only: a tap on a task block opens that task (spec §2 — tap opens the drawer).
+   *  Deliberately not wired on fine pointers: a desktop click on a block does nothing today and
+   *  changing that is a desktop behaviour change, which this phase does not make. */
+  onEditTask?: (taskId: string) => void;
 }
 
 interface Item {
@@ -102,7 +106,7 @@ function toItems(blocks: ScheduledBlock[], events: CalendarEvent[], zone: string
 }
 
 export function WeekGrid(props: WeekGridProps) {
-  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit, onCommitEvent, onEditEvent, onDeleteBlock, onDeleteEvent, taskDrop = null, accents = {}, zone = 'UTC', dayStartMinute = 0, panelHidden, onTogglePanel, compact = false, coarse = false } = props;
+  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit, onCommitEvent, onEditEvent, onDeleteBlock, onDeleteEvent, taskDrop = null, accents = {}, zone = 'UTC', dayStartMinute = 0, panelHidden, onTogglePanel, compact = false, coarse = false, onEditTask } = props;
   const gridCols = `${timeGutterPx(compact)}px repeat(${days.length}, minmax(0, 1fr))`;
   const items = toItems(blocks, events, zone);
   const [creating, setCreating] = useState<{ dayIndex: number; startMin: number } | null>(null);
@@ -237,8 +241,10 @@ export function WeekGrid(props: WeekGridProps) {
               from a chrome constant: toolbars wrap, banners appear and the mobile top bar differs,
               so any `100dvh - Npx` guess is wrong on some viewport. shell-content's padding already
               reserves the fixed tab bar. `min-h-[240px]` floors degenerate cases (a zero-height
-              ancestor) so the grid falls back to the outer scroll instead of collapsing. */}
-          <div ref={scrollRef} data-testid="hours-scroll" className="min-h-[240px] flex-1 overflow-y-auto">
+              ancestor); the overflow then lands in AppShell's `shell-content` scroller instead of
+              the grid collapsing. `overscroll-contain` keeps a rubber-band flick at the top or
+              bottom of the hours from scrolling the page behind it. */}
+          <div ref={scrollRef} data-testid="hours-scroll" className="min-h-[240px] flex-1 overflow-y-auto overscroll-contain">
           <div className="grid" style={{ gridTemplateColumns: gridCols }}>
             <div data-testid="hour-gutter">
               {HOURS.map((h) => (
@@ -281,6 +287,9 @@ export function WeekGrid(props: WeekGridProps) {
                           onCommit={(patch) => onCommit(blockId, patch)}
                           onUnpin={it.pinned ? () => onCommit(blockId, { pinned: false }) : undefined}
                           onDelete={onDeleteBlock ? () => onDeleteBlock(blockId) : undefined}
+                          // Habit blocks have no taskId and stay inert on tap: there is no habit
+                          // drawer reachable from the planner, and inventing one is out of scope.
+                          onClick={coarse && it.taskId && onEditTask ? () => onEditTask(it.taskId!) : undefined}
                           dayCount={days.length}
                           accent={accent}
                           zone={zone}

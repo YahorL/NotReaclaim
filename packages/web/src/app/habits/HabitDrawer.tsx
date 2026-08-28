@@ -95,8 +95,9 @@ export function HabitDrawer({ habit, onSave, onCancel, saving = false, error = n
           <FieldBox label="Eligible days">
             <div className="flex gap-1.5 pt-0.5">
               {DAY_LABELS.map((lbl, d) => (
+                // Coarse: 7 × 40px + 6 × 6px gaps = 316px, inside a 390px sheet's content box.
                 <button key={d} type="button" data-testid={`day-${d}`} onClick={() => toggleDay(d)}
-                  className={`h-7 w-7 rounded-full text-[11px] font-bold transition-colors ${form.eligibleDays.includes(d) ? 'bg-indigo text-white' : 'bg-bg text-inkSoft border border-line'}`}>
+                  className={`h-7 w-7 rounded-full text-[11px] font-bold transition-colors coarse:h-10 coarse:w-10 ${form.eligibleDays.includes(d) ? 'bg-indigo text-white' : 'bg-bg text-inkSoft border border-line'}`}>
                   {lbl}
                 </button>
               ))}

@@ -1,3 +1,5 @@
+import plugin from 'tailwindcss/plugin';
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
@@ -42,5 +44,8 @@ export default {
       animation: { pop: 'pop .14s ease-out', fade: 'fade .12s ease-out' },
     },
   },
-  plugins: [],
+  // `coarse:` keys off the input device, not the viewport: a touch laptop at 1280px gets the
+  // bigger targets and a 390px window driven by a mouse does not. Literal class strings only,
+  // so the JIT still sees every utility (`coarse:h-11` is scanned like any other token).
+  plugins: [plugin(({ addVariant }) => { addVariant('coarse', '@media (pointer: coarse)'); })],
 };

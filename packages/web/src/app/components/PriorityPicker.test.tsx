@@ -37,4 +37,11 @@ describe('PriorityPicker', () => {
     render(<PriorityPicker value={4} onChange={vi.fn()} />);
     expect(screen.getByRole('button', { name: /critical/i })).toHaveAttribute('type', 'button');
   });
+
+  it('gives the chips a touch-sized row on a coarse pointer', () => {
+    render(<PriorityPicker value={4} onChange={vi.fn()} />);
+    const chip = screen.getByRole('button', { name: /low/i });
+    expect(chip.className).toContain('coarse:px-3');
+    expect(chip.className).toContain('coarse:py-3.5');
+  });
 });

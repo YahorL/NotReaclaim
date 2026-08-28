@@ -223,6 +223,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           onDeleteBlock={(id) => deleteBlock.mutate(id)}
           onCommitEvent={(id, patch) => updateEvent.mutate({ id, ...patch })}
           onEditEvent={openEventDrawer}
+          onEditTask={openTaskDrawer}
           onDeleteEvent={(id) => deleteEvent.mutate(id)}
           taskDrop={taskDrop}
           accents={accents}

@@ -74,6 +74,17 @@ describe('TaskRow subtask checklist', () => {
     renderRow(base as Task);
     expect(screen.queryByTestId('card-subtasks')).not.toBeInTheDocument();
   });
+
+  it('grows the checklist checkbox and the kebab on a coarse pointer', () => {
+    renderRow({ ...base, subtasks: twoSubtasks } as Task);
+    // A 14px checkbox and a 26px kebab are the two worst targets on this card.
+    const box = screen.getByTestId('card-subtask-s1');
+    expect(box.className).toContain('coarse:h-5');
+    expect(box.className).toContain('coarse:w-5');
+    expect(box.parentElement!.className).toContain('coarse:-m-2.5'); // padded label, no layout shift
+    expect(box.parentElement!.className).toContain('coarse:p-2.5');
+    expect(screen.getByRole('button', { name: 'task menu' }).className).toContain('coarse:p-3.5');
+  });
 });
 
 describe('TaskRow menu outside-dismiss', () => {

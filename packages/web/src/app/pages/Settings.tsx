@@ -58,7 +58,7 @@ export function Settings({ version }: { version?: AppVersion } = {}) {
             token + userId, and the server has no GET /auth/me). */}
         <div data-testid="mobile-account-row" className="mt-4 flex items-center justify-between rounded-[14px] border border-line bg-card px-4 py-3 md:hidden">
           <span className="text-[15px] font-semibold text-ink">Signed in</span>
-          <button type="button" onClick={signOut} className="rounded-[9px] px-3 py-2 text-[14px] font-bold text-crit">
+          <button type="button" onClick={signOut} className="rounded-[9px] px-3 py-2 text-[14px] font-bold text-crit coarse:py-3">
             Sign out
           </button>
         </div>

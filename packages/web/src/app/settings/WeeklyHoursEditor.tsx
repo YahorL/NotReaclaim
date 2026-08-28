@@ -19,14 +19,16 @@ export function WeeklyHoursEditor({ days, onChange, errors = {}, idPrefix = 'day
         const day = days.find((d) => d.weekday === wd)!;
         const dayErr = errors[wd];
         return (
-          <div key={wd} className="flex items-center gap-2 py-1 text-sm">
+          // The row is the label-sized target here; the time inputs beside it are already ~32px
+          // and native, so only the checkbox and the row's own height need growing.
+          <div key={wd} className="flex items-center gap-2 py-1 text-sm coarse:py-2">
             <span className={`w-10 text-[13px] font-semibold ${day.enabled ? 'text-ink' : 'text-inkSoft'}`}>{DAY_LABELS[wd]}</span>
             <input
               type="checkbox"
               data-testid={`${idPrefix}-${wd}-toggle`}
               checked={day.enabled}
               onChange={(e) => onChange(wd, { enabled: e.target.checked })}
-              className="accent-indigo h-4 w-4 rounded"
+              className="accent-indigo h-4 w-4 rounded coarse:h-5 coarse:w-5"
             />
             <input type="time" data-testid={`${idPrefix}-${wd}-start`} className={ctlCls} disabled={!day.enabled} value={day.start} onChange={(e) => onChange(wd, { start: e.target.value })} />
             <span className="text-inkSoft">–</span>

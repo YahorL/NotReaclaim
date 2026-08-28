@@ -460,4 +460,27 @@ describe('WeekGrid compact (below md)', () => {
     expect(onNext).not.toHaveBeenCalled();
     expect(onPrev).not.toHaveBeenCalled();
   });
+
+  it('keeps a rubber-band scroll inside the hours grid', () => {
+    renderGrid();
+    expect(screen.getByTestId('hours-scroll').className).toContain('overscroll-contain');
+  });
+
+  it('a tap on a task block opens its task on a coarse pointer', () => {
+    const onEditTask = vi.fn();
+    renderGrid({ coarse: true, onEditTask });
+    const tile = screen.getAllByTestId('event-block').find((b) => b.textContent?.includes('Write spec'))!;
+    fireEvent.pointerDown(tile, { clientX: 40, clientY: 80, pointerId: 1 });
+    fireEvent.pointerUp(tile, { clientX: 40, clientY: 80, pointerId: 1 });
+    expect(onEditTask).toHaveBeenCalledWith('t1');
+  });
+
+  it('leaves the desktop click behaviour of a task block untouched', () => {
+    const onEditTask = vi.fn();
+    renderGrid({ onEditTask });
+    const tile = screen.getAllByTestId('event-block').find((b) => b.textContent?.includes('Write spec'))!;
+    fireEvent.pointerDown(tile, { clientX: 40, clientY: 80, pointerId: 1 });
+    fireEvent.pointerUp(tile, { clientX: 40, clientY: 80, pointerId: 1 });
+    expect(onEditTask).not.toHaveBeenCalled();
+  });
 });

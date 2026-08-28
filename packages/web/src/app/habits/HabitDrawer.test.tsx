@@ -65,4 +65,11 @@ describe('HabitDrawer', () => {
     fireEvent.pointerDown(document.body); // the event the hook listens to since the pointerdown flip
     expect(onCancel).not.toHaveBeenCalled();
   });
+
+  it('grows the weekday circles on a coarse pointer', () => {
+    render(<HabitDrawer habit={habit()} onSave={vi.fn()} onCancel={vi.fn()} />);
+    const monday = screen.getByTestId('day-1');
+    expect(monday.className).toContain('coarse:h-10');
+    expect(monday.className).toContain('coarse:w-10');
+  });
 });

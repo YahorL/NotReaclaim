@@ -197,4 +197,11 @@ describe('TaskDrawer subtask drag handles', () => {
     expect(screen.getByTestId('subtask-li-s1')).not.toHaveAttribute('draggable');
     expect(screen.queryByTestId('subtask-insert-line')).toBeNull();
   });
+
+  it('grows the subtask checkbox and delete control on a coarse pointer', () => {
+    const subtasks = [{ id: 's1', taskId: 't1', title: 'First', done: false, sortOrder: 0 }];
+    renderWithProviders(<TaskDrawer task={task({ subtasks })} onSave={vi.fn()} onCancel={vi.fn()} />, { api: emptyCategories() });
+    expect(screen.getByTestId('subtask-toggle-s1').parentElement!.className).toContain('coarse:p-2.5');
+    expect(screen.getByTestId('subtask-delete-s1').className).toContain('coarse:p-3');
+  });
 });

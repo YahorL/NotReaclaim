@@ -96,4 +96,11 @@ describe('Settings page — mobile-only rows', () => {
     fireEvent.click(within(screen.getByTestId('mobile-account-row')).getByRole('button', { name: /sign out/i }));
     expect(tokenStore.get()).toBeNull();
   });
+
+  it('gives Sign out a touch-sized target', async () => {
+    const api = fakeApiClient({ getSettings: async () => settings() } as never);
+    renderWithProviders(<SettingsPage />, { api });
+    await waitFor(() => expect(screen.getByText('Sign out')).toBeInTheDocument());
+    expect(screen.getByText('Sign out').className).toContain('coarse:py-3');
+  });
 });

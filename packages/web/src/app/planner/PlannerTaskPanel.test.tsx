@@ -131,4 +131,18 @@ describe('PlannerTaskPanel', () => {
     expect(actions.className).not.toContain('opacity-0');
   });
 
+  it('gives the card controls touch-sized hit areas on a coarse pointer', () => {
+    render(
+      <PlannerTaskPanel tasks={[task({ id: 'a', title: 'Do it' })]} preview={undefined} nowMs={NOW} coarse
+        onComplete={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} />,
+    );
+    // The 20px ✓ keeps its size and grows an invisible pseudo box instead.
+    const complete = screen.getByRole('button', { name: 'Complete Do it' });
+    expect(complete.className).toContain('coarse:before:-inset-3');
+    expect(complete.className).toContain('relative');
+    // ✎ and × are adjacent: padding + a wider gap, never overlapping pseudo boxes.
+    expect(screen.getByRole('button', { name: 'Edit Do it' }).className).toContain('coarse:p-3');
+    expect(screen.getByRole('button', { name: 'Edit Do it' }).parentElement!.className).toContain('coarse:gap-2');
+  });
+
 });

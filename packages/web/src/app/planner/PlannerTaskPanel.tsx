@@ -64,7 +64,9 @@ function TaskCard({ task, nowMs, nextMs, atRisk, leftBorder, coarse, onComplete,
         type="button"
         aria-label={`Complete ${task.title}`}
         onClick={() => onComplete(task)}
-        className="grid h-5 w-5 shrink-0 place-items-center rounded-full border-[1.5px] border-line text-transparent transition-colors hover:border-indigo hover:text-indigo"
+        // The 20px ring is the visual, so it keeps its size and grows an invisible hit box
+        // instead. Safe here because nothing sits adjacent to it on the left.
+        className="relative grid h-5 w-5 shrink-0 place-items-center rounded-full border-[1.5px] border-line text-transparent transition-colors hover:border-indigo hover:text-indigo coarse:before:absolute coarse:before:-inset-3 coarse:before:content-['']"
       >
         ✓
       </button>
@@ -88,9 +90,11 @@ function TaskCard({ task, nowMs, nextMs, atRisk, leftBorder, coarse, onComplete,
         })()}
       </div>
       <span className="shrink-0 rounded-full bg-bg px-2 py-0.5 text-[11.5px] font-semibold text-inkSoft">{formatDurationShort(task.durationMs)}</span>
-      <span className={`flex shrink-0 items-center gap-0.5 transition-opacity ${coarse ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-        <button type="button" aria-label={`Edit ${task.title}`} onClick={() => onEdit(task)} className="rounded-md p-1 text-inkSoft hover:bg-bg hover:text-ink">✎</button>
-        <button type="button" aria-label={`Delete ${task.title}`} onClick={() => onDelete(task)} className="rounded-md p-1 text-inkSoft hover:bg-crit/10 hover:text-crit">×</button>
+      {/* ✎ and × are adjacent, so they grow by padding, never by a pseudo box: overlapping
+          hit areas would let × steal ✎'s taps. The wider gap keeps them apart. */}
+      <span className={`flex shrink-0 items-center gap-0.5 transition-opacity coarse:gap-2 ${coarse ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+        <button type="button" aria-label={`Edit ${task.title}`} onClick={() => onEdit(task)} className="rounded-md p-1 text-inkSoft hover:bg-bg hover:text-ink coarse:p-3">✎</button>
+        <button type="button" aria-label={`Delete ${task.title}`} onClick={() => onDelete(task)} className="rounded-md p-1 text-inkSoft hover:bg-crit/10 hover:text-crit coarse:p-3">×</button>
       </span>
     </div>
   );

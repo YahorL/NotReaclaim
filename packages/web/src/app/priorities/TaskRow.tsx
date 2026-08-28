@@ -31,13 +31,16 @@ function SortableCardSubtask({ subtask, onToggle }: { subtask: Subtask; onToggle
       className={`flex flex-col ${isDragging ? 'opacity-40' : ''}`}
     >
       <div className="flex items-center gap-2 text-[13px]">
-        <input
-          type="checkbox"
-          data-testid={`card-subtask-${subtask.id}`}
-          checked={subtask.done}
-          onChange={onToggle}
-          className="h-3.5 w-3.5 accent-indigo"
-        />
+        {/* Negative margin cancels the padding, so a 40px touch area costs no layout on desktop. */}
+        <label className="flex items-center coarse:-m-2.5 coarse:p-2.5">
+          <input
+            type="checkbox"
+            data-testid={`card-subtask-${subtask.id}`}
+            checked={subtask.done}
+            onChange={onToggle}
+            className="h-3.5 w-3.5 accent-indigo coarse:h-5 coarse:w-5"
+          />
+        </label>
         <span className={subtask.done ? 'text-inkSoft line-through' : 'text-ink'}>{subtask.title}</span>
       </div>
     </li>
@@ -142,7 +145,7 @@ export function TaskRow({ task, columnKey, nextMs, now, draggable = true, muted 
         )}
       </div>
       <div ref={menuRef} className="relative" onClick={(e) => e.stopPropagation()}>
-        <button type="button" aria-label="task menu" onClick={() => setMenuOpen((v) => !v)} className="rounded-md p-1 text-inkSoft hover:bg-[#eef0f4]">
+        <button type="button" aria-label="task menu" onClick={() => setMenuOpen((v) => !v)} className="rounded-md p-1 text-inkSoft hover:bg-[#eef0f4] coarse:p-3.5">
           <Icons.dots size={18} />
         </button>
         {menuOpen && (

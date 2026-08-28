@@ -75,4 +75,11 @@ describe('SettingsForm', () => {
     expect(screen.getByTestId('form-error')).toHaveTextContent('Nope');
   });
 
+  it('grows the weekday checkboxes on a coarse pointer', () => {
+    render(<SettingsForm initial={initial()} onSave={vi.fn()} timezones={['UTC']} />);
+    const toggle = screen.getByTestId('day-1-toggle');
+    expect(toggle.className).toContain('coarse:h-5');
+    expect(toggle.parentElement!.className).toContain('coarse:py-2');
+  });
+
 });

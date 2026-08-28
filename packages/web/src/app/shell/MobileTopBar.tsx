@@ -43,7 +43,7 @@ export function MobileTopBar({ onNewTask, now = Date.now }: MobileTopBarProps): 
             type="button"
             data-testid="mobile-stop-task"
             onClick={() => stopBlock.mutate(running.id)}
-            className="shrink-0 rounded-[9px] bg-crit px-3 py-1.5 text-[13px] font-bold text-white"
+            className="shrink-0 rounded-[9px] bg-crit px-3 py-1.5 text-[13px] font-bold text-white coarse:py-2.5"
           >
             Stop
           </button>
@@ -62,7 +62,7 @@ export function MobileTopBar({ onNewTask, now = Date.now }: MobileTopBarProps): 
             type="button"
             data-testid="mobile-next-task-start"
             onClick={() => startBlock.mutate(nextBlock.id)}
-            className="shrink-0 rounded-[9px] bg-indigo px-3 py-1.5 text-[13px] font-bold text-white"
+            className="shrink-0 rounded-[9px] bg-indigo px-3 py-1.5 text-[13px] font-bold text-white coarse:py-2.5"
           >
             Start
           </button>
@@ -76,7 +76,7 @@ export function MobileTopBar({ onNewTask, now = Date.now }: MobileTopBarProps): 
         data-testid="mobile-new-task"
         aria-label="New task"
         onClick={onNewTask}
-        className="shrink-0 rounded-[9px] p-2 text-ink"
+        className="shrink-0 rounded-[9px] p-2 text-ink coarse:p-3"
       >
         <Icons.plus size={22} />
       </button>

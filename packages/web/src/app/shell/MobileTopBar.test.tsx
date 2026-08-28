@@ -67,4 +67,10 @@ describe('MobileTopBar', () => {
     fireEvent.click(screen.getByTestId('mobile-stop-task'));
     await waitFor(() => expect(stopBlock).toHaveBeenCalledWith('r1'));
   });
+
+  it('gives the + button a touch-sized target', () => {
+    const api = fakeApiClient({ getSchedule: async () => [] });
+    renderWithProviders(<MobileTopBar onNewTask={() => {}} now={nowFn} />, { api });
+    expect(screen.getByTestId('mobile-new-task').className).toContain('coarse:p-3');
+  });
 });

@@ -35,9 +35,12 @@ function SortableSubtask({ subtask, onToggle, onDelete }: {
       className={`flex flex-col ${isDragging ? 'opacity-40' : ''}`}
     >
       <div className="flex items-center gap-2 text-[14px]">
-        <input type="checkbox" data-testid={`subtask-toggle-${subtask.id}`} checked={subtask.done} onChange={onToggle} className="h-4 w-4 accent-indigo" />
+        {/* Negative margin cancels the padding, so a 40px touch area costs no layout on desktop. */}
+        <label className="flex items-center coarse:-m-2.5 coarse:p-2.5">
+          <input type="checkbox" data-testid={`subtask-toggle-${subtask.id}`} checked={subtask.done} onChange={onToggle} className="h-4 w-4 accent-indigo coarse:h-5 coarse:w-5" />
+        </label>
         <span className={`flex-1 ${subtask.done ? 'text-inkSoft line-through' : 'text-ink'}`}>{subtask.title}</span>
-        <button type="button" data-testid={`subtask-delete-${subtask.id}`} aria-label="delete subtask" onClick={onDelete} className="text-[13px] font-bold text-crit">×</button>
+        <button type="button" data-testid={`subtask-delete-${subtask.id}`} aria-label="delete subtask" onClick={onDelete} className="text-[13px] font-bold text-crit coarse:p-3">×</button>
       </div>
     </li>
   );

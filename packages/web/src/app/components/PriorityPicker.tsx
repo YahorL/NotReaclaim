@@ -18,7 +18,7 @@ export function PriorityPicker({ value, onChange }: { value: number; onChange: (
             type="button"
             aria-pressed={active}
             onClick={() => onChange(bucketToPriority(bucket))}
-            className={`flex items-center justify-center gap-1 whitespace-nowrap rounded-full px-2 py-1 text-[11px] font-bold transition-colors ${active ? 'bg-indigo text-white' : 'border border-line bg-bg text-inkSoft'}`}
+            className={`flex items-center justify-center gap-1 whitespace-nowrap rounded-full px-2 py-1 text-[11px] font-bold transition-colors coarse:px-3 coarse:py-3.5 ${active ? 'bg-indigo text-white' : 'border border-line bg-bg text-inkSoft'}`}
           >
             <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${BUCKET_META[bucket].dot}`} />
             {label}
