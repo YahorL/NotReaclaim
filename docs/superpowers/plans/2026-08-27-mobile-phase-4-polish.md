@@ -44,6 +44,7 @@
   | `app/pages/Planner.test.tsx` | 1 | 2 (T3) + 1 (T7) | 3, 7 |
   | `app/tasks/TaskDrawer.test.tsx` | 2 (one in T3, one in T5) | 2 (T3) + 1 (T6) | 3, 5, 6 |
   | `app/planner/EventDrawer.test.tsx` | 1 | 1 | 3, 5 |
+  | `app/priorities/boardDnd.test.ts` | 0 | 3 (T7) | 7 |
   | **total (baseline files)** | **6** | — | |
 
   Plus three tests **created by this plan** in Task 3 (`useClickOutside.test.tsx`) and rewritten in Task 5 when the listener moves to `pointerdown`. No test's assertion is dropped without an equivalent replacement named in the same step.
