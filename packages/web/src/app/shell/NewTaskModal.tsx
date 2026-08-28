@@ -72,7 +72,9 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
           </button>
         </div>
 
-        <div className="mb-3.5 flex gap-4">
+        {/* Two 195px-min steppers do not fit side by side in a 358px content box at 390px, so the
+            pair stacks on a phone and keeps its desktop row from md up. */}
+        <div className="mb-3.5 flex flex-col gap-2 md:flex-row md:gap-4">
           <FieldBox label="Min duration"><DurationStepper label="min" disabled={!form.split} valueMs={form.minChunkMs} onChange={(ms) => set('minChunkMs', ms)} /></FieldBox>
           <FieldBox label="Max duration"><DurationStepper label="max" disabled={!form.split} valueMs={form.maxChunkMs} onChange={(ms) => set('maxChunkMs', ms)} /></FieldBox>
         </div>

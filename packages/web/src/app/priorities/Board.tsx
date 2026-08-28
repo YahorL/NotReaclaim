@@ -19,9 +19,14 @@ export interface BoardProps {
   onDelete: (task: Task) => void;
   onToggleSubtask: (subtaskId: string, done: boolean) => void;
   onReorderSubtask: (subtaskId: string, sortOrder: number) => void;
+  /**
+   * Fires `true` when a drag starts and `false` when it ends or is cancelled. The pane above the
+   * board has to drop CSS scroll-snapping for the duration — see `boardPane.ts`.
+   */
+  onDragActiveChange?: (active: boolean) => void;
 }
 
-export function Board({ columns, now, nextMsFor, onMove, onComplete, onEdit, onDelete, onToggleSubtask, onReorderSubtask }: BoardProps) {
+export function Board({ columns, now, nextMsFor, onMove, onComplete, onEdit, onDelete, onToggleSubtask, onReorderSubtask, onDragActiveChange }: BoardProps) {
   // The board registers container droppables (`col:*`) alongside the cards, so it needs the
   // container-blind arrow getter — see `boardKeyboardCoordinates`.
   const sensors = useAppSensors(boardKeyboardCoordinates);
@@ -29,9 +34,11 @@ export function Board({ columns, now, nextMsFor, onMove, onComplete, onEdit, onD
   const [overColumn, setOverColumn] = useState<BoardColumnKey | null>(null);
   const activeTask = columns.flatMap((c) => c.tasks).find((t) => t.id === activeId) ?? null;
 
-  const clear = () => { setActiveId(null); setOverColumn(null); };
+  // Every drag leaves through here — end AND cancel — so the "drag is over" signal belongs here
+  // rather than on `onDragEnd`, which a cancelled drag never reaches.
+  const clear = () => { setActiveId(null); setOverColumn(null); onDragActiveChange?.(false); };
 
-  const onDragStart = (e: DragStartEvent) => setActiveId(String(e.active.id));
+  const onDragStart = (e: DragStartEvent) => { setActiveId(String(e.active.id)); onDragActiveChange?.(true); };
   const onDragOver = (e: DragOverEvent) => setOverColumn(overColumnKey(columns, e.over ? String(e.over.id) : null));
   const onDragEnd = (e: DragEndEvent) => {
     const drop = resolveBoardDrop(columns, String(e.active.id), e.over ? String(e.over.id) : null);

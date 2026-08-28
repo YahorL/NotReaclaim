@@ -243,8 +243,9 @@ export function WeekGrid(props: WeekGridProps) {
               reserves the fixed tab bar. `min-h-[240px]` floors degenerate cases (a zero-height
               ancestor); the overflow then lands in AppShell's `shell-content` scroller instead of
               the grid collapsing. `overscroll-contain` keeps a rubber-band flick at the top or
-              bottom of the hours from scrolling the page behind it. */}
-          <div ref={scrollRef} data-testid="hours-scroll" className="min-h-[240px] flex-1 overflow-y-auto overscroll-contain">
+              bottom of the hours from scrolling the page behind it — a phone concern, so `md+`
+              restores native chaining and desktop stays byte-identical to before. */}
+          <div ref={scrollRef} data-testid="hours-scroll" className="min-h-[240px] flex-1 overflow-y-auto overscroll-contain md:overscroll-auto">
           <div className="grid" style={{ gridTemplateColumns: gridCols }}>
             <div data-testid="hour-gutter">
               {HOURS.map((h) => (

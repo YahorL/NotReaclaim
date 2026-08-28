@@ -19,8 +19,11 @@ export function WeeklyHoursEditor({ days, onChange, errors = {}, idPrefix = 'day
         const day = days.find((d) => d.weekday === wd)!;
         const dayErr = errors[wd];
         return (
-          // The row is the label-sized target here; the time inputs beside it are already ~32px
-          // and native, so only the checkbox and the row's own height need growing.
+          // The row is a plain div, so the only tap target for enabling a day is the checkbox
+          // itself: `coarse:h-5 w-5` takes it to 20px, and `coarse:py-2` opens the row pitch so
+          // adjacent days are not mis-hit. That is still under the 44px guideline — making the
+          // whole row hittable needs a real <label htmlFor>, which is ledgered as a follow-up.
+          // The time inputs beside it are already ~32px and native.
           <div key={wd} className="flex items-center gap-2 py-1 text-sm coarse:py-2">
             <span className={`w-10 text-[13px] font-semibold ${day.enabled ? 'text-ink' : 'text-inkSoft'}`}>{DAY_LABELS[wd]}</span>
             <input

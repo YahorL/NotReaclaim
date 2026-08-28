@@ -141,4 +141,14 @@ describe('NewTaskModal', () => {
     expect(row).not.toBeNull();
     expect(row.classList.contains('md:flex-nowrap')).toBe(true);
   });
+
+  it('stacks the Min/Max duration pair below md and keeps the desktop row at md+', () => {
+    renderWithProviders(<NewTaskModal now={() => NOW} onClose={vi.fn()} />, { api: fakeApiClient(api() as never) });
+    // Two steppers with a 195px min in a 358px content box at 390: side by side they clip.
+    const row = screen.getByText('Min duration').closest('div.mb-3\\.5') as HTMLElement;
+    expect(row).not.toBeNull();
+    expect(row.classList.contains('flex-col')).toBe(true);
+    expect(row.classList.contains('md:flex-row')).toBe(true);
+    expect(row.classList.contains('md:gap-4')).toBe(true);
+  });
 });

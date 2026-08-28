@@ -275,14 +275,17 @@ describe('Planner compact layout', () => {
     expect(drawerSheet.className).toContain('h-dvh');
   });
 
-  it('the task drawer sheet closes on a backdrop tap', async () => {
+  it('closes the task drawer sheet and returns focus to the Tasks toggle', async () => {
+    // Dismissal goes through the sheet's ✕, not its backdrop: this drawer is the `fullScreen`
+    // variant, so the sheet frame is `h-dvh` and covers every pixel of the backdrop behind it.
+    // The backdrop element exists in the DOM but no tap can ever reach it.
     const api = makeApi({ listTasks: vi.fn(async () => [compactTask]) });
     renderWithProviders(<Planner now={() => NOW} />, { api });
     await waitFor(() => expect(screen.getByTestId('day-col-0')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('panel-sheet-toggle'));
     await waitFor(() => expect(screen.getByTestId('planner-task-panel')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: 'Edit Write spec' }));
-    fireEvent.click(screen.getByTestId('sheet-backdrop'));
+    fireEvent.click(screen.getByRole('button', { name: 'Close Edit task' }));
     expect(screen.queryByTestId('task-drawer')).toBeNull();
     // The ✎ that opened the drawer died with the Tasks sheet, so the drawer must have captured a
     // survivor to hand focus back to — otherwise it strands on <body> and the tab order restarts.

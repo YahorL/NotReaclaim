@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { installMatchMedia } from '../../test/matchMedia';
 import { UnscheduledWarning } from './UnscheduledWarning';
 
@@ -49,6 +49,23 @@ describe('UnscheduledWarning', () => {
     expect(screen.getByText('A (1h left)')).toBeInTheDocument();
     expect(screen.queryByText('B (1h left)')).toBeNull();
     expect(screen.getByText('+4 more')).toBeInTheDocument();
+    mm.restore();
+  });
+
+  it('+N more is a button that unfolds the whole list', () => {
+    render(<UnscheduledWarning entries={five} />);
+    fireEvent.click(screen.getByTestId('unscheduled-more'));
+    for (const e of five) expect(screen.getByText(e.label)).toBeInTheDocument();
+    expect(screen.queryByTestId('unscheduled-more')).toBeNull();
+  });
+
+  it('unfolds on a phone too, where a title tooltip is unreachable', () => {
+    const mm = installMatchMedia({ '(max-width: 767.98px)': true });
+    render(<UnscheduledWarning entries={five} />);
+    const more = screen.getByTestId('unscheduled-more');
+    expect(more.tagName).toBe('BUTTON');
+    fireEvent.click(more);
+    for (const e of five) expect(screen.getByText(e.label)).toBeInTheDocument();
     mm.restore();
   });
 });

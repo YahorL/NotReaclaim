@@ -174,6 +174,8 @@ describe('Priorities board', () => {
     expect(pane.className).toContain('snap-mandatory');
     expect(pane.className).toContain('md:snap-none');  // no snapping under a mouse
     expect(pane.className).toContain('overscroll-contain');
+    // The snap gutter matches the pane's own padding, so column 1 keeps its inset after a snap.
+    expect(pane.className).toContain('scroll-pl-[30px]');
   });
 });
 

@@ -9,6 +9,7 @@ import { Toolbar } from '../priorities/Toolbar';
 import { Board, type BoardColumn } from '../priorities/Board';
 import { type BoardColumnKey, BUCKETS, priorityToBucket, nextBlockMsForTask, sortBucket, sortCompleted } from '../priorities/priorityBucket';
 import { taskMovePatch } from '../priorities/boardDnd';
+import { boardPaneClass } from '../priorities/boardPane';
 
 export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
   const tasksQ = useTasksQuery();
@@ -26,6 +27,8 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
     critical: true, high: true, medium: true, low: true, backlog: true, completed: true,
   });
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Snapping fights dnd-kit's edge auto-scroll, so the pane un-snaps while a card is in the air.
+  const [dragging, setDragging] = useState(false);
   const nowMs = now();
 
   const editing = (tasksQ.data ?? []).find((t) => t.id === editingId) ?? null;
@@ -83,7 +86,7 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
         hideCompleted={hideCompleted} setHideCompleted={setHideCompleted}
         colsVisible={colsVisible} setColsVisible={setColsVisible}
       />
-      <div className="min-h-0 flex-1 snap-x snap-mandatory overflow-auto overscroll-contain px-[30px] pb-10 md:snap-none">
+      <div className={boardPaneClass(dragging)}>
         {tasksQ.isLoading && <p className="text-sm text-inkSoft">Loading tasks…</p>}
         {tasksQ.isError && (
           <p className="text-sm">
@@ -96,6 +99,7 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
             columns={columns} now={nowMs} nextMsFor={nextMsFor}
             onMove={onMove} onComplete={onComplete} onEdit={(t) => setEditingId(t.id)} onDelete={onDelete}
             onToggleSubtask={onToggleSubtask} onReorderSubtask={onReorderSubtask}
+            onDragActiveChange={setDragging}
           />
         )}
       </div>

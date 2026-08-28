@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useCompactWidth } from '../lib/useMediaQuery';
 import type { UnscheduledEntry } from './unscheduledSummary';
 
@@ -13,8 +14,12 @@ const MAX_SHOWN_COMPACT = 1;
 export function UnscheduledWarning({ entries }: { entries: UnscheduledEntry[] }) {
   // Above the early return: hooks may not be skipped when the banner has nothing to say.
   const compact = useCompactWidth();
+  // "+N more" used to be a `title` tooltip, which a touch device has no way to open — on a phone
+  // the fold hides all but one entry, so the overflow was simply unreadable. It is a button now;
+  // the tooltip stays for a mouse, where it costs nothing.
+  const [expanded, setExpanded] = useState(false);
   if (entries.length === 0) return null;
-  const max = compact ? MAX_SHOWN_COMPACT : MAX_SHOWN;
+  const max = expanded ? entries.length : compact ? MAX_SHOWN_COMPACT : MAX_SHOWN;
   const shown = entries.slice(0, max);
   const rest = entries.slice(max);
   return (
@@ -31,9 +36,15 @@ export function UnscheduledWarning({ entries }: { entries: UnscheduledEntry[] })
         </span>
       ))}
       {rest.length > 0 && (
-        <span title={rest.map((r) => r.label).join(', ')} className="font-semibold underline decoration-dotted">
+        <button
+          type="button"
+          data-testid="unscheduled-more"
+          title={rest.map((r) => r.label).join(', ')}
+          onClick={() => setExpanded(true)}
+          className="font-semibold underline decoration-dotted"
+        >
           +{rest.length} more
-        </span>
+        </button>
       )}
     </div>
   );
