@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, type PointerEvent as ReactPointerEvent } from 'react';
-import { BASE, variantClass, type BlockKind } from './EventBlock';
+import { BASE, DELETE_BTN_CLASS, accentStyle, variantClass, type BlockKind } from './EventBlock';
 import { WINDOW_END_MIN, SLOT_MIN, snapMinutes, pxToMinutes, minutesToPx, clampToWindow, shiftDays, clampDayDelta, formatHm, resizeHandleClass } from './weekModel';
 import { IDLE, beginPress, pressMove, pressArm, endPress, isArmed, isTap, LONG_PRESS_MS, type PressState } from './longPress';
 import { useEdgeAutoScroll } from './edgeScroll';
@@ -322,11 +322,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
   const previewStart = startMs + effectiveMoveMin * MS_PER_MIN;
   const previewEnd = effectiveGrowMin !== 0 ? endMs + effectiveGrowMin * MS_PER_MIN : endMs + effectiveMoveMin * MS_PER_MIN;
 
-  const accentStyles = accent && kind !== 'meeting'
-    ? pinned
-      ? { backgroundColor: accent }
-      : { borderColor: accent, color: accent }
-    : {};
+  const accentStyles = accentStyle(accent, kind, pinned);
 
   const transformX = effectiveDayDelta * effectiveColWidth;
   const transformY = minutesToPx(effectiveMoveMin);
@@ -367,7 +363,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
           title="Delete"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className={`absolute right-0.5 top-0.5 z-10 h-4 w-4 items-center justify-center rounded-full bg-black/25 text-[11px] leading-none text-white hover:bg-black/45 ${coarse ? 'flex' : 'hidden group-hover:flex'}`}
+          className={`${DELETE_BTN_CLASS} ${coarse ? 'flex' : 'hidden group-hover:flex'}`}
         >
           ×
         </button>

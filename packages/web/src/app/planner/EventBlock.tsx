@@ -1,3 +1,5 @@
+import type { CSSProperties } from 'react';
+
 export type BlockKind = 'meeting' | 'task' | 'habit' | 'blocked';
 
 export const BASE = 'absolute overflow-hidden rounded-[6px] px-[7px] py-1 text-[12.5px] font-bold leading-tight';
@@ -19,6 +21,18 @@ export function variantClass(kind: BlockKind, pinned: boolean, accent?: string):
     : 'border border-dashed border-low bg-transparent text-kind-habitText';
 }
 
+/** Inline colours for a category accent; pairs with the classes `variantClass` drops when one is set. */
+export function accentStyle(accent: string | undefined, kind: BlockKind, pinned: boolean): CSSProperties {
+  return accent && kind !== 'meeting'
+    ? pinned
+      ? { backgroundColor: accent }
+      : { borderColor: accent, color: accent }
+    : {};
+}
+
+/** The hover × on a tile; each caller appends its own `flex` / `hidden group-hover:flex`. */
+export const DELETE_BTN_CLASS = 'absolute right-0.5 top-0.5 z-10 h-4 w-4 items-center justify-center rounded-full bg-black/25 text-[11px] leading-none text-white hover:bg-black/45';
+
 export interface EventBlockProps {
   title: string;
   kind: BlockKind;
@@ -36,11 +50,7 @@ export interface EventBlockProps {
 
 export function EventBlock({ title, kind, topPct, heightPct, leftPct = 0, widthPct = 100, startLabel, pinned = false, accent, onDelete, coarse = false }: EventBlockProps) {
   const locked = kind !== 'meeting' && pinned;
-  const accentStyles = accent && kind !== 'meeting'
-    ? pinned
-      ? { backgroundColor: accent }
-      : { borderColor: accent, color: accent }
-    : {};
+  const accentStyles = accentStyle(accent, kind, pinned);
   return (
     <div
       data-testid="event-block"
@@ -56,7 +66,7 @@ export function EventBlock({ title, kind, topPct, heightPct, leftPct = 0, widthP
           aria-label="Delete event"
           title="Delete"
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className={`absolute right-0.5 top-0.5 z-10 h-4 w-4 items-center justify-center rounded-full bg-black/25 text-[11px] leading-none text-white hover:bg-black/45 ${coarse ? 'flex' : 'hidden group-hover:flex'}`}
+          className={`${DELETE_BTN_CLASS} ${coarse ? 'flex' : 'hidden group-hover:flex'}`}
         >
           ×
         </button>
