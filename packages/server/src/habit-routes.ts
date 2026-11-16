@@ -35,6 +35,6 @@ export function registerHabitRoutes(app: FastifyInstance, deps: AppDeps, afterMu
     const { id } = idParamSchema.parse(request.params);
     await deps.repos.habits.delete(request.userId, id);
     afterMutation(request.userId);
-    reply.code(204).send();
+    return reply.code(204).send();
   });
 }

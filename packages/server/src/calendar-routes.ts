@@ -99,6 +99,6 @@ export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afte
     }
     await deps.repos.calendarEvents.delete(request.userId, id);
     afterMutation(request.userId);
-    reply.code(204);
+    return reply.code(204).send();
   });
 }

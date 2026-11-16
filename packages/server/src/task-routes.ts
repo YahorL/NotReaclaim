@@ -63,6 +63,6 @@ export function registerTaskRoutes(app: FastifyInstance, deps: AppDeps, afterMut
     const { id } = idParamSchema.parse(request.params);
     await deps.repos.tasks.delete(request.userId, id);
     afterMutation(request.userId, { taskId: id, action: 'deleted' });
-    reply.code(204).send();
+    return reply.code(204).send();
   });
 }

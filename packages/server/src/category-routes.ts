@@ -32,6 +32,6 @@ export function registerCategoryRoutes(app: FastifyInstance, deps: AppDeps, afte
     const { id } = idParamSchema.parse(request.params);
     await deps.repos.categories.delete(request.userId, id);
     afterMutation(request.userId);
-    reply.code(204).send();
+    return reply.code(204).send();
   });
 }

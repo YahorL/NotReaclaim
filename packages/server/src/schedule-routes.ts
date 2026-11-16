@@ -128,6 +128,6 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
       );
     }
     await deps.repos.scheduledBlocks.delete(request.userId, id);
-    reply.code(204);
+    return reply.code(204).send();
   });
 }
