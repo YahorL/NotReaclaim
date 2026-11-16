@@ -4,15 +4,10 @@ import { intersectIntervals, subtractIntervals, mergeIntervals } from './interva
 /**
  * Split `durationMs` into chunk sizes summing exactly to it, using the fewest
  * chunks such that none exceeds `maxChunkMs` (a hard upper bound), distributed
- * as evenly as possible. `minChunkMs` is best-effort: minimizing the chunk count
- * already maximizes chunk size, so chunks stay at or above `minChunkMs` whenever
- * that is feasible given the hard `maxChunkMs` cap.
+ * as evenly as possible. There is no minimum chunk size: minimizing the chunk
+ * count already makes every chunk as large as the `maxChunkMs` cap allows.
  */
-export function splitDuration(
-  durationMs: number,
-  minChunkMs: number,
-  maxChunkMs: number,
-): number[] {
+export function splitDuration(durationMs: number, maxChunkMs: number): number[] {
   if (durationMs <= 0) return [];
   if (durationMs <= maxChunkMs) return [durationMs];
 
