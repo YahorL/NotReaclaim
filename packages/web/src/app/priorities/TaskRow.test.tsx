@@ -8,7 +8,7 @@ const noop = () => {};
 function renderRow(task: Task, over: { onEdit?: (t: Task) => void; onToggleSubtask?: (id: string, done: boolean) => void; onReorderSubtask?: (subtaskId: string, sortOrder: number) => void; draggable?: boolean } = {}) {
   return render(
     <TaskRow
-      task={task} columnKey="critical" nextMs={null} now={Date.parse('2026-01-05T00:00:00.000Z')}
+      task={task} columnKey="critical" nextMs={null} now={Date.parse('2026-01-05T00:00:00.000Z')} zone="UTC"
       draggable={over.draggable ?? true}
       onComplete={noop} onEdit={over.onEdit ?? noop} onDelete={noop}
       onToggleSubtask={over.onToggleSubtask ?? noop}
@@ -163,5 +163,20 @@ describe('TaskRow sortable wiring', () => {
     unmount();
     renderRow(base as Task, { draggable: false });
     expect(screen.getByTestId('task-row')).not.toHaveAttribute('aria-roledescription');
+  });
+});
+
+describe('TaskRow labels in the settings zone', () => {
+  it('reads the due day and the next-block time in the settings zone', () => {
+    render(
+      <TaskRow
+        // 02:00Z on Jan 9 is still Jan 8 in New York.
+        task={{ ...base, dueBy: '2026-01-09T02:00:00.000Z' } as Task} columnKey="critical"
+        nextMs={Date.parse('2026-01-06T01:30:00.000Z')} now={Date.parse('2026-01-05T15:00:00.000Z')}
+        zone="America/New_York" draggable onComplete={noop} onEdit={noop} onDelete={noop}
+        onToggleSubtask={noop} onReorderSubtask={noop}
+      />,
+    );
+    expect(screen.getByText('Due 1/8 · Next: Today 8:30pm')).toBeInTheDocument();
   });
 });

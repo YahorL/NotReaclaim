@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { SchedulePreview } from '../../api/types';
-import { priorityToBucket, bucketToPriority, relativeDayTimeLabel, nextBlockMsForTask, BUCKETS, sortBucket, insertionSortOrder } from './priorityBucket';
+import { priorityToBucket, bucketToPriority, relativeDayTimeLabel, dueShort, dueLabel, nextBlockMsForTask, BUCKETS, sortBucket, insertionSortOrder } from './priorityBucket';
 
 describe('priorityToBucket', () => {
   it('maps priority numbers to buckets', () => {
@@ -19,9 +19,9 @@ describe('priorityToBucket', () => {
 describe('relativeDayTimeLabel', () => {
   const NOW = Date.parse('2026-01-07T12:00:00.000Z'); // Wednesday
   it('uses Today / Tomorrow / weekday (TZ=UTC)', () => {
-    expect(relativeDayTimeLabel(Date.parse('2026-01-07T17:00:00.000Z'), NOW)).toBe('Today 5:00pm');
-    expect(relativeDayTimeLabel(Date.parse('2026-01-08T09:30:00.000Z'), NOW)).toBe('Tomorrow 9:30am');
-    expect(relativeDayTimeLabel(Date.parse('2026-01-10T08:15:00.000Z'), NOW)).toBe('Sat 8:15am');
+    expect(relativeDayTimeLabel(Date.parse('2026-01-07T17:00:00.000Z'), NOW, 'UTC')).toBe('Today 5:00pm');
+    expect(relativeDayTimeLabel(Date.parse('2026-01-08T09:30:00.000Z'), NOW, 'UTC')).toBe('Tomorrow 9:30am');
+    expect(relativeDayTimeLabel(Date.parse('2026-01-10T08:15:00.000Z'), NOW, 'UTC')).toBe('Sat 8:15am');
   });
 });
 
@@ -104,5 +104,36 @@ describe('nextBlockMsForTask', () => {
   it('returns null when no task block matches or preview is undefined', () => {
     expect(nextBlockMsForTask('zzz', preview)).toBeNull();
     expect(nextBlockMsForTask('t1', undefined)).toBeNull();
+  });
+});
+
+describe('relativeDayTimeLabel in the settings zone', () => {
+  const NOW = Date.parse('2026-01-07T12:00:00.000Z'); // Wed 07:00 in New York, Wed 21:00 in Tokyo
+  it('New York: day and time are read in the settings zone', () => {
+    // 02:00Z on Jan 8 is 21:00 on Jan 7 in New York.
+    expect(relativeDayTimeLabel(Date.parse('2026-01-08T02:00:00.000Z'), NOW, 'America/New_York')).toBe('Today 9:00pm');
+    // 03:00Z on Sat Jan 10 is Fri 22:00 in New York.
+    expect(relativeDayTimeLabel(Date.parse('2026-01-10T03:00:00.000Z'), NOW, 'America/New_York')).toBe('Fri 10:00pm');
+  });
+  it('Tokyo: an afternoon UTC time is already tomorrow', () => {
+    expect(relativeDayTimeLabel(Date.parse('2026-01-07T16:00:00.000Z'), NOW, 'Asia/Tokyo')).toBe('Tomorrow 1:00am');
+  });
+  it('DST: tomorrow across the New York spring-forward night', () => {
+    const satNoon = Date.parse('2026-03-07T17:00:00.000Z'); // Sat 12:00 EST
+    expect(relativeDayTimeLabel(Date.parse('2026-03-09T03:30:00.000Z'), satNoon, 'America/New_York')).toBe('Tomorrow 11:30pm');
+  });
+});
+
+describe('due labels in the settings zone', () => {
+  it('dueShort reads the month/day in the zone', () => {
+    expect(dueShort('2026-01-09T02:00:00.000Z', 'UTC')).toBe('Due 1/9');
+    expect(dueShort('2026-01-09T02:00:00.000Z', 'America/New_York')).toBe('Due 1/8');
+    expect(dueShort('2026-01-08T16:00:00.000Z', 'Asia/Tokyo')).toBe('Due 1/9');
+    expect(dueShort(null, 'UTC')).toBe('No deadline');
+  });
+  it('dueLabel reads the month/day in the zone', () => {
+    expect(dueLabel('2026-01-10T11:30:00.000Z', 'Pacific/Auckland')).toBe('Due Jan 11');
+    expect(dueLabel('2026-01-10T03:00:00.000Z', 'America/New_York')).toBe('Due Jan 9');
+    expect(dueLabel(null, 'UTC')).toBeNull();
   });
 });

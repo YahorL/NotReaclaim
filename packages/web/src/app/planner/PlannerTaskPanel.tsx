@@ -4,13 +4,15 @@ import type { Task, SchedulePreview } from '../../api/types';
 import { formatDurationShort } from '../lib/duration';
 import { PANEL_TASK_DRAG_TYPE, panelTaskDraggableId } from './scheduleDrop';
 import {
-  BUCKETS, BUCKET_META, isActiveTask, priorityToBucket, sortBucket, relativeDayTimeLabel, nextBlockMsForTask,
+  BUCKETS, BUCKET_META, isActiveTask, priorityToBucket, sortBucket, relativeDayTimeLabel, nextBlockMsForTask, dueLabel,
 } from '../priorities/priorityBucket';
 
 export interface PlannerTaskPanelProps {
   tasks: Task[];
   preview: SchedulePreview | undefined;
   nowMs: number;
+  /** Settings zone the due / next labels are read in. */
+  zone: string;
   onComplete: (task: Task) => void;
   onEdit: (task: Task) => void;
   onDelete: (task: Task) => void;
@@ -23,18 +25,12 @@ export interface PlannerTaskPanelProps {
 type Tab = 'priorities' | 'tasks';
 const TABS: readonly Tab[] = ['priorities', 'tasks'];
 
-function dueLabel(task: Task): string | null {
-  if (!task.dueBy) return null;
-  const d = new Date(task.dueBy);
-  return `Due ${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
-}
-
-function TaskCard({ task, nowMs, nextMs, atRisk, leftBorder, coarse, onComplete, onEdit, onDelete }: {
-  task: Task; nowMs: number; nextMs: number | null; atRisk: boolean; leftBorder: string; coarse: boolean;
+function TaskCard({ task, nowMs, zone, nextMs, atRisk, leftBorder, coarse, onComplete, onEdit, onDelete }: {
+  task: Task; nowMs: number; zone: string; nextMs: number | null; atRisk: boolean; leftBorder: string; coarse: boolean;
   onComplete: (t: Task) => void; onEdit: (t: Task) => void; onDelete: (t: Task) => void;
 }) {
-  const due = dueLabel(task);
-  const next = nextMs != null ? `Next: ${relativeDayTimeLabel(nextMs, nowMs)}` : null;
+  const due = dueLabel(task.dueBy, zone);
+  const next = nextMs != null ? `Next: ${relativeDayTimeLabel(nextMs, nowMs, zone)}` : null;
   const meta = [due, next].filter(Boolean).join(' · ');
   const spent = task.spentMs ?? 0;
   const pct = task.durationMs > 0 ? Math.min(100, (spent / task.durationMs) * 100) : 0;
@@ -98,7 +94,7 @@ function TaskCard({ task, nowMs, nextMs, atRisk, leftBorder, coarse, onComplete,
   );
 }
 
-export function PlannerTaskPanel({ tasks, preview, nowMs, onComplete, onEdit, onDelete, compact = false, coarse = false }: PlannerTaskPanelProps) {
+export function PlannerTaskPanel({ tasks, preview, nowMs, zone, onComplete, onEdit, onDelete, compact = false, coarse = false }: PlannerTaskPanelProps) {
   const [tab, setTab] = useState<Tab>('priorities');
 
   const active = useMemo(
@@ -136,7 +132,7 @@ export function PlannerTaskPanel({ tasks, preview, nowMs, onComplete, onEdit, on
 
   const card = (t: Task, leftBorder: string) => (
     <TaskCard
-      key={t.id} task={t} nowMs={nowMs} nextMs={nextBlockMsForTask(t.id, preview)}
+      key={t.id} task={t} nowMs={nowMs} zone={zone} nextMs={nextBlockMsForTask(t.id, preview)}
       atRisk={atRiskIds.has(t.id)} leftBorder={leftBorder} coarse={coarse}
       onComplete={onComplete} onEdit={onEdit} onDelete={onDelete}
     />

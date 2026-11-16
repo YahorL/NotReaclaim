@@ -99,7 +99,7 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
         )}
         {!tasksQ.isLoading && !tasksQ.isError && (
           <Board
-            columns={columns} now={nowMs} nextMsFor={nextMsFor}
+            columns={columns} now={nowMs} zone={zone} nextMsFor={nextMsFor}
             onMove={onMove} onComplete={onComplete} onEdit={(t) => setEditingId(t.id)} onDelete={onDelete}
             onToggleSubtask={onToggleSubtask} onReorderSubtask={onReorderSubtask}
             onDragActiveChange={setDragging}

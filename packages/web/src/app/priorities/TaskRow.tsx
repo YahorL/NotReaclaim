@@ -7,12 +7,7 @@ import { Icons } from '../shell/icons';
 import { useAppSensors, pointerFirstCollision } from '../dnd/sensors';
 import { useClickOutside } from '../components/useClickOutside';
 import { subtaskDropSortOrder } from '../tasks/subtaskDnd';
-import { type BoardColumnKey, columnMeta, relativeDayTimeLabel } from './priorityBucket';
-
-function dueShort(iso: string | null): string {
-  if (!iso) return 'No deadline';
-  return `Due ${new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric' }).format(new Date(iso))}`;
-}
+import { type BoardColumnKey, columnMeta, relativeDayTimeLabel, dueShort } from './priorityBucket';
 
 // The card's static classes, split around the column's left-border colour that goes between them.
 const CARD_LAYOUT = 'flex items-start gap-3 border-t border-l-4 border-t-line';
@@ -70,6 +65,8 @@ export interface TaskRowProps {
   columnKey: BoardColumnKey;
   nextMs: number | null;
   now: number;
+  /** Settings zone the due / next labels are read in. */
+  zone: string;
   /** False in the Completed column: no sortable listeners, no drag affordance. */
   draggable?: boolean;
   muted?: boolean;
@@ -80,7 +77,7 @@ export interface TaskRowProps {
   onReorderSubtask: (subtaskId: string, sortOrder: number) => void;
 }
 
-export function TaskRow({ task, columnKey, nextMs, now, draggable = true, muted = false, onComplete, onEdit, onDelete, onToggleSubtask, onReorderSubtask }: TaskRowProps) {
+export function TaskRow({ task, columnKey, nextMs, now, zone, draggable = true, muted = false, onComplete, onEdit, onDelete, onToggleSubtask, onReorderSubtask }: TaskRowProps) {
   const {
     attributes: cardAttributes, listeners: cardListeners, setNodeRef: setCardRef,
     setActivatorNodeRef: setCardActivatorRef,
@@ -103,7 +100,7 @@ export function TaskRow({ task, columnKey, nextMs, now, draggable = true, muted 
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   useClickOutside(menuRef, closeMenu, menuOpen);
   const done = task.status === 'completed';
-  const meta = `${dueShort(task.dueBy)}${nextMs !== null ? ` · Next: ${relativeDayTimeLabel(nextMs, now)}` : ''}`;
+  const meta = `${dueShort(task.dueBy, zone)}${nextMs !== null ? ` · Next: ${relativeDayTimeLabel(nextMs, now, zone)}` : ''}`;
   const subtasks = task.subtasks ?? [];
   const subtaskDone = subtasks.filter((s) => s.done).length;
   const colMeta = columnMeta(columnKey);

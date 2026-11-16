@@ -21,7 +21,7 @@ function renderPanel(tasks: Task[], preview?: SchedulePreview, handlers: Partial
     <PlannerTaskPanel
       tasks={tasks}
       preview={preview}
-      nowMs={NOW}
+      nowMs={NOW} zone="UTC"
       onComplete={handlers.onComplete ?? vi.fn()}
       onEdit={handlers.onEdit ?? vi.fn()}
       onDelete={handlers.onDelete ?? vi.fn()}
@@ -110,7 +110,7 @@ describe('PlannerTaskPanel', () => {
 
   it('fills its container in the compact (bottom-sheet) layout', () => {
     const { unmount } = render(
-      <PlannerTaskPanel tasks={[task()]} preview={undefined} nowMs={NOW} compact
+      <PlannerTaskPanel tasks={[task()]} preview={undefined} nowMs={NOW} zone="UTC" compact
         onComplete={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} />,
     );
     const aside = screen.getByTestId('planner-task-panel');
@@ -123,7 +123,7 @@ describe('PlannerTaskPanel', () => {
 
   it('keeps the card actions visible on a coarse pointer', () => {
     render(
-      <PlannerTaskPanel tasks={[task({ id: 'a', title: 'Do it' })]} preview={undefined} nowMs={NOW} coarse
+      <PlannerTaskPanel tasks={[task({ id: 'a', title: 'Do it' })]} preview={undefined} nowMs={NOW} zone="UTC" coarse
         onComplete={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} />,
     );
     const actions = screen.getByRole('button', { name: 'Edit Do it' }).parentElement!;
@@ -133,7 +133,7 @@ describe('PlannerTaskPanel', () => {
 
   it('gives the card controls touch-sized hit areas on a coarse pointer', () => {
     render(
-      <PlannerTaskPanel tasks={[task({ id: 'a', title: 'Do it' })]} preview={undefined} nowMs={NOW} coarse
+      <PlannerTaskPanel tasks={[task({ id: 'a', title: 'Do it' })]} preview={undefined} nowMs={NOW} zone="UTC" coarse
         onComplete={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} />,
     );
     // The 20px ✓ keeps its size and grows an invisible pseudo box instead.
@@ -145,4 +145,22 @@ describe('PlannerTaskPanel', () => {
     expect(screen.getByRole('button', { name: 'Edit Do it' }).parentElement!.className).toContain('coarse:gap-2');
   });
 
+});
+
+describe('PlannerTaskPanel labels in the settings zone', () => {
+  it('reads the due day and the next-block time in the settings zone (Auckland)', () => {
+    // NOW (12:00Z Jan 7) is 01:00 on Jan 8 in Auckland. 11:30Z Jan 10 is 00:30 on Jan 11 there;
+    // 13:00Z Jan 8 is 02:00 on Jan 9 there ("Tomorrow", where the browser zone says 1:00pm).
+    const preview = {
+      blocks: [{ sourceType: 'task', sourceId: 't1', start: Date.parse('2026-01-08T13:00:00.000Z'), end: Date.parse('2026-01-08T14:00:00.000Z') }],
+      unscheduled: [],
+    } as unknown as SchedulePreview;
+    render(
+      <PlannerTaskPanel
+        tasks={[task({ dueBy: '2026-01-10T11:30:00.000Z' })]} preview={preview} nowMs={NOW} zone="Pacific/Auckland"
+        onComplete={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Due Jan 11 · Next: Tomorrow 2:00am')).toBeInTheDocument();
+  });
 });

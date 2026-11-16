@@ -12,6 +12,8 @@ export interface ColumnProps {
   columnKey: BoardColumnKey;
   tasks: Task[];
   now: number;
+  /** Settings zone the cards' date labels are read in. */
+  zone: string;
   nextMsFor: (taskId: string) => number | null;
   /** True while a drag is hovering this column (Board resolves it once for the whole board). */
   isTarget: boolean;
@@ -23,7 +25,7 @@ export interface ColumnProps {
 }
 
 export function Column({
-  columnKey, tasks, now, nextMsFor, isTarget, onComplete, onEdit, onDelete, onToggleSubtask, onReorderSubtask,
+  columnKey, tasks, now, zone, nextMsFor, isTarget, onComplete, onEdit, onDelete, onToggleSubtask, onReorderSubtask,
 }: ColumnProps) {
   const [collapsed, setCollapsed] = useState(false);
   const isCompleted = columnKey === 'completed';
@@ -61,7 +63,7 @@ export function Column({
                     className="last:[&>[data-testid=task-row]]:rounded-b-xl"
                   >
                     <TaskRow
-                      task={t} columnKey={columnKey} now={now} nextMs={nextMsFor(t.id)}
+                      task={t} columnKey={columnKey} now={now} zone={zone} nextMs={nextMsFor(t.id)}
                       draggable={!isCompleted}
                       muted={columnKey === 'backlog'}
                       onComplete={onComplete} onEdit={onEdit} onDelete={onDelete} onToggleSubtask={onToggleSubtask}

@@ -191,3 +191,16 @@ describe('TopBar Next-task indicator', () => {
     expect(screen.queryByTestId('next-task')).toBeNull(); // ended, and no future task
   });
 });
+
+describe('TopBar Next label in the settings zone', () => {
+  it('renders the next block time in settings.timezone, not the browser zone', async () => {
+    const api = fakeApiClient({
+      // 02:00Z on Jun 12 is 22:00 on Jun 11 in New York (EDT) — "Today", not "Tomorrow 2:00am".
+      getSchedule: async () => [block({ startsAt: '2026-06-12T02:00:00Z', endsAt: '2026-06-12T03:00:00Z' })],
+      getSettings: vi.fn().mockResolvedValue({ id: 's', userId: 'u', timezone: 'America/New_York', workingHours: [], horizonDays: 14, defaultMinChunkMs: 1800000, defaultMaxChunkMs: 7200000, createdAt: '', updatedAt: '' }),
+    } as never);
+    renderWithProviders(<TopBar onNewTask={() => {}} now={nowFn} />, { api });
+    await waitFor(() => expect(screen.getByTestId('next-task').textContent).toContain('Today 10:00pm'));
+  });
+});
+

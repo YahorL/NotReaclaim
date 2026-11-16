@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useStartBlockMutation, useStopBlockMutation } from '../../api/queries';
 import { relativeDayTimeLabel } from '../priorities/priorityBucket';
 import { useCurrentOrNext } from './currentOrNext';
+import { useTimezone } from '../settings/useTimezone';
 
 /** The Now/Next controller shared by the desktop TopBar and the mobile top bar. */
 export function useNowNextControls(now: () => number) {
@@ -9,12 +10,13 @@ export function useNowNextControls(now: () => number) {
   const startBlock = useStartBlockMutation();
   const stopBlock = useStopBlockMutation();
   const nowMs = now();
+  const zone = useTimezone();
   const { running, nextBlock } = useCurrentOrNext(nowMs);
   return {
     running,
     nextBlock,
     nextLabel: nextBlock
-      ? `Next: ${nextBlock.title} · ${relativeDayTimeLabel(Date.parse(nextBlock.startsAt), nowMs)}`
+      ? `Next: ${nextBlock.title} · ${relativeDayTimeLabel(Date.parse(nextBlock.startsAt), nowMs, zone)}`
       : null,
     start: () => {
       if (nextBlock) startBlock.mutate(nextBlock.id);

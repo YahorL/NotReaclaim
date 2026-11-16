@@ -1,5 +1,5 @@
+import { DateTime } from 'luxon';
 import type { SchedulePreview, Task } from '../../api/types';
-import { MS_PER_DAY } from '../lib/time';
 
 export const BUCKETS = ['critical', 'high', 'medium', 'low'] as const;
 export type BucketKey = (typeof BUCKETS)[number];
@@ -48,26 +48,34 @@ export function columnMeta(key: BoardColumnKey): ColumnMeta {
   return BUCKET_META[key];
 }
 
-function timeLabel(d: Date): string {
-  return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+function timeLabel(d: Date, zone: string): string {
+  return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: zone })
     .format(d)
     .replace(/\s+/g, '')
     .toLowerCase();
 }
 
-function startOfDay(ms: number): number {
+/** "Today 5:00pm" / "Tomorrow 9:30am" / "Sat 8:15am" — day and time read in `zone`. */
+export function relativeDayTimeLabel(ms: number, now: number, zone: string): string {
   const d = new Date(ms);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
+  const day = (t: number) => DateTime.fromMillis(t, { zone }).startOf('day');
+  const diffDays = Math.round(day(ms).diff(day(now), 'days').days);
+  if (diffDays === 0) return `Today ${timeLabel(d, zone)}`;
+  if (diffDays === 1) return `Tomorrow ${timeLabel(d, zone)}`;
+  const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: zone }).format(d);
+  return `${weekday} ${timeLabel(d, zone)}`;
 }
 
-export function relativeDayTimeLabel(ms: number, now: number): string {
-  const d = new Date(ms);
-  const diffDays = Math.round((startOfDay(ms) - startOfDay(now)) / MS_PER_DAY);
-  if (diffDays === 0) return `Today ${timeLabel(d)}`;
-  if (diffDays === 1) return `Tomorrow ${timeLabel(d)}`;
-  const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(d);
-  return `${weekday} ${timeLabel(d)}`;
+/** Board card due label: "Due 1/9" (month/day in `zone`), or "No deadline". */
+export function dueShort(iso: string | null, zone: string): string {
+  if (!iso) return 'No deadline';
+  return `Due ${new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', timeZone: zone }).format(new Date(iso))}`;
+}
+
+/** Planner panel due label: "Due Jan 9" (in `zone`), or null for an undated task. */
+export function dueLabel(iso: string | null, zone: string): string | null {
+  if (!iso) return null;
+  return `Due ${new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', timeZone: zone })}`;
 }
 
 /** Within-bucket display order: user sortOrder, then due date. */

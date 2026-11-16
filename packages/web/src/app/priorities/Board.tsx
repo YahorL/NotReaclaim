@@ -12,6 +12,8 @@ export interface BoardColumn { key: BoardColumnKey; tasks: Task[]; }
 export interface BoardProps {
   columns: BoardColumn[];
   now: number;
+  /** Settings zone the cards' date labels are read in. */
+  zone: string;
   nextMsFor: (taskId: string) => number | null;
   onMove: (taskId: string, to: BoardColumnKey, index: number) => void;
   onComplete: (task: Task) => void;
@@ -27,7 +29,7 @@ export interface BoardProps {
 }
 
 export function Board({
-  columns, now, nextMsFor, onMove, onComplete, onEdit, onDelete, onToggleSubtask, onReorderSubtask, onDragActiveChange,
+  columns, now, zone, nextMsFor, onMove, onComplete, onEdit, onDelete, onToggleSubtask, onReorderSubtask, onDragActiveChange,
 }: BoardProps) {
   // The board registers container droppables (`col:*`) alongside the cards, so it needs the
   // container-blind arrow getter — see `boardKeyboardCoordinates`.
@@ -71,7 +73,7 @@ export function Board({
       <div className="flex items-start gap-[26px]" style={{ minWidth: 'min-content' }}>
         {columns.map((c) => (
           <Column
-            key={c.key} columnKey={c.key} tasks={c.tasks} now={now} nextMsFor={nextMsFor}
+            key={c.key} columnKey={c.key} tasks={c.tasks} now={now} zone={zone} nextMsFor={nextMsFor}
             isTarget={overColumn === c.key && activeId !== null && c.key !== 'completed'}
             onComplete={onComplete} onEdit={onEdit} onDelete={onDelete} onToggleSubtask={onToggleSubtask}
             onReorderSubtask={onReorderSubtask}

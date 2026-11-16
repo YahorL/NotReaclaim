@@ -192,6 +192,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
     tasks,
     preview: preview.data,
     nowMs,
+    zone,
     coarse,
     onComplete: onCompleteTask,
     // Compact: the Tasks sheet and the drawer are both z-50 modal sheets, and two stacked sheets
