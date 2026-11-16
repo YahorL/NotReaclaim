@@ -95,7 +95,14 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
           </div>
           {creatingCat && (
             <div className="mt-2 flex items-center gap-2">
-              <input data-testid="new-category-name" autoFocus value={newCatName} onChange={(e) => setNewCatName(e.target.value)} placeholder="Category name…" className="flex-1 rounded border border-line px-2 py-1 text-[14px] outline-none" />
+              <input
+                data-testid="new-category-name"
+                autoFocus
+                value={newCatName}
+                onChange={(e) => setNewCatName(e.target.value)}
+                placeholder="Category name…"
+                className="flex-1 rounded border border-line px-2 py-1 text-[14px] outline-none"
+              />
               <button
                 type="button"
                 data-testid="new-category-confirm"
@@ -114,10 +121,22 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
 
         <div className="mb-4 flex gap-4">
           <FieldBox label="Schedule after">
-            <input type="datetime-local" data-testid="schedule-after" value={form.notBeforeLocal} onChange={(e) => set('notBeforeLocal', e.target.value)} className="w-full min-w-0 text-[15px] font-bold text-ink outline-none" />
+            <input
+              type="datetime-local"
+              data-testid="schedule-after"
+              value={form.notBeforeLocal}
+              onChange={(e) => set('notBeforeLocal', e.target.value)}
+              className="w-full min-w-0 text-[15px] font-bold text-ink outline-none"
+            />
           </FieldBox>
           <FieldBox label="Due date">
-            <input type="datetime-local" data-testid="due-date" value={form.dueByLocal} onChange={(e) => set('dueByLocal', e.target.value)} className="w-full min-w-0 text-[15px] font-bold text-ink outline-none" />
+            <input
+              type="datetime-local"
+              data-testid="due-date"
+              value={form.dueByLocal}
+              onChange={(e) => set('dueByLocal', e.target.value)}
+              className="w-full min-w-0 text-[15px] font-bold text-ink outline-none"
+            />
             <p className="mt-1 text-[11px] text-inkSoft">Leave empty for no deadline</p>
           </FieldBox>
         </div>
@@ -125,7 +144,12 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
         {error && <p data-testid="modal-error" className="mb-2 text-[12px] text-crit">{error.message}</p>}
 
         <div className="flex items-center justify-end">
-          <button type="button" disabled={!ok || createM.isPending} onClick={submit} className="rounded-[30px] bg-indigo px-[34px] py-3 text-[17px] font-bold text-white shadow-[0_4px_12px_rgba(91,98,227,.35)] hover:bg-indigo600 disabled:opacity-50">
+          <button
+            type="button"
+            disabled={!ok || createM.isPending}
+            onClick={submit}
+            className="rounded-[30px] bg-indigo px-[34px] py-3 text-[17px] font-bold text-white shadow-[0_4px_12px_rgba(91,98,227,.35)] hover:bg-indigo600 disabled:opacity-50"
+          >
             Create
           </button>
         </div>

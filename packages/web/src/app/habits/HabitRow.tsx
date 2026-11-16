@@ -14,6 +14,8 @@ export interface HabitRowProps {
 
 // Pill button matching the app's design system (drawers/popovers).
 const pill = 'rounded-full border border-line px-3 py-1 text-[13px] font-semibold text-inkSoft transition-colors hover:bg-bg hover:text-ink';
+const confirmPill = 'rounded-full bg-crit px-3 py-1 text-[13px] font-semibold text-white hover:opacity-90';
+const deletePill = 'rounded-full border border-line px-2.5 py-1 text-[14px] font-bold text-crit transition-colors hover:bg-crit/10';
 
 export function HabitRow({ habit, unscheduledCount = 0, onEdit, onToggleStatus, onDelete }: HabitRowProps) {
   const [confirming, setConfirming] = useState(false);
@@ -44,14 +46,14 @@ export function HabitRow({ habit, unscheduledCount = 0, onEdit, onToggleStatus, 
       {confirming ? (
         <span className="flex items-center gap-2 text-[13px]">
           <span className="text-inkSoft">Delete?</span>
-          <button type="button" onClick={() => { onDelete(habit); setConfirming(false); }} className="rounded-full bg-crit px-3 py-1 text-[13px] font-semibold text-white hover:opacity-90">Yes</button>
+          <button type="button" onClick={() => { onDelete(habit); setConfirming(false); }} className={confirmPill}>Yes</button>
           <button type="button" onClick={() => setConfirming(false)} className={pill}>Cancel</button>
         </span>
       ) : (
         <span className="flex items-center gap-1.5">
           <button type="button" onClick={() => onEdit(habit)} className={pill}>Edit</button>
           <button type="button" onClick={() => onToggleStatus(habit)} className={pill}>{paused ? 'Resume' : 'Pause'}</button>
-          <button type="button" aria-label="delete" onClick={() => setConfirming(true)} className="rounded-full border border-line px-2.5 py-1 text-[14px] font-bold text-crit transition-colors hover:bg-crit/10">×</button>
+          <button type="button" aria-label="delete" onClick={() => setConfirming(true)} className={deletePill}>×</button>
         </span>
       )}
     </div>

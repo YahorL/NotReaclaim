@@ -74,6 +74,8 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
     const sortOrder = subtaskDropSortOrder(subtasks, String(e.active.id), String(e.over.id));
     if (sortOrder !== null) updateSubtaskM.mutate({ id: String(e.active.id), patch: { sortOrder } });
   };
+  const addSubtask = () =>
+    createSubtaskM.mutate({ taskId: task.id, title: newSubtask.trim() }, { onSuccess: () => setNewSubtask('') });
   const set = <K extends keyof TaskFormState>(k: K, v: TaskFormState[K]) => setForm((f) => ({ ...f, [k]: v }));
   const ctl = 'w-full bg-transparent text-[16px] font-bold text-ink outline-none';
   const errCls = 'mt-0.5 text-[11px] text-crit';
@@ -177,10 +179,20 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
           </SortableContext>
         </DndContext>
         <div className="flex gap-1.5">
-          <input data-testid="subtask-input" value={newSubtask} onChange={(e) => setNewSubtask(e.target.value)} placeholder="Add subtask…" className="min-w-0 flex-1 rounded-[9px] border-[1.5px] border-line px-2.5 py-1.5 text-[14px] outline-none focus:border-indigo" />
-          <button type="button" data-testid="subtask-add" disabled={!newSubtask.trim() || createSubtaskM.isPending}
-            onClick={() => createSubtaskM.mutate({ taskId: task.id, title: newSubtask.trim() }, { onSuccess: () => setNewSubtask('') })}
-            className="rounded-[20px] bg-indigo px-3 text-[13px] font-bold text-white disabled:opacity-50">Add</button>
+          <input
+            data-testid="subtask-input"
+            value={newSubtask}
+            onChange={(e) => setNewSubtask(e.target.value)}
+            placeholder="Add subtask…"
+            className="min-w-0 flex-1 rounded-[9px] border-[1.5px] border-line px-2.5 py-1.5 text-[14px] outline-none focus:border-indigo"
+          />
+          <button
+            type="button"
+            data-testid="subtask-add"
+            disabled={!newSubtask.trim() || createSubtaskM.isPending}
+            onClick={addSubtask}
+            className="rounded-[20px] bg-indigo px-3 text-[13px] font-bold text-white disabled:opacity-50"
+          >Add</button>
         </div>
       </div>
 

@@ -14,6 +14,18 @@ function dueShort(iso: string | null): string {
   return `Due ${new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric' }).format(new Date(iso))}`;
 }
 
+// The card's static classes, split around the column's left-border colour that goes between them.
+const CARD_LAYOUT = 'flex items-start gap-3 border-t border-l-4 border-t-line';
+const CARD_SURFACE = 'bg-card last:rounded-b-xl py-3.5 pl-4 pr-3.5 transition-colors hover:bg-[#fafbfc]';
+
+/** Dragging wins over the backlog's muting, which wins over the completed fade. */
+function cardOpacity(isDragging: boolean, muted: boolean, done: boolean): string {
+  if (isDragging) return 'opacity-40';
+  if (muted) return 'opacity-70';
+  if (done) return 'opacity-45';
+  return '';
+}
+
 function SortableCardSubtask({ subtask, onToggle }: { subtask: Subtask; onToggle: () => void }) {
   // role=listitem: dnd-kit would otherwise default the row to role="button", which drops the
   // checklist out of its own semantics and nests the checkbox inside a button.
@@ -95,6 +107,8 @@ export function TaskRow({ task, columnKey, nextMs, now, draggable = true, muted 
   const subtasks = task.subtasks ?? [];
   const subtaskDone = subtasks.filter((s) => s.done).length;
   const colMeta = columnMeta(columnKey);
+  const cursor = draggable ? 'cursor-grab' : 'cursor-default';
+  const opacity = cardOpacity(isDragging, muted, done);
   const onSubtaskDragEnd = (e: DragEndEvent) => {
     if (!e.over) return;
     const sortOrder = subtaskDropSortOrder(subtasks, String(e.active.id), String(e.over.id));
@@ -112,7 +126,7 @@ export function TaskRow({ task, columnKey, nextMs, now, draggable = true, muted 
       {...(draggable ? cardAttributes : {})}
       {...(draggable ? cardListeners : {})}
       onClick={() => onEdit(task)}
-      className={`flex items-start gap-3 border-t border-l-4 border-t-line ${colMeta.leftBorder} bg-card last:rounded-b-xl py-3.5 pl-4 pr-3.5 transition-colors hover:bg-[#fafbfc] ${draggable ? 'cursor-grab' : 'cursor-default'} ${isDragging ? 'opacity-40' : muted ? 'opacity-70' : done ? 'opacity-45' : ''}`}
+      className={`${CARD_LAYOUT} ${colMeta.leftBorder} ${CARD_SURFACE} ${cursor} ${opacity}`}
     >
       <button
         type="button" aria-label="complete"
