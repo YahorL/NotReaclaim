@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient, Task, TaskStatus } from '@prisma/client';
-import { NotFoundError, translatePrismaError } from '../errors.js';
+import { deleteOwned, updateOwned } from './owned.js';
 
 const SUBTASK_ORDER_BY: Prisma.SubtaskOrderByWithRelationInput[] = [
   { sortOrder: 'asc' },
@@ -67,23 +67,16 @@ export function createTaskRepository(prisma: PrismaClient) {
       });
     },
 
-    async update(userId: string, id: string, data: UpdateTaskInput): Promise<Task> {
-      try {
-        const result = await prisma.task.updateMany({ where: { id, userId }, data });
-        if (result.count === 0) {
-          throw new NotFoundError(`Task ${id} not found for user`);
-        }
-        return await prisma.task.findFirstOrThrow({ where: { id, userId } });
-      } catch (error) {
-        translatePrismaError(error);
-      }
+    update(userId: string, id: string, data: UpdateTaskInput): Promise<Task> {
+      return updateOwned(
+        `Task ${id} not found for user`,
+        () => prisma.task.updateMany({ where: { id, userId }, data }),
+        () => prisma.task.findFirstOrThrow({ where: { id, userId } }),
+      );
     },
 
-    async delete(userId: string, id: string): Promise<void> {
-      const result = await prisma.task.deleteMany({ where: { id, userId } });
-      if (result.count === 0) {
-        throw new NotFoundError(`Task ${id} not found for user`);
-      }
+    delete(userId: string, id: string): Promise<void> {
+      return deleteOwned(`Task ${id} not found for user`, () => prisma.task.deleteMany({ where: { id, userId } }));
     },
 
     async purgeCompletedBefore(userId: string, cutoff: Date): Promise<number> {

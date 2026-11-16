@@ -1,5 +1,5 @@
 import type { PrismaClient, CalendarEvent, CalendarEventKind } from '@prisma/client';
-import { NotFoundError, translatePrismaError } from '../errors.js';
+import { deleteOwned, updateOwned } from './owned.js';
 
 export interface CreateCalendarEventInput {
   title: string;
@@ -31,29 +31,21 @@ export function createCalendarEventRepository(prisma: PrismaClient) {
     },
 
     /** Edit an owned event's fields. Never touches `source` or the Google ids. */
-    async update(userId: string, id: string, data: UpdateCalendarEventInput): Promise<CalendarEvent> {
-      try {
-        const result = await prisma.calendarEvent.updateMany({ where: { id, userId }, data });
-        if (result.count === 0) {
-          throw new NotFoundError(`CalendarEvent ${id}`);
-        }
-        return await prisma.calendarEvent.findFirstOrThrow({ where: { id, userId } });
-      } catch (error) {
-        translatePrismaError(error);
-      }
+    update(userId: string, id: string, data: UpdateCalendarEventInput): Promise<CalendarEvent> {
+      return updateOwned(
+        `CalendarEvent ${id}`,
+        () => prisma.calendarEvent.updateMany({ where: { id, userId }, data }),
+        () => prisma.calendarEvent.findFirstOrThrow({ where: { id, userId } }),
+      );
     },
 
     /** Attach Google ids after a successful write-back. Throws NotFound for other users' events. */
-    async setGoogleIds(userId: string, id: string, googleCalendarId: string, googleEventId: string): Promise<CalendarEvent> {
-      try {
-        const result = await prisma.calendarEvent.updateMany({ where: { id, userId }, data: { googleCalendarId, googleEventId } });
-        if (result.count === 0) {
-          throw new NotFoundError(`CalendarEvent ${id}`);
-        }
-        return await prisma.calendarEvent.findFirstOrThrow({ where: { id, userId } });
-      } catch (error) {
-        translatePrismaError(error);
-      }
+    setGoogleIds(userId: string, id: string, googleCalendarId: string, googleEventId: string): Promise<CalendarEvent> {
+      return updateOwned(
+        `CalendarEvent ${id}`,
+        () => prisma.calendarEvent.updateMany({ where: { id, userId }, data: { googleCalendarId, googleEventId } }),
+        () => prisma.calendarEvent.findFirstOrThrow({ where: { id, userId } }),
+      );
     },
 
     findById(userId: string, id: string): Promise<CalendarEvent | null> {
@@ -61,11 +53,8 @@ export function createCalendarEventRepository(prisma: PrismaClient) {
     },
 
     /** Delete a single locally-listed event. Throws NotFound for missing / other users' events. */
-    async delete(userId: string, id: string): Promise<void> {
-      const result = await prisma.calendarEvent.deleteMany({ where: { id, userId } });
-      if (result.count === 0) {
-        throw new NotFoundError(`CalendarEvent ${id}`);
-      }
+    delete(userId: string, id: string): Promise<void> {
+      return deleteOwned(`CalendarEvent ${id}`, () => prisma.calendarEvent.deleteMany({ where: { id, userId } }));
     },
 
     /** Events whose [startsAt, endsAt) overlaps [start, end). */

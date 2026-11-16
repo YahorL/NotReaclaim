@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient, type Category } from '@prisma/client';
 import { NotFoundError, ConflictError, translatePrismaError } from '../errors.js';
+import { updateOwned } from './owned.js';
 
 export interface CreateCategoryInput {
   name: string;
@@ -52,18 +53,16 @@ export function createCategoryRepository(prisma: PrismaClient) {
     },
 
     async update(userId: string, id: string, data: UpdateCategoryInput): Promise<Category> {
-      try {
-        // Build the update payload; windows: null must be sent as Prisma.DbNull to set SQL NULL.
-        const updateData: Record<string, unknown> = {};
-        if (data.name !== undefined) updateData.name = data.name;
-        if ('color' in data) updateData.color = data.color ?? null;
-        if ('windows' in data) updateData.windows = data.windows === null ? Prisma.DbNull : data.windows;
-        const result = await prisma.category.updateMany({ where: { id, userId }, data: updateData });
-        if (result.count === 0) throw new NotFoundError(`Category ${id} not found for user`);
-        return await prisma.category.findFirstOrThrow({ where: { id, userId } });
-      } catch (error) {
-        translatePrismaError(error);
-      }
+      // Build the update payload; windows: null must be sent as Prisma.DbNull to set SQL NULL.
+      const updateData: Record<string, unknown> = {};
+      if (data.name !== undefined) updateData.name = data.name;
+      if ('color' in data) updateData.color = data.color ?? null;
+      if ('windows' in data) updateData.windows = data.windows === null ? Prisma.DbNull : data.windows;
+      return updateOwned(
+        `Category ${id} not found for user`,
+        () => prisma.category.updateMany({ where: { id, userId }, data: updateData }),
+        () => prisma.category.findFirstOrThrow({ where: { id, userId } }),
+      );
     },
 
     async delete(userId: string, id: string): Promise<void> {
