@@ -5,8 +5,9 @@ import { DurationStepper } from '../components/DurationStepper';
 import { FieldBox } from '../components/FieldBox';
 import { minutesToHHMM, hhmmToMinutes } from '../lib/duration';
 import {
-  type SettingsFormState, type DayState, validateSettingsForm, toSettingsInput, supportedTimezones,
+  type SettingsFormState, validateSettingsForm, toSettingsInput, supportedTimezones,
 } from './settingsForm';
+import { type DayState, patchDay } from './weeklyHours';
 import { WeeklyHoursEditor } from './WeeklyHoursEditor';
 
 export interface SettingsFormProps {
@@ -25,7 +26,7 @@ export function SettingsForm({ initial, onSave, saving = false, error = null, ju
   const zoneOptions = zones.includes(form.timezone) ? zones : [form.timezone, ...zones];
 
   const setDay = (weekday: number, patch: Partial<DayState>) =>
-    setForm((f) => ({ ...f, days: f.days.map((d) => (d.weekday === weekday ? { ...d, ...patch } : d)) }));
+    setForm((f) => ({ ...f, days: patchDay(f.days, weekday, patch) }));
 
   const errCls = 'text-[11px] text-red-600';
 

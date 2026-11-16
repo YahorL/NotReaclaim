@@ -1,9 +1,9 @@
 import { useState, useRef } from 'react';
 import type { Category, WorkingHour } from '../../api/types';
 import { useCategoriesQuery, useCreateCategoryMutation, useUpdateCategoryMutation, useDeleteCategoryMutation } from '../../api/queries';
-import type { DayState } from './settingsForm';
 import { WeeklyHoursEditor } from './WeeklyHoursEditor';
-import { windowsToDays, daysToWindows, validateCategoryForm } from './categoryForm';
+import { validateCategoryForm } from './categoryForm';
+import { type DayState, windowsToDays, daysToWindows, patchDay } from './weeklyHours';
 
 const COLOR_PALETTE = ['#5b62e3', '#4285f4', '#0f9d58', '#f4b400', '#db4437', '#9c27b0', '#00acc1', '#795548'];
 
@@ -41,7 +41,7 @@ function CategoryRow({ category }: { category: Category }) {
   // Seeded once from props; the row reflects in-place edits. key={id} is stable.
   const [days, setDays] = useState<DayState[]>(() => windowsToDays(category.windows));
   const setDay = (weekday: number, patch: Partial<DayState>) =>
-    setDays((ds) => ds.map((d) => (d.weekday === weekday ? { ...d, ...patch } : d)));
+    setDays((ds) => patchDay(ds, weekday, patch));
 
   // Default category: tracks whether custom windows are toggled on.
   const [useCustom, setUseCustom] = useState<boolean>(() => category.isDefault ? category.windows !== null : true);
@@ -158,7 +158,7 @@ export function CategoriesSection() {
   const [name, setName] = useState('');
   const [days, setDays] = useState<DayState[]>(() => windowsToDays([]));
   const setDay = (weekday: number, patch: Partial<DayState>) =>
-    setDays((ds) => ds.map((d) => (d.weekday === weekday ? { ...d, ...patch } : d)));
+    setDays((ds) => patchDay(ds, weekday, patch));
   const { ok, error } = validateCategoryForm(name, days);
 
   const submit = () => {

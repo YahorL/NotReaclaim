@@ -1,4 +1,4 @@
-import type { DayState } from './settingsForm';
+import type { DayState } from './weeklyHours';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MON_FIRST = [1, 2, 3, 4, 5, 6, 0];
