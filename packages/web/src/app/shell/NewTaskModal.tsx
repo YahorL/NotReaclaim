@@ -4,7 +4,7 @@ import { useCreateTaskMutation, useSettingsQuery, useCategoriesQuery, useCreateC
 import { Icons } from './icons';
 import {
   type NewTaskFormState, defaultNewTaskForm, validateNewTaskForm, toCreateTaskInput,
-} from './newTaskForm';
+} from '../tasks/taskForm';
 import { FieldBox } from '../components/FieldBox';
 import { DurationStepper } from '../components/DurationStepper';
 import { PriorityPicker } from '../components/PriorityPicker';
