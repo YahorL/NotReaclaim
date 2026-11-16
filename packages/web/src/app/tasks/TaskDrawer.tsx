@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { DndContext, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -6,8 +6,12 @@ import type { Task, Subtask, UpdateTaskInput } from '../../api/types';
 import type { ApiError } from '../../api/client';
 import { FieldBox } from '../components/FieldBox';
 import { DurationStepper } from '../components/DurationStepper';
+import { DrawerPanel } from '../components/DrawerPanel';
+import { FormField } from '../components/FormField';
+import { PrimaryButton, SecondaryButton } from '../components/Buttons';
+import { FIELD_CONTROL, FIELD_ERROR, FULL_ROW } from '../components/formStyles';
+import { useFormState } from '../components/useFormState';
 import { formatDurationShort } from '../lib/duration';
-import { useClickOutside } from '../components/useClickOutside';
 import { type TaskFormState, toFormState, validateTaskForm, toUpdateInput } from './taskForm';
 import { useCategoriesQuery, useCreateSubtaskMutation, useUpdateSubtaskMutation, useDeleteSubtaskMutation } from '../../api/queries';
 import { useAppSensors, pointerFirstCollision } from '../dnd/sensors';
@@ -57,7 +61,7 @@ export interface TaskDrawerProps {
 }
 
 export function TaskDrawer({ task, onSave, onCancel, saving = false, error = null, compact = false }: TaskDrawerProps) {
-  const [form, setForm] = useState<TaskFormState>(() => toFormState(task));
+  const [form, set] = useFormState<TaskFormState>(() => toFormState(task));
   const { ok, errors } = validateTaskForm(form);
   const categoriesQ = useCategoriesQuery();
   const categories = categoriesQ.data ?? [];
@@ -65,8 +69,6 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
   const updateSubtaskM = useUpdateSubtaskMutation();
   const deleteSubtaskM = useDeleteSubtaskMutation();
   const [newSubtask, setNewSubtask] = useState('');
-  const rootRef = useRef<HTMLElement>(null);
-  useClickOutside(rootRef, onCancel, !compact);
   const sensors = useAppSensors();
   const subtasks = task.subtasks ?? [];
   const onSubtaskDragEnd = (e: DragEndEvent) => {
@@ -76,90 +78,70 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
   };
   const addSubtask = () =>
     createSubtaskM.mutate({ taskId: task.id, title: newSubtask.trim() }, { onSuccess: () => setNewSubtask('') });
-  const set = <K extends keyof TaskFormState>(k: K, v: TaskFormState[K]) => setForm((f) => ({ ...f, [k]: v }));
-  const ctl = 'w-full bg-transparent text-[16px] font-bold text-ink outline-none';
-  const errCls = 'mt-0.5 text-[11px] text-crit';
+  const spent = task.spentMs ?? 0;
+  const left = Math.max(0, task.durationMs - spent);
+  const pct = task.durationMs > 0 ? Math.min(100, Math.round((spent / task.durationMs) * 100)) : 0;
 
   return (
-    <aside
-      ref={rootRef}
-      data-testid="task-drawer"
-      className={compact
-        ? 'w-full space-y-2.5 p-2'
-        : 'w-[440px] shrink-0 space-y-2.5 rounded-[14px] border border-line bg-card p-4 shadow-pop max-h-[calc(100dvh-100px)] overflow-y-auto'}
+    <DrawerPanel
+      testId="task-drawer"
+      title="Edit task"
+      compact={compact}
+      onDismiss={onCancel}
+      error={error}
+      actions={(
+        <>
+          <PrimaryButton data-testid="save" disabled={!ok || saving} onClick={() => { if (ok) onSave(toUpdateInput(form)); }}>Save</PrimaryButton>
+          <SecondaryButton onClick={onCancel}>Cancel</SecondaryButton>
+        </>
+      )}
     >
-      <h4 className="text-[15px] font-bold text-ink">Edit task</h4>
-
-      {(() => {
-        const spent = task.spentMs ?? 0;
-        const left = Math.max(0, task.durationMs - spent);
-        const pct = task.durationMs > 0 ? Math.min(100, Math.round((spent / task.durationMs) * 100)) : 0;
-        return (
-          <div data-testid="drawer-time" className="rounded-[10px] border border-line bg-bg px-3 py-2">
-            <div className="flex items-center justify-between text-[12px] font-semibold text-inkSoft">
-              <span>Time spent</span>
-              <span data-testid="drawer-spent">{formatDurationShort(spent)} / {formatDurationShort(task.durationMs)} · {formatDurationShort(left)} left</span>
-            </div>
-            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-line">
-              <div className="h-full rounded-full bg-indigo" style={{ width: `${pct}%` }} />
-            </div>
-          </div>
-        );
-      })()}
+      <div data-testid="drawer-time" className="rounded-[10px] border border-line bg-bg px-3 py-2">
+        <div className="flex items-center justify-between text-[12px] font-semibold text-inkSoft">
+          <span>Time spent</span>
+          <span data-testid="drawer-spent">{formatDurationShort(spent)} / {formatDurationShort(task.durationMs)} · {formatDurationShort(left)} left</span>
+        </div>
+        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-line">
+          <div className="h-full rounded-full bg-indigo" style={{ width: `${pct}%` }} />
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
-        {/* Title — spans both columns at md+; col-span-2 in a one-column grid would conjure a second */}
-        <div className="col-span-1 md:col-span-2">
-          <FieldBox label="Title">
-            <input className={ctl} value={form.title} onChange={(e) => set('title', e.target.value)} />
-          </FieldBox>
-          {errors.title && <p data-testid="err-title" className={errCls}>{errors.title}</p>}
-        </div>
+        <FormField className={FULL_ROW} label="Title" error={errors.title} errorTestId="err-title">
+          <input className={FIELD_CONTROL} value={form.title} onChange={(e) => set('title', e.target.value)} />
+        </FormField>
 
         {/* Row: Duration | Hours */}
-        <div>
-          <FieldBox label="Duration">
-            <DurationStepper label="duration" size={22} valueMs={form.durationMs} onChange={(ms) => set('durationMs', ms)} />
-          </FieldBox>
-          {errors.durationMs && <p data-testid="err-durationMs" className={errCls}>{errors.durationMs}</p>}
-        </div>
-        <div>
-          <FieldBox label="Hours">
-            <select data-testid="category-select" className={`${ctl} appearance-none`} value={form.categoryId ?? ''} onChange={(e) => set('categoryId', e.target.value || null)}>
-              <option value="">— none —</option>
-              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </FieldBox>
-        </div>
+        <FormField label="Duration" error={errors.durationMs} errorTestId="err-durationMs">
+          <DurationStepper label="duration" size={22} valueMs={form.durationMs} onChange={(ms) => set('durationMs', ms)} />
+        </FormField>
+        <FormField label="Hours">
+          <select data-testid="category-select" className={`${FIELD_CONTROL} appearance-none`} value={form.categoryId ?? ''} onChange={(e) => set('categoryId', e.target.value || null)}>
+            <option value="">— none —</option>
+            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </FormField>
 
-        {/* Row: Due by | Schedule after (dates together) */}
+        {/* Row: Due by | Schedule after (dates together). Due by keeps its own markup: its hint
+            sits between the box and the error line. */}
         <div>
           <FieldBox label="Due by">
-            <input type="datetime-local" className={ctl} value={form.dueByLocal} onChange={(e) => set('dueByLocal', e.target.value)} />
+            <input type="datetime-local" className={FIELD_CONTROL} value={form.dueByLocal} onChange={(e) => set('dueByLocal', e.target.value)} />
           </FieldBox>
           <p className="mt-1 text-[11px] text-inkSoft">Leave empty for no deadline</p>
-          {errors.dueByLocal && <p data-testid="err-dueByLocal" className={errCls}>{errors.dueByLocal}</p>}
+          {errors.dueByLocal && <p data-testid="err-dueByLocal" className={FIELD_ERROR}>{errors.dueByLocal}</p>}
         </div>
-        <div>
-          <FieldBox label="Schedule after">
-            <input type="datetime-local" data-testid="schedule-after" className={ctl} value={form.notBeforeLocal} onChange={(e) => set('notBeforeLocal', e.target.value)} />
-          </FieldBox>
-        </div>
+        <FormField label="Schedule after">
+          <input type="datetime-local" data-testid="schedule-after" className={FIELD_CONTROL} value={form.notBeforeLocal} onChange={(e) => set('notBeforeLocal', e.target.value)} />
+        </FormField>
 
         {/* Row: Min chunk | Max chunk (chunk sizes together) */}
-        <div>
-          <FieldBox label="Min chunk">
-            <DurationStepper label="min" size={22} valueMs={form.minChunkMs} onChange={(ms) => set('minChunkMs', ms)} />
-          </FieldBox>
-          {errors.minChunkMs && <p data-testid="err-minChunkMs" className={errCls}>{errors.minChunkMs}</p>}
-        </div>
-        <div>
-          <FieldBox label="Max chunk">
-            <DurationStepper label="max" size={22} valueMs={form.maxChunkMs} onChange={(ms) => set('maxChunkMs', ms)} />
-          </FieldBox>
-          {errors.maxChunkMs && <p data-testid="err-maxChunkMs" className={errCls}>{errors.maxChunkMs}</p>}
-        </div>
-
+        <FormField label="Min chunk" error={errors.minChunkMs} errorTestId="err-minChunkMs">
+          <DurationStepper label="min" size={22} valueMs={form.minChunkMs} onChange={(ms) => set('minChunkMs', ms)} />
+        </FormField>
+        <FormField label="Max chunk" error={errors.maxChunkMs} errorTestId="err-maxChunkMs">
+          <DurationStepper label="max" size={22} valueMs={form.maxChunkMs} onChange={(ms) => set('maxChunkMs', ms)} />
+        </FormField>
       </div>
 
       <div>
@@ -195,14 +177,6 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
           >Add</button>
         </div>
       </div>
-
-      {error && <p data-testid="drawer-error" className={errCls}>{error.message}</p>}
-
-      <div className="flex gap-2 pt-1">
-        <button data-testid="save" disabled={!ok || saving} onClick={() => { if (ok) onSave(toUpdateInput(form)); }}
-          className="rounded-[30px] bg-indigo px-5 py-2 text-[14px] font-bold text-white shadow-[0_4px_12px_rgba(91,98,227,.35)] hover:bg-indigo600 disabled:opacity-50">Save</button>
-        <button onClick={onCancel} className="rounded-[30px] border border-line px-5 py-2 text-[14px] font-bold text-inkSoft hover:bg-bg">Cancel</button>
-      </div>
-    </aside>
+    </DrawerPanel>
   );
 }
