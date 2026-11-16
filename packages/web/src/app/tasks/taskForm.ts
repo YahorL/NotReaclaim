@@ -1,7 +1,5 @@
-import type { Task, CreateTaskInput, UpdateTaskInput } from '../../api/types';
+import type { Task, UpdateTaskInput } from '../../api/types';
 import { isoToLocalInput, localInputToIso } from '../lib/duration';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface TaskFormState {
   title: string;
@@ -11,23 +9,6 @@ export interface TaskFormState {
   minChunkMs: number;
   maxChunkMs: number;
   categoryId: string | null;
-}
-
-export function defaultQuickAddInput(
-  title: string,
-  now: number,
-  defaults?: { minChunkMs: number; maxChunkMs: number },
-): CreateTaskInput {
-  return {
-    title: title.trim(),
-    priority: 3,
-    durationMs: 60 * 60_000,
-    dueBy: new Date(now + 7 * DAY_MS).toISOString(),
-    minChunkMs: defaults?.minChunkMs ?? 30 * 60_000,
-    maxChunkMs: defaults?.maxChunkMs ?? 120 * 60_000,
-    categoryId: null,
-    notBefore: null,
-  };
 }
 
 export function toFormState(t: Task): TaskFormState {
