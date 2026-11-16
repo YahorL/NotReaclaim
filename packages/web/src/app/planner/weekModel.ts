@@ -98,15 +98,6 @@ export function isToday(now: number, dayStartMs: number): boolean {
   return now >= dayStartMs && now < dayStartMs + MS_PER_DAY;
 }
 
-export function humanizeMs(ms: number): string {
-  const totalMin = Math.round(ms / MS_PER_MIN);
-  const h = Math.floor(totalMin / 60);
-  const m = totalMin % 60;
-  if (h && m) return `${h}h ${m}m`;
-  if (h) return `${h}h`;
-  return `${m}m`;
-}
-
 /** One hour = 58px tall in the grid body (must match WeekGrid's h-[58px] rows). */
 export const HOUR_ROW_PX = 58;
 /** Fixed day-column pixel height: one 58px row per hour of the window (24 * 58 = 1392). */
