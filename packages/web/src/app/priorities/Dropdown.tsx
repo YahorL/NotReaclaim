@@ -2,7 +2,7 @@ import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { Icons } from '../shell/icons';
 import { useClickOutside } from '../components/useClickOutside';
 
-export function Dropdown({ icon, label, width = 240, children }: { icon: ReactNode; label: string; width?: number; children: ReactNode }) {
+export function Dropdown({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
@@ -13,7 +13,7 @@ export function Dropdown({ icon, label, width = 240, children }: { icon: ReactNo
         {icon} {label} {open ? <Icons.chevUp size={16} /> : <Icons.chevDown size={16} />}
       </button>
       {open && (
-        <div className="absolute right-0 top-[calc(100%+8px)] z-40 animate-pop rounded-xl border border-line bg-card p-1.5 shadow-pop" style={{ width }}>
+        <div className="absolute right-0 top-[calc(100%+8px)] z-40 animate-pop rounded-xl border border-line bg-card p-1.5 shadow-pop" style={{ width: 240 }}>
           {children}
         </div>
       )}
