@@ -1,7 +1,9 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import type { CalendarEvent, UpdateCalendarEventInput } from '../../api/types';
-import { FieldBox } from '../components/FieldBox';
-import { useClickOutside } from '../components/useClickOutside';
+import { DrawerPanel } from '../components/DrawerPanel';
+import { FormField } from '../components/FormField';
+import { PrimaryButton, SecondaryButton } from '../components/Buttons';
+import { FIELD_CONTROL, FULL_ROW } from '../components/formStyles';
 import { useUpdateCalendarEventMutation, useDeleteCalendarEventMutation } from '../../api/queries';
 import { isoToZonedInput, zonedInputToIso } from '../lib/datetimeLocal';
 
@@ -24,8 +26,6 @@ export function EventDrawer({ event, onClose, zone = 'UTC', compact = false }: E
   const [title, setTitle] = useState(event.title);
   const [startLocal, setStartLocal] = useState(seededStart);
   const [endLocal, setEndLocal] = useState(seededEnd);
-  const rootRef = useRef<HTMLElement>(null);
-  useClickOutside(rootRef, onClose, !compact);
   const updateM = useUpdateCalendarEventMutation();
   const deleteM = useDeleteCalendarEventMutation();
 
@@ -35,9 +35,6 @@ export function EventDrawer({ event, onClose, zone = 'UTC', compact = false }: E
   const titleOk = title.trim().length > 0;
   const ok = rangeOk && titleOk;
   const pending = updateM.isPending || deleteM.isPending;
-
-  const ctl = 'w-full bg-transparent text-[16px] font-bold text-ink outline-none';
-  const errCls = 'mt-0.5 text-[11px] text-crit';
 
   // Saving/deleting closes the drawer synchronously rather than on the mutation's success:
   // both mutations patch the cached event optimistically, and the drawer is keyed on that
@@ -68,52 +65,36 @@ export function EventDrawer({ event, onClose, zone = 'UTC', compact = false }: E
   if (event.source !== 'app') return null;
 
   return (
-    <aside
-      ref={rootRef}
-      data-testid="event-drawer"
-      className={compact
-        ? 'w-full space-y-2.5 p-2'
-        : 'w-[440px] shrink-0 space-y-2.5 rounded-[14px] border border-line bg-card p-4 shadow-pop max-h-[calc(100dvh-100px)] overflow-y-auto'}
+    <DrawerPanel
+      testId="event-drawer"
+      title="Edit event"
+      compact={compact}
+      onDismiss={onClose}
+      centerActions
+      actions={(
+        <>
+          <PrimaryButton type="button" data-testid="event-save" disabled={!ok || pending} onClick={save}>Save</PrimaryButton>
+          <SecondaryButton type="button" data-testid="event-cancel" onClick={onClose}>Cancel</SecondaryButton>
+          <button
+            type="button" data-testid="event-delete" disabled={pending} onClick={remove}
+            className="ml-auto rounded-[30px] border border-line px-4 py-2 text-[14px] font-bold text-crit hover:bg-bg disabled:opacity-50"
+          >Delete</button>
+        </>
+      )}
     >
-      <h4 className="text-[15px] font-bold text-ink">Edit event</h4>
-
       <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
-        {/* Title — spans both columns at md+; col-span-2 in a one-column grid would conjure a second */}
-        <div className="col-span-1 md:col-span-2">
-          <FieldBox label="Title">
-            <input data-testid="event-title" className={ctl} value={title} onChange={(e) => setTitle(e.target.value)} />
-          </FieldBox>
-          {!titleOk && <p data-testid="err-title" className={errCls}>Title is required</p>}
-        </div>
+        <FormField className={FULL_ROW} label="Title" error={titleOk ? undefined : 'Title is required'} errorTestId="err-title">
+          <input data-testid="event-title" className={FIELD_CONTROL} value={title} onChange={(e) => setTitle(e.target.value)} />
+        </FormField>
 
         {/* Row: Starts | Ends (the date lives in each datetime, so an event may cross midnight) */}
-        <div>
-          <FieldBox label="Starts">
-            <input type="datetime-local" data-testid="event-start" className={ctl} value={startLocal} onChange={(e) => setStartLocal(e.target.value)} />
-          </FieldBox>
-        </div>
-        <div>
-          <FieldBox label="Ends">
-            <input type="datetime-local" data-testid="event-end" className={ctl} value={endLocal} onChange={(e) => setEndLocal(e.target.value)} />
-          </FieldBox>
-          {!rangeOk && <p data-testid="err-range" className={errCls}>End must be after start</p>}
-        </div>
+        <FormField label="Starts">
+          <input type="datetime-local" data-testid="event-start" className={FIELD_CONTROL} value={startLocal} onChange={(e) => setStartLocal(e.target.value)} />
+        </FormField>
+        <FormField label="Ends" error={rangeOk ? undefined : 'End must be after start'} errorTestId="err-range">
+          <input type="datetime-local" data-testid="event-end" className={FIELD_CONTROL} value={endLocal} onChange={(e) => setEndLocal(e.target.value)} />
+        </FormField>
       </div>
-
-      <div className="flex items-center gap-2 pt-1">
-        <button
-          type="button" data-testid="event-save" disabled={!ok || pending} onClick={save}
-          className="rounded-[30px] bg-indigo px-5 py-2 text-[14px] font-bold text-white shadow-[0_4px_12px_rgba(91,98,227,.35)] hover:bg-indigo600 disabled:opacity-50"
-        >Save</button>
-        <button
-          type="button" data-testid="event-cancel" onClick={onClose}
-          className="rounded-[30px] border border-line px-5 py-2 text-[14px] font-bold text-inkSoft hover:bg-bg"
-        >Cancel</button>
-        <button
-          type="button" data-testid="event-delete" disabled={pending} onClick={remove}
-          className="ml-auto rounded-[30px] border border-line px-4 py-2 text-[14px] font-bold text-crit hover:bg-bg disabled:opacity-50"
-        >Delete</button>
-      </div>
-    </aside>
+    </DrawerPanel>
   );
 }
