@@ -75,7 +75,6 @@ export function createTaskRepository(prisma: PrismaClient) {
         }
         return await prisma.task.findFirstOrThrow({ where: { id, userId } });
       } catch (error) {
-        if (error instanceof NotFoundError) throw error;
         translatePrismaError(error);
       }
     },

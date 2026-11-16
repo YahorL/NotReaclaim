@@ -62,7 +62,6 @@ export function createCategoryRepository(prisma: PrismaClient) {
         if (result.count === 0) throw new NotFoundError(`Category ${id} not found for user`);
         return await prisma.category.findFirstOrThrow({ where: { id, userId } });
       } catch (error) {
-        if (error instanceof NotFoundError) throw error;
         translatePrismaError(error);
       }
     },

@@ -39,7 +39,6 @@ export function createCalendarEventRepository(prisma: PrismaClient) {
         }
         return await prisma.calendarEvent.findFirstOrThrow({ where: { id, userId } });
       } catch (error) {
-        if (error instanceof NotFoundError) throw error;
         translatePrismaError(error);
       }
     },
@@ -53,7 +52,6 @@ export function createCalendarEventRepository(prisma: PrismaClient) {
         }
         return await prisma.calendarEvent.findFirstOrThrow({ where: { id, userId } });
       } catch (error) {
-        if (error instanceof NotFoundError) throw error;
         translatePrismaError(error);
       }
     },

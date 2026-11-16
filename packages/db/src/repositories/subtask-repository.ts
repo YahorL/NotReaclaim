@@ -30,7 +30,6 @@ export function createSubtaskRepository(prisma: PrismaClient) {
         if (result.count === 0) throw new NotFoundError(`Subtask ${id} not found for user`);
         return await prisma.subtask.findUniqueOrThrow({ where: { id } });
       } catch (error) {
-        if (error instanceof NotFoundError) throw error;
         translatePrismaError(error);
       }
     },

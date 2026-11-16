@@ -54,7 +54,6 @@ export function createScheduledBlockRepository(prisma: PrismaClient) {
         }
         return await prisma.scheduledBlock.findFirstOrThrow({ where: { id, userId } });
       } catch (error) {
-        if (error instanceof NotFoundError) throw error;
         translatePrismaError(error);
       }
     },
@@ -67,7 +66,6 @@ export function createScheduledBlockRepository(prisma: PrismaClient) {
         }
         return await prisma.scheduledBlock.findFirstOrThrow({ where: { id, userId } });
       } catch (error) {
-        if (error instanceof NotFoundError) throw error;
         translatePrismaError(error);
       }
     },

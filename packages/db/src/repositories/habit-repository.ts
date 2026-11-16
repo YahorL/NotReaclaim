@@ -46,7 +46,6 @@ export function createHabitRepository(prisma: PrismaClient) {
         }
         return await prisma.habit.findFirstOrThrow({ where: { id, userId } });
       } catch (error) {
-        if (error instanceof NotFoundError) throw error;
         translatePrismaError(error);
       }
     },

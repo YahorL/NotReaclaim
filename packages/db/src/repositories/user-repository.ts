@@ -71,7 +71,6 @@ export function createUserRepository(prisma: PrismaClient) {
         }
         return await prisma.user.findUniqueOrThrow({ where: { id } });
       } catch (error) {
-        if (error instanceof NotFoundError) throw error;
         translatePrismaError(error);
       }
     },
