@@ -33,7 +33,7 @@ const task = (over: Partial<Task> = {}): Task => ({
 
 describe('hoursByDay', () => {
   it('buckets proposed task/habit blocks and meetings into the right day (TZ=UTC)', () => {
-    const perDay = hoursByDay(days, preview(), [event()]);
+    const perDay = hoursByDay(days, preview(), [event()], 'UTC');
     expect(perDay).toHaveLength(7);
     expect(perDay[0]).toEqual({ task: 0, meeting: 0, habit: HOUR_MS });           // Mon: 1h habit
     expect(perDay[2]).toEqual({ task: 2 * HOUR_MS, meeting: HOUR_MS / 2, habit: 0 }); // Wed: 2h task + 30m meeting
@@ -43,21 +43,21 @@ describe('hoursByDay', () => {
   it('ignores blocked entries — local busy time is not work data', () => {
     const blocked = event({ id: 'e-b', title: 'Gym', kind: 'blocked', source: 'app',
       startsAt: '2026-01-07T18:00:00.000Z', endsAt: '2026-01-07T20:00:00.000Z' }); // Wed, 2h
-    const perDay = hoursByDay(days, preview(), [event(), blocked]);
+    const perDay = hoursByDay(days, preview(), [event(), blocked], 'UTC');
     // Wed still shows only the 30m meeting — the 2h block contributes nothing.
     expect(perDay[2]).toEqual({ task: 2 * HOUR_MS, meeting: HOUR_MS / 2, habit: 0 });
     expect(summary(perDay).meetingMs).toBe(HOUR_MS / 2);
   });
 
   it('treats undefined preview as no blocks', () => {
-    const perDay = hoursByDay(days, undefined, []);
+    const perDay = hoursByDay(days, undefined, [], 'UTC');
     expect(perDay.every((d) => d.task === 0 && d.meeting === 0 && d.habit === 0)).toBe(true);
   });
 });
 
 describe('summary', () => {
   it('sums each kind and the total', () => {
-    const s = summary(hoursByDay(days, preview(), [event()]));
+    const s = summary(hoursByDay(days, preview(), [event()], 'UTC'));
     expect(s.taskMs).toBe(2 * HOUR_MS);
     expect(s.habitMs).toBe(HOUR_MS);
     expect(s.meetingMs).toBe(HOUR_MS / 2);
@@ -67,13 +67,13 @@ describe('summary', () => {
 
 describe('meetingCount', () => {
   it('counts events whose start falls in the week', () => {
-    expect(meetingCount(days, [event(), event({ id: 'e2', startsAt: '2026-02-01T10:00:00.000Z' })])).toBe(1);
+    expect(meetingCount(days, [event(), event({ id: 'e2', startsAt: '2026-02-01T10:00:00.000Z' })], 'UTC')).toBe(1);
   });
 
   it('does not count blocked entries as meetings', () => {
     const blocked = event({ id: 'e-b', title: 'Gym', kind: 'blocked', source: 'app' });
-    expect(meetingCount(days, [blocked])).toBe(0);
-    expect(meetingCount(days, [event(), blocked])).toBe(1);
+    expect(meetingCount(days, [blocked], 'UTC')).toBe(0);
+    expect(meetingCount(days, [event(), blocked], 'UTC')).toBe(1);
   });
 });
 
@@ -116,5 +116,41 @@ describe('chartScaleMs', () => {
   it('is the max of 8h and the busiest day total', () => {
     expect(chartScaleMs([{ task: 0, meeting: 0, habit: 0 }])).toBe(8 * HOUR_MS);
     expect(chartScaleMs([{ task: 10 * HOUR_MS, meeting: 0, habit: 0 }])).toBe(10 * HOUR_MS);
+  });
+});
+
+describe('stats bucketing by settings-zone days', () => {
+  const NY = 'America/New_York';
+  const blk = (id: string, startIso: string, hours: number) => ({
+    id, sourceType: 'habit' as const, sourceId: 'h', title: id, start: Date.parse(startIso), end: Date.parse(startIso) + hours * HOUR_MS,
+  });
+
+  it('buckets by New York days, not UTC days', () => {
+    const nyDays = dayColumns(startOfWeek(NOW, NY), 7, NY); // Mon Jan 5 .. Sun Jan 11, New York
+    // 03:00Z Jan 6 is Mon Jan 5 22:00 in New York.
+    const perDay = hoursByDay(nyDays, { blocks: [blk('late-mon', '2026-01-06T03:00:00.000Z', 1)], unscheduled: [] }, [], NY);
+    expect(perDay[0]!.habit).toBe(HOUR_MS);
+    expect(perDay[1]!.habit).toBe(0);
+  });
+
+  it('a 25h fall-back Sunday keeps its last hour (New York, Nov 1 2026)', () => {
+    const weekStart = startOfWeek(Date.parse('2026-10-28T12:00:00.000Z'), NY); // Mon Oct 26
+    const nyDays = dayColumns(weekStart, 7, NY);
+    // Sun Nov 1 23:30 EST = 04:30Z Nov 2 — still Sunday, but past a naive 24h day end.
+    const preview = { blocks: [blk('sun-late', '2026-11-02T04:30:00.000Z', 0.5)], unscheduled: [] };
+    const sunMeeting = event({ startsAt: '2026-11-02T04:30:00.000Z', endsAt: '2026-11-02T04:45:00.000Z' });
+    const perDay = hoursByDay(nyDays, preview, [sunMeeting], NY);
+    expect(perDay[6]!.habit).toBe(HOUR_MS / 2);
+    expect(perDay[6]!.meeting).toBe(HOUR_MS / 4);
+    expect(meetingCount(nyDays, [sunMeeting], NY)).toBe(1);
+  });
+
+  it('a 23h spring-forward Sunday does not swallow next Monday (New York, Mar 8 2026)', () => {
+    const nyDays = dayColumns(startOfWeek(Date.parse('2026-03-04T12:00:00.000Z'), NY), 7, NY); // Mon Mar 2
+    // Mon Mar 9 00:30 EDT = 04:30Z — next week, but inside a naive 24h Sunday.
+    const preview = { blocks: [blk('next-mon', '2026-03-09T04:30:00.000Z', 1)], unscheduled: [] };
+    const monMeeting = event({ startsAt: '2026-03-09T04:30:00.000Z', endsAt: '2026-03-09T05:00:00.000Z' });
+    expect(hoursByDay(nyDays, preview, [monMeeting], NY)[6]).toEqual({ task: 0, meeting: 0, habit: 0 });
+    expect(meetingCount(nyDays, [monMeeting], NY)).toBe(0);
   });
 });

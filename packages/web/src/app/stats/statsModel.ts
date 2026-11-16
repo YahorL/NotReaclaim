@@ -1,5 +1,5 @@
 import type { SchedulePreview, CalendarEvent, Task } from '../../api/types';
-import { MS_PER_DAY } from '../planner/weekModel';
+import { shiftDays } from '../planner/weekModel';
 
 export const HOUR_MS = 3_600_000;
 
@@ -12,10 +12,14 @@ export interface KindMs { task: number; meeting: number; habit: number }
  */
 const isMeeting = (e: CalendarEvent): boolean => e.kind !== 'blocked';
 
-export function hoursByDay(days: number[], preview: SchedulePreview | undefined, events: CalendarEvent[]): KindMs[] {
+/** End of the day starting at `dayStartMs`: the next zone midnight (a DST day is 23h or 25h). */
+const dayEnd = (dayStartMs: number, zone: string): number => shiftDays(dayStartMs, 1, zone);
+
+/** Per-day totals for the zone-day starts in `days`; a block or event counts on the day it starts. */
+export function hoursByDay(days: number[], preview: SchedulePreview | undefined, events: CalendarEvent[], zone: string): KindMs[] {
   const blocks = preview?.blocks ?? [];
   return days.map((d) => {
-    const end = d + MS_PER_DAY;
+    const end = dayEnd(d, zone);
     let task = 0;
     let habit = 0;
     let meeting = 0;
@@ -41,9 +45,9 @@ export function summary(perDay: KindMs[]): { totalMs: number; taskMs: number; me
   return { taskMs, meetingMs, habitMs, totalMs: taskMs + meetingMs + habitMs };
 }
 
-export function meetingCount(days: number[], events: CalendarEvent[]): number {
+export function meetingCount(days: number[], events: CalendarEvent[], zone: string): number {
   const first = days[0] ?? 0;
-  const last = (days[days.length - 1] ?? 0) + MS_PER_DAY;
+  const last = dayEnd(days[days.length - 1] ?? 0, zone);
   return events.filter((e) => {
     if (!isMeeting(e)) return false;
     const s = Date.parse(e.startsAt);

@@ -5,16 +5,19 @@ import {
   hoursByDay, summary, meetingCount, taskCompletion, donutSegments, formatHours,
 } from '../stats/statsModel';
 import { StatCard } from '../stats/StatCard';
+import { useTimezone } from '../settings/useTimezone';
 import { HoursByDayChart } from '../stats/HoursByDayChart';
 import { TimeSplitDonut } from '../stats/TimeSplitDonut';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export function Stats({ now = () => Date.now() }: { now?: () => number }) {
-  const weekStartMs = startOfWeek(now());
-  const days = useMemo(() => dayColumns(weekStartMs), [weekStartMs]);
+  // The week and its days are the user's settings-zone week (Mon 00:00 → next Mon 00:00 there).
+  const zone = useTimezone();
+  const weekStartMs = startOfWeek(now(), zone);
+  const days = useMemo(() => dayColumns(weekStartMs, 7, zone), [weekStartMs, zone]);
   const fromIso = new Date(weekStartMs).toISOString();
-  const toIso = new Date(addWeeks(weekStartMs, 1)).toISOString();
+  const toIso = new Date(addWeeks(weekStartMs, 1, zone)).toISOString();
 
   const preview = useSchedulePreviewQuery();
   const calendar = useCalendarEventsQuery(fromIso, toIso);
@@ -23,9 +26,9 @@ export function Stats({ now = () => Date.now() }: { now?: () => number }) {
   const isLoading = preview.isLoading || calendar.isLoading || tasksQ.isLoading;
   const isError = preview.isError || calendar.isError || tasksQ.isError;
 
-  const perDay = useMemo(() => hoursByDay(days, preview.data, calendar.data ?? []), [days, preview.data, calendar.data]);
+  const perDay = useMemo(() => hoursByDay(days, preview.data, calendar.data ?? [], zone), [days, preview.data, calendar.data, zone]);
   const sum = useMemo(() => summary(perDay), [perDay]);
-  const mc = meetingCount(days, calendar.data ?? []);
+  const mc = meetingCount(days, calendar.data ?? [], zone);
   const comp = taskCompletion(tasksQ.data ?? []);
   const segs = donutSegments(sum);
 

@@ -67,3 +67,28 @@ describe('Stats page', () => {
     expect(row.className).toContain('md:flex-row');
   });
 });
+
+describe('Stats page in the settings zone', () => {
+  it('reports the settings-zone week (New York), not the UTC week', async () => {
+    const getCalendarEvents = vi.fn(async () => []);
+    const nyApi = api({
+      getSettings: vi.fn().mockResolvedValue({ id: 's', userId: 'u', timezone: 'America/New_York', workingHours: [], horizonDays: 14, defaultMinChunkMs: 1800000, defaultMaxChunkMs: 7200000, createdAt: '', updatedAt: '' }),
+      getCalendarEvents,
+      getSchedulePreview: vi.fn(async () => ({
+        blocks: [
+          // Sun Jan 4 22:00 New York — previous NY week (but Monday of the UTC week).
+          { id: 'x1', sourceType: 'task', sourceId: 't1', title: 'A', start: Date.parse('2026-01-05T03:00:00.000Z'), end: Date.parse('2026-01-05T04:00:00.000Z') },
+          // Sun Jan 11 20:00–23:00 New York — this NY week (but next UTC week).
+          { id: 'x2', sourceType: 'task', sourceId: 't1', title: 'B', start: Date.parse('2026-01-12T01:00:00.000Z'), end: Date.parse('2026-01-12T04:00:00.000Z') },
+        ],
+        unscheduled: [],
+      })),
+    });
+    renderWithProviders(<Stats now={() => NOW} />, { api: nyApi });
+    await waitFor(() => {
+      const total = screen.getByText('Total scheduled').closest('[data-testid="stat-card"]');
+      expect(total).toHaveTextContent('3h');
+    });
+    expect(getCalendarEvents).toHaveBeenLastCalledWith('2026-01-05T05:00:00.000Z', '2026-01-12T05:00:00.000Z');
+  });
+});
