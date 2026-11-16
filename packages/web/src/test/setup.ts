@@ -11,7 +11,6 @@ if (typeof window !== 'undefined' && !window.PointerEvent) {
       this.pointerId = init.pointerId ?? 0;
     }
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (window as any).PointerEvent = PointerEventPolyfill;
 }
 

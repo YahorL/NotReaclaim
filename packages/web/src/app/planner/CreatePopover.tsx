@@ -111,7 +111,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
 
   return (
     // Compact: plain content inside a `Sheet` — the sheet supplies the backdrop, the ✕, Escape,
-    // the z-50 tier and the scroll. Desktop keeps the column-anchored popover byte-for-byte.
+    // the z-50 tier and the scroll. Desktop keeps the column-anchored popover.
     <div
       ref={ref}
       data-testid="create-popover"

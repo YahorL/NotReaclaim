@@ -222,8 +222,8 @@ export function clampToWindow(startMin: number, durationMin: number): { startMin
 
 /**
  * Which side of its day column the create-popover opens on. Columns in the first half open to
- * the left so the popover grows into the grid rather than off-screen. Replaces WeekGrid's
- * hardcoded `i <= 3`, which silently assumed a 7-day week.
+ * the left so the popover grows into the grid rather than off-screen. Derived from `dayCount`
+ * so the split holds for any window of 1–7 days, not only a full week.
  */
 export function popoverAlign(dayIndex: number, dayCount: number): 'left' | 'right' {
   return dayIndex <= Math.floor((dayCount - 1) / 2) ? 'left' : 'right';

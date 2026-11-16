@@ -208,7 +208,6 @@ describe('boardKeyboardCoordinates', () => {
     ['col:high', container('col:high')], ['a', container('a')], ['b', container('b')],
   ]);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const argsFor = (activeId: string): any => ({
     active: activeId,
     currentCoordinates: { x: 0, y: rects.get(activeId)!.top },

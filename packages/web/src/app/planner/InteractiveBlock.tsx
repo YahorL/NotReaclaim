@@ -157,7 +157,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
     setHeldDay(hd);
     setHeldColWidth(hw);
     // Safety timeout: clear held preview after 1.5s (covers failed mutations that
-    // roll back to identical props — the useEffect won't fire in that case)
+    // roll back to identical props — the layout effect won't fire in that case)
     heldTimerRef.current = setTimeout(clearHeld, HELD_TIMEOUT_MS);
   };
 
