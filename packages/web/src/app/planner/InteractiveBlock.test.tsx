@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, createEvent } from '@testing-library/react';
 import { InteractiveBlock } from './InteractiveBlock';
-import { GRID_COLUMN_PX } from './weekModel';
 import { minutesToPx } from './weekModel';
 import { LONG_PRESS_MS } from './longPress';
 

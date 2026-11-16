@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import type { SettingsInput } from '../../api/types';
 import { ApiError } from '../../api/client';
 import { SettingsForm } from './SettingsForm';
-import { defaultFormState, type SettingsFormState } from './settingsForm';
+import type { SettingsFormState } from './settingsForm';
 
 const initial = (over: Partial<SettingsFormState> = {}): SettingsFormState => ({
   timezone: 'UTC',
