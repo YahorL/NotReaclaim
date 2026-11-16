@@ -1,3 +1,4 @@
+import { NotFoundError, ConflictError } from '@notreclaim/db';
 import type { Settings, Task, Habit, ScheduledBlock, CalendarEvent, User, Category, Subtask } from '@notreclaim/db';
 import { buildApp, type AppDeps } from '../src/app.js';
 import { createEventBus } from '../src/events.js';
@@ -27,13 +28,13 @@ export function fakeTaskRepo(seed: Task[] = []) {
     },
     async update(userId: string, id: string, data: Record<string, unknown>): Promise<Task> {
       const row = rows.find((r) => r.id === id && r.userId === userId);
-      if (!row) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`Task ${id}`); }
+      if (!row) throw new NotFoundError(`Task ${id}`);
       Object.assign(row, data); return row;
     },
     async delete(userId: string, id: string): Promise<void> {
       const before = rows.length;
       rows = rows.filter((r) => !(r.id === id && r.userId === userId));
-      if (rows.length === before) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`Task ${id}`); }
+      if (rows.length === before) throw new NotFoundError(`Task ${id}`);
     },
     async purgeCompletedBefore(userId: string, cutoff: Date): Promise<number> {
       const before = rows.length;
@@ -69,13 +70,13 @@ export function fakeHabitRepo(seed: Habit[] = []) {
     },
     async update(userId: string, id: string, data: Record<string, unknown>): Promise<Habit> {
       const row = rows.find((r) => r.id === id && r.userId === userId);
-      if (!row) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`Habit ${id}`); }
+      if (!row) throw new NotFoundError(`Habit ${id}`);
       Object.assign(row, data); return row;
     },
     async delete(userId: string, id: string): Promise<void> {
       const before = rows.length;
       rows = rows.filter((r) => !(r.id === id && r.userId === userId));
-      if (rows.length === before) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`Habit ${id}`); }
+      if (rows.length === before) throw new NotFoundError(`Habit ${id}`);
     },
   };
 }
@@ -118,13 +119,13 @@ export function fakeScheduledBlockRepo(seed: ScheduledBlock[] = []) {
     },
     async update(userId: string, id: string, data: Partial<ScheduledBlock>): Promise<ScheduledBlock> {
       const row = rows.find((b) => b.id === id && b.userId === userId);
-      if (!row) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`ScheduledBlock ${id}`); }
+      if (!row) throw new NotFoundError(`ScheduledBlock ${id}`);
       Object.assign(row, data); return row;
     },
     async delete(userId: string, id: string): Promise<void> {
       const before = rows.length;
       rows = rows.filter((b) => !(b.id === id && b.userId === userId));
-      if (rows.length === before) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`ScheduledBlock ${id}`); }
+      if (rows.length === before) throw new NotFoundError(`ScheduledBlock ${id}`);
     },
   };
 }
@@ -150,13 +151,13 @@ export function fakeCalendarEventRepo(seed: CalendarEvent[] = []) {
     },
     async update(userId: string, id: string, data: Record<string, unknown>): Promise<CalendarEvent> {
       const row = rows.find((r) => r.id === id && r.userId === userId);
-      if (!row) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`CalendarEvent ${id}`); }
+      if (!row) throw new NotFoundError(`CalendarEvent ${id}`);
       Object.assign(row, data);
       return row;
     },
     async setGoogleIds(userId: string, id: string, googleCalendarId: string, googleEventId: string): Promise<CalendarEvent> {
       const row = rows.find((r) => r.id === id && r.userId === userId);
-      if (!row) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`CalendarEvent ${id}`); }
+      if (!row) throw new NotFoundError(`CalendarEvent ${id}`);
       Object.assign(row, { googleCalendarId, googleEventId });
       return row;
     },
@@ -166,7 +167,7 @@ export function fakeCalendarEventRepo(seed: CalendarEvent[] = []) {
     async delete(userId: string, id: string): Promise<void> {
       const before = rows.length;
       rows = rows.filter((r) => !(r.id === id && r.userId === userId));
-      if (rows.length === before) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`CalendarEvent ${id}`); }
+      if (rows.length === before) throw new NotFoundError(`CalendarEvent ${id}`);
     },
   };
 }
@@ -195,13 +196,13 @@ export function fakeCategoryRepo(seed: Category[] = []) {
     },
     async update(userId: string, id: string, data: Record<string, unknown>): Promise<Category> {
       const row = rows.find((r) => r.id === id && r.userId === userId);
-      if (!row) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`Category ${id}`); }
+      if (!row) throw new NotFoundError(`Category ${id}`);
       Object.assign(row, data); return row;
     },
     async delete(userId: string, id: string): Promise<void> {
       const row = rows.find((r) => r.id === id && r.userId === userId);
-      if (!row) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`Category ${id}`); }
-      if (row.isDefault) { const { ConflictError } = await import('@notreclaim/db'); throw new ConflictError('The default category cannot be deleted'); }
+      if (!row) throw new NotFoundError(`Category ${id}`);
+      if (row.isDefault) throw new ConflictError('The default category cannot be deleted');
       rows = rows.filter((r) => r.id !== id);
     },
   };
@@ -220,7 +221,7 @@ export function fakeSubtaskRepo(seed: Subtask[] = [], taskRepo: { findById(userI
   };
   return {
     async create(userId: string, taskId: string, data: Record<string, unknown>): Promise<Subtask> {
-      if (!(await taskRepo.findById(userId, taskId))) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`Task ${taskId}`); }
+      if (!(await taskRepo.findById(userId, taskId))) throw new NotFoundError(`Task ${taskId}`);
       const taskSubtasks = rows.filter((r) => r.taskId === taskId);
       const maxOrder = taskSubtasks.reduce((m, r) => Math.max(m, r.sortOrder), 0);
       const sortOrder = maxOrder + 1;
@@ -228,12 +229,12 @@ export function fakeSubtaskRepo(seed: Subtask[] = [], taskRepo: { findById(userI
     },
     async update(userId: string, id: string, data: Record<string, unknown>): Promise<Subtask> {
       const row = await owned(userId, id);
-      if (!row) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`Subtask ${id}`); }
+      if (!row) throw new NotFoundError(`Subtask ${id}`);
       Object.assign(row, data); return row;
     },
     async delete(userId: string, id: string): Promise<void> {
       const row = await owned(userId, id);
-      if (!row) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`Subtask ${id}`); }
+      if (!row) throw new NotFoundError(`Subtask ${id}`);
       rows = rows.filter((r) => r.id !== id);
     },
   };
@@ -255,7 +256,7 @@ export function fakeUserRepo(seed: User[] = []) {
     // Copy-on-write like Prisma: a row already handed out must NOT change under its holder,
     // or stale-snapshot races become invisible in tests.
     async update(id: string, data: Partial<User>) {
-      const u = byId.get(id); if (!u) { const { NotFoundError } = await import('@notreclaim/db'); throw new NotFoundError(`User ${id}`); }
+      const u = byId.get(id); if (!u) throw new NotFoundError(`User ${id}`);
       const updated = { ...u, ...data }; byId.set(id, updated); return updated;
     },
     /** Mirrors the repository's conditional updateMany: false when the flag doesn't flip. */
