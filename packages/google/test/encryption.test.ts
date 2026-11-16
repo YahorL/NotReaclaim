@@ -22,7 +22,8 @@ describe('token encryption', () => {
   it('throws on tampered ciphertext', () => {
     const ct = encryptToken('secret', key);
     const buf = Buffer.from(ct, 'base64');
-    buf[buf.length - 1] ^= 0xff;
+    const last = buf.length - 1;
+    buf[last] = buf[last]! ^ 0xff;
     expect(() => decryptToken(buf.toString('base64'), key)).toThrow();
   });
 });
