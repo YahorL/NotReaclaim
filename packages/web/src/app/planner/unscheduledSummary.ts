@@ -46,27 +46,23 @@ export function summarizeUnscheduled(
   const habitTitle = new Map((habits ?? []).map((h) => [h.id, h.title]));
   const missed = missedByHabit(items, habits);
 
-  const order: string[] = [];
+  // Keyed by `kind:id`; a Map keeps first-seen order, which is the order the engine reported.
+  const sources = new Map<string, { kind: UnscheduledItem['sourceType']; id: string; title: string }>();
   const remainingByTask = new Map<string, number>();
-  const titleByKey = new Map<string, string>();
 
   for (const it of items ?? []) {
     if (it.sourceType === 'habit' && habits === undefined) continue;
     const key = `${it.sourceType}:${it.sourceId}`;
-    if (!titleByKey.has(key)) {
-      order.push(key);
+    if (!sources.has(key)) {
       const resolved = it.sourceType === 'task' ? taskTitle.get(it.sourceId) : habitTitle.get(it.sourceId);
-      titleByKey.set(key, resolved ?? (it.title || '(deleted)'));
+      sources.set(key, { kind: it.sourceType, id: it.sourceId, title: resolved ?? (it.title || '(deleted)') });
     }
     if (it.sourceType === 'task') {
       remainingByTask.set(it.sourceId, (remainingByTask.get(it.sourceId) ?? 0) + it.remainingMs);
     }
   }
 
-  return order.map((key) => {
-    const [kind, ...rest] = key.split(':');
-    const id = rest.join(':');
-    const title = titleByKey.get(key)!;
+  return [...sources].map(([key, { kind, id, title }]) => {
     const label = kind === 'task'
       ? `${title} (${formatDurationShort(remainingByTask.get(id) ?? 0)} left)`
       : `${title} (${missed.get(id) ?? 1} missed)`;

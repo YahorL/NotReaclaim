@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
-import type { Task, SchedulePreview, UnscheduledItem } from '../../api/types';
+import type { Task, SchedulePreview } from '../../api/types';
 import { formatDurationShort } from '../lib/duration';
 import { PANEL_TASK_DRAG_TYPE, panelTaskDraggableId } from './scheduleDrop';
 import {
@@ -21,6 +21,7 @@ export interface PlannerTaskPanelProps {
 }
 
 type Tab = 'priorities' | 'tasks';
+const TABS: readonly Tab[] = ['priorities', 'tasks'];
 
 function dueLabel(task: Task): string | null {
   if (!task.dueBy) return null;
@@ -35,6 +36,8 @@ function TaskCard({ task, nowMs, nextMs, atRisk, leftBorder, coarse, onComplete,
   const due = dueLabel(task);
   const next = nextMs != null ? `Next: ${relativeDayTimeLabel(nextMs, nowMs)}` : null;
   const meta = [due, next].filter(Boolean).join(' · ');
+  const spent = task.spentMs ?? 0;
+  const pct = task.durationMs > 0 ? Math.min(100, (spent / task.durationMs) * 100) : 0;
   // The overlay card follows the pointer, so this one stays put and only dims.
   // role=group: dnd-kit would otherwise default the card to role="button", nesting the
   // complete/edit/delete buttons inside a button.
@@ -77,18 +80,12 @@ function TaskCard({ task, nowMs, nextMs, atRisk, leftBorder, coarse, onComplete,
           {atRisk && <span data-testid="panel-at-risk" title="At risk" className="shrink-0 rounded-full bg-crit/15 px-1.5 text-[10px] font-bold text-crit">⚠</span>}
         </div>
         {meta && <div className="mt-0.5 truncate text-[12px] text-inkSoft">{meta}</div>}
-        {(() => {
-          const spent = task.spentMs ?? 0;
-          const pct = task.durationMs > 0 ? Math.min(100, (spent / task.durationMs) * 100) : 0;
-          return (
-            <div data-testid="panel-progress" className="mt-1 flex items-center gap-1.5">
-              <div className="h-1 flex-1 overflow-hidden rounded-full bg-line">
-                <div className="h-full rounded-full bg-indigo" style={{ width: `${pct}%` }} />
-              </div>
-              <span className="shrink-0 text-[11px] text-inkSoft">{formatDurationShort(spent)} / {formatDurationShort(task.durationMs)}</span>
-            </div>
-          );
-        })()}
+        <div data-testid="panel-progress" className="mt-1 flex items-center gap-1.5">
+          <div className="h-1 flex-1 overflow-hidden rounded-full bg-line">
+            <div className="h-full rounded-full bg-indigo" style={{ width: `${pct}%` }} />
+          </div>
+          <span className="shrink-0 text-[11px] text-inkSoft">{formatDurationShort(spent)} / {formatDurationShort(task.durationMs)}</span>
+        </div>
       </div>
       <span className="shrink-0 rounded-full bg-bg px-2 py-0.5 text-[11.5px] font-semibold text-inkSoft">{formatDurationShort(task.durationMs)}</span>
       {/* ✎ and × are adjacent, so they grow by padding, never by a pseudo box: overlapping
@@ -110,7 +107,7 @@ export function PlannerTaskPanel({ tasks, preview, nowMs, onComplete, onEdit, on
   );
   const atRiskIds = useMemo(() => {
     const ids = new Set<string>();
-    for (const it of (preview?.unscheduled ?? []) as UnscheduledItem[]) {
+    for (const it of preview?.unscheduled ?? []) {
       if (it.sourceType === 'task') ids.add(it.sourceId);
     }
     return ids;
@@ -148,7 +145,7 @@ export function PlannerTaskPanel({ tasks, preview, nowMs, onComplete, onEdit, on
   return (
     <aside data-testid="planner-task-panel" className={`flex flex-col overflow-hidden rounded-[14px] border border-line bg-bg/40 ${compact ? 'min-h-0 w-full flex-1' : 'w-[330px] shrink-0'}`}>
       <div className="flex shrink-0 items-center gap-1 border-b border-line px-2 pt-2">
-        {(['priorities', 'tasks'] as Tab[]).map((t) => (
+        {TABS.map((t) => (
           <button
             key={t}
             type="button"
