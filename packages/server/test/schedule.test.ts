@@ -190,8 +190,6 @@ describe('POST /schedule', () => {
 });
 
 describe('POST /schedule/:id/start', () => {
-  const FIXED = Date.parse('2026-01-05T00:00:00.000Z'); // FIXED_NOW from fakes (Monday 00:00 UTC)
-
   it('late start snaps startsAt to the nearest 15 min, pins, sets startedAt', async () => {
     // FIXED_NOW rounds to 00:00; block 23:50→01:00 spans it so the snap (00:00) lands inside.
     const b = block({ id: 'b1', startsAt: new Date('2026-01-04T23:50:00.000Z'), endsAt: new Date('2026-01-05T01:00:00.000Z') });

@@ -267,7 +267,6 @@ export function fakeUserRepo(seed: User[] = []) {
       byId.set(id, { ...u, googleAuthBrokenAt: at });
       return true;
     },
-    _all: byId,
   };
 }
 
@@ -356,7 +355,7 @@ export function buildTestApp(opts: TestAppOptions = {}) {
     now: () => FIXED_NOW,
   });
 
-  return { app, tasks, subtasks, habits, settings, categories, users, invites, reconcileCalls, emitted, events, FIXED_NOW };
+  return { app, settings, categories, users, invites, reconcileCalls, emitted, events, FIXED_NOW };
 }
 
 export async function tokenFor(app: Awaited<ReturnType<typeof buildTestApp>>['app'], userId = 'u1'): Promise<string> {
