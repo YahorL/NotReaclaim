@@ -12,7 +12,7 @@ export interface PollDeps extends ReplanDeps {
   sync: (userId: string, now: number) => Promise<SyncResult>;
 }
 
-/** Local-mutation path: re-plan from local state and announce the new schedule. Errors are swallowed because the originating HTTP mutation has already succeeded. */
+/** Local-mutation path: re-plan via the injected `reconcile` (Google reconcile when connected, else a local plan — see replan-router) and announce the new schedule. Errors are swallowed because the originating HTTP mutation has already succeeded. */
 export async function replanAfterMutation(deps: ReplanDeps, userId: string): Promise<void> {
   try {
     const counts = await deps.reconcile(userId, deps.now());
