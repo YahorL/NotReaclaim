@@ -24,19 +24,16 @@ export function createCategoryRepository(prisma: PrismaClient) {
       });
     },
 
-    getDefault(userId: string): Promise<Category | null> {
-      return prisma.category.findFirst({ where: { userId, isDefault: true } });
-    },
-
     async ensureDefault(userId: string): Promise<Category> {
-      const existing = await prisma.category.findFirst({ where: { userId, isDefault: true } });
+      const findDefault = () => prisma.category.findFirst({ where: { userId, isDefault: true } });
+      const existing = await findDefault();
       if (existing) return existing;
       try {
         return await prisma.category.create({
           data: { userId, name: 'Working Hours', windows: Prisma.DbNull, isDefault: true },
         });
       } catch (error) {
-        const row = await prisma.category.findFirst({ where: { userId, isDefault: true } });
+        const row = await findDefault();
         if (row) return row; // lost a concurrent create race
         translatePrismaError(error);
       }

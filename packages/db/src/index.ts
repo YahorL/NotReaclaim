@@ -1,6 +1,5 @@
 export { prisma } from './client.js';
 export type { PrismaClient } from './client.js';
-export { getDatabaseUrl } from './config.js';
 export { NotFoundError, ConflictError, translatePrismaError } from './errors.js';
 export { toFixedEvent, toFlexibleTask, toScheduledBlock } from './mappers.js';
 

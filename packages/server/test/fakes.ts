@@ -185,9 +185,6 @@ export function fakeCategoryRepo(seed: Category[] = []) {
         .filter((r) => r.userId === userId)
         .sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name));
     },
-    async getDefault(userId: string): Promise<Category | null> {
-      return rows.find((r) => r.userId === userId && r.isDefault) ?? null;
-    },
     async ensureDefault(userId: string): Promise<Category> {
       const found = rows.find((r) => r.userId === userId && r.isDefault);
       if (found) return found;

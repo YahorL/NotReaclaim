@@ -47,14 +47,6 @@ export function createScheduledBlockRepository(prisma: PrismaClient) {
       });
     },
 
-    setPinned(userId: string, id: string, pinned: boolean): Promise<ScheduledBlock> {
-      return updateOwned(
-        `ScheduledBlock ${id} not found for user`,
-        () => prisma.scheduledBlock.updateMany({ where: { id, userId }, data: { pinned } }),
-        () => prisma.scheduledBlock.findFirstOrThrow({ where: { id, userId } }),
-      );
-    },
-
     update(userId: string, id: string, data: UpdateScheduledBlockInput): Promise<ScheduledBlock> {
       return updateOwned(
         `ScheduledBlock ${id} not found for user`,
@@ -67,10 +59,6 @@ export function createScheduledBlockRepository(prisma: PrismaClient) {
       return deleteOwned(`ScheduledBlock ${id} not found for user`, () =>
         prisma.scheduledBlock.deleteMany({ where: { id, userId } }),
       );
-    },
-
-    async deleteByUser(userId: string): Promise<void> {
-      await prisma.scheduledBlock.deleteMany({ where: { userId } });
     },
   };
 }

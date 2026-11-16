@@ -104,10 +104,6 @@ export function createCalendarEventRepository(prisma: PrismaClient) {
     async deleteMirroredByCalendar(userId: string, googleCalendarId: string): Promise<void> {
       await prisma.calendarEvent.deleteMany({ where: { userId, googleCalendarId, source: 'google' } });
     },
-
-    async deleteByUser(userId: string): Promise<void> {
-      await prisma.calendarEvent.deleteMany({ where: { userId } });
-    },
   };
 }
 

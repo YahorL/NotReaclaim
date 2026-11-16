@@ -20,30 +20,6 @@ describe('InviteCodeRepository', () => {
     expect(await repo.findByCode('nope')).toBeNull();
   });
 
-  it('validates: rejects unknown, exhausted, expired, and email-mismatched codes', async () => {
-    const a = await admin();
-    await repo.create({ code: 'OPEN', createdByUserId: a.id, maxUses: 2 });
-    await repo.create({ code: 'USED', createdByUserId: a.id, maxUses: 1, usedCount: 1 });
-    await repo.create({ code: 'OLD', createdByUserId: a.id, expiresAt: new Date('2000-01-01T00:00:00Z') });
-    await repo.create({ code: 'BOUND', createdByUserId: a.id, email: 'only@x.com' });
-    const now = new Date('2026-06-18T00:00:00Z');
-    expect(await repo.validate('OPEN', 'anyone@x.com', now)).toBe(true);
-    expect(await repo.validate('MISSING', 'anyone@x.com', now)).toBe(false);
-    expect(await repo.validate('USED', 'anyone@x.com', now)).toBe(false);
-    expect(await repo.validate('OLD', 'anyone@x.com', now)).toBe(false);
-    expect(await repo.validate('BOUND', 'other@x.com', now)).toBe(false);
-    expect(await repo.validate('BOUND', 'only@x.com', now)).toBe(true);
-  });
-
-  it('consume increments usedCount and is reflected in validate', async () => {
-    const a = await admin();
-    await repo.create({ code: 'ONE', createdByUserId: a.id, maxUses: 1 });
-    const now = new Date('2026-06-18T00:00:00Z');
-    expect(await repo.validate('ONE', 'a@x.com', now)).toBe(true);
-    await repo.consume('ONE');
-    expect(await repo.validate('ONE', 'a@x.com', now)).toBe(false);
-  });
-
   it('tryConsume atomically consumes once and refuses thereafter (no double-spend)', async () => {
     const a = await admin();
     await repo.create({ code: 'ATOMIC', createdByUserId: a.id, maxUses: 1 });

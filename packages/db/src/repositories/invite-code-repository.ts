@@ -24,20 +24,6 @@ export function createInviteCodeRepository(prisma: PrismaClient) {
       return prisma.inviteCode.findUnique({ where: { code } });
     },
 
-    /** True when the code exists, is unexpired, not exhausted, and (if email-bound) matches. */
-    async validate(code: string, email: string, now: Date): Promise<boolean> {
-      const inv = await prisma.inviteCode.findUnique({ where: { code } });
-      if (!inv) return false;
-      if (inv.expiresAt && inv.expiresAt <= now) return false;
-      if (inv.usedCount >= inv.maxUses) return false;
-      if (inv.email && inv.email.toLowerCase() !== email.toLowerCase()) return false;
-      return true;
-    },
-
-    async consume(code: string): Promise<void> {
-      await prisma.inviteCode.update({ where: { code }, data: { usedCount: { increment: 1 } } });
-    },
-
     /**
      * Atomically consume one use IFF the code is valid (exists, unexpired, not exhausted,
      * and email matches when bound). Returns false otherwise. Single UPDATE so concurrent
