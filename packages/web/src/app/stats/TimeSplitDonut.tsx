@@ -1,11 +1,8 @@
-import { type DonutKind, type DonutSegment, formatHours } from './statsModel';
+import { type DonutKind, type DonutSegment, KIND_BAR_BG, formatHours } from './statsModel';
 
+// Mirrors the `kind.taskBar` / `kind.meetingBar` / `kind.habitBar` colours in tailwind.config.js:
+// a conic-gradient needs raw colour values, not class names. Keep the two in sync.
 const KIND_HEX: Record<DonutKind, string> = { task: '#f2700f', meeting: '#e5484d', habit: '#2fa45f' };
-const KIND_DOT: Record<DonutKind, string> = {
-  task: 'bg-kind-taskBar',
-  meeting: 'bg-kind-meetingBar',
-  habit: 'bg-kind-habitBar',
-};
 
 export function TimeSplitDonut({ segments, totalMs }: { segments: DonutSegment[]; totalMs: number }) {
   return (
@@ -29,7 +26,7 @@ export function TimeSplitDonut({ segments, totalMs }: { segments: DonutSegment[]
           <div>
             {segments.map((s) => (
               <div key={s.kind} className="flex items-center gap-2.5 py-1">
-                <span className={`h-[11px] w-[11px] rounded-[3px] ${KIND_DOT[s.kind]}`} />
+                <span className={`h-[11px] w-[11px] rounded-[3px] ${KIND_BAR_BG[s.kind]}`} />
                 <span className="flex-1 text-[14.5px] font-semibold capitalize text-ink">{s.kind}</span>
                 <span className="text-[14.5px] font-bold text-inkSoft">{formatHours(s.ms)}</span>
               </div>

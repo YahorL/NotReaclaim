@@ -1,10 +1,4 @@
-import { type KindMs, type DonutKind, chartScaleMs } from './statsModel';
-
-const KIND_BG: Record<DonutKind, string> = {
-  task: 'bg-kind-taskBar',
-  meeting: 'bg-kind-meetingBar',
-  habit: 'bg-kind-habitBar',
-};
+import { type KindMs, KIND_BAR_BG, chartScaleMs } from './statsModel';
 
 export function HoursByDayChart({ perDay, dayLabels }: { perDay: KindMs[]; dayLabels: string[] }) {
   const scale = chartScaleMs(perDay);
@@ -26,7 +20,7 @@ export function HoursByDayChart({ perDay, dayLabels }: { perDay: KindMs[]; dayLa
                     key={s.kind}
                     data-testid="bar"
                     data-kind={s.kind}
-                    className={`${KIND_BG[s.kind]} ${j === 0 ? 'rounded-t-[3px]' : ''}`}
+                    className={`${KIND_BAR_BG[s.kind]} ${j === 0 ? 'rounded-t-[3px]' : ''}`}
                     style={{ height: `${(s.ms / scale) * 200}px` }}
                   />
                 ))}

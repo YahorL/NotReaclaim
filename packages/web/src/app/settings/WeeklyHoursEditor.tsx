@@ -1,6 +1,6 @@
+import { WEEKDAY_SHORT } from '../lib/weekdays';
 import type { DayState } from './weeklyHours';
 
-const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MON_FIRST = [1, 2, 3, 4, 5, 6, 0];
 
 export interface WeeklyHoursEditorProps {
@@ -25,7 +25,7 @@ export function WeeklyHoursEditor({ days, onChange, errors = {}, idPrefix = 'day
           // whole row hittable needs a real <label htmlFor>, which is ledgered as a follow-up.
           // The time inputs beside it are already ~32px and native.
           <div key={wd} className="flex items-center gap-2 py-1 text-sm coarse:py-2">
-            <span className={`w-10 text-[13px] font-semibold ${day.enabled ? 'text-ink' : 'text-inkSoft'}`}>{DAY_LABELS[wd]}</span>
+            <span className={`w-10 text-[13px] font-semibold ${day.enabled ? 'text-ink' : 'text-inkSoft'}`}>{WEEKDAY_SHORT[wd]}</span>
             <input
               type="checkbox"
               data-testid={`${idPrefix}-${wd}-toggle`}

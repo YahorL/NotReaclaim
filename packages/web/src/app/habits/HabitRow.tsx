@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import type { Habit } from '../../api/types';
 import { formatDurationShort } from '../lib/duration';
-
-const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+import { WEEKDAY_SHORT } from '../lib/weekdays';
 
 export interface HabitRowProps {
   habit: Habit;
@@ -19,7 +18,7 @@ const pill = 'rounded-full border border-line px-3 py-1 text-[13px] font-semibol
 export function HabitRow({ habit, unscheduledCount = 0, onEdit, onToggleStatus, onDelete }: HabitRowProps) {
   const [confirming, setConfirming] = useState(false);
   const paused = habit.status === 'paused';
-  const days = [...habit.eligibleDays].sort((a, b) => a - b).map((d) => DAY_LABELS[d]).join(' ');
+  const days = [...habit.eligibleDays].sort((a, b) => a - b).map((d) => WEEKDAY_SHORT[d]).join(' ');
   return (
     <div
       data-testid="habit-row"
