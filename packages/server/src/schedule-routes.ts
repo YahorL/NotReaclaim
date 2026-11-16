@@ -1,8 +1,9 @@
 import type { FastifyInstance } from 'fastify';
-import { computeDesiredSchedule, horizonEndMs, round15, QUARTER_HOUR_MS } from '@notreclaim/core';
+import { computeDesiredSchedule, round15, QUARTER_HOUR_MS } from '@notreclaim/core';
 import { NotFoundError } from '@notreclaim/db';
 import type { AppDeps, AfterMutation } from './app.js';
 import { bestEffortGoogleWrite } from './google-writeback.js';
+import { resolveRange } from './range.js';
 import { rangeQuerySchema, idParamSchema, updateScheduledBlockSchema, createScheduledBlockSchema } from './schemas.js';
 
 export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afterMutation: AfterMutation): void {
@@ -23,14 +24,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
       }
     }
 
-    const start = query.from ? new Date(query.from) : new Date(now);
-    let end: Date;
-    if (query.to) {
-      end = new Date(query.to);
-    } else {
-      const horizonDays = settings?.horizonDays ?? 14;
-      end = new Date(horizonEndMs(now, horizonDays));
-    }
+    const { start, end } = await resolveRange(query, () => now, async () => settings?.horizonDays);
     return deps.repos.scheduledBlocks.listByUserInRange(request.userId, start, end);
   });
 

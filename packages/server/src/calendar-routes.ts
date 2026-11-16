@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
-import { horizonEndMs } from '@notreclaim/core';
 import { NotFoundError } from '@notreclaim/db';
 import { PRIMARY_CALENDAR_ID } from '@notreclaim/google';
 import type { AppDeps, AfterMutation } from './app.js';
 import { bestEffortGoogleWrite } from './google-writeback.js';
+import { resolveRange } from './range.js';
 import { rangeQuerySchema, createCalendarEventSchema, updateCalendarEventSchema, idParamSchema } from './schemas.js';
 
 export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afterMutation: AfterMutation): void {
@@ -11,15 +11,9 @@ export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afte
 
   app.get('/calendar/events', guard, async (request) => {
     const query = rangeQuerySchema.parse(request.query);
-    const start = query.from ? new Date(query.from) : new Date(deps.now());
-    let end: Date;
-    if (query.to) {
-      end = new Date(query.to);
-    } else {
-      const settings = await deps.repos.settings.getByUserId(request.userId);
-      const horizonDays = settings?.horizonDays ?? 14;
-      end = new Date(horizonEndMs(deps.now(), horizonDays));
-    }
+    const { start, end } = await resolveRange(
+      query, deps.now, async () => (await deps.repos.settings.getByUserId(request.userId))?.horizonDays,
+    );
     return deps.repos.calendarEvents.listByUserInRange(request.userId, start, end);
   });
 
