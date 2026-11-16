@@ -31,7 +31,8 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
   const [dragging, setDragging] = useState(false);
   const nowMs = now();
 
-  const editing = (tasksQ.data ?? []).find((t) => t.id === editingId) ?? null;
+  const tasksById = useMemo(() => new Map((tasksQ.data ?? []).map((t) => [t.id, t])), [tasksQ.data]);
+  const editing = editingId !== null ? tasksById.get(editingId) ?? null : null;
 
   const columns: BoardColumn[] = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -70,7 +71,7 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
   const onDelete = (t: Task) => deleteM.mutate(t.id, { onSuccess: () => { if (editingId === t.id) setEditingId(null); } });
 
   const onMove = (taskId: string, to: BoardColumnKey, index: number) => {
-    const t = (tasksQ.data ?? []).find((x) => x.id === taskId);
+    const t = tasksById.get(taskId);
     if (!t) return;
     const patch = taskMovePatch({
       taskId, task: t, to, index,

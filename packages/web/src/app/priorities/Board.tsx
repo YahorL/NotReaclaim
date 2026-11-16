@@ -32,7 +32,8 @@ export function Board({ columns, now, nextMsFor, onMove, onComplete, onEdit, onD
   const sensors = useAppSensors(boardKeyboardCoordinates);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overColumn, setOverColumn] = useState<BoardColumnKey | null>(null);
-  const activeTask = columns.flatMap((c) => c.tasks).find((t) => t.id === activeId) ?? null;
+  const tasksById = useMemo(() => new Map(columns.flatMap((c) => c.tasks).map((t) => [t.id, t])), [columns]);
+  const activeTask = activeId !== null ? tasksById.get(activeId) ?? null : null;
 
   // Every drag leaves through here — end AND cancel — so the "drag is over" signal belongs here
   // rather than on `onDragEnd`, which a cancelled drag never reaches.
@@ -50,9 +51,9 @@ export function Board({ columns, now, nextMsFor, onMove, onComplete, onEdit, onD
   // "Picked up draggable item cm4x8…". Keyboard dragging is real here, so the stock
   // screenReaderInstructions stay — only the announcements change.
   const announcements = useMemo(() => {
-    const titleOf = (id: string) => columns.flatMap((c) => c.tasks).find((t) => t.id === id)?.title ?? null;
+    const titleOf = (id: string) => tasksById.get(id)?.title ?? null;
     return makeAnnouncements(titleOf, (id) => boardDropTargetName(columns, id, titleOf));
-  }, [columns]);
+  }, [columns, tasksById]);
 
   return (
     <DndContext
