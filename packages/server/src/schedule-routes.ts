@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { computeDesiredSchedule, round15, QUARTER_HOUR_MS } from '@notreclaim/core';
 import { NotFoundError } from '@notreclaim/db';
 import type { AppDeps, AfterMutation } from './app.js';
@@ -61,14 +61,21 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
     return block;
   });
 
-  app.post('/schedule/:id/start', guard, async (request, reply) => {
+  /** Start/Stop prelude: 404 for an unknown block; a non-task block gets a 400 and null back. */
+  const loadTaskBlock = async (request: FastifyRequest, reply: FastifyReply, verb: 'started' | 'stopped') => {
     const { id } = idParamSchema.parse(request.params);
     const blockRow = await deps.repos.scheduledBlocks.findById(request.userId, id);
     if (!blockRow) throw new NotFoundError(`ScheduledBlock ${id} not found`);
     if (!blockRow.taskId) {
-      reply.code(400).send({ code: 'bad_request', message: 'Only task blocks can be started' });
-      return;
+      reply.code(400).send({ code: 'bad_request', message: `Only task blocks can be ${verb}` });
+      return null;
     }
+    return blockRow;
+  };
+
+  app.post('/schedule/:id/start', guard, async (request, reply) => {
+    const blockRow = await loadTaskBlock(request, reply, 'started');
+    if (!blockRow) return;
     const now = deps.now();
     const snapped = round15(now);
     const data: { pinned: boolean; startedAt: Date; startsAt?: Date } = { pinned: true, startedAt: new Date(now) };
@@ -77,19 +84,14 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
     if (snapped < blockRow.endsAt.getTime()) {
       data.startsAt = new Date(snapped);
     }
-    const block = await deps.repos.scheduledBlocks.update(request.userId, id, data);
+    const block = await deps.repos.scheduledBlocks.update(request.userId, blockRow.id, data);
     afterMutation(request.userId);
     return block;
   });
 
   app.post('/schedule/:id/stop', guard, async (request, reply) => {
-    const { id } = idParamSchema.parse(request.params);
-    const blockRow = await deps.repos.scheduledBlocks.findById(request.userId, id);
-    if (!blockRow) throw new NotFoundError(`ScheduledBlock ${id} not found`);
-    if (!blockRow.taskId) {
-      reply.code(400).send({ code: 'bad_request', message: 'Only task blocks can be stopped' });
-      return;
-    }
+    const blockRow = await loadTaskBlock(request, reply, 'stopped');
+    if (!blockRow) return;
     const now = deps.now();
     const startMs = blockRow.startsAt.getTime();
     const endMs = blockRow.endsAt.getTime();
@@ -97,7 +99,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
     // End the running block now: snap end to the nearest 15 min, never below start+15 min
     // (no zero-length block) and never past the original end (Stop only shortens).
     const newEnd = Math.min(endMs, Math.max(round15(now), minEnd));
-    const block = await deps.repos.scheduledBlocks.update(request.userId, id, { endsAt: new Date(newEnd), pinned: true });
+    const block = await deps.repos.scheduledBlocks.update(request.userId, blockRow.id, { endsAt: new Date(newEnd), pinned: true });
     afterMutation(request.userId);
     return block;
   });
