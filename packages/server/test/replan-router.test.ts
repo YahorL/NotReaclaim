@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { makeReplan } from '../src/replan-router.js';
 
-const COUNTS = { created: 1, updated: 0, deleted: 0, pinned: 0, removed: 0 };
+const COUNTS = { created: 1, updated: 0, deleted: 0, pinned: 0, removed: 0, pinnedSynced: 0, pinnedFailed: 0 };
 const NOW = 1_700_000_000_000;
 
 describe('makeReplan', () => {
