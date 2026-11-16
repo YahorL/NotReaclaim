@@ -111,6 +111,7 @@ export function Sheet({ label, onClose, children, fullScreen = false, scrollBody
         tabIndex={-1}
         onKeyDown={onKeyDown}
         onClick={(e) => e.stopPropagation()}
+        // Collapsed for a drag, 56px of the sheet stays on screen: a strip tall enough to grab back.
         className={`${frameClass} ${collapsed ? 'translate-y-[calc(100%_-_56px)]' : ''}`}
       >
         <div className="flex shrink-0 items-center justify-between px-3 pt-2">
