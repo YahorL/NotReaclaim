@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { DateTime } from 'luxon';
-import { expandWorkingWindows } from '../src/time-windows.js';
+import { expandWorkingWindows, round15 } from '../src/time-windows.js';
 import { InvalidTimezoneError, InvalidHorizonError } from '../src/errors.js';
 
 const utc = (iso: string) => DateTime.fromISO(iso, { zone: 'utc' }).toMillis();
@@ -56,5 +56,13 @@ describe('expandWorkingWindows', () => {
     const now = utc('2026-01-05T00:00:00');
     expect(() => expandWorkingWindows([], 'Not/AZone', now, 7)).toThrow(InvalidTimezoneError);
     expect(() => expandWorkingWindows([], 'utc', now, 0)).toThrow(InvalidHorizonError);
+  });
+});
+
+describe('round15', () => {
+  it('rounds to the nearest 15 minutes', () => {
+    expect(round15(Date.parse('2026-01-05T15:10:00.000Z'))).toBe(Date.parse('2026-01-05T15:15:00.000Z'));
+    expect(round15(Date.parse('2026-01-05T15:07:00.000Z'))).toBe(Date.parse('2026-01-05T15:00:00.000Z'));
+    expect(round15(Date.parse('2026-01-05T15:00:00.000Z'))).toBe(Date.parse('2026-01-05T15:00:00.000Z'));
   });
 });

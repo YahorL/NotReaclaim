@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
+import { horizonEndMs } from '@notreclaim/core';
 import type { AppDeps, AfterMutation } from './app.js';
 import { rangeQuerySchema, createCalendarEventSchema, updateCalendarEventSchema, idParamSchema } from './schemas.js';
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const PRIMARY = 'primary';
 
 export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afterMutation: AfterMutation): void {
@@ -17,7 +17,7 @@ export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afte
     } else {
       const settings = await deps.repos.settings.getByUserId(request.userId);
       const horizonDays = settings?.horizonDays ?? 14;
-      end = new Date(deps.now() + horizonDays * MS_PER_DAY);
+      end = new Date(horizonEndMs(deps.now(), horizonDays));
     }
     return deps.repos.calendarEvents.listByUserInRange(request.userId, start, end);
   });

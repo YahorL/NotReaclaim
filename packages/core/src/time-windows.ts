@@ -2,7 +2,18 @@ import { DateTime } from 'luxon';
 import type { Interval } from '@notreclaim/scheduler';
 import { InvalidHorizonError, InvalidTimezoneError } from './errors.js';
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
+export const MS_PER_DAY = 24 * 60 * 60 * 1000;
+export const QUARTER_HOUR_MS = 15 * 60 * 1000;
+
+/** End of the planning horizon: `horizonDays` whole days after `now` (epoch ms). */
+export function horizonEndMs(now: number, horizonDays: number): number {
+  return now + horizonDays * MS_PER_DAY;
+}
+
+/** Round an epoch-ms instant to the nearest 15 minutes. */
+export function round15(ms: number): number {
+  return Math.round(ms / QUARTER_HOUR_MS) * QUARTER_HOUR_MS;
+}
 
 /** A working-hours entry. weekday: 0 = Sunday .. 6 = Saturday. */
 export interface WorkingHourEntry {
@@ -32,7 +43,7 @@ export function expandWorkingWindows(
   assertValidZone(timezone);
   if (horizonDays <= 0) throw new InvalidHorizonError(horizonDays);
 
-  const horizonEnd = now + horizonDays * MS_PER_DAY;
+  const horizonEnd = horizonEndMs(now, horizonDays);
   const windows: Interval[] = [];
   let day = DateTime.fromMillis(now, { zone: timezone }).startOf('day');
 

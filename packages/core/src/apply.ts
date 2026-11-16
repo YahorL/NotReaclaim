@@ -5,8 +5,7 @@ import { toScheduledBlockInput } from './bridge.js';
 import { computeDesiredSchedule } from './compute.js';
 import { SettingsRequiredError } from './errors.js';
 import type { SchedulingRepositories } from './assemble.js';
-
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
+import { horizonEndMs } from './time-windows.js';
 
 /** Side-effect adapter: mirror committed blocks to an external calendar (e.g. Google). */
 export interface ScheduleMirror {
@@ -15,7 +14,7 @@ export interface ScheduleMirror {
   delete(existing: DbScheduledBlock): Promise<void>;
 }
 
-type BlocksRepo = Pick<ScheduledBlockRepository, 'listByUserInRange' | 'create' | 'update' | 'delete'>;
+export type BlocksRepo = Pick<ScheduledBlockRepository, 'listByUserInRange' | 'create' | 'update' | 'delete'>;
 
 /** What the external calendar currently holds for one mirrored event. */
 export interface MirrorEventState {
@@ -198,9 +197,13 @@ async function mirrorPinnedBlocks(
   return { synced, failed };
 }
 
-export interface LocalPlanResult {
-  created: number; updated: number; deleted: number; pinned: number; removed: number;
-  pinnedSynced: number; pinnedFailed: number;
+/**
+ * Outcome of one replan cycle, local or Google. `pinned`/`removed` count drift pulled in
+ * from the external calendar (Google's detectDrift); a local plan has none, so both are 0.
+ */
+export interface ReplanCounts extends ApplyCounts {
+  pinned: number;
+  removed: number;
 }
 
 /** Compute the desired schedule and persist it to the DB with no external sync (no Google). */
@@ -209,12 +212,13 @@ export async function planLocally(
   scheduledBlocks: BlocksRepo,
   userId: string,
   now: number,
-): Promise<LocalPlanResult> {
+): Promise<ReplanCounts> {
   const settings = await repos.settings.getByUserId(userId);
   if (!settings) throw new SettingsRequiredError(userId);
-  const horizonEnd = now + settings.horizonDays * MS_PER_DAY;
+  const horizonEnd = horizonEndMs(now, settings.horizonDays);
   const desired = await computeDesiredSchedule(repos, userId, now);
-  // No mirror locally, so nothing to push for pinned rows either.
-  const { created, updated, deleted } = await applyDesiredSchedule(scheduledBlocks, userId, desired, { now, horizonEnd });
-  return { created, updated, deleted, pinned: 0, removed: 0, pinnedSynced: 0, pinnedFailed: 0 };
+  // No mirror locally, so nothing to push for pinned rows either: apply reports
+  // pinnedSynced/pinnedFailed as 0 on this path.
+  const counts = await applyDesiredSchedule(scheduledBlocks, userId, desired, { now, horizonEnd });
+  return { ...counts, pinned: 0, removed: 0 };
 }

@@ -2,9 +2,7 @@ import { DateTime } from 'luxon';
 import type { Habit as EngineHabit, Interval } from '@notreclaim/scheduler';
 import type { Habit as DbHabit } from '@notreclaim/db';
 import { InvalidHorizonError } from './errors.js';
-import { assertValidZone } from './time-windows.js';
-
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
+import { assertValidZone, horizonEndMs } from './time-windows.js';
 
 /**
  * Expand a DB habit (recurrence rule) into the engine Habit over the horizon:
@@ -24,7 +22,7 @@ export function expandHabit(
   assertValidZone(timezone);
   if (horizonDays <= 0) throw new InvalidHorizonError(horizonDays);
 
-  const horizonEnd = now + horizonDays * MS_PER_DAY;
+  const horizonEnd = horizonEndMs(now, horizonDays);
 
   // ISO Monday-week periods, clipped to the horizon.
   const periods: Interval[] = [];

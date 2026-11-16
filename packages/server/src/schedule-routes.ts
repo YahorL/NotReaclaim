@@ -1,9 +1,7 @@
 import type { FastifyInstance } from 'fastify';
-import { computeDesiredSchedule, round15 } from '@notreclaim/core';
+import { computeDesiredSchedule, horizonEndMs, round15, QUARTER_HOUR_MS } from '@notreclaim/core';
 import type { AppDeps, AfterMutation } from './app.js';
 import { rangeQuerySchema, idParamSchema, updateScheduledBlockSchema, createScheduledBlockSchema } from './schemas.js';
-
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afterMutation: AfterMutation): void {
   const guard = { onRequest: [app.authenticate] };
@@ -29,7 +27,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
       end = new Date(query.to);
     } else {
       const horizonDays = settings?.horizonDays ?? 14;
-      end = new Date(now + horizonDays * MS_PER_DAY);
+      end = new Date(horizonEndMs(now, horizonDays));
     }
     return deps.repos.scheduledBlocks.listByUserInRange(request.userId, start, end);
   });
@@ -108,7 +106,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
     const now = deps.now();
     const startMs = blockRow.startsAt.getTime();
     const endMs = blockRow.endsAt.getTime();
-    const minEnd = startMs + 15 * 60 * 1000;
+    const minEnd = startMs + QUARTER_HOUR_MS;
     // End the running block now: snap end to the nearest 15 min, never below start+15 min
     // (no zero-length block) and never past the original end (Stop only shortens).
     const newEnd = Math.min(endMs, Math.max(round15(now), minEnd));
