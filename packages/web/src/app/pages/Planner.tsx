@@ -23,6 +23,8 @@ import { TaskDrawer } from '../tasks/TaskDrawer';
 import { EventDrawer } from '../planner/EventDrawer';
 import { labelBlocksWithSubtasks } from '../planner/blockLabels';
 
+const DRAWER_DESKTOP_CLASS = 'fixed right-3 top-[84px] z-50';
+
 export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const nowMs = now();
   const settingsQ = useSettingsQuery();
@@ -68,6 +70,8 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const calendar = useCalendarEventsQuery(rangeFromIso, rangeToIso);
   const preview = useSchedulePreviewQuery();
   const tasksQ = useTasksQuery();
+  // Memoised so the fallback [] keeps one identity while loading: several memos below depend on it.
+  const tasks = useMemo(() => tasksQ.data ?? [], [tasksQ.data]);
   const habitsQ = useHabitsQuery();
   const categoriesQ = useCategoriesQuery();
   const replan = useReplanMutation();
@@ -79,7 +83,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const deleteTask = useDeleteTaskMutation();
   const createBlock = useCreateScheduledBlockMutation();
   const [editingId, setEditingId] = useState<string | null>(null);
-  const editing = (tasksQ.data ?? []).find((t) => t.id === editingId) ?? null;
+  const editing = tasks.find((t) => t.id === editingId) ?? null;
   // Only one drawer at a time — they share the same fixed slot on the right. The event is looked
   // up by id (like the task above) so the drawer disappears when the event is deleted elsewhere.
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
@@ -94,7 +98,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const dragSensors = useDragToScheduleSensors();
   const [taskDrop, setTaskDrop] = useState<DayDropTarget | null>(null);
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
-  const draggingTask = (tasksQ.data ?? []).find((t) => t.id === draggingTaskId) ?? null;
+  const draggingTask = tasks.find((t) => t.id === draggingTaskId) ?? null;
   // Armed for the duration of a card drag. See useLivePointerY for why dnd-kit's own
   // activatorEvent + delta cannot be trusted once a droppable is entered.
   const livePointerY = useLivePointerY(draggingTaskId !== null);
@@ -123,7 +127,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
       overData: e.over?.data.current ?? null,
       overRect: e.over?.rect ?? null,
       pointerY: livePointerY.current,
-      tasks: tasksQ.data ?? [],
+      tasks,
     });
     endDrag();
     if (drop) createBlock.mutate(drop);
@@ -134,18 +138,18 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const dragAccessibility = useMemo(() => ({
     screenReaderInstructions: POINTER_ONLY_DRAG_INSTRUCTIONS,
     announcements: makeAnnouncements(
-      (id) => (tasksQ.data ?? []).find((t) => panelTaskDraggableId(t.id) === id)?.title ?? null,
+      (id) => tasks.find((t) => panelTaskDraggableId(t.id) === id)?.title ?? null,
       (id) => {
         const i = dayIndexFromDroppableId(id);
         const day = i === null ? undefined : days[i];
         return day === undefined ? null : weekdayLabel(day, zone);
       },
     ),
-  }), [tasksQ.data, days, zone]);
+  }), [tasks, days, zone]);
 
   const labeledBlocks = useMemo(
-    () => labelBlocksWithSubtasks(schedule.data ?? [], tasksQ.data ?? []),
-    [schedule.data, tasksQ.data],
+    () => labelBlocksWithSubtasks(schedule.data ?? [], tasks),
+    [schedule.data, tasks],
   );
 
   // Build accent map: taskId → hex color (only for tasks whose category has a non-null color)
@@ -153,13 +157,12 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
     const cats = categoriesQ.data ?? [];
     const colorById = new Map(cats.filter((c) => c.color).map((c) => [c.id, c.color!]));
     const result: Record<string, string> = {};
-    for (const task of tasksQ.data ?? []) {
-      if (task.categoryId && colorById.has(task.categoryId)) {
-        result[task.id] = colorById.get(task.categoryId)!;
-      }
+    for (const task of tasks) {
+      const color = task.categoryId ? colorById.get(task.categoryId) : undefined;
+      if (color !== undefined) result[task.id] = color;
     }
     return result;
-  }, [tasksQ.data, categoriesQ.data]);
+  }, [tasks, categoriesQ.data]);
 
   // The preview query lives under the ['schedule'] root, so every replan / ws schedule event
   // invalidates it too — the banner clears itself once everything fits again.
@@ -186,7 +189,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   }
 
   const panelProps = {
-    tasks: tasksQ.data ?? [],
+    tasks,
     preview: preview.data,
     nowMs,
     coarse,
@@ -262,7 +265,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
         </Sheet>
       )}
       {editing && (
-        <DrawerHost compact={compact} label="Edit task" onClose={() => setEditingId(null)} desktopClass="fixed right-3 top-[84px] z-50">
+        <DrawerHost compact={compact} label="Edit task" onClose={() => setEditingId(null)} desktopClass={DRAWER_DESKTOP_CLASS}>
           <TaskDrawer
             task={editing} compact={compact} saving={updateTask.isPending}
             error={updateTask.error instanceof ApiError ? updateTask.error : null}
@@ -272,7 +275,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
         </DrawerHost>
       )}
       {editingEvent && (
-        <DrawerHost compact={compact} label="Edit event" onClose={() => setEditingEventId(null)} desktopClass="fixed right-3 top-[84px] z-50">
+        <DrawerHost compact={compact} label="Edit event" onClose={() => setEditingEventId(null)} desktopClass={DRAWER_DESKTOP_CLASS}>
           {/* Key on the event's times: a background refetch (or a drag) that moves the event
               remounts the drawer so its fields re-seed instead of holding stale values. */}
           <EventDrawer
