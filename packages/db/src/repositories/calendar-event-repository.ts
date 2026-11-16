@@ -17,11 +17,8 @@ export interface UpsertCalendarEventInput {
   endsAt: Date;
 }
 
-export interface UpdateCalendarEventInput {
-  title?: string;
-  startsAt?: Date;
-  endsAt?: Date;
-}
+/** `kind` is fixed at creation. */
+export type UpdateCalendarEventInput = Partial<Omit<CreateCalendarEventInput, 'kind'>>;
 
 export function createCalendarEventRepository(prisma: PrismaClient) {
   return {

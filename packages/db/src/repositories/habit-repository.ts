@@ -12,17 +12,7 @@ export interface CreateHabitInput {
   preferredEndMinute?: number | null;
 }
 
-export interface UpdateHabitInput {
-  title?: string;
-  priority?: number;
-  chunkMs?: number;
-  perPeriod?: number;
-  eligibleDays?: number[];
-  periodType?: HabitPeriod;
-  preferredStartMinute?: number | null;
-  preferredEndMinute?: number | null;
-  status?: HabitStatus;
-}
+export type UpdateHabitInput = Partial<CreateHabitInput> & { status?: HabitStatus };
 
 export function createHabitRepository(prisma: PrismaClient) {
   return {

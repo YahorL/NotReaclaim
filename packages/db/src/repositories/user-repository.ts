@@ -9,15 +9,11 @@ export interface CreateUserInput {
   isAdmin?: boolean;
 }
 
-export interface UpdateUserInput {
-  email?: string;
-  googleId?: string | null;
+export type UpdateUserInput = Partial<CreateUserInput> & {
   googleRefreshToken?: string | null;
   googleAuthBrokenAt?: Date | null;
   autoScheduledCalendarId?: string | null;
-  passwordHash?: string | null;
-  isAdmin?: boolean;
-}
+};
 
 export function createUserRepository(prisma: PrismaClient) {
   return {

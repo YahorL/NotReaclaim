@@ -26,20 +26,11 @@ export interface CreateTaskInput {
   sortOrder?: number;
 }
 
-export interface UpdateTaskInput {
-  title?: string;
-  priority?: number;
-  durationMs?: number;
-  dueBy?: Date | null;
-  minChunkMs?: number;
-  maxChunkMs?: number;
-  notBefore?: Date | null;
-  categoryId?: string | null;
+export type UpdateTaskInput = Partial<CreateTaskInput> & {
   status?: TaskStatus;
   completedAt?: Date | null;
   timeLoggedMs?: number;
-  sortOrder?: number;
-}
+};
 
 export function createTaskRepository(prisma: PrismaClient) {
   return {

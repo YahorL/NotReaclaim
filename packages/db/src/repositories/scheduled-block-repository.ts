@@ -14,16 +14,10 @@ export interface CreateScheduledBlockInput {
   engineKey?: string | null;
 }
 
-export interface UpdateScheduledBlockInput {
-  title?: string;
-  startsAt?: Date;
-  endsAt?: Date;
-  pinned?: boolean;
+/** A block's owner (task/habit) is fixed at creation. */
+export type UpdateScheduledBlockInput = Partial<Omit<CreateScheduledBlockInput, 'taskId' | 'habitId'>> & {
   startedAt?: Date | null;
-  googleEventId?: string | null;
-  googleCalendarId?: string | null;
-  engineKey?: string | null;
-}
+};
 
 export function createScheduledBlockRepository(prisma: PrismaClient) {
   return {

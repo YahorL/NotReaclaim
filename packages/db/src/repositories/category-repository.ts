@@ -51,7 +51,7 @@ export function createCategoryRepository(prisma: PrismaClient) {
 
     async update(userId: string, id: string, data: UpdateCategoryInput): Promise<Category> {
       // Build the update payload; windows: null must be sent as Prisma.DbNull to set SQL NULL.
-      const updateData: Record<string, unknown> = {};
+      const updateData: Prisma.CategoryUpdateManyMutationInput = {};
       if (data.name !== undefined) updateData.name = data.name;
       if ('color' in data) updateData.color = data.color ?? null;
       if ('windows' in data) updateData.windows = data.windows === null ? Prisma.DbNull : data.windows;
