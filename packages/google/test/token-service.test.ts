@@ -7,19 +7,6 @@ import { FakeGoogleClient, fakeUserRepo, makeUser } from './fakes.js';
 const key = Buffer.alloc(32, 5);
 
 describe('TokenService', () => {
-  it('connectFromCode stores an encrypted refresh token and identity', async () => {
-    const client = new FakeGoogleClient();
-    const users = fakeUserRepo();
-    const svc = createTokenService({ client, users, encryptionKey: key });
-
-    const user = await svc.connectFromCode('the-code', 'http://localhost/cb');
-    expect(user.googleId).toBe('g-123');
-    expect(user.email).toBe('a@example.com');
-    expect(user.googleRefreshToken).toBeTruthy();
-    expect(user.googleRefreshToken).not.toBe('refresh-1');
-    expect(decryptToken(user.googleRefreshToken!, key)).toBe('refresh-1');
-  });
-
   it('getAccessToken refreshes, caches, and re-refreshes after expiry', async () => {
     const client = new FakeGoogleClient();
     client.refreshResponses = [

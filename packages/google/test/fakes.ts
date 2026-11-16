@@ -103,7 +103,6 @@ export class FakeGoogleClient implements GoogleClient {
 /** In-memory UserRepository fake (the subset the token service uses). */
 export function fakeUserRepo(seed: User[] = []) {
   const usersById = new Map<string, User>(seed.map((u) => [u.id, u]));
-  let counter = seed.length;
   return {
     updateCalls: 0,
     async findById(id: string): Promise<User | null> {
@@ -111,12 +110,6 @@ export function fakeUserRepo(seed: User[] = []) {
     },
     async findByGoogleId(googleId: string): Promise<User | null> {
       return [...usersById.values()].find((u) => u.googleId === googleId) ?? null;
-    },
-    async create(data: { email: string; googleId?: string | null }): Promise<User> {
-      counter += 1;
-      const user = makeUser({ id: `u${counter}`, email: data.email, googleId: data.googleId ?? null });
-      usersById.set(user.id, user);
-      return user;
     },
     async update(id: string, data: Partial<User>): Promise<User> {
       this.updateCalls += 1;

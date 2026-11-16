@@ -1,4 +1,4 @@
-import type { User, UserRepository } from '@notreclaim/db';
+import type { UserRepository } from '@notreclaim/db';
 import type { GoogleClient } from './client.js';
 import { decryptToken, encryptToken } from './encryption.js';
 import { GoogleGrantRevokedError, GoogleNotConnectedError } from './errors.js';
@@ -7,7 +7,7 @@ const TOKEN_SKEW_MS = 60_000;
 
 export interface TokenServiceDeps {
   client: GoogleClient;
-  users: Pick<UserRepository, 'findById' | 'findByGoogleId' | 'create' | 'update' | 'setGoogleAuthBroken'>;
+  users: Pick<UserRepository, 'findById' | 'setGoogleAuthBroken'>;
   encryptionKey: Buffer;
   /**
    * Called only when the connection's health actually flips, so a caller can announce it
@@ -23,7 +23,6 @@ interface CachedToken {
 }
 
 export interface TokenService {
-  connectFromCode(code: string, redirectUri: string): Promise<User>;
   exchangeCodeForLink(
     code: string,
     redirectUri: string,
@@ -35,20 +34,6 @@ export function createTokenService(deps: TokenServiceDeps): TokenService {
   const cache = new Map<string, CachedToken>();
 
   return {
-    async connectFromCode(code, redirectUri): Promise<User> {
-      const tokens = await deps.client.exchangeCode(code, redirectUri);
-      const encrypted = encryptToken(tokens.refreshToken, deps.encryptionKey);
-      const existing = await deps.users.findByGoogleId(tokens.googleUserId);
-      if (existing) {
-        return deps.users.update(existing.id, {
-          email: tokens.email,
-          googleRefreshToken: encrypted,
-        });
-      }
-      const created = await deps.users.create({ email: tokens.email, googleId: tokens.googleUserId });
-      return deps.users.update(created.id, { googleRefreshToken: encrypted });
-    },
-
     async exchangeCodeForLink(code, redirectUri) {
       const tokens = await deps.client.exchangeCode(code, redirectUri);
       return {

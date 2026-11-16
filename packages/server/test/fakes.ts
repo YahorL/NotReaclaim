@@ -292,7 +292,6 @@ export interface TestAppOptions {
   calendarEvents?: CalendarEvent[];
   categories?: Category[];
   subtasks?: Subtask[];
-  connectUser?: User;
   reconcileResult?: AppDeps['reconcile'] extends (...a: never[]) => Promise<infer R> ? R : never;
   schedulingReposOverride?: SchedulingRepositories;
   webClientUrl?: string;
@@ -349,11 +348,6 @@ export function buildTestApp(opts: TestAppOptions = {}) {
         patchEvent: opts.patchEvent ?? (async () => { throw new Error('not connected'); }),
       },
       tokens: {
-        connectFromCode: async () =>
-          opts.connectUser ?? ({
-            id: 'u1', email: 'a@example.com', googleId: 'g-1', googleRefreshToken: 'enc',
-            autoScheduledCalendarId: null, createdAt: new Date(0), updatedAt: new Date(0),
-          } as User),
         exchangeCodeForLink: async () => {
           if (opts.exchangeGate) await opts.exchangeGate();
           return { email: 'a@example.com', emailVerified: opts.googleEmailVerified ?? true, googleUserId: 'g-1', encryptedRefreshToken: 'enc' };

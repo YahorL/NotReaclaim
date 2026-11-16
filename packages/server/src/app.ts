@@ -42,7 +42,7 @@ export interface AppDeps {
   };
   google: {
     client: Pick<GoogleClient, 'getConsentUrl' | 'insertEvent' | 'deleteEvent' | 'patchEvent'>;
-    tokens: Pick<TokenService, 'connectFromCode' | 'exchangeCodeForLink' | 'getAccessToken'>;
+    tokens: Pick<TokenService, 'exchangeCodeForLink' | 'getAccessToken'>;
   };
   schedulingRepos: SchedulingRepositories;
   reconcile: (userId: string, now: number) => Promise<ReconcileResult>;
