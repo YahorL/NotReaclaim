@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { planLocally } from '@notreclaim/core';
 import { reconcile } from '../src/reconcile.js';
+import { GoogleApiError } from '../src/errors.js';
+import type { GoogleEventWrite } from '../src/client.js';
 import {
   FakeGoogleClient,
   fakeUserRepo,
@@ -260,5 +263,118 @@ describe('reconcile', () => {
     // the pinned block survives AND a fresh keyed block now exists for the remainder
     expect(store.all().some((b) => b.id === 'b1' && b.pinned)).toBe(true);
     expect(store.all().some((b) => b.engineKey === 'task:t1:0' && !b.pinned)).toBe(true);
+  });
+});
+
+/**
+ * Real Google rejects a write to an event id it never issued. The client builds the URL with
+ * encodeURIComponent(id), so a null id becomes `.../events/null` -> 404. The plain fake just
+ * records the call, which would hide the failure, so these tests use this stricter double.
+ */
+class StrictIdGoogleClient extends FakeGoogleClient {
+  override async updateEvent(accessToken: string, calendarId: string, googleEventId: string, event: GoogleEventWrite): Promise<void> {
+    if (!googleEventId) throw new GoogleApiError(404, `PUT events/${String(googleEventId)}: Not Found`);
+    return super.updateEvent(accessToken, calendarId, googleEventId, event);
+  }
+
+  override async deleteEvent(accessToken: string, calendarId: string, googleEventId: string): Promise<void> {
+    if (!googleEventId) throw new GoogleApiError(404, `DELETE events/${String(googleEventId)}: Not Found`);
+    return super.deleteEvent(accessToken, calendarId, googleEventId);
+  }
+}
+
+describe('reconcile: blocks planned locally before Google was linked (googleEventId null)', () => {
+  /** The real pre-link state: planLocally persisted the plan with no mirror -> null Google ids. */
+  async function plannedLocally(tasks: ReturnType<typeof makeTask>[]) {
+    const store = fakeScheduledBlockStore();
+    const repos = fakeSchedulingRepos({ settings: makeSettings(), tasks, blockStore: store });
+    await planLocally(repos, store, 'u1', NOW);
+    expect(store.all()).toHaveLength(1);
+    expect(store.all()[0]).toMatchObject({ engineKey: 'task:t1:0', googleEventId: null, googleCalendarId: null });
+    return store;
+  }
+
+  /** Start the next cycle from Google's real state: the events the store now claims to own. */
+  function nextCycle(client: FakeGoogleClient, store: ReturnType<typeof fakeScheduledBlockStore>) {
+    client.listQueue = [{ events: googleEventsFromStore(store) }];
+    client.insertedEvents = [];
+    client.updatedEvents = [];
+    client.deletedEvents = [];
+  }
+
+  it('changed: creates the event (never PUTs events/null), stores its id, and does not duplicate it next cycle', async () => {
+    const store = await plannedLocally([makeTask({ id: 't1' })]);
+    const row = store.all()[0]!;
+    // Knock the row off its desired slot so the engine diff sees it as changed (back to 09:00).
+    row.startsAt = new Date('2026-01-05T14:00:00.000Z');
+    row.endsAt = new Date('2026-01-05T14:30:00.000Z');
+    const client = new StrictIdGoogleClient();
+    client.listQueue = [{ events: [] }];
+    const deps = buildDeps({ store, tasks: [makeTask({ id: 't1' })], client });
+
+    const result = await reconcile(deps, 'u1', NOW);
+
+    expect(result).toMatchObject({ created: 0, updated: 1, deleted: 0 });
+    expect(client.updatedEvents).toHaveLength(0);
+    expect(client.insertedEvents).toHaveLength(1);
+    expect(client.insertedEvents[0]).toMatchObject({
+      calendarId: 'cal-auto',
+      event: { startDateTime: '2026-01-05T09:00:00.000Z', endDateTime: '2026-01-05T09:30:00.000Z' },
+    });
+    expect(store.all()).toHaveLength(1);
+    expect(store.all()[0]).toMatchObject({ id: row.id, googleEventId: 'g-evt-1', googleCalendarId: 'cal-auto' });
+    expect(store.all()[0]!.startsAt.toISOString()).toBe('2026-01-05T09:00:00.000Z');
+
+    nextCycle(client, store);
+    const second = await reconcile(deps, 'u1', NOW);
+
+    expect(second).toMatchObject({ created: 0, updated: 0, deleted: 0, removed: 0 });
+    expect(client.insertedEvents).toHaveLength(0);
+    expect(client.updatedEvents).toHaveLength(0);
+    expect(client.deletedEvents).toHaveLength(0);
+    expect(store.all()).toHaveLength(1);
+  });
+
+  it('unchanged: mirrors the block to Google once, stores the id, and does not duplicate it next cycle', async () => {
+    const store = await plannedLocally([makeTask({ id: 't1' })]);
+    const rowId = store.all()[0]!.id;
+    const client = new StrictIdGoogleClient();
+    client.listQueue = [{ events: [] }];
+    const deps = buildDeps({ store, tasks: [makeTask({ id: 't1' })], client });
+
+    const result = await reconcile(deps, 'u1', NOW);
+
+    expect(result).toMatchObject({ created: 0, deleted: 0 });
+    expect(client.updatedEvents).toHaveLength(0);
+    expect(client.insertedEvents).toHaveLength(1);
+    expect(client.insertedEvents[0]).toMatchObject({
+      calendarId: 'cal-auto',
+      event: { startDateTime: '2026-01-05T09:00:00.000Z', endDateTime: '2026-01-05T09:30:00.000Z' },
+    });
+    expect(store.all()).toHaveLength(1);
+    expect(store.all()[0]).toMatchObject({ id: rowId, googleEventId: 'g-evt-1', googleCalendarId: 'cal-auto' });
+
+    nextCycle(client, store);
+    const second = await reconcile(deps, 'u1', NOW);
+
+    expect(second).toMatchObject({ created: 0, updated: 0, deleted: 0, removed: 0 });
+    expect(client.insertedEvents).toHaveLength(0);
+    expect(client.updatedEvents).toHaveLength(0);
+    expect(client.deletedEvents).toHaveLength(0);
+    expect(store.all()).toHaveLength(1);
+  });
+
+  it('removed: drops the row without calling Google delete on a null id', async () => {
+    const store = await plannedLocally([makeTask({ id: 't1' })]);
+    const client = new StrictIdGoogleClient();
+    client.listQueue = [{ events: [] }];
+    const deps = buildDeps({ store, tasks: [], client }); // the task is gone: its block is no longer desired
+
+    const result = await reconcile(deps, 'u1', NOW);
+
+    expect(result).toMatchObject({ created: 0, updated: 0, deleted: 1 });
+    expect(client.deletedEvents).toHaveLength(0);
+    expect(client.insertedEvents).toHaveLength(0);
+    expect(store.all()).toHaveLength(0);
   });
 });

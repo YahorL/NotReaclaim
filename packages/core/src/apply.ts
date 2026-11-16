@@ -7,10 +7,21 @@ import { SettingsRequiredError } from './errors.js';
 import type { SchedulingRepositories } from './assemble.js';
 import { horizonEndMs } from './time-windows.js';
 
+/** The external calendar's ids for one mirrored block. */
+export interface MirrorIds {
+  googleEventId: string;
+  googleCalendarId: string;
+}
+
 /** Side-effect adapter: mirror committed blocks to an external calendar (e.g. Google). */
 export interface ScheduleMirror {
-  create(block: EngineScheduledBlock): Promise<{ googleEventId: string; googleCalendarId: string }>;
-  update(block: EngineScheduledBlock, existing: DbScheduledBlock): Promise<void>;
+  create(block: EngineScheduledBlock): Promise<MirrorIds>;
+  /**
+   * Push a changed block. `existing` may have never been mirrored (planned locally before the
+   * calendar was linked: null ids); the mirror then creates the event and returns its ids,
+   * which the caller stores on the row. A plain in-place update returns undefined.
+   */
+  update(block: EngineScheduledBlock, existing: DbScheduledBlock): Promise<MirrorIds | undefined>;
   delete(existing: DbScheduledBlock): Promise<void>;
 }
 
@@ -93,11 +104,16 @@ export async function applyDesiredSchedule(
       // in time, so a times-only diff would let the stale title persist here and on Google forever.
       const changed = timesDiffer || match.title !== block.title;
       if (changed) {
-        await mirror?.update(block, match);
+        const ids = await mirror?.update(block, match);
         await scheduledBlocks.update(userId, match.id, {
           startsAt: new Date(block.start), endsAt: new Date(block.end), title: block.title,
+          ...(ids && { googleEventId: ids.googleEventId, googleCalendarId: ids.googleCalendarId }),
         });
         updated += 1;
+      } else if (mirror && match.googleEventId == null) {
+        // Planned locally before the calendar was linked and unchanged since: the diff alone
+        // would never mirror it, so the block would stay missing from the calendar for good.
+        await attachMirrorEvent(scheduledBlocks, userId, match.id, block, mirror);
       }
       continue;
     }
@@ -169,12 +185,7 @@ async function mirrorPinnedBlocks(
 
     try {
       if (row.googleEventId == null) {
-        const ids = await mirror.create(block);
-        // The row already exists — attach the external ids to it, never create a second one.
-        await scheduledBlocks.update(userId, row.id, {
-          googleEventId: ids.googleEventId,
-          googleCalendarId: ids.googleCalendarId,
-        });
+        await attachMirrorEvent(scheduledBlocks, userId, row.id, block, mirror);
         synced += 1;
         continue;
       }
@@ -199,6 +210,22 @@ async function mirrorPinnedBlocks(
   }
 
   return { synced, failed };
+}
+
+/** Create the external event for an existing row that has none and store its ids on that row. */
+async function attachMirrorEvent(
+  scheduledBlocks: BlocksRepo,
+  userId: string,
+  rowId: string,
+  block: EngineScheduledBlock,
+  mirror: ScheduleMirror,
+): Promise<void> {
+  const ids = await mirror.create(block);
+  // The row already exists — attach the external ids to it, never create a second one.
+  await scheduledBlocks.update(userId, rowId, {
+    googleEventId: ids.googleEventId,
+    googleCalendarId: ids.googleCalendarId,
+  });
 }
 
 /**

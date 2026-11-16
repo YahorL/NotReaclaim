@@ -50,13 +50,18 @@ export async function reconcile(deps: ReconcileDeps, userId: string, now: number
 
   const desired = await computeDesiredSchedule(deps.schedulingRepos, userId, now);
 
+  const insert: ScheduleMirror['create'] = async (block) => {
+    const { googleEventId } = await deps.client.insertEvent(accessToken, calendarId, toGoogleEventWrite(block));
+    return { googleEventId, googleCalendarId: calendarId };
+  };
   const mirror: ScheduleMirror = {
-    create: async (block) => {
-      const { googleEventId } = await deps.client.insertEvent(accessToken, calendarId, toGoogleEventWrite(block));
-      return { googleEventId, googleCalendarId: calendarId };
-    },
+    create: insert,
     update: async (block, existing) => {
-      await deps.client.updateEvent(accessToken, calendarId, existing.googleEventId as string, toGoogleEventWrite(block));
+      // A block planned locally before Google was linked has no event yet: create it (apply
+      // stores the returned ids) instead of PUTting to `events/null`, which Google 404s.
+      if (existing.googleEventId == null) return insert(block);
+      await deps.client.updateEvent(accessToken, calendarId, existing.googleEventId, toGoogleEventWrite(block));
+      return undefined;
     },
     delete: async (existing) => {
       if (existing.googleEventId) await deps.client.deleteEvent(accessToken, calendarId, existing.googleEventId);
