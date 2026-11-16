@@ -8,13 +8,18 @@ export function signSession(app: FastifyInstance, userId: string): string {
 }
 
 /**
- * Verify a session token and return its user id, or null when it is invalid. A good signature
- * is not enough: OAuth state tokens are signed with the same secret but carry `st`, not `sub`,
- * so the `sub` check is what stops a state token from being accepted as a session.
+ * The user id of a verified JWT payload, or null when it is not a session. A good signature is
+ * not enough: OAuth state tokens are signed with the same secret but carry `st`, not `sub`, so
+ * the `sub` check is what stops a state token from being accepted as a session.
  */
+export function sessionUserId(payload: { sub?: string }): string | null {
+  return payload.sub || null;
+}
+
+/** Verify a raw session token (e.g. from the WS handshake); null when invalid, never throws. */
 export function verifySession(app: FastifyInstance, token: string): string | null {
   try {
-    return app.jwt.verify<{ sub?: string }>(token).sub || null;
+    return sessionUserId(app.jwt.verify<{ sub?: string }>(token));
   } catch {
     return null;
   }
