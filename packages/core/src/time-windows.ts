@@ -22,6 +22,16 @@ export interface WorkingHourEntry {
   endMinute: number;
 }
 
+/**
+ * The instant (epoch ms) at `minute` minutes past midnight on `day`, in `day`'s zone.
+ * Uses wall-clock set (not plus) so DST transitions don't shift the hour.
+ */
+export function atMinuteOfDay(day: DateTime, minute: number): number {
+  return day
+    .set({ hour: Math.floor(minute / 60), minute: minute % 60, second: 0, millisecond: 0 })
+    .toMillis();
+}
+
 /** Throw if the IANA timezone is invalid (clock-free check). */
 export function assertValidZone(timezone: string): void {
   if (!DateTime.fromMillis(0, { zone: timezone }).isValid) {
@@ -51,19 +61,8 @@ export function expandWorkingWindows(
     const weekday = day.weekday % 7; // luxon Mon=1..Sun=7 -> Sun=0..Sat=6
     for (const wh of workingHours) {
       if (wh.weekday !== weekday) continue;
-      // Use wall-clock set (not plus) so DST transitions don't shift the hour.
-      const startHour = Math.floor(wh.startMinute / 60);
-      const startMin = wh.startMinute % 60;
-      const endHour = Math.floor(wh.endMinute / 60);
-      const endMin = wh.endMinute % 60;
-      const start = Math.max(
-        day.set({ hour: startHour, minute: startMin, second: 0, millisecond: 0 }).toMillis(),
-        now,
-      );
-      const end = Math.min(
-        day.set({ hour: endHour, minute: endMin, second: 0, millisecond: 0 }).toMillis(),
-        horizonEnd,
-      );
+      const start = Math.max(atMinuteOfDay(day, wh.startMinute), now);
+      const end = Math.min(atMinuteOfDay(day, wh.endMinute), horizonEnd);
       if (end > start) windows.push({ start, end });
     }
     day = day.plus({ days: 1 });

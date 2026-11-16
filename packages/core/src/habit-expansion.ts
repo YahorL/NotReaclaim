@@ -2,7 +2,7 @@ import { DateTime } from 'luxon';
 import type { Habit as EngineHabit, Interval } from '@notreclaim/scheduler';
 import type { Habit as DbHabit } from '@notreclaim/db';
 import { InvalidHorizonError } from './errors.js';
-import { assertValidZone, horizonEndMs } from './time-windows.js';
+import { assertValidZone, atMinuteOfDay, horizonEndMs } from './time-windows.js';
 
 /**
  * Expand a DB habit (recurrence rule) into the engine Habit over the horizon:
@@ -56,19 +56,11 @@ export function expandHabit(
       if (dayEnd > dayStart) allowedWindows.push({ start: dayStart, end: dayEnd });
 
       if (hasPreferred) {
-        // Use wall-clock set (not plus) so DST transitions don't shift the hour.
-        const startHour = Math.floor(habit.preferredStartMinute! / 60);
-        const startMin = habit.preferredStartMinute! % 60;
-        const endHour = Math.floor(habit.preferredEndMinute! / 60);
-        const endMin = habit.preferredEndMinute! % 60;
         // Same wall-clock anchoring as above (soft windows, but kept consistent): an
         // already-passed preferred window simply finds no free room and the engine
         // falls back to the day's allowed window, exactly as before.
-        const ps = day.set({ hour: startHour, minute: startMin, second: 0, millisecond: 0 }).toMillis();
-        const pe = Math.min(
-          day.set({ hour: endHour, minute: endMin, second: 0, millisecond: 0 }).toMillis(),
-          horizonEnd,
-        );
+        const ps = atMinuteOfDay(day, habit.preferredStartMinute!);
+        const pe = Math.min(atMinuteOfDay(day, habit.preferredEndMinute!), horizonEnd);
         if (pe > ps) preferredWindows.push({ start: ps, end: pe });
       }
     }
