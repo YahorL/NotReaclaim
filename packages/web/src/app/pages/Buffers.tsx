@@ -4,7 +4,6 @@ import { useSettingsQuery, useUpdateSettingsMutation } from '../../api/queries';
 import { toFormState, defaultFormState, toSettingsInput, browserTimezone, type SettingsFormState } from '../settings/settingsForm';
 
 const labelCls = 'mb-0.5 block text-[10px] uppercase tracking-wide text-inkSoft';
-const errCls = 'text-[11px] text-red-600';
 
 export function Buffers() {
   const settingsQ = useSettingsQuery();
@@ -78,7 +77,7 @@ function BuffersForm({ initial, onSave, saving, justSaved }: {
         >
           Save
         </button>
-        {justSaved && <span data-testid="saved" className={errCls.replace('red', 'green')}>Saved</span>}
+        {justSaved && <span data-testid="saved" className="text-[11px] text-green-600">Saved</span>}
       </div>
       </div>
     </div>

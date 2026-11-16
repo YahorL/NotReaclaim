@@ -1,21 +1,26 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { Icons } from '../shell/icons';
+import { useClickOutside } from '../components/useClickOutside';
 
-export function Dropdown({ icon, label, width = 240, children }: { icon: ReactNode; label: string; width?: number; children: ReactNode }) {
+export function Dropdown({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const onDown = (e: PointerEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener('pointerdown', onDown);
-    return () => document.removeEventListener('pointerdown', onDown);
-  }, []);
+  const close = useCallback(() => setOpen(false), []);
+  useClickOutside(ref, close);
+  const triggerBg = open ? 'bg-indigoSoft' : 'hover:bg-indigoSoft';
   return (
     <div ref={ref} className="relative">
-      <button type="button" aria-haspopup="true" aria-expanded={open} onClick={() => setOpen((v) => !v)} className={`flex items-center gap-1.5 rounded-[9px] px-3.5 py-2 text-[15.5px] font-bold text-indigo ${open ? 'bg-indigoSoft' : 'hover:bg-indigoSoft'}`}>
+      <button
+        type="button"
+        aria-haspopup="true"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className={`flex items-center gap-1.5 rounded-[9px] px-3.5 py-2 text-[15.5px] font-bold text-indigo ${triggerBg}`}
+      >
         {icon} {label} {open ? <Icons.chevUp size={16} /> : <Icons.chevDown size={16} />}
       </button>
       {open && (
-        <div className="absolute right-0 top-[calc(100%+8px)] z-40 animate-pop rounded-xl border border-line bg-card p-1.5 shadow-pop" style={{ width }}>
+        <div className="absolute right-0 top-[calc(100%+8px)] z-40 animate-pop rounded-xl border border-line bg-card p-1.5 shadow-pop" style={{ width: 240 }}>
           {children}
         </div>
       )}

@@ -2,9 +2,7 @@ import { DateTime } from 'luxon';
 import type { Habit as EngineHabit, Interval } from '@notreclaim/scheduler';
 import type { Habit as DbHabit } from '@notreclaim/db';
 import { InvalidHorizonError } from './errors.js';
-import { assertValidZone } from './time-windows.js';
-
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
+import { assertValidZone, atMinuteOfDay, horizonEndMs } from './time-windows.js';
 
 /**
  * Expand a DB habit (recurrence rule) into the engine Habit over the horizon:
@@ -24,7 +22,7 @@ export function expandHabit(
   assertValidZone(timezone);
   if (horizonDays <= 0) throw new InvalidHorizonError(horizonDays);
 
-  const horizonEnd = now + horizonDays * MS_PER_DAY;
+  const horizonEnd = horizonEndMs(now, horizonDays);
 
   // ISO Monday-week periods, clipped to the horizon.
   const periods: Interval[] = [];
@@ -51,26 +49,18 @@ export function expandHabit(
       // capped habit occurrence by the allowed-window day it consumed, so clipping would
       // make today's key churn on every replan (deleting + recreating the row and its
       // mirrored Google event). Nothing is placed in the past regardless — the free
-      // timeline these windows are intersected with is already clipped to `now` by
-      // `expandWorkingWindows`, and `periods[0]` starts at `now`.
+      // timeline these windows are intersected with starts at `now` (assemble hands the
+      // engine a `horizon` envelope beginning at `now`), and `periods[0]` starts at `now`.
       const dayStart = day.toMillis();
       const dayEnd = Math.min(day.plus({ days: 1 }).toMillis(), horizonEnd);
       if (dayEnd > dayStart) allowedWindows.push({ start: dayStart, end: dayEnd });
 
       if (hasPreferred) {
-        // Use wall-clock set (not plus) so DST transitions don't shift the hour.
-        const startHour = Math.floor(habit.preferredStartMinute! / 60);
-        const startMin = habit.preferredStartMinute! % 60;
-        const endHour = Math.floor(habit.preferredEndMinute! / 60);
-        const endMin = habit.preferredEndMinute! % 60;
         // Same wall-clock anchoring as above (soft windows, but kept consistent): an
         // already-passed preferred window simply finds no free room and the engine
         // falls back to the day's allowed window, exactly as before.
-        const ps = day.set({ hour: startHour, minute: startMin, second: 0, millisecond: 0 }).toMillis();
-        const pe = Math.min(
-          day.set({ hour: endHour, minute: endMin, second: 0, millisecond: 0 }).toMillis(),
-          horizonEnd,
-        );
+        const ps = atMinuteOfDay(day, habit.preferredStartMinute!);
+        const pe = Math.min(atMinuteOfDay(day, habit.preferredEndMinute!), horizonEnd);
         if (pe > ps) preferredWindows.push({ start: ps, end: pe });
       }
     }

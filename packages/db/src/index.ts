@@ -1,8 +1,7 @@
 export { prisma } from './client.js';
 export type { PrismaClient } from './client.js';
-export { getDatabaseUrl } from './config.js';
-export { NotFoundError, ConflictError, translatePrismaError } from './errors.js';
-export { toFixedEvent, toFlexibleTask, toScheduledBlock } from './mappers.js';
+export { NotFoundError, ConflictError } from './errors.js';
+// Mappers are exported only via the `@notreclaim/db/mappers` subpath, so they can be imported without loading the Prisma client.
 
 export { createUserRepository } from './repositories/user-repository.js';
 export type { UserRepository, CreateUserInput, UpdateUserInput } from './repositories/user-repository.js';

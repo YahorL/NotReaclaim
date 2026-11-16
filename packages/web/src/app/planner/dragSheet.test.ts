@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { COLLAPSED_SHEET_STRIP_PX, shouldCollapseSheet } from './dragSheet';
+import { shouldCollapseSheet } from './dragSheet';
 
 describe('shouldCollapseSheet', () => {
   it('collapses when a task drag starts inside an open sheet on the compact layout', () => {
@@ -16,9 +16,5 @@ describe('shouldCollapseSheet', () => {
 
   it('ignores drags that are not task cards', () => {
     expect(shouldCollapseSheet({ compact: true, sheetOpen: true, isTaskDrag: false })).toBe(false);
-  });
-
-  it('leaves a strip tall enough to grab the sheet back', () => {
-    expect(COLLAPSED_SHEET_STRIP_PX).toBe(56);
   });
 });

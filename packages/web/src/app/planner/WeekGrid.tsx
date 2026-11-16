@@ -5,20 +5,22 @@ import { EventBlock, type BlockKind } from './EventBlock';
 import { InteractiveBlock } from './InteractiveBlock';
 import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY, snapClickToSlot, WINDOW_START_MIN, WINDOW_END_MIN, GRID_COLUMN_PX, dayAnchor, formatHm, weekdayLabel, dayOfMonth, hourRowLabel, timeGutterPx, popoverAlign, swipeDecision } from './weekModel';
 import { CreatePopover } from './CreatePopover';
+import { MS_PER_MIN } from '../lib/time';
 import { layoutOverlaps } from './overlapLayout';
+import { DAY_COLUMN_DROP_TYPE, dayColumnDroppableId } from './scheduleDrop';
 import { Sheet } from '../components/Sheet';
 import { Icons } from '../shell/icons';
 
 /**
  * Registers a day column as a dnd-kit droppable without restructuring the grid: hooks cannot run
  * inside the `days.map` loop, and the column has only a `border-l`, so an `inset-0` child has
- * exactly the rect the old `slotFromEvent` measured. Collision detection is rect maths, never DOM
+ * exactly the rect `slotFromEvent` measures. Collision detection is rect maths, never DOM
  * hit-testing, so `pointer-events-none` keeps the column's click-to-create tap completely intact.
  */
 function DayDropZone({ dayIndex, dayStartMs }: { dayIndex: number; dayStartMs: number }) {
   const { setNodeRef } = useDroppable({
-    id: `day-col:${dayIndex}`,
-    data: { type: 'day-col', dayIndex, dayStartMs },
+    id: dayColumnDroppableId(dayIndex),
+    data: { type: DAY_COLUMN_DROP_TYPE, dayIndex, dayStartMs },
   });
   return (
     <div
@@ -40,7 +42,7 @@ const LEGEND: { label: string; swatch: string }[] = [
 ];
 
 export interface WeekGridProps {
-  days: number[];            // 7 local-midnight timestamps
+  days: number[];            // 1–7 day-column anchors (local midnight, or the `dayStartMinute` wall-clock time)
   nowMs: number;
   weekLabel: string;
   blocks: ScheduledBlock[];
@@ -71,8 +73,8 @@ export interface WeekGridProps {
   /** Coarse pointer: long-press-armed drag, bigger resize target, always-visible actions. */
   coarse?: boolean;
   /** Coarse pointers only: a tap on a task block opens that task (spec §2 — tap opens the drawer).
-   *  Deliberately not wired on fine pointers: a desktop click on a block does nothing today and
-   *  changing that is a desktop behaviour change, which this phase does not make. */
+   *  Deliberately not wired on fine pointers: a desktop click on a block does nothing, and that
+   *  is kept as desktop behaviour. */
   onEditTask?: (taskId: string) => void;
 }
 
@@ -122,9 +124,9 @@ export function WeekGrid(props: WeekGridProps) {
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const minOfDay = Math.max(0, Math.min(WINDOW_END_MIN, (nowMs - dayAnchor(nowMs, zone, dayStartMinute)) / 60_000));
+    const minOfDay = Math.max(0, Math.min(WINDOW_END_MIN, (nowMs - dayAnchor(nowMs, zone, dayStartMinute)) / MS_PER_MIN));
     el.scrollTop = Math.max(0, (minOfDay / (WINDOW_END_MIN - WINDOW_START_MIN)) * GRID_COLUMN_PX - 64);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- scroll to "now" once on mount
+    // Empty deps on purpose: scroll to "now" once on mount.
   }, []);
 
   const slotFromEvent = (e: { currentTarget: HTMLElement; clientY: number }): number => {
@@ -244,7 +246,7 @@ export function WeekGrid(props: WeekGridProps) {
               ancestor); the overflow then lands in AppShell's `shell-content` scroller instead of
               the grid collapsing. `overscroll-contain` keeps a rubber-band flick at the top or
               bottom of the hours from scrolling the page behind it — a phone concern, so `md+`
-              restores native chaining and desktop stays byte-identical to before. */}
+              restores native scroll chaining. */}
           <div ref={scrollRef} data-testid="hours-scroll" className="min-h-[240px] flex-1 overflow-y-auto overscroll-contain md:overscroll-auto">
           <div className="grid" style={{ gridTemplateColumns: gridCols }}>
             <div data-testid="hour-gutter">
@@ -272,7 +274,6 @@ export function WeekGrid(props: WeekGridProps) {
                     const pos = placeInDay(it.startMs, it.endMs, d);
                     if (!pos) return null;
                     const blockId = it.blockId;
-                    // Resolve accent: task blocks with a taskId that has a colored category
                     const accent = it.taskId ? accents[it.taskId] : undefined;
                     const ln = lanes.get(it.key) ?? { lane: 0, lanes: 1 };
                     const leftPct = (ln.lane / ln.lanes) * 100;
@@ -280,7 +281,7 @@ export function WeekGrid(props: WeekGridProps) {
                     if (it.kind !== 'meeting' && blockId) {
                       return (
                         <InteractiveBlock
-                          key={it.key} id={blockId} dayStartMs={d} dayIndex={i}
+                          key={it.key} dayStartMs={d} dayIndex={i}
                           startMs={it.startMs} endMs={it.endMs}
                           topPct={pos.topPct} heightPct={pos.heightPct}
                           leftPct={leftPct} widthPct={widthPct}
@@ -306,7 +307,7 @@ export function WeekGrid(props: WeekGridProps) {
                     if (ev && ev.source === 'app') {
                       return (
                         <InteractiveBlock
-                          key={it.key} id={ev.id} dayStartMs={d} dayIndex={i}
+                          key={it.key} dayStartMs={d} dayIndex={i}
                           startMs={it.startMs} endMs={it.endMs}
                           topPct={pos.topPct} heightPct={pos.heightPct}
                           leftPct={leftPct} widthPct={widthPct}

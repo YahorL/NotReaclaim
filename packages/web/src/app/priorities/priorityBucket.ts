@@ -1,14 +1,22 @@
-import type { SchedulePreview } from '../../api/types';
+import type { SchedulePreview, Task } from '../../api/types';
+import { MS_PER_DAY } from '../lib/time';
 
 export const BUCKETS = ['critical', 'high', 'medium', 'low'] as const;
 export type BucketKey = (typeof BUCKETS)[number];
 export type BoardColumnKey = BucketKey | 'backlog' | 'completed';
+/** Every board column, in display order. */
+export const BOARD_COLUMNS: readonly BoardColumnKey[] = [...BUCKETS, 'backlog', 'completed'];
 
 export function priorityToBucket(priority: number): BucketKey {
   if (priority <= 1) return 'critical';
   if (priority === 2) return 'high';
   if (priority === 3) return 'medium';
   return 'low';
+}
+
+/** A task still waiting to be worked: pending or scheduled (not backlog, not completed). */
+export function isActiveTask(task: Pick<Task, 'status'>): boolean {
+  return task.status === 'pending' || task.status === 'scheduled';
 }
 
 export function bucketToPriority(bucket: BucketKey): 1 | 2 | 3 | 4 {
@@ -20,20 +28,22 @@ export function bucketToPriority(bucket: BucketKey): 1 | 2 | 3 | 4 {
   }
 }
 
+export interface ColumnMeta { label: string; dot: string; leftBorder: string }
+
 // Tailwind needs these literal class strings present in source to generate them.
-export const BUCKET_META: Record<BucketKey, { label: string; dot: string; leftBorder: string }> = {
+export const BUCKET_META: Record<BucketKey, ColumnMeta> = {
   critical: { label: 'Critical', dot: 'bg-crit', leftBorder: 'border-l-crit' },
   high: { label: 'High priority', dot: 'bg-high', leftBorder: 'border-l-high' },
   medium: { label: 'Medium priority', dot: 'bg-med', leftBorder: 'border-l-med' },
   low: { label: 'Low priority', dot: 'bg-low', leftBorder: 'border-l-low' },
 };
 
-export const EXTRA_COLUMN_META: Record<'backlog' | 'completed', { label: string; dot: string; leftBorder: string }> = {
+const EXTRA_COLUMN_META: Record<'backlog' | 'completed', ColumnMeta> = {
   backlog: { label: 'Backlog', dot: 'bg-[#aeb2c0]', leftBorder: 'border-l-[#aeb2c0]' },
   completed: { label: 'Completed', dot: 'bg-low', leftBorder: 'border-l-low' },
 };
 
-export function columnMeta(key: BoardColumnKey): { label: string; dot: string; leftBorder: string } {
+export function columnMeta(key: BoardColumnKey): ColumnMeta {
   if (key === 'backlog' || key === 'completed') return EXTRA_COLUMN_META[key];
   return BUCKET_META[key];
 }
@@ -53,7 +63,7 @@ function startOfDay(ms: number): number {
 
 export function relativeDayTimeLabel(ms: number, now: number): string {
   const d = new Date(ms);
-  const diffDays = Math.round((startOfDay(ms) - startOfDay(now)) / (24 * 60 * 60 * 1000));
+  const diffDays = Math.round((startOfDay(ms) - startOfDay(now)) / MS_PER_DAY);
   if (diffDays === 0) return `Today ${timeLabel(d)}`;
   if (diffDays === 1) return `Tomorrow ${timeLabel(d)}`;
   const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(d);

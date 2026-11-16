@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
 import { createGoogleClient } from '../src/google-client.js';
 import { GoogleApiError } from '../src/errors.js';
 
@@ -11,7 +11,7 @@ const write = {
   endDateTime: '2026-01-05T15:00:00.000Z',
 };
 
-let fetchMock: ReturnType<typeof vi.fn>;
+let fetchMock: Mock<Parameters<typeof fetch>, Promise<Response>>;
 const realFetch = globalThis.fetch;
 
 function lastCall() {
@@ -20,7 +20,7 @@ function lastCall() {
 }
 
 beforeEach(() => {
-  fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+  fetchMock = vi.fn<Parameters<typeof fetch>, Promise<Response>>(async () => new Response('{}', { status: 200 }));
   globalThis.fetch = fetchMock as unknown as typeof fetch;
 });
 afterEach(() => {

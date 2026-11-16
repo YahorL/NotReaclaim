@@ -28,21 +28,6 @@ export function NavLinkItem({
   );
 }
 
-export function NavDisabledItem({ label, icon, indent = false }: { label: string; icon?: ReactNode; indent?: boolean }) {
-  return (
-    <div
-      className={[ROW_BASE, PAD(indent), 'cursor-default font-medium text-sidebarMuted/70'].join(' ')}
-      aria-disabled="true"
-    >
-      {icon && <span className="shrink-0 opacity-50">{icon}</span>}
-      <span className="flex-1">{label}</span>
-      <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sidebarMuted">
-        Soon
-      </span>
-    </div>
-  );
-}
-
 export function NavSection({
   label, icon, open, onToggle,
 }: { label: string; icon?: ReactNode; open: boolean; onToggle: () => void }) {

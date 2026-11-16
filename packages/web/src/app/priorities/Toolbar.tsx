@@ -1,8 +1,9 @@
 import { Icons } from '../shell/icons';
 import { Dropdown, MenuRow } from './Dropdown';
-import { type BoardColumnKey, type BucketKey, BUCKETS, BUCKET_META, EXTRA_COLUMN_META } from './priorityBucket';
+import { type BoardColumnKey, BOARD_COLUMNS, columnMeta } from './priorityBucket';
 
-const EXTRA_COLS: Array<'backlog' | 'completed'> = ['backlog', 'completed'];
+const SEARCH_BOX = 'flex h-12 w-full min-w-0 max-w-full items-center gap-2.5 rounded-[30px] border border-line bg-card px-5 shadow-card md:w-[430px]';
+const MENU_HEADING = 'px-3.5 pb-1 pt-2 text-[12.5px] font-extrabold uppercase tracking-wide text-inkSoft';
 
 export interface ToolbarProps {
   query: string;
@@ -16,23 +17,35 @@ export interface ToolbarProps {
 export function Toolbar({ query, setQuery, hideCompleted, setHideCompleted, colsVisible, setColsVisible }: ToolbarProps) {
   return (
     <div className="flex flex-wrap items-center gap-3 pb-[18px] pl-[30px] pr-[26px] pt-1.5 md:flex-nowrap">
-      <div className="flex h-12 w-full min-w-0 max-w-full items-center gap-2.5 rounded-[30px] border border-line bg-card px-5 shadow-card md:w-[430px]">
+      <div className={SEARCH_BOX}>
         <Icons.search size={20} className="shrink-0 text-inkSoft" />
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search for something…" aria-label="Search tasks" className="min-w-0 flex-1 bg-transparent text-[16px] text-ink outline-none" />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search for something…"
+          aria-label="Search tasks"
+          className="min-w-0 flex-1 bg-transparent text-[16px] text-ink outline-none"
+        />
       </div>
       <div className="flex-1" />
       <Dropdown icon={<Icons.filter size={18} />} label="Filter">
-        <div className="px-3.5 pb-1 pt-2 text-[12.5px] font-extrabold uppercase tracking-wide text-inkSoft">Task status</div>
+        <div className={MENU_HEADING}>Task status</div>
         <MenuRow label="Hide completed" checked={hideCompleted} onClick={() => setHideCompleted(!hideCompleted)} />
       </Dropdown>
       <Dropdown icon={<Icons.columns size={18} />} label="Columns">
-        <div className="px-3.5 pb-1 pt-2 text-[12.5px] font-extrabold uppercase tracking-wide text-inkSoft">Show columns</div>
-        {BUCKETS.map((b: BucketKey) => (
-          <MenuRow key={b} label={BUCKET_META[b].label} dotClass={BUCKET_META[b].dot} checked={colsVisible[b]} onClick={() => setColsVisible({ ...colsVisible, [b]: !colsVisible[b] })} />
-        ))}
-        {EXTRA_COLS.map((k) => (
-          <MenuRow key={k} label={EXTRA_COLUMN_META[k].label} dotClass={EXTRA_COLUMN_META[k].dot} checked={colsVisible[k]} onClick={() => setColsVisible({ ...colsVisible, [k]: !colsVisible[k] })} />
-        ))}
+        <div className={MENU_HEADING}>Show columns</div>
+        {BOARD_COLUMNS.map((k) => {
+          const meta = columnMeta(k);
+          return (
+            <MenuRow
+              key={k}
+              label={meta.label}
+              dotClass={meta.dot}
+              checked={colsVisible[k]}
+              onClick={() => setColsVisible({ ...colsVisible, [k]: !colsVisible[k] })}
+            />
+          );
+        })}
       </Dropdown>
     </div>
   );

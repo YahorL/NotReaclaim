@@ -1,12 +1,8 @@
-const MS_PER_MIN = 60_000;
+import { MS_PER_MIN } from './time';
 
 export function msToHM(ms: number): { hours: number; minutes: number } {
   const totalMin = Math.round(ms / MS_PER_MIN);
   return { hours: Math.floor(totalMin / 60), minutes: totalMin % 60 };
-}
-
-export function hmToMs(hours: number, minutes: number): number {
-  return (hours * 60 + minutes) * MS_PER_MIN;
 }
 
 export function minutesToHHMM(min: number): string {

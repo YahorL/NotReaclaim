@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createEventBus } from '../src/events.js';
 
-const COUNTS = { created: 0, updated: 0, deleted: 0, pinned: 0, removed: 0 };
+const COUNTS = { created: 0, updated: 0, deleted: 0, pinned: 0, removed: 0, pinnedSynced: 0, pinnedFailed: 0 };
 
 describe('EventBus', () => {
   it('delivers an emitted event to all subscribers', () => {

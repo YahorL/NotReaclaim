@@ -1,13 +1,18 @@
-import { useRef, useState } from 'react';
 import type { Habit, HabitStatus, UpdateHabitInput } from '../../api/types';
 import type { ApiError } from '../../api/client';
-import { FieldBox } from '../components/FieldBox';
 import { DurationStepper } from '../components/DurationStepper';
-import { useClickOutside } from '../components/useClickOutside';
+import { DrawerPanel } from '../components/DrawerPanel';
+import { FormField } from '../components/FormField';
+import { PrimaryButton, SecondaryButton } from '../components/Buttons';
+import { FIELD_CONTROL, FIELD_ERROR, FULL_ROW } from '../components/formStyles';
+import { useFormState } from '../components/useFormState';
 import { type HabitFormState, toFormState, validateHabitForm, toUpdateInput } from './habitForm';
 
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const STATUSES: HabitStatus[] = ['active', 'paused'];
+const DAY_BTN = 'h-7 w-7 rounded-full text-[11px] font-bold transition-colors coarse:h-10 coarse:w-10';
+const DAY_ON = 'bg-indigo text-white';
+const DAY_OFF = 'bg-bg text-inkSoft border border-line';
 
 export interface HabitDrawerProps {
   habit: Habit;
@@ -20,100 +25,74 @@ export interface HabitDrawerProps {
 }
 
 export function HabitDrawer({ habit, onSave, onCancel, saving = false, error = null, compact = false }: HabitDrawerProps) {
-  const [form, setForm] = useState<HabitFormState>(() => toFormState(habit));
-  const rootRef = useRef<HTMLElement>(null);
-  useClickOutside(rootRef, onCancel, !compact);
+  const [form, set, setForm] = useFormState<HabitFormState>(() => toFormState(habit));
   const { ok, errors } = validateHabitForm(form);
-  const set = <K extends keyof HabitFormState>(k: K, v: HabitFormState[K]) => setForm((f) => ({ ...f, [k]: v }));
   const toggleDay = (d: number) =>
     setForm((f) => ({ ...f, eligibleDays: f.eligibleDays.includes(d) ? f.eligibleDays.filter((x) => x !== d) : [...f.eligibleDays, d] }));
-  const ctl = 'w-full bg-transparent text-[16px] font-bold text-ink outline-none';
-  const errCls = 'mt-0.5 text-[11px] text-crit';
 
   return (
-    <aside
-      ref={rootRef}
-      data-testid="habit-drawer"
-      className={compact
-        ? 'w-full space-y-2.5 p-2'
-        : 'w-[440px] shrink-0 space-y-2.5 rounded-[14px] border border-line bg-card p-4 shadow-pop max-h-[calc(100dvh-100px)] overflow-y-auto'}
+    <DrawerPanel
+      testId="habit-drawer"
+      title="Edit habit"
+      compact={compact}
+      onDismiss={onCancel}
+      error={error}
+      actions={(
+        <>
+          <PrimaryButton data-testid="save" disabled={!ok || saving} onClick={() => { if (ok) onSave(toUpdateInput(form)); }}>Save</PrimaryButton>
+          <SecondaryButton onClick={onCancel}>Cancel</SecondaryButton>
+        </>
+      )}
     >
-      <h4 className="text-[15px] font-bold text-ink">Edit habit</h4>
-
       <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
-        {/* Title — spans both columns at md+; col-span-2 in a one-column grid would conjure a second */}
-        <div className="col-span-1 md:col-span-2">
-          <FieldBox label="Title">
-            <input className={ctl} value={form.title} onChange={(e) => set('title', e.target.value)} />
-          </FieldBox>
-          {errors.title && <p data-testid="err-title" className={errCls}>{errors.title}</p>}
-        </div>
+        <FormField className={FULL_ROW} label="Title" error={errors.title} errorTestId="err-title">
+          <input className={FIELD_CONTROL} value={form.title} onChange={(e) => set('title', e.target.value)} />
+        </FormField>
 
         {/* Row: Chunk duration | Times per period */}
-        <div>
-          <FieldBox label="Chunk">
-            <DurationStepper label="chunk" size={22} valueMs={form.chunkMs} onChange={(ms) => set('chunkMs', ms)} />
-          </FieldBox>
-          {errors.chunkMs && <p data-testid="err-chunkMs" className={errCls}>{errors.chunkMs}</p>}
-        </div>
-        <div>
-          <FieldBox label="Times per week">
-            <input type="number" min={1} className={`${ctl} appearance-none`} value={form.perPeriod} onChange={(e) => set('perPeriod', Number(e.target.value))} />
-          </FieldBox>
-          {errors.perPeriod && <p data-testid="err-perPeriod" className={errCls}>{errors.perPeriod}</p>}
-        </div>
+        <FormField label="Chunk" error={errors.chunkMs} errorTestId="err-chunkMs">
+          <DurationStepper label="chunk" size={22} valueMs={form.chunkMs} onChange={(ms) => set('chunkMs', ms)} />
+        </FormField>
+        <FormField label="Times per week" error={errors.perPeriod} errorTestId="err-perPeriod">
+          <input type="number" min={1} className={`${FIELD_CONTROL} appearance-none`} value={form.perPeriod} onChange={(e) => set('perPeriod', Number(e.target.value))} />
+        </FormField>
 
         {/* Row: Priority | Status */}
-        <div>
-          <FieldBox label="Priority">
-            <input type="number" className={`${ctl} appearance-none`} value={form.priority} onChange={(e) => set('priority', Number(e.target.value))} />
-          </FieldBox>
-        </div>
-        <div>
-          <FieldBox label="Status">
-            <select className={`${ctl} appearance-none capitalize`} value={form.status} onChange={(e) => set('status', e.target.value as HabitStatus)}>
-              {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </FieldBox>
-        </div>
+        <FormField label="Priority">
+          <input type="number" className={`${FIELD_CONTROL} appearance-none`} value={form.priority} onChange={(e) => set('priority', Number(e.target.value))} />
+        </FormField>
+        <FormField label="Status">
+          <select className={`${FIELD_CONTROL} appearance-none capitalize`} value={form.status} onChange={(e) => set('status', e.target.value as HabitStatus)}>
+            {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </FormField>
 
         {/* Row: Preferred from | to */}
-        <div>
-          <FieldBox label="Preferred from">
-            <input type="time" className={ctl} value={form.preferredStart} onChange={(e) => set('preferredStart', e.target.value)} />
-          </FieldBox>
-        </div>
-        <div>
-          <FieldBox label="to">
-            <input type="time" className={ctl} value={form.preferredEnd} onChange={(e) => set('preferredEnd', e.target.value)} />
-          </FieldBox>
-        </div>
-        {errors.preferredEnd && <p data-testid="err-preferredEnd" className={`col-span-1 md:col-span-2 ${errCls}`}>{errors.preferredEnd}</p>}
+        <FormField label="Preferred from">
+          <input type="time" className={FIELD_CONTROL} value={form.preferredStart} onChange={(e) => set('preferredStart', e.target.value)} />
+        </FormField>
+        <FormField label="to">
+          <input type="time" className={FIELD_CONTROL} value={form.preferredEnd} onChange={(e) => set('preferredEnd', e.target.value)} />
+        </FormField>
+        {errors.preferredEnd && <p data-testid="err-preferredEnd" className={`${FULL_ROW} ${FIELD_ERROR}`}>{errors.preferredEnd}</p>}
 
-        {/* Eligible days — spans both columns at md+ */}
-        <div className="col-span-1 md:col-span-2">
-          <FieldBox label="Eligible days">
-            <div className="flex gap-1.5 pt-0.5">
-              {DAY_LABELS.map((lbl, d) => (
-                // Coarse: 7 × 40px + 6 × 6px gaps = 316px, inside a 390px sheet's content box.
-                <button key={d} type="button" data-testid={`day-${d}`} onClick={() => toggleDay(d)}
-                  className={`h-7 w-7 rounded-full text-[11px] font-bold transition-colors coarse:h-10 coarse:w-10 ${form.eligibleDays.includes(d) ? 'bg-indigo text-white' : 'bg-bg text-inkSoft border border-line'}`}>
-                  {lbl}
-                </button>
-              ))}
-            </div>
-          </FieldBox>
-          {errors.eligibleDays && <p data-testid="err-eligibleDays" className={errCls}>{errors.eligibleDays}</p>}
-        </div>
+        <FormField className={FULL_ROW} label="Eligible days" error={errors.eligibleDays} errorTestId="err-eligibleDays">
+          <div className="flex gap-1.5 pt-0.5">
+            {DAY_LABELS.map((lbl, d) => (
+              // Coarse: 7 × 40px + 6 × 6px gaps = 316px, inside a 390px sheet's content box.
+              <button
+                key={d}
+                type="button"
+                data-testid={`day-${d}`}
+                onClick={() => toggleDay(d)}
+                className={`${DAY_BTN} ${form.eligibleDays.includes(d) ? DAY_ON : DAY_OFF}`}
+              >
+                {lbl}
+              </button>
+            ))}
+          </div>
+        </FormField>
       </div>
-
-      {error && <p data-testid="drawer-error" className={errCls}>{error.message}</p>}
-
-      <div className="flex gap-2 pt-1">
-        <button data-testid="save" disabled={!ok || saving} onClick={() => { if (ok) onSave(toUpdateInput(form)); }}
-          className="rounded-[30px] bg-indigo px-5 py-2 text-[14px] font-bold text-white shadow-[0_4px_12px_rgba(91,98,227,.35)] hover:bg-indigo600 disabled:opacity-50">Save</button>
-        <button onClick={onCancel} className="rounded-[30px] border border-line px-5 py-2 text-[14px] font-bold text-inkSoft hover:bg-bg">Cancel</button>
-      </div>
-    </aside>
+    </DrawerPanel>
   );
 }

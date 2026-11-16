@@ -57,6 +57,15 @@ export interface ApiClient {
   getGoogleStatus(): Promise<GoogleStatus>;
 }
 
+/** `?from=…&to=…` for the set bounds, or '' when neither is set. */
+function rangeQuery(from?: string, to?: string): string {
+  const q = new URLSearchParams();
+  if (from) q.set('from', from);
+  if (to) q.set('to', to);
+  const qs = q.toString();
+  return qs ? `?${qs}` : '';
+}
+
 export function createApiClient(config: ApiClientConfig): ApiClient {
   async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const headers: Record<string, string> = {};
@@ -99,22 +108,10 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
     deleteHabit: (id) => request('DELETE', `/habits/${id}`),
     getSettings: () => request('GET', '/settings'),
     putSettings: (body) => request('PUT', '/settings', body),
-    getSchedule: (from, to) => {
-      const q = new URLSearchParams();
-      if (from) q.set('from', from);
-      if (to) q.set('to', to);
-      const qs = q.toString();
-      return request('GET', `/schedule${qs ? `?${qs}` : ''}`);
-    },
+    getSchedule: (from, to) => request('GET', `/schedule${rangeQuery(from, to)}`),
     updateScheduledBlock: (id, patch) => request('PATCH', `/schedule/${id}`, patch),
     deleteScheduledBlock: (id) => request('DELETE', `/schedule/${id}`),
-    getCalendarEvents: (from, to) => {
-      const q = new URLSearchParams();
-      if (from) q.set('from', from);
-      if (to) q.set('to', to);
-      const qs = q.toString();
-      return request('GET', `/calendar/events${qs ? `?${qs}` : ''}`);
-    },
+    getCalendarEvents: (from, to) => request('GET', `/calendar/events${rangeQuery(from, to)}`),
     getSchedulePreview: () => request('GET', '/schedule/preview'),
     replan: () => request('POST', '/schedule/replan'),
     listCategories: () => request('GET', '/categories'),

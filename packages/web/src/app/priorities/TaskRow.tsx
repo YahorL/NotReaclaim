@@ -1,16 +1,29 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { DndContext, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { Task, Subtask } from '../../api/types';
 import { Icons } from '../shell/icons';
 import { useAppSensors, pointerFirstCollision } from '../dnd/sensors';
+import { useClickOutside } from '../components/useClickOutside';
 import { subtaskDropSortOrder } from '../tasks/subtaskDnd';
 import { type BoardColumnKey, columnMeta, relativeDayTimeLabel } from './priorityBucket';
 
 function dueShort(iso: string | null): string {
   if (!iso) return 'No deadline';
   return `Due ${new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric' }).format(new Date(iso))}`;
+}
+
+// The card's static classes, split around the column's left-border colour that goes between them.
+const CARD_LAYOUT = 'flex items-start gap-3 border-t border-l-4 border-t-line';
+const CARD_SURFACE = 'bg-card last:rounded-b-xl py-3.5 pl-4 pr-3.5 transition-colors hover:bg-[#fafbfc]';
+
+/** Dragging wins over the backlog's muting, which wins over the completed fade. */
+function cardOpacity(isDragging: boolean, muted: boolean, done: boolean): string {
+  if (isDragging) return 'opacity-40';
+  if (muted) return 'opacity-70';
+  if (done) return 'opacity-45';
+  return '';
 }
 
 function SortableCardSubtask({ subtask, onToggle }: { subtask: Subtask; onToggle: () => void }) {
@@ -87,17 +100,15 @@ export function TaskRow({ task, columnKey, nextMs, now, draggable = true, muted 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const subtaskSensors = useAppSensors();
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDown = (e: PointerEvent) => { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false); };
-    document.addEventListener('pointerdown', onDown);
-    return () => document.removeEventListener('pointerdown', onDown);
-  }, [menuOpen]);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+  useClickOutside(menuRef, closeMenu, menuOpen);
   const done = task.status === 'completed';
   const meta = `${dueShort(task.dueBy)}${nextMs !== null ? ` · Next: ${relativeDayTimeLabel(nextMs, now)}` : ''}`;
   const subtasks = task.subtasks ?? [];
   const subtaskDone = subtasks.filter((s) => s.done).length;
   const colMeta = columnMeta(columnKey);
+  const cursor = draggable ? 'cursor-grab' : 'cursor-default';
+  const opacity = cardOpacity(isDragging, muted, done);
   const onSubtaskDragEnd = (e: DragEndEvent) => {
     if (!e.over) return;
     const sortOrder = subtaskDropSortOrder(subtasks, String(e.active.id), String(e.over.id));
@@ -115,7 +126,7 @@ export function TaskRow({ task, columnKey, nextMs, now, draggable = true, muted 
       {...(draggable ? cardAttributes : {})}
       {...(draggable ? cardListeners : {})}
       onClick={() => onEdit(task)}
-      className={`flex items-start gap-3 border-t border-l-4 border-t-line ${colMeta.leftBorder} bg-card last:rounded-b-xl py-3.5 pl-4 pr-3.5 transition-colors hover:bg-[#fafbfc] ${draggable ? 'cursor-grab' : 'cursor-default'} ${isDragging ? 'opacity-40' : muted ? 'opacity-70' : done ? 'opacity-45' : ''}`}
+      className={`${CARD_LAYOUT} ${colMeta.leftBorder} ${CARD_SURFACE} ${cursor} ${opacity}`}
     >
       <button
         type="button" aria-label="complete"

@@ -1,18 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 import websocket from '@fastify/websocket';
 import type { ConnectionRegistry, Client } from './connection-registry.js';
+import { verifySession } from './auth/token.js';
 
 /** Verify the JWT carried in the WS handshake query (?token=...). Returns the userId or null; never throws. */
 export function parseWsAuth(app: FastifyInstance, query: unknown): { userId: string } | null {
   const token = (query as { token?: unknown } | null | undefined)?.token;
   if (typeof token !== 'string' || token.length === 0) return null;
-  try {
-    const payload = app.jwt.verify<{ sub?: string }>(token);
-    if (!payload.sub) return null;
-    return { userId: payload.sub };
-  } catch {
-    return null;
-  }
+  const userId = verifySession(app, token);
+  return userId ? { userId } : null;
 }
 
 /** Register @fastify/websocket and the authenticated /ws route. Connections that fail auth are closed immediately. */

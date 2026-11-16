@@ -11,7 +11,6 @@ import type {
   UserRepository,
   InviteCodeRepository,
 } from '@notreclaim/db';
-import type { SchedulingRepositories } from '@notreclaim/core';
 import type { RegistrationMode } from './config.js';
 import type { GoogleClient, TokenService, ReconcileResult } from '@notreclaim/google';
 import { mapDomainError } from './errors.js';
@@ -27,6 +26,7 @@ import type { EventBus } from './events.js';
 import { createConnectionRegistry } from './connection-registry.js';
 import { registerWebSocket } from './ws.js';
 import { replanAfterMutation } from './replan.js';
+import { sessionUserId } from './auth/token.js';
 
 export interface AppDeps {
   repos: {
@@ -42,9 +42,8 @@ export interface AppDeps {
   };
   google: {
     client: Pick<GoogleClient, 'getConsentUrl' | 'insertEvent' | 'deleteEvent' | 'patchEvent'>;
-    tokens: Pick<TokenService, 'connectFromCode' | 'exchangeCodeForLink' | 'getAccessToken'>;
+    tokens: Pick<TokenService, 'exchangeCodeForLink' | 'getAccessToken'>;
   };
-  schedulingRepos: SchedulingRepositories;
   reconcile: (userId: string, now: number) => Promise<ReconcileResult>;
   events: EventBus;
   config: { jwtSecret: string; googleRedirectUri: string; webClientUrl?: string; registrationMode: RegistrationMode };
@@ -73,12 +72,12 @@ export function buildApp(input: Omit<AppDeps, 'now'> & { now?: () => number; log
   app.decorateRequest('userId', '');
   app.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const payload = await request.jwtVerify<{ sub?: string }>();
-      if (!payload.sub) {
+      const userId = sessionUserId(await request.jwtVerify<{ sub?: string }>());
+      if (!userId) {
         reply.code(401).send({ code: 'unauthorized', message: 'Invalid or missing token' });
         return;
       }
-      request.userId = payload.sub;
+      request.userId = userId;
     } catch {
       reply.code(401).send({ code: 'unauthorized', message: 'Invalid or missing token' });
     }

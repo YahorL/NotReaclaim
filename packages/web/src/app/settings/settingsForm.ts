@@ -1,12 +1,6 @@
 import type { Settings, SettingsInput } from '../../api/types';
-import { minutesToHHMM, hhmmToMinutes } from '../lib/duration';
-
-export interface DayState {
-  weekday: number;   // 0=Sun .. 6=Sat
-  enabled: boolean;
-  start: string;     // "HH:MM"
-  end: string;       // "HH:MM"
-}
+import { hhmmToMinutes } from '../lib/duration';
+import { type DayState, WEEKDAYS, windowsToDays, daysToWindows } from './weeklyHours';
 
 export interface SettingsFormState {
   timezone: string;
@@ -22,18 +16,10 @@ export interface SettingsFormState {
   dayStartMinute?: number;
 }
 
-const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
-
 export function toFormState(s: Settings): SettingsFormState {
-  const days: DayState[] = WEEKDAYS.map((weekday) => {
-    const wh = s.workingHours.find((w) => w.weekday === weekday);
-    return wh
-      ? { weekday, enabled: true, start: minutesToHHMM(wh.startMinute), end: minutesToHHMM(wh.endMinute) }
-      : { weekday, enabled: false, start: '09:00', end: '17:00' };
-  });
   return {
     timezone: s.timezone,
-    days,
+    days: windowsToDays(s.workingHours),
     horizonDays: s.horizonDays,
     defaultMinChunkMs: s.defaultMinChunkMs,
     defaultMaxChunkMs: s.defaultMaxChunkMs,
@@ -93,13 +79,9 @@ export function validateSettingsForm(s: SettingsFormState): { ok: boolean; error
 }
 
 export function toSettingsInput(s: SettingsFormState): SettingsInput {
-  const workingHours = s.days
-    .filter((d) => d.enabled)
-    .sort((a, b) => a.weekday - b.weekday)
-    .map((d) => ({ weekday: d.weekday, startMinute: hhmmToMinutes(d.start), endMinute: hhmmToMinutes(d.end) }));
   return {
     timezone: s.timezone,
-    workingHours,
+    workingHours: daysToWindows(s.days),
     horizonDays: s.horizonDays,
     defaultMinChunkMs: s.defaultMinChunkMs,
     defaultMaxChunkMs: s.defaultMaxChunkMs,

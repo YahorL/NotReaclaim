@@ -16,7 +16,7 @@ function settings(over: Partial<Settings> = {}): Settings {
     id: 's1', userId: 'u1', timezone: 'utc',
     workingHours: [{ weekday: 1, startMinute: 540, endMinute: 1020 }] as unknown as Settings['workingHours'],
     horizonDays: 1, defaultMinChunkMs: 1800000, defaultMaxChunkMs: 1800000,
-    meetingBufferMs: 0, taskBufferMs: 0, requireStartToTrack: false,
+    meetingBufferMs: 0, taskBufferMs: 0, requireStartToTrack: false, dayStartMinute: 0,
     createdAt: new Date(0), updatedAt: new Date(0), ...over,
   };
 }
@@ -36,7 +36,8 @@ describe('schedule routes', () => {
       tasks: [{
         id: 't1', userId: 'u1', title: 'T', priority: 1, durationMs: 1800000,
         dueBy: new Date('2026-01-05T17:00:00.000Z'), minChunkMs: 1800000, maxChunkMs: 1800000,
-        category: null, status: 'pending', timeLoggedMs: 0, createdAt: new Date(0), updatedAt: new Date(0),
+        sortOrder: 0, notBefore: null, categoryId: null, status: 'pending', completedAt: null, timeLoggedMs: 0,
+        createdAt: new Date(0), updatedAt: new Date(0),
       }],
     });
     const token = await tokenFor(app);
@@ -48,7 +49,7 @@ describe('schedule routes', () => {
   });
 
   it('POST /schedule/replan invokes reconcile and returns counts', async () => {
-    const { app, reconcileCalls } = buildTestApp({ reconcileResult: { created: 2, updated: 1, deleted: 0, pinned: 0, removed: 0 } });
+    const { app, reconcileCalls } = buildTestApp({ reconcileResult: { created: 2, updated: 1, deleted: 0, pinned: 0, removed: 0, pinnedSynced: 0, pinnedFailed: 0 } });
     const token = await tokenFor(app);
     const res = await app.inject({ method: 'POST', url: '/schedule/replan', headers: { authorization: `Bearer ${token}` } });
     expect(res.statusCode).toBe(200);
@@ -190,8 +191,6 @@ describe('POST /schedule', () => {
 });
 
 describe('POST /schedule/:id/start', () => {
-  const FIXED = Date.parse('2026-01-05T00:00:00.000Z'); // FIXED_NOW from fakes (Monday 00:00 UTC)
-
   it('late start snaps startsAt to the nearest 15 min, pins, sets startedAt', async () => {
     // FIXED_NOW rounds to 00:00; block 23:50→01:00 spans it so the snap (00:00) lands inside.
     const b = block({ id: 'b1', startsAt: new Date('2026-01-04T23:50:00.000Z'), endsAt: new Date('2026-01-05T01:00:00.000Z') });

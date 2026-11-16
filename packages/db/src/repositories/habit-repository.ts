@@ -1,5 +1,5 @@
 import type { PrismaClient, Habit, HabitStatus, HabitPeriod } from '@prisma/client';
-import { NotFoundError, translatePrismaError } from '../errors.js';
+import { deleteOwned, updateOwned } from './owned.js';
 
 export interface CreateHabitInput {
   title: string;
@@ -12,17 +12,7 @@ export interface CreateHabitInput {
   preferredEndMinute?: number | null;
 }
 
-export interface UpdateHabitInput {
-  title?: string;
-  priority?: number;
-  chunkMs?: number;
-  perPeriod?: number;
-  eligibleDays?: number[];
-  periodType?: HabitPeriod;
-  preferredStartMinute?: number | null;
-  preferredEndMinute?: number | null;
-  status?: HabitStatus;
-}
+export type UpdateHabitInput = Partial<CreateHabitInput> & { status?: HabitStatus };
 
 export function createHabitRepository(prisma: PrismaClient) {
   return {
@@ -38,24 +28,16 @@ export function createHabitRepository(prisma: PrismaClient) {
       return prisma.habit.findMany({ where: { userId }, orderBy: { priority: 'asc' } });
     },
 
-    async update(userId: string, id: string, data: UpdateHabitInput): Promise<Habit> {
-      try {
-        const result = await prisma.habit.updateMany({ where: { id, userId }, data });
-        if (result.count === 0) {
-          throw new NotFoundError(`Habit ${id} not found for user`);
-        }
-        return await prisma.habit.findFirstOrThrow({ where: { id, userId } });
-      } catch (error) {
-        if (error instanceof NotFoundError) throw error;
-        translatePrismaError(error);
-      }
+    update(userId: string, id: string, data: UpdateHabitInput): Promise<Habit> {
+      return updateOwned(
+        `Habit ${id} not found for user`,
+        () => prisma.habit.updateMany({ where: { id, userId }, data }),
+        () => prisma.habit.findFirstOrThrow({ where: { id, userId } }),
+      );
     },
 
-    async delete(userId: string, id: string): Promise<void> {
-      const result = await prisma.habit.deleteMany({ where: { id, userId } });
-      if (result.count === 0) {
-        throw new NotFoundError(`Habit ${id} not found for user`);
-      }
+    delete(userId: string, id: string): Promise<void> {
+      return deleteOwned(`Habit ${id} not found for user`, () => prisma.habit.deleteMany({ where: { id, userId } }));
     },
   };
 }

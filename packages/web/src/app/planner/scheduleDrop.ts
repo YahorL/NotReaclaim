@@ -1,4 +1,5 @@
-import { clampToWindow, snapClickToSlot, WINDOW_END_MIN, WINDOW_START_MIN } from './weekModel';
+import { clampToWindow, snapClickToSlot, SLOT_MIN, WINDOW_SPAN_MIN } from './weekModel';
+import { MS_PER_MIN, toIso } from '../lib/time';
 
 /** Marks a drag that started on a task card in the planner side panel / Tasks sheet. */
 export const PANEL_TASK_DRAG_TYPE = 'panel-task';
@@ -14,8 +15,22 @@ export interface PanelTaskDragData {
   taskId: string;
 }
 
+/** Marks a planner day column as a drop target. */
+export const DAY_COLUMN_DROP_TYPE = 'day-col';
+
+/** dnd-kit droppable id for the day column at `dayIndex`. */
+export function dayColumnDroppableId(dayIndex: number): string {
+  return `${DAY_COLUMN_DROP_TYPE}:${dayIndex}`;
+}
+
+/** The day index behind a `dayColumnDroppableId`, or null when `id` is not one. */
+export function dayIndexFromDroppableId(id: string): number | null {
+  const m = /^day-col:(\d+)$/.exec(id);
+  return m ? Number(m[1]) : null;
+}
+
 export interface DayColumnDropData {
-  type: 'day-col';
+  type: typeof DAY_COLUMN_DROP_TYPE;
   dayIndex: number;
   dayStartMs: number;
 }
@@ -57,7 +72,7 @@ export function dayDropFromOver({ overData, overRect, pointerY }: {
 }): DayDropTarget | null {
   if (!overData || typeof overData !== 'object') return null;
   const d = overData as Partial<DayColumnDropData>;
-  if (d.type !== 'day-col' || typeof d.dayIndex !== 'number' || typeof d.dayStartMs !== 'number') return null;
+  if (d.type !== DAY_COLUMN_DROP_TYPE || typeof d.dayIndex !== 'number' || typeof d.dayStartMs !== 'number') return null;
   if (overRect === null || pointerY === null) return null;
   const fraction = overRect.height > 0 ? (pointerY - overRect.top) / overRect.height : 0;
   return { dayIndex: d.dayIndex, dayStartMs: d.dayStartMs, startMin: snapClickToSlot(fraction) };
@@ -72,12 +87,11 @@ export function pinnedBlockTimes({ durationMs, dayStartMs, startMin }: {
   dayStartMs: number;
   startMin: number;
 }): { startsAt: string; endsAt: string } {
-  const windowSpan = WINDOW_END_MIN - WINDOW_START_MIN;
-  const durationMin = Math.min(Math.max(15, Math.round(durationMs / 60_000)), windowSpan);
+  const durationMin = Math.min(Math.max(SLOT_MIN, Math.round(durationMs / MS_PER_MIN)), WINDOW_SPAN_MIN);
   const { startMin: s, endMin: e } = clampToWindow(startMin, durationMin);
   return {
-    startsAt: new Date(dayStartMs + s * 60_000).toISOString(),
-    endsAt: new Date(dayStartMs + e * 60_000).toISOString(),
+    startsAt: toIso(dayStartMs + s * MS_PER_MIN),
+    endsAt: toIso(dayStartMs + e * MS_PER_MIN),
   };
 }
 

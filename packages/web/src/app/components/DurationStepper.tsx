@@ -1,7 +1,8 @@
 import { msToHM } from '../lib/duration';
+import { MS_PER_MIN, SLOT_MIN } from '../lib/time';
 import { Icons } from '../shell/icons';
 
-const STEP = 15 * 60_000;
+const STEP = SLOT_MIN * MS_PER_MIN;
 
 export function durationLabel(ms: number): string {
   const { hours, minutes } = msToHM(ms);

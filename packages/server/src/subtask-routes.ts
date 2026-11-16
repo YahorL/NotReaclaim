@@ -21,6 +21,6 @@ export function registerSubtaskRoutes(app: FastifyInstance, deps: AppDeps): void
   app.delete('/subtasks/:id', guard, async (request, reply) => {
     const { id } = idParamSchema.parse(request.params);
     await deps.repos.subtasks.delete(request.userId, id);
-    reply.code(204).send();
+    return reply.code(204).send();
   });
 }

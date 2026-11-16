@@ -9,21 +9,19 @@ export interface SocketLike {
 
 export interface UseWebSocketOptions {
   token: string | null;
-  baseUrl?: string;
   makeSocket?: (url: string) => SocketLike;
 }
 
 const RECONNECT_MS = 2000;
 
-function defaultUrl(baseUrl: string): string {
-  if (baseUrl) return `${baseUrl.replace(/^http/, 'ws')}/ws`;
+function defaultUrl(): string {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${proto}//${window.location.host}/ws`;
 }
 
 const defaultMakeSocket = (url: string): SocketLike => new WebSocket(url);
 
-export function useWebSocket({ token, baseUrl = '', makeSocket = defaultMakeSocket }: UseWebSocketOptions): void {
+export function useWebSocket({ token, makeSocket = defaultMakeSocket }: UseWebSocketOptions): void {
   const qc = useQueryClient();
 
   useEffect(() => {
@@ -34,7 +32,7 @@ export function useWebSocket({ token, baseUrl = '', makeSocket = defaultMakeSock
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 
     const connect = () => {
-      const url = `${defaultUrl(baseUrl)}?token=${encodeURIComponent(token)}`;
+      const url = `${defaultUrl()}?token=${encodeURIComponent(token)}`;
       try {
         socket = makeSocket(url);
       } catch {
@@ -60,5 +58,5 @@ export function useWebSocket({ token, baseUrl = '', makeSocket = defaultMakeSock
       if (reconnectTimer) clearTimeout(reconnectTimer);
       socket?.close();
     };
-  }, [token, baseUrl, makeSocket, qc]);
+  }, [token, makeSocket, qc]);
 }

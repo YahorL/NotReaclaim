@@ -1,8 +1,11 @@
-import type { ScheduledBlockRepository, UserRepository } from '@notreclaim/db';
+import type { UserRepository } from '@notreclaim/db';
 import {
   computeDesiredSchedule,
   applyDesiredSchedule,
+  horizonEndMs,
   SettingsRequiredError,
+  type BlocksRepo,
+  type ReplanCounts,
   type ScheduleMirror,
   type SchedulingRepositories,
 } from '@notreclaim/core';
@@ -12,27 +15,16 @@ import { ensureAutoScheduledCalendar } from './ensure-calendar.js';
 import { detectDrift } from './detect-drift.js';
 import { toGoogleEventWrite } from './writeback.js';
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
 export interface ReconcileDeps {
   client: GoogleClient;
   tokens: AccessTokenProvider;
   users: Pick<UserRepository, 'findById' | 'update'>;
-  scheduledBlocks: Pick<ScheduledBlockRepository, 'listByUserInRange' | 'create' | 'update' | 'delete'>;
+  scheduledBlocks: BlocksRepo;
   schedulingRepos: SchedulingRepositories;
 }
 
-export interface ReconcileResult {
-  created: number;
-  updated: number;
-  deleted: number;
-  pinned: number;
-  removed: number;
-  /** Google writes made for PINNED blocks (created events + pushed app-side moves). */
-  pinnedSynced: number;
-  /** PINNED blocks whose Google write failed this cycle (skipped, retried next cycle). */
-  pinnedFailed: number;
-}
+/** Same counts as a local replan; `pinned`/`removed` here are detectDrift's pulls from Google. */
+export type ReconcileResult = ReplanCounts;
 
 /** Detect drift, recompute the desired schedule, and apply a keyed diff to Google + DB. */
 export async function reconcile(deps: ReconcileDeps, userId: string, now: number): Promise<ReconcileResult> {
@@ -45,7 +37,7 @@ export async function reconcile(deps: ReconcileDeps, userId: string, now: number
 
   const settings = await deps.schedulingRepos.settings.getByUserId(userId);
   if (!settings) throw new SettingsRequiredError(userId);
-  const horizonEnd = now + settings.horizonDays * MS_PER_DAY;
+  const horizonEnd = horizonEndMs(now, settings.horizonDays);
 
   const { pinned, removed, observed } = await detectDrift(
     { client: deps.client, scheduledBlocks: deps.scheduledBlocks },

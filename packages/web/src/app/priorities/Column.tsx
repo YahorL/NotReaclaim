@@ -22,7 +22,9 @@ export interface ColumnProps {
   onReorderSubtask: (subtaskId: string, sortOrder: number) => void;
 }
 
-export function Column({ columnKey, tasks, now, nextMsFor, isTarget, onComplete, onEdit, onDelete, onToggleSubtask, onReorderSubtask }: ColumnProps) {
+export function Column({
+  columnKey, tasks, now, nextMsFor, isTarget, onComplete, onEdit, onDelete, onToggleSubtask, onReorderSubtask,
+}: ColumnProps) {
   const [collapsed, setCollapsed] = useState(false);
   const isCompleted = columnKey === 'completed';
   const meta = columnMeta(columnKey);
@@ -32,6 +34,8 @@ export function Column({ columnKey, tasks, now, nextMsFor, isTarget, onComplete,
   // The whole column is a drop target so a card can land in its empty area (the old
   // `onDragOver` → `setOver(columnKey, tasks.length)` behaviour). Completed rejects drops.
   const { setNodeRef } = useDroppable({ id: columnDroppableId(columnKey), disabled: isCompleted });
+  const targetOutline = isTarget ? 'outline-dashed outline-2 outline-offset-[3px] outline-indigo' : '';
+  const emptyTone = isTarget ? 'border-dashed border-indigo font-bold text-indigo' : 'border-transparent text-[#aeb2c0]';
 
   return (
     <div
@@ -46,7 +50,7 @@ export function Column({ columnKey, tasks, now, nextMsFor, isTarget, onComplete,
         </button>
       </div>
       {!collapsed && (
-        <div className={`rounded-[13px] ${isTarget ? 'outline-dashed outline-2 outline-offset-[3px] outline-indigo' : ''}`}>
+        <div className={`rounded-[13px] ${targetOutline}`}>
           <SortableContext id={columnKey} items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
             {tasks.length > 0 ? (
               <TasksCard count={tasks.length}>
@@ -67,7 +71,7 @@ export function Column({ columnKey, tasks, now, nextMsFor, isTarget, onComplete,
                 ))}
               </TasksCard>
             ) : (
-              <div className={`rounded-xl border-[1.5px] px-1 py-[22px] text-center text-[14.5px] ${isTarget ? 'border-dashed border-indigo font-bold text-indigo' : 'border-transparent text-[#aeb2c0]'}`}>
+              <div className={`rounded-xl border-[1.5px] px-1 py-[22px] text-center text-[14.5px] ${emptyTone}`}>
                 {isTarget ? 'Drop to move here' : 'Nothing here yet'}
               </div>
             )}

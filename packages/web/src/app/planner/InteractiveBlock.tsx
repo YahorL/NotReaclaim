@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect, useLayoutEffect, type PointerEvent as ReactPointerEvent } from 'react';
-import { BASE, variantClass, type BlockKind } from './EventBlock';
-import { WINDOW_END_MIN, snapMinutes, pxToMinutes, minutesToPx, clampToWindow, shiftDays, clampDayDelta, formatHm, resizeHandleClass } from './weekModel';
+import { BASE, DELETE_BTN_CLASS, accentStyle, variantClass, type BlockKind } from './EventBlock';
+import { WINDOW_END_MIN, SLOT_MIN, snapMinutes, pxToMinutes, minutesToPx, clampToWindow, shiftDays, clampDayDelta, formatHm, resizeHandleClass } from './weekModel';
 import { IDLE, beginPress, pressMove, pressArm, endPress, isArmed, isTap, LONG_PRESS_MS, type PressState } from './longPress';
 import { useEdgeAutoScroll } from './edgeScroll';
+import { MS_PER_MIN, toIso } from '../lib/time';
 
-const MIN_DURATION_MIN = 15;
+const MIN_DURATION_MIN = SLOT_MIN;
 const HELD_TIMEOUT_MS = 1500;
-const iso = (ms: number): string => new Date(ms).toISOString();
 const finite = (n: number): number => (Number.isFinite(n) ? n : 0);
 
 /**
@@ -18,7 +18,6 @@ const finite = (n: number): number => (Number.isFinite(n) ? n : 0);
 const blockTouchScroll = (e: TouchEvent): void => { e.preventDefault(); };
 
 export interface InteractiveBlockProps {
-  id: string;
   dayStartMs: number;
   dayIndex: number;
   startMs: number;
@@ -49,7 +48,6 @@ export interface InteractiveBlockProps {
 type DragMode = 'move' | 'resize';
 
 export function InteractiveBlock(props: InteractiveBlockProps) {
-  // `id` is part of the props for the parent's onCommit binding; not read inside this component.
   const { dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, leftPct = 0, widthPct = 100, startLabel, title, kind, pinned, onCommit, onUnpin, onDelete, onClick, deleteLabel = 'Delete block', dayCount = 7, accent, zone = 'UTC', coarse = false, getScrollContainer } = props;
   // Refs hold the authoritative drag state; mutated directly so pointer handlers always
   // see the latest values regardless of React's batching/commit schedule.
@@ -159,7 +157,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
     setHeldDay(hd);
     setHeldColWidth(hw);
     // Safety timeout: clear held preview after 1.5s (covers failed mutations that
-    // roll back to identical props — the useEffect won't fire in that case)
+    // roll back to identical props — the layout effect won't fire in that case)
     heldTimerRef.current = setTimeout(clearHeld, HELD_TIMEOUT_MS);
   };
 
@@ -289,8 +287,8 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
 
     if (!mode) return;
 
-    const startMin = (startMs - dayStartMs) / 60_000;
-    const endMin = (endMs - dayStartMs) / 60_000;
+    const startMin = (startMs - dayStartMs) / MS_PER_MIN;
+    const endMin = (endMs - dayStartMs) / MS_PER_MIN;
 
     if (mode === 'move') {
       if (deltaMin === 0 && deltaDays === 0) { onClick?.(); return; } // a click, not a drag: no held preview
@@ -300,13 +298,13 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
       const dayStart = shiftDays(dayStartMs, deltaDays, zone);
       // Transfer to held preview before firing mutation
       holdPreview(captureMoveMin, 0, captureDayDelta, captureColWidth);
-      onCommit({ startsAt: iso(dayStart + moved.startMin * 60_000), endsAt: iso(dayStart + moved.endMin * 60_000), pinned: true });
+      onCommit({ startsAt: toIso(dayStart + moved.startMin * MS_PER_MIN), endsAt: toIso(dayStart + moved.endMin * MS_PER_MIN), pinned: true });
     } else {
       const newEndMin = Math.min(WINDOW_END_MIN, Math.max(startMin + MIN_DURATION_MIN, endMin + deltaMin));
       if (newEndMin === endMin) return; // zero-delta no-op: no held preview
       // Transfer to held preview before firing mutation
       holdPreview(0, captureGrowMin, 0, 0);
-      onCommit({ startsAt: iso(startMs), endsAt: iso(dayStartMs + newEndMin * 60_000), pinned: true });
+      onCommit({ startsAt: toIso(startMs), endsAt: toIso(dayStartMs + newEndMin * MS_PER_MIN), pinned: true });
     }
   };
 
@@ -321,14 +319,10 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
   // The drag label shows only during active drag AND when there is a non-zero live delta.
   const showDragLabel = activeDrag && (moveMin !== 0 || growMin !== 0 || dayDelta !== 0);
 
-  const previewStart = startMs + effectiveMoveMin * 60_000;
-  const previewEnd = effectiveGrowMin !== 0 ? endMs + effectiveGrowMin * 60_000 : endMs + effectiveMoveMin * 60_000;
+  const previewStart = startMs + effectiveMoveMin * MS_PER_MIN;
+  const previewEnd = effectiveGrowMin !== 0 ? endMs + effectiveGrowMin * MS_PER_MIN : endMs + effectiveMoveMin * MS_PER_MIN;
 
-  const accentStyles = accent && kind !== 'meeting'
-    ? pinned
-      ? { backgroundColor: accent }
-      : { borderColor: accent, color: accent }
-    : {};
+  const accentStyles = accentStyle(accent, kind, pinned);
 
   const transformX = effectiveDayDelta * effectiveColWidth;
   const transformY = minutesToPx(effectiveMoveMin);
@@ -369,7 +363,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
           title="Delete"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className={`absolute right-0.5 top-0.5 z-10 h-4 w-4 items-center justify-center rounded-full bg-black/25 text-[11px] leading-none text-white hover:bg-black/45 ${coarse ? 'flex' : 'hidden group-hover:flex'}`}
+          className={`${DELETE_BTN_CLASS} ${coarse ? 'flex' : 'hidden group-hover:flex'}`}
         >
           ×
         </button>

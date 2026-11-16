@@ -1,12 +1,5 @@
 import type { ScheduledBlock } from '@notreclaim/db';
 
-const QUARTER_HOUR_MS = 15 * 60 * 1000;
-
-/** Round an epoch-ms instant to the nearest 15 minutes. */
-export function round15(ms: number): number {
-  return Math.round(ms / QUARTER_HOUR_MS) * QUARTER_HOUR_MS;
-}
-
 /**
  * Time spent on a task = sum of its FINISHED blocks' durations (end <= now).
  * Auto mode counts every finished block; manual mode counts only started ones.

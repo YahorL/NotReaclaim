@@ -1,10 +1,8 @@
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { Icons } from './icons';
 import { routeTitle } from './routeTitle';
 import { AccountMenu } from './AccountMenu';
-import { useStartBlockMutation, useStopBlockMutation } from '../../api/queries';
-import { relativeDayTimeLabel } from '../priorities/priorityBucket';
-import { useCurrentOrNext } from './currentOrNext';
+import { useNowNextControls } from './useNowNextControls';
 
 interface TopBarProps {
   onNewTask: () => void;
@@ -15,11 +13,7 @@ interface TopBarProps {
 
 export function TopBar({ onNewTask, now = Date.now, sidebarHidden, onToggleSidebar }: TopBarProps) {
   const { pathname } = useLocation();
-  const navigate = useNavigate();
-  const startBlock = useStartBlockMutation();
-  const stopBlock = useStopBlockMutation();
-  const nowMs = now();
-  const { running, nextBlock } = useCurrentOrNext(nowMs);
+  const { running, nextBlock, nextLabel, start, stop, openPlanner } = useNowNextControls(now);
 
   return (
     <header className="hidden h-[70px] shrink-0 items-center gap-3.5 bg-bg pl-[30px] pr-[26px] md:flex">
@@ -41,7 +35,7 @@ export function TopBar({ onNewTask, now = Date.now, sidebarHidden, onToggleSideb
           <button
             type="button"
             data-testid="current-task"
-            onClick={() => void navigate('/')}
+            onClick={openPlanner}
             className="flex items-center gap-1.5 rounded-[9px] px-3 py-2 text-[14px] font-semibold text-ink/70 hover:bg-line"
           >
             <Icons.clock size={16} />
@@ -50,7 +44,7 @@ export function TopBar({ onNewTask, now = Date.now, sidebarHidden, onToggleSideb
           <button
             type="button"
             data-testid="stop-task"
-            onClick={() => stopBlock.mutate(running.id)}
+            onClick={stop}
             className="rounded-[9px] bg-crit px-3 py-2 text-[13px] font-bold text-white hover:opacity-90"
           >
             Stop
@@ -63,16 +57,16 @@ export function TopBar({ onNewTask, now = Date.now, sidebarHidden, onToggleSideb
           <button
             type="button"
             data-testid="next-task"
-            onClick={() => void navigate('/')}
+            onClick={openPlanner}
             className="flex items-center gap-1.5 rounded-[9px] px-3 py-2 text-[14px] font-semibold text-ink/70 hover:bg-line"
           >
             <Icons.clock size={16} />
-            Next: {nextBlock.title} · {relativeDayTimeLabel(Date.parse(nextBlock.startsAt), nowMs)}
+            {nextLabel}
           </button>
           <button
             type="button"
             data-testid="next-task-start"
-            onClick={() => startBlock.mutate(nextBlock.id)}
+            onClick={start}
             className="rounded-[9px] bg-indigo px-3 py-2 text-[13px] font-bold text-white hover:bg-indigo600"
           >
             Start

@@ -3,7 +3,7 @@ import { replanAfterMutation, pollAndReplan } from '../src/replan.js';
 import { createEventBus } from '../src/events.js';
 import type { ServerEvent } from '../src/events.js';
 
-const COUNTS = { created: 1, updated: 0, deleted: 0, pinned: 0, removed: 0 };
+const COUNTS = { created: 1, updated: 0, deleted: 0, pinned: 0, removed: 0, pinnedSynced: 0, pinnedFailed: 0 };
 const SYNC = { upserted: 2, deleted: 0, fullResync: false };
 const NOW = 1_700_000_000_000;
 

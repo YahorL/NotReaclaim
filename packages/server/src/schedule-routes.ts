@@ -1,9 +1,10 @@
-import type { FastifyInstance } from 'fastify';
-import { computeDesiredSchedule, round15 } from '@notreclaim/core';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { computeDesiredSchedule, round15, QUARTER_HOUR_MS } from '@notreclaim/core';
+import { NotFoundError } from '@notreclaim/db';
 import type { AppDeps, AfterMutation } from './app.js';
+import { bestEffortGoogleWrite } from './google-writeback.js';
+import { resolveRange } from './range.js';
 import { rangeQuerySchema, idParamSchema, updateScheduledBlockSchema, createScheduledBlockSchema } from './schemas.js';
-
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afterMutation: AfterMutation): void {
   const guard = { onRequest: [app.authenticate] };
@@ -23,19 +24,12 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
       }
     }
 
-    const start = query.from ? new Date(query.from) : new Date(now);
-    let end: Date;
-    if (query.to) {
-      end = new Date(query.to);
-    } else {
-      const horizonDays = settings?.horizonDays ?? 14;
-      end = new Date(now + horizonDays * MS_PER_DAY);
-    }
+    const { start, end } = await resolveRange(query, () => now, async () => settings?.horizonDays);
     return deps.repos.scheduledBlocks.listByUserInRange(request.userId, start, end);
   });
 
   app.get('/schedule/preview', guard, async (request) => {
-    return computeDesiredSchedule(deps.schedulingRepos, request.userId, deps.now());
+    return computeDesiredSchedule(deps.repos, request.userId, deps.now());
   });
 
   app.post('/schedule/replan', guard, async (request) => {
@@ -45,10 +39,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
   app.post('/schedule', guard, async (request, reply) => {
     const body = createScheduledBlockSchema.parse(request.body);
     const task = await deps.repos.tasks.findById(request.userId, body.taskId);
-    if (!task) {
-      reply.code(404).send({ code: 'not_found', message: `Task ${body.taskId} not found` });
-      return;
-    }
+    if (!task) throw new NotFoundError(`Task ${body.taskId} not found`);
     const block = await deps.repos.scheduledBlocks.create(request.userId, {
       taskId: task.id, title: task.title, startsAt: new Date(body.startsAt), endsAt: new Date(body.endsAt), pinned: true,
     });
@@ -70,17 +61,21 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
     return block;
   });
 
-  app.post('/schedule/:id/start', guard, async (request, reply) => {
+  /** Start/Stop prelude: 404 for an unknown block; a non-task block gets a 400 and null back. */
+  const loadTaskBlock = async (request: FastifyRequest, reply: FastifyReply, verb: 'started' | 'stopped') => {
     const { id } = idParamSchema.parse(request.params);
     const blockRow = await deps.repos.scheduledBlocks.findById(request.userId, id);
-    if (!blockRow) {
-      reply.code(404).send({ code: 'not_found', message: `ScheduledBlock ${id} not found` });
-      return;
-    }
+    if (!blockRow) throw new NotFoundError(`ScheduledBlock ${id} not found`);
     if (!blockRow.taskId) {
-      reply.code(400).send({ code: 'bad_request', message: 'Only task blocks can be started' });
-      return;
+      reply.code(400).send({ code: 'bad_request', message: `Only task blocks can be ${verb}` });
+      return null;
     }
+    return blockRow;
+  };
+
+  app.post('/schedule/:id/start', guard, async (request, reply) => {
+    const blockRow = await loadTaskBlock(request, reply, 'started');
+    if (!blockRow) return;
     const now = deps.now();
     const snapped = round15(now);
     const data: { pinned: boolean; startedAt: Date; startsAt?: Date } = { pinned: true, startedAt: new Date(now) };
@@ -89,30 +84,22 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
     if (snapped < blockRow.endsAt.getTime()) {
       data.startsAt = new Date(snapped);
     }
-    const block = await deps.repos.scheduledBlocks.update(request.userId, id, data);
+    const block = await deps.repos.scheduledBlocks.update(request.userId, blockRow.id, data);
     afterMutation(request.userId);
     return block;
   });
 
   app.post('/schedule/:id/stop', guard, async (request, reply) => {
-    const { id } = idParamSchema.parse(request.params);
-    const blockRow = await deps.repos.scheduledBlocks.findById(request.userId, id);
-    if (!blockRow) {
-      reply.code(404).send({ code: 'not_found', message: `ScheduledBlock ${id} not found` });
-      return;
-    }
-    if (!blockRow.taskId) {
-      reply.code(400).send({ code: 'bad_request', message: 'Only task blocks can be stopped' });
-      return;
-    }
+    const blockRow = await loadTaskBlock(request, reply, 'stopped');
+    if (!blockRow) return;
     const now = deps.now();
     const startMs = blockRow.startsAt.getTime();
     const endMs = blockRow.endsAt.getTime();
-    const minEnd = startMs + 15 * 60 * 1000;
+    const minEnd = startMs + QUARTER_HOUR_MS;
     // End the running block now: snap end to the nearest 15 min, never below start+15 min
     // (no zero-length block) and never past the original end (Stop only shortens).
     const newEnd = Math.min(endMs, Math.max(round15(now), minEnd));
-    const block = await deps.repos.scheduledBlocks.update(request.userId, id, { endsAt: new Date(newEnd), pinned: true });
+    const block = await deps.repos.scheduledBlocks.update(request.userId, blockRow.id, { endsAt: new Date(newEnd), pinned: true });
     afterMutation(request.userId);
     return block;
   });
@@ -124,18 +111,19 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
     // does mean nothing else will ever sweep the mirrored event, so remove it here —
     // best-effort, exactly like the calendar routes: a Google failure must not block the
     // local delete, and a row with no Google ids never even looks up a token.
+    // On a Google failure the row still goes, so the Google copy may be orphaned on the
+    // Auto-scheduled calendar: the helper logs it.
     const blockRow = await deps.repos.scheduledBlocks.findById(request.userId, id);
-    if (blockRow?.googleEventId && blockRow.googleCalendarId) {
-      try {
-        const accessToken = await deps.google.tokens.getAccessToken(request.userId, deps.now());
-        await deps.google.client.deleteEvent(accessToken, blockRow.googleCalendarId, blockRow.googleEventId);
-      } catch (err) {
-        // Not connected or a Google failure — the row still goes, so the Google copy may
-        // be orphaned on the Auto-scheduled calendar: log it.
-        app.log.warn({ err, blockId: id }, 'google write-back failed: block event not removed remotely');
-      }
+    const googleEventId = blockRow?.googleEventId;
+    const googleCalendarId = blockRow?.googleCalendarId;
+    if (googleEventId && googleCalendarId) {
+      await bestEffortGoogleWrite(
+        app, deps, request.userId,
+        { fields: { blockId: id }, message: 'google write-back failed: block event not removed remotely' },
+        (accessToken) => deps.google.client.deleteEvent(accessToken, googleCalendarId, googleEventId),
+      );
     }
     await deps.repos.scheduledBlocks.delete(request.userId, id);
-    reply.code(204);
+    return reply.code(204).send();
   });
 }

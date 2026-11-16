@@ -3,7 +3,7 @@ import { runPollCycle } from '../src/scheduler.js';
 
 describe('runPollCycle', () => {
   it('calls pollAndReplan once per connected id, in order', async () => {
-    const pollAndReplan = vi.fn(async () => {});
+    const pollAndReplan = vi.fn(async (_userId: string) => {});
 
     await runPollCycle({ listConnectedIds: async () => ['u1', 'u2'], pollAndReplan });
 

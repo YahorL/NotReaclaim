@@ -5,13 +5,34 @@ import { hashPassword, verifyPassword } from './auth/password.js';
 import { normalizeEmail } from './auth/email.js';
 import { ensureUserDefaults } from './auth/user-defaults.js';
 import { signSession } from './auth/token.js';
+import { isGoogleConnected } from './auth/google-connection.js';
+
+/** 403 denials shared by password registration and the Google callback. */
+const DENIAL_MESSAGES = {
+  email_unverified: 'Your Google email is not verified',
+  invalid_invite: 'A valid invite code is required',
+  registration_closed: 'Registration is closed',
+} as const;
+type Denial = keyof typeof DENIAL_MESSAGES;
 
 export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
+  const guard = { onRequest: [app.authenticate] };
+
+  /**
+   * The invite gate for a brand-new account: in invite mode the code must be consumed for this
+   * email; other modes need none. Callers check `closed` (and duplicates) first, so a refused
+   * signup never burns a code.
+   */
+  const inviteAccepted = async (inviteCode: string | undefined, email: string): Promise<boolean> => {
+    if (deps.config.registrationMode !== 'invite') return true;
+    return inviteCode ? deps.repos.invites.tryConsume(inviteCode, email, new Date(deps.now())) : false;
+  };
+
   // State is a short-lived signed JWT so we can trust its purpose/userId/inviteCode on return.
   const signState = (data: Record<string, unknown>) => app.jwt.sign({ st: data }, { expiresIn: '10m' });
   const readState = (raw?: string): { purpose?: string; userId?: string; inviteCode?: string } => {
     if (!raw) return {};
-    try { return (app.jwt.verify<{ st: Record<string, unknown> }>(raw).st ?? {}) as never; }
+    try { return app.jwt.verify<{ st?: { purpose?: string; userId?: string; inviteCode?: string } }>(raw).st ?? {}; }
     catch { return {}; }
   };
 
@@ -21,15 +42,15 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
     return { url: deps.google.client.getConsentUrl(deps.config.googleRedirectUri, state) };
   });
 
-  app.get('/auth/google/link', { onRequest: [app.authenticate] }, async (request) => {
+  app.get('/auth/google/link', guard, async (request) => {
     const state = signState({ purpose: 'link', userId: request.userId });
     return { url: deps.google.client.getConsentUrl(deps.config.googleRedirectUri, state) };
   });
 
-  app.get('/auth/google/status', { onRequest: [app.authenticate] }, async (request) => {
+  app.get('/auth/google/status', guard, async (request) => {
     const user = await deps.repos.users.findById(request.userId);
     return {
-      connected: user?.googleRefreshToken != null,
+      connected: isGoogleConnected(user),
       brokenAt: user?.googleAuthBrokenAt?.toISOString() ?? null,
     };
   });
@@ -63,14 +84,11 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
       }
       return reply.send({ token, userId });
     };
-    const deny = (codeStr: string) => {
-      const message = codeStr === 'email_unverified' ? 'Your Google email is not verified'
-        : codeStr === 'invalid_invite' ? 'A valid invite code is required'
-        : 'Registration is closed';
+    const deny = (code: Denial) => {
       if (deps.config.webClientUrl) {
-        return reply.redirect(302, `${deps.config.webClientUrl}/auth/callback#error=${encodeURIComponent(codeStr)}`);
+        return reply.redirect(302, `${deps.config.webClientUrl}/auth/callback#error=${encodeURIComponent(code)}`);
       }
-      return reply.code(403).send({ code: codeStr, message });
+      return reply.code(403).send({ code, message: DENIAL_MESSAGES[code] });
     };
 
     // Authenticated linking flow.
@@ -87,14 +105,8 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
     const byEmail = await deps.repos.users.findByEmail(email);
     if (byEmail) { await link(byEmail.id); return finish(byEmail.id); }
     // Branch 3: new email → gated registration.
-    const mode = deps.config.registrationMode;
-    if (mode === 'closed') return deny('registration_closed');
-    if (mode === 'invite') {
-      const ok = state.inviteCode
-        ? await deps.repos.invites.tryConsume(state.inviteCode, email, new Date(deps.now()))
-        : false;
-      if (!ok) return deny('invalid_invite');
-    }
+    if (deps.config.registrationMode === 'closed') return deny('registration_closed');
+    if (!(await inviteAccepted(state.inviteCode, email))) return deny('invalid_invite');
     const created = await deps.repos.users.create({ email });
     await link(created.id);
     await ensureUserDefaults(deps.repos.settings, created.id);
@@ -104,21 +116,14 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
   app.post('/auth/register', async (request, reply) => {
     const body = registerSchema.parse(request.body);
     const email = normalizeEmail(body.email);
-    const mode = deps.config.registrationMode;
+    const deny = (code: Denial) => reply.code(403).send({ code, message: DENIAL_MESSAGES[code] });
 
-    if (mode === 'closed') {
-      return reply.code(403).send({ code: 'registration_closed', message: 'Registration is closed' });
-    }
+    if (deps.config.registrationMode === 'closed') return deny('registration_closed');
     // Check duplicate before consuming an invite, so a dup doesn't burn a code.
     if (await deps.repos.users.findByEmail(email)) {
       return reply.code(409).send({ code: 'email_taken', message: 'That email is already registered' });
     }
-    if (mode === 'invite') {
-      const ok = body.inviteCode
-        ? await deps.repos.invites.tryConsume(body.inviteCode, email, new Date(deps.now()))
-        : false;
-      if (!ok) return reply.code(403).send({ code: 'invalid_invite', message: 'A valid invite code is required' });
-    }
+    if (!(await inviteAccepted(body.inviteCode, email))) return deny('invalid_invite');
 
     const passwordHash = await hashPassword(body.password);
     const user = await deps.repos.users.create({ email, passwordHash });
@@ -137,8 +142,6 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
     if (!(await verifyPassword(user.passwordHash, body.password))) return invalid();
     return { token: signSession(app, user.id), userId: user.id };
   });
-
-  const guard = { onRequest: [app.authenticate] };
 
   app.post('/auth/set-password', guard, async (request, reply) => {
     const { password } = setPasswordSchema.parse(request.body);

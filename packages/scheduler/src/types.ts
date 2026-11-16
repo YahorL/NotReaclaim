@@ -47,8 +47,9 @@ export interface Habit {
   periods: Interval[];
   /**
    * Optional concrete preferred placement windows (e.g. "mornings").
-   * The engine prefers these; if an occurrence cannot fit, it falls back to
-   * any free time within the period.
+   * The engine prefers these; if an occurrence cannot fit, it falls back in tiers:
+   * first the free time inside working hours (when the caller supplies them), then any free time in the whole
+   * eligible day (within the period).
    */
   preferredWindows?: Interval[];
   /**
@@ -133,7 +134,10 @@ export interface ScheduleInput {
   pinnedBlocks: ScheduledBlock[];
   tasks: FlexibleTask[];
   habits: Habit[];
-  /** Minimum free gap (ms) reserved after each placed task/habit block. Default 0. */
+  /**
+   * Minimum free gap (ms) reserved on BOTH sides of every placed and pinned task/habit
+   * block. Fixed events are not padded here (meeting padding happens upstream). Default 0.
+   */
   blockBufferMs?: number;
 }
 

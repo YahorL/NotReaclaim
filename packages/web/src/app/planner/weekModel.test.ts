@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { ScheduledBlock } from '../../api/types';
 import {
-  startOfWeek, dayColumns, addWeeks, classifyBlock, placeInDay, nowLine, humanizeMs, isToday,
+  startOfWeek, dayColumns, addWeeks, classifyBlock, placeInDay, nowLine, isToday,
   WINDOW_START_MIN, WINDOW_END_MIN,
   HOUR_ROW_PX, GRID_COLUMN_PX, snapMinutes, pxToMinutes, clampToWindow,
   minutesToPx, shiftDays, clampDayDelta, snapClickToSlot, localMidnight,
@@ -94,14 +94,6 @@ describe('isToday', () => {
     expect(isToday(Date.parse('2026-01-07T00:00:00.000Z'), day)).toBe(true);   // inclusive start
     expect(isToday(Date.parse('2026-01-08T00:00:00.000Z'), day)).toBe(false);  // exclusive end
     expect(isToday(Date.parse('2026-01-06T23:59:59.000Z'), day)).toBe(false);
-  });
-});
-
-describe('humanizeMs', () => {
-  it('formats durations', () => {
-    expect(humanizeMs(90 * 60000)).toBe('1h 30m');
-    expect(humanizeMs(30 * 60000)).toBe('30m');
-    expect(humanizeMs(2 * 3600000)).toBe('2h');
   });
 });
 

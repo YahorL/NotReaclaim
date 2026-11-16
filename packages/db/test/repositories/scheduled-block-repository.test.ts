@@ -39,7 +39,7 @@ describe('ScheduledBlockRepository', () => {
       new Date('2026-01-02T00:00:00.000Z'),
     );
     expect(inRange).toHaveLength(1);
-    const pinned = await repo.setPinned(user.id, block.id, true);
+    const pinned = await repo.update(user.id, block.id, { pinned: true });
     expect(pinned.pinned).toBe(true);
   });
 
@@ -63,12 +63,12 @@ describe('ScheduledBlockRepository', () => {
     expect(remaining).toHaveLength(0);
   });
 
-  it('setPinned/delete throw NotFoundError across users', async () => {
+  it('update/delete throw NotFoundError across users', async () => {
     const a = await users.create({ email: 'sba@example.com' });
     const b = await users.create({ email: 'sbb@example.com' });
     const task = await tasks.create(a.id, taskInput());
     const block = await repo.create(a.id, blockInput(task.id));
-    await expect(repo.setPinned(b.id, block.id, true)).rejects.toBeInstanceOf(NotFoundError);
+    await expect(repo.update(b.id, block.id, { pinned: true })).rejects.toBeInstanceOf(NotFoundError);
     await expect(repo.delete(b.id, block.id)).rejects.toBeInstanceOf(NotFoundError);
     await repo.delete(a.id, block.id);
   });

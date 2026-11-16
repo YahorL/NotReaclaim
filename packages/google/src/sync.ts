@@ -7,7 +7,11 @@ import type { GoogleClient, GoogleEvent, ListEventsArgs } from './client.js';
 import { SyncTokenExpiredError } from './errors.js';
 import { collectPages } from './pagination.js';
 
-const PRIMARY = 'primary';
+/**
+ * Google's alias for the user's primary calendar. App events are written back under this id and
+ * mirrored rows are keyed by it, so every site must use the same value or events duplicate.
+ */
+export const PRIMARY_CALENDAR_ID = 'primary';
 
 /** The token surface the sync engine needs. */
 export interface AccessTokenProvider {
@@ -35,15 +39,15 @@ function startOfTodayUtcIso(now: number): string {
 /** Sync the user's primary calendar into CalendarEvent rows. */
 export async function syncPrimaryCalendar(deps: SyncDeps, userId: string, now: number): Promise<SyncResult> {
   const accessToken = await deps.tokens.getAccessToken(userId, now);
-  const state = await deps.syncState.getByCalendar(userId, PRIMARY);
+  const state = await deps.syncState.getByCalendar(userId, PRIMARY_CALENDAR_ID);
 
-  const fullArgs: ListEventsArgs = { accessToken, calendarId: PRIMARY, timeMin: startOfTodayUtcIso(now) };
+  const fullArgs: ListEventsArgs = { accessToken, calendarId: PRIMARY_CALENDAR_ID, timeMin: startOfTodayUtcIso(now) };
   let fullResync = false;
   let collected: { events: GoogleEvent[]; nextSyncToken?: string };
 
   try {
     if (state?.syncToken) {
-      collected = await collectPages(deps.client, { accessToken, calendarId: PRIMARY, syncToken: state.syncToken });
+      collected = await collectPages(deps.client, { accessToken, calendarId: PRIMARY_CALENDAR_ID, syncToken: state.syncToken });
     } else {
       fullResync = true;
       collected = await collectPages(deps.client, fullArgs);
@@ -66,7 +70,7 @@ export async function syncPrimaryCalendar(deps: SyncDeps, userId: string, now: n
     }
     if (!ev.start?.dateTime || !ev.end?.dateTime) continue; // skip all-day / malformed
     toUpsert.push({
-      googleCalendarId: PRIMARY,
+      googleCalendarId: PRIMARY_CALENDAR_ID,
       googleEventId: ev.id,
       title: ev.summary ?? '(no title)',
       startsAt: new Date(ev.start.dateTime),
@@ -78,12 +82,12 @@ export async function syncPrimaryCalendar(deps: SyncDeps, userId: string, now: n
     // Only the mirrored rows: app-created events written back to this calendar are
     // owned locally. The upsert below matches them on (calendar, event) ids and takes
     // the UPDATE branch, which never touches `source` — so they stay editable 'app' rows.
-    await deps.events.deleteMirroredByCalendar(userId, PRIMARY);
+    await deps.events.deleteMirroredByCalendar(userId, PRIMARY_CALENDAR_ID);
   }
   if (toUpsert.length > 0) await deps.events.upsertMany(userId, toUpsert);
-  if (toDelete.length > 0) await deps.events.deleteByGoogleEventIds(userId, PRIMARY, toDelete);
+  if (toDelete.length > 0) await deps.events.deleteByGoogleEventIds(userId, PRIMARY_CALENDAR_ID, toDelete);
 
-  await deps.syncState.upsert(userId, PRIMARY, {
+  await deps.syncState.upsert(userId, PRIMARY_CALENDAR_ID, {
     syncToken: collected.nextSyncToken ?? null,
     lastSyncedAt: new Date(now),
   });

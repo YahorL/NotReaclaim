@@ -45,7 +45,7 @@ export function fakeApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     changeEmail: notImplemented('changeEmail'),
     getLinkGoogleUrl: notImplemented('getLinkGoogleUrl'),
     getGoogleStatus: notImplemented('getGoogleStatus'),
-  } as unknown as ApiClient;
+  };
   return { ...base, ...overrides };
 }
 

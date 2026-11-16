@@ -1,24 +1,7 @@
-import type { WorkingHour } from '../../api/types';
-import type { DayState } from './settingsForm';
-import { minutesToHHMM, hhmmToMinutes } from '../lib/duration';
+import { hhmmToMinutes } from '../lib/duration';
+import type { DayState } from './weeklyHours';
 
-const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
-
-export function windowsToDays(windows: WorkingHour[] | null): DayState[] {
-  return WEEKDAYS.map((weekday) => {
-    const wh = (windows ?? []).find((w) => w.weekday === weekday);
-    return wh
-      ? { weekday, enabled: true, start: minutesToHHMM(wh.startMinute), end: minutesToHHMM(wh.endMinute) }
-      : { weekday, enabled: false, start: '09:00', end: '17:00' };
-  });
-}
-
-export function daysToWindows(days: DayState[]): WorkingHour[] {
-  return days
-    .filter((d) => d.enabled)
-    .sort((a, b) => a.weekday - b.weekday)
-    .map((d) => ({ weekday: d.weekday, startMinute: hhmmToMinutes(d.start), endMinute: hhmmToMinutes(d.end) }));
-}
+export { windowsToDays, daysToWindows } from './weeklyHours';
 
 export function validateCategoryForm(name: string, days: DayState[]): { ok: boolean; error?: string } {
   if (!name.trim()) return { ok: false, error: 'Name is required' };

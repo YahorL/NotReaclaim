@@ -23,12 +23,11 @@ export default {
         med: '#f5b014',
         low: '#2fa45f',
         event: '#4285f4',
-        // Kind palettes — forward-defined for the Milestone 2 Planner re-skin.
+        // Kind palettes — Stats charts and planner tiles.
         kind: {
-          focusBg: '#eaf2ff', focusBar: '#5b62e3', focusText: '#2f3aa8',
-          meetingBg: '#fdeef0', meetingBar: '#e5484d', meetingText: '#a3262b',
-          habitBg: '#eafaf1', habitBar: '#2fa45f', habitText: '#1c7a43',
-          taskBg: '#fff5e9', taskBar: '#f2700f', taskText: '#a8500a',
+          meetingBar: '#e5484d',
+          habitBar: '#2fa45f', habitText: '#1c7a43',
+          taskBar: '#f2700f', taskText: '#a8500a',
         },
       },
       fontFamily: { sans: ['Mulish', 'system-ui', 'sans-serif'] },

@@ -16,7 +16,7 @@ export interface ScheduleItemResult {
 
 /** Split a task into chunks and place them before its due date. */
 export function scheduleTask(free: Interval[], task: FlexibleTask, gapMs = 0): ScheduleItemResult {
-  const chunkSizes = splitDuration(task.durationMs, task.minChunkMs, task.maxChunkMs);
+  const chunkSizes = splitDuration(task.durationMs, task.maxChunkMs);
   const result = placeItem(free, chunkSizes, task.dueBy, task.allowedWindows, gapMs);
 
   const blocks: ScheduledBlock[] = result.placements.map((p, i) => ({
@@ -182,6 +182,25 @@ export function scheduleHabit(
       ? mergeIntervals(habit.preferredWindows)
       : undefined;
 
+  // The days this habit may still use within one period. Called afresh at each use
+  // (never hoisted): consumed days shrink the budget as occurrences are placed.
+  const boundFor = (periodWindow: Interval[]): Interval[] =>
+    budget.allowed ? intersectIntervals(budget.allowed, periodWindow) : periodWindow;
+
+  // Record one occurrence: consume its day first, so the id keys on that day.
+  const emit = (start: number, end: number): void => {
+    const day = consumeWindowContaining(budget, start);
+    blocks.push({
+      id: occurrenceId(habit.id, day, index),
+      sourceType: 'habit',
+      sourceId: habit.id,
+      title: habit.title,
+      start,
+      end,
+    });
+    index++;
+  };
+
   // Occurrences settled outside the engine (user-pinned, or already begun) are not
   // emitted here, but their days are off-limits so an auto occurrence cannot double
   // up on them.
@@ -207,10 +226,7 @@ export function scheduleHabit(
       // Preference beats stickiness: a slot outside it is re-placed below.
       if (!insidePreferred(preferredBounds, slot)) continue;
 
-      const bound = budget.allowed
-        ? intersectIntervals(budget.allowed, periodWindow)
-        : periodWindow;
-      const room = intersectIntervals(remainingFree, bound);
+      const room = intersectIntervals(remainingFree, boundFor(periodWindow));
       const fits = room.some((iv) => iv.start <= slot.start && iv.end >= slot.end);
       if (!fits) continue;
 
@@ -219,24 +235,13 @@ export function scheduleHabit(
       remainingFree = subtractIntervals(remainingFree, [
         { start: slot.start - gapMs, end: slot.end + gapMs },
       ]);
-      const day = consumeWindowContaining(budget, slot.start);
-      blocks.push({
-        id: occurrenceId(habit.id, day, index),
-        sourceType: 'habit',
-        sourceId: habit.id,
-        title: habit.title,
-        start: slot.start,
-        end: slot.end,
-      });
-      index++;
+      emit(slot.start, slot.end);
       placed++;
     }
 
     for (let k = placed; k < target; k++) {
       // Recomputed per occurrence: consumed days shrink the budget as we go.
-      const bound = budget.allowed
-        ? intersectIntervals(budget.allowed, periodWindow)
-        : periodWindow;
+      const bound = boundFor(periodWindow);
       const preferred = budget.preferred
         ? intersectIntervals(budget.preferred, bound)
         : undefined;
@@ -253,16 +258,7 @@ export function scheduleHabit(
       const p = res.placements[0]!;
       // Whichever tier placed it, `placeItem` already took `[start − gap, end + gap]`.
       remainingFree = res.free;
-      const day = consumeWindowContaining(budget, p.start);
-      blocks.push({
-        id: occurrenceId(habit.id, day, index),
-        sourceType: 'habit',
-        sourceId: habit.id,
-        title: habit.title,
-        start: p.start,
-        end: p.end,
-      });
-      index++;
+      emit(p.start, p.end);
     }
   }
 

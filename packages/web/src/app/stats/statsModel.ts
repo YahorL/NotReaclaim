@@ -59,6 +59,13 @@ export function taskCompletion(tasks: Task[]): { done: number; total: number; pc
 }
 
 export type DonutKind = 'task' | 'meeting' | 'habit';
+
+/** Kind → chart swatch background. Literal class strings so Tailwind can see them. */
+export const KIND_BAR_BG: Record<DonutKind, string> = {
+  task: 'bg-kind-taskBar',
+  meeting: 'bg-kind-meetingBar',
+  habit: 'bg-kind-habitBar',
+};
 export interface DonutSegment { kind: DonutKind; ms: number; fromPct: number; toPct: number }
 
 export function donutSegments(s: { taskMs: number; meetingMs: number; habitMs: number }): DonutSegment[] {

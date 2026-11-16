@@ -10,7 +10,6 @@ import { mergeIntervals, intersectIntervals } from '@notreclaim/scheduler';
 import type {
   SettingsRepository,
   CalendarEventRepository,
-  TaskRepository,
   HabitRepository,
   ScheduledBlockRepository,
   CategoryRepository,
@@ -18,7 +17,7 @@ import type {
   TaskStatus,
 } from '@notreclaim/db';
 import { toFixedEvent, toFlexibleTask, toScheduledBlock } from '@notreclaim/db/mappers';
-import { expandWorkingWindows, type WorkingHourEntry } from './time-windows.js';
+import { expandWorkingWindows, horizonEndMs, type WorkingHourEntry } from './time-windows.js';
 import { expandHabit } from './habit-expansion.js';
 import { SettingsRequiredError } from './errors.js';
 import { computeSpentMs } from './spent.js';
@@ -27,13 +26,14 @@ import { computeSpentMs } from './spent.js';
 export interface SchedulingRepositories {
   settings: Pick<SettingsRepository, 'getByUserId'>;
   calendarEvents: Pick<CalendarEventRepository, 'listByUserInRange'>;
-  tasks: { listByUser(userId: string, opts?: { status?: TaskStatus }): Promise<Task[]> };
+  // Not Pick<TaskRepository, 'listByUser'>: the real method returns TaskWithSubtasks[], and
+  // scheduling needs only the Task columns — so fakes can supply plain Task rows.
+  tasks: { listByUser(userId: string): Promise<Task[]> };
   habits: Pick<HabitRepository, 'listByUser'>;
   scheduledBlocks: Pick<ScheduledBlockRepository, 'listByUserInRange'>;
   categories: Pick<CategoryRepository, 'listByUser'>;
 }
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const SCHEDULABLE_TASK_STATUSES: TaskStatus[] = ['pending', 'scheduled'];
 
 /**
@@ -55,7 +55,7 @@ export async function assembleScheduleInput(
 
   const horizonDays = settings.horizonDays;
   const horizonStart = new Date(now);
-  const horizonEnd = new Date(now + horizonDays * MS_PER_DAY);
+  const horizonEnd = new Date(horizonEndMs(now, horizonDays));
 
   const workingWindows = expandWorkingWindows(
     settings.workingHours as unknown as WorkingHourEntry[],

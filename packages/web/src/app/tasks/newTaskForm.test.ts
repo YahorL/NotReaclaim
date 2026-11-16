@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { defaultNewTaskForm, validateNewTaskForm, toCreateTaskInput } from './newTaskForm';
+import { defaultNewTaskForm, validateNewTaskForm, toCreateTaskInput } from './taskForm';
 
 const NOW = Date.parse('2026-01-05T00:00:00.000Z');
 

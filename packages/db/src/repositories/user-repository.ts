@@ -1,5 +1,6 @@
 import type { PrismaClient, User } from '@prisma/client';
-import { NotFoundError, translatePrismaError } from '../errors.js';
+import { translatePrismaError } from '../errors.js';
+import { updateOwned } from './owned.js';
 
 export interface CreateUserInput {
   email: string;
@@ -8,15 +9,11 @@ export interface CreateUserInput {
   isAdmin?: boolean;
 }
 
-export interface UpdateUserInput {
-  email?: string;
-  googleId?: string | null;
+export type UpdateUserInput = Partial<CreateUserInput> & {
   googleRefreshToken?: string | null;
   googleAuthBrokenAt?: Date | null;
   autoScheduledCalendarId?: string | null;
-  passwordHash?: string | null;
-  isAdmin?: boolean;
-}
+};
 
 export function createUserRepository(prisma: PrismaClient) {
   return {
@@ -63,17 +60,12 @@ export function createUserRepository(prisma: PrismaClient) {
       return result.count === 1;
     },
 
-    async update(id: string, data: UpdateUserInput): Promise<User> {
-      try {
-        const result = await prisma.user.updateMany({ where: { id }, data });
-        if (result.count === 0) {
-          throw new NotFoundError(`User ${id} not found`);
-        }
-        return await prisma.user.findUniqueOrThrow({ where: { id } });
-      } catch (error) {
-        if (error instanceof NotFoundError) throw error;
-        translatePrismaError(error);
-      }
+    update(id: string, data: UpdateUserInput): Promise<User> {
+      return updateOwned(
+        `User ${id} not found`,
+        () => prisma.user.updateMany({ where: { id }, data }),
+        () => prisma.user.findUniqueOrThrow({ where: { id } }),
+      );
     },
   };
 }

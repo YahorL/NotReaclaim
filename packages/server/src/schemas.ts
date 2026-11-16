@@ -2,6 +2,15 @@ import { z } from 'zod';
 
 export const idParamSchema = z.object({ id: z.string().min(1) });
 
+const taskStatusSchema = z.enum(['pending', 'scheduled', 'completed', 'archived', 'backlog']);
+const hexColorSchema = z.string().regex(/^#[0-9a-f]{6}$/i).nullable().optional();
+
+// Shared by the range refines below. Only the comparison and message are shared: the create
+// schemas compare unconditionally (zod runs a refine on a dirty object, so e.g. `startsAt: ''`
+// also reports the range issue there), while the block update compares only when both are set.
+const startsBeforeEnds = (startsAt: string, endsAt: string) => Date.parse(startsAt) < Date.parse(endsAt);
+const START_BEFORE_END = { message: 'startsAt must be before endsAt' };
+
 export const authCallbackQuerySchema = z.object({ code: z.string().min(1), state: z.string().optional() });
 export const consentQuerySchema = z.object({ invite: z.string().min(1).optional() });
 
@@ -17,11 +26,11 @@ export const createTaskSchema = z.object({
   sortOrder: z.number().optional(),
 });
 export const updateTaskSchema = createTaskSchema.partial().extend({
-  status: z.enum(['pending', 'scheduled', 'completed', 'archived', 'backlog']).optional(),
+  status: taskStatusSchema.optional(),
   timeLoggedMs: z.number().int().nonnegative().optional(),
 });
 export const listTasksQuerySchema = z.object({
-  status: z.enum(['pending', 'scheduled', 'completed', 'archived', 'backlog']).optional(),
+  status: taskStatusSchema.optional(),
 });
 
 export const createHabitSchema = z.object({
@@ -66,13 +75,13 @@ export const workingHourEntrySchema = z.object({
 export const createCategorySchema = z.object({
   name: z.string().min(1),
   windows: z.array(workingHourEntrySchema).min(1),
-  color: z.string().regex(/^#[0-9a-f]{6}$/i).nullable().optional(),
+  color: hexColorSchema,
 });
 
 export const updateCategorySchema = z.object({
   name: z.string().min(1).optional(),
   windows: z.array(workingHourEntrySchema).min(1).nullable().optional(),
-  color: z.string().regex(/^#[0-9a-f]{6}$/i).nullable().optional(),
+  color: hexColorSchema,
 }).refine(
   (b) => b.name !== undefined || b.windows !== undefined || b.color !== undefined,
   { message: 'name, windows, or color is required' },
@@ -104,7 +113,7 @@ export const createCalendarEventSchema = z
     // 'blocked' = local busy time (relax/personal): busy in the engine, never sent to Google.
     kind: z.enum(['event', 'blocked']).optional(),
   })
-  .refine((b) => Date.parse(b.startsAt) < Date.parse(b.endsAt), { message: 'startsAt must be before endsAt' });
+  .refine((b) => startsBeforeEnds(b.startsAt, b.endsAt), START_BEFORE_END);
 
 export const updateCalendarEventSchema = z
   .object({
@@ -118,7 +127,7 @@ export const updateCalendarEventSchema = z
 
 export const createScheduledBlockSchema = z
   .object({ taskId: z.string().min(1), startsAt: z.string().datetime(), endsAt: z.string().datetime() })
-  .refine((b) => Date.parse(b.startsAt) < Date.parse(b.endsAt), { message: 'startsAt must be before endsAt' });
+  .refine((b) => startsBeforeEnds(b.startsAt, b.endsAt), START_BEFORE_END);
 
 export const updateScheduledBlockSchema = z
   .object({
@@ -126,9 +135,7 @@ export const updateScheduledBlockSchema = z
     endsAt: z.string().datetime().optional(),
     pinned: z.boolean().optional(),
   })
-  .refine((b) => !(b.startsAt && b.endsAt) || Date.parse(b.startsAt) < Date.parse(b.endsAt), {
-    message: 'startsAt must be before endsAt',
-  });
+  .refine((b) => !(b.startsAt && b.endsAt) || startsBeforeEnds(b.startsAt, b.endsAt), START_BEFORE_END);
 
 export const registerSchema = z.object({
   email: z.string().email(),

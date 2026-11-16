@@ -3,7 +3,6 @@ import { tokenStore, type StoredAuth } from './tokenStore';
 
 interface AuthValue {
   token: string | null;
-  userId: string | null;
   setAuth: (auth: StoredAuth) => void;
   signOut: () => void;
 }
@@ -24,7 +23,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthCtx.Provider value={{ token: auth?.token ?? null, userId: auth?.userId ?? null, setAuth, signOut }}>
+    <AuthCtx.Provider value={{ token: auth?.token ?? null, setAuth, signOut }}>
       {children}
     </AuthCtx.Provider>
   );

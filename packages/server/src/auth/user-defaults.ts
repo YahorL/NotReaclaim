@@ -1,4 +1,4 @@
-import type { SettingsRepository, Prisma } from '@notreclaim/db';
+import type { SettingsRepository } from '@notreclaim/db';
 
 /** Mon–Fri 09:00–17:00 — matches the dev seed defaults. */
 const DEFAULT_WORKING_HOURS = [1, 2, 3, 4, 5].map((weekday) => ({
@@ -15,7 +15,7 @@ export async function ensureUserDefaults(
   if (existing) return;
   await settings.upsert(userId, {
     timezone,
-    workingHours: DEFAULT_WORKING_HOURS as unknown as Prisma.InputJsonValue,
+    workingHours: DEFAULT_WORKING_HOURS,
     horizonDays: 14,
     defaultMinChunkMs: 1_800_000,
     defaultMaxChunkMs: 7_200_000,

@@ -3,9 +3,9 @@ import { ApiError } from '../../api/client';
 import { useCreateTaskMutation, useCreateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useCategoriesQuery } from '../../api/queries';
 import { DurationStepper } from '../components/DurationStepper';
 import { isoToLocalInput, localInputToIso } from '../lib/duration';
-import { WINDOW_END_MIN, MS_PER_DAY, localMidnight, formatHm } from './weekModel';
-
-const iso = (ms: number): string => new Date(ms).toISOString();
+import { WINDOW_END_MIN, SLOT_MIN, localMidnight, formatHm } from './weekModel';
+import { MS_PER_MIN, MS_PER_DAY, toIso } from '../lib/time';
+import { isActiveTask } from '../priorities/priorityBucket';
 
 export interface CreatePopoverProps {
   dayStartMs: number;
@@ -31,10 +31,10 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
   const [mode, setMode] = useState<Mode>('event');
   const [title, setTitle] = useState('');
   const [taskId, setTaskId] = useState('');
-  const maxDurationMs = (WINDOW_END_MIN - startMin) * 60_000;
-  const [durationMs, setDurationMs] = useState(Math.min(30 * 60_000, maxDurationMs));
-  const defaultDueMs = Math.max(dayStartMs, localMidnight(now()) + 7 * MS_PER_DAY) + (23 * 60 + 59) * 60_000;
-  const defaultDueLocal = isoToLocalInput(iso(defaultDueMs));
+  const maxDurationMs = (WINDOW_END_MIN - startMin) * MS_PER_MIN;
+  const [durationMs, setDurationMs] = useState(Math.min(30 * MS_PER_MIN, maxDurationMs));
+  const defaultDueMs = Math.max(dayStartMs, localMidnight(now()) + 7 * MS_PER_DAY) + (23 * 60 + 59) * MS_PER_MIN;
+  const defaultDueLocal = isoToLocalInput(toIso(defaultDueMs));
   const [dueLocal, setDueLocal] = useState(defaultDueLocal);
   const [afterLocal, setAfterLocal] = useState('');
   const [categoryId, setCategoryId] = useState<string | null>(null);
@@ -45,7 +45,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
   const tasksQ = useTasksQuery();
   const categoriesQ = useCategoriesQuery();
   const categories = categoriesQ.data ?? [];
-  const activeTasks = (tasksQ.data ?? []).filter((t) => t.status === 'pending' || t.status === 'scheduled');
+  const activeTasks = (tasksQ.data ?? []).filter(isActiveTask);
   const existingChosen = mode === 'task' && taskId !== '';
   const showNewTaskFields = mode === 'task' && !existingChosen;
   const titleOptional = mode === 'blocked';
@@ -58,9 +58,12 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
     }
   }, [categories, categoryId]);
 
-  const startMs = dayStartMs + startMin * 60_000;
+  const startMs = dayStartMs + startMin * MS_PER_MIN;
   const endMs = startMs + durationMs;
   const pending = createTaskM.isPending || createEventM.isPending || createBlockM.isPending;
+  const hasTitle = titleOptional || existingChosen || title.trim() !== '';
+  const hasDue = !showNewTaskFields || dueLocal !== '';
+  const canSubmit = !pending && hasTitle && hasDue;
   const apiError = [createTaskM.error, createEventM.error, createBlockM.error].find((e) => e instanceof ApiError) as ApiError | undefined;
 
   useEffect(() => {
@@ -77,18 +80,19 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
   }, [onClose, compact]);
 
   const submit = () => {
-    if (pending || (!titleOptional && !existingChosen && !title.trim()) || (showNewTaskFields && !dueLocal)) return;
+    if (!canSubmit) return;
     if (mode === 'blocked') {
       createEventM.mutate(
-        { title: title.trim() || DEFAULT_BLOCKED_TITLE, startsAt: iso(startMs), endsAt: iso(endMs), kind: 'blocked' },
+        { title: title.trim() || DEFAULT_BLOCKED_TITLE, startsAt: toIso(startMs), endsAt: toIso(endMs), kind: 'blocked' },
         { onSuccess: onClose },
       );
     } else if (mode === 'event') {
-      createEventM.mutate({ title: title.trim(), startsAt: iso(startMs), endsAt: iso(endMs) }, { onSuccess: onClose });
+      createEventM.mutate({ title: title.trim(), startsAt: toIso(startMs), endsAt: toIso(endMs) }, { onSuccess: onClose });
     } else if (existingChosen) {
-      createBlockM.mutate({ taskId, startsAt: iso(startMs), endsAt: iso(endMs) }, { onSuccess: onClose });
+      createBlockM.mutate({ taskId, startsAt: toIso(startMs), endsAt: toIso(endMs) }, { onSuccess: onClose });
     } else {
-      const dueBy = dueLocal ? localInputToIso(dueLocal) : iso(defaultDueMs);
+      // Only the new-task branch gets here, and `canSubmit` requires a due date for it.
+      const dueBy = localInputToIso(dueLocal);
       const notBefore = afterLocal ? localInputToIso(afterLocal) : undefined;
       const catId = categoryId ?? undefined;
       createTaskM.mutate(
@@ -97,7 +101,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
           ...(notBefore !== undefined && { notBefore }),
           ...(catId !== undefined && { categoryId: catId }),
         },
-        { onSuccess: (task) => createBlockM.mutate({ taskId: task.id, startsAt: iso(startMs), endsAt: iso(endMs) }, { onSuccess: onClose }) },
+        { onSuccess: (task) => createBlockM.mutate({ taskId: task.id, startsAt: toIso(startMs), endsAt: toIso(endMs) }, { onSuccess: onClose }) },
       );
     }
   };
@@ -107,7 +111,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
 
   return (
     // Compact: plain content inside a `Sheet` — the sheet supplies the backdrop, the ✕, Escape,
-    // the z-50 tier and the scroll. Desktop keeps the column-anchored popover byte-for-byte.
+    // the z-50 tier and the scroll. Desktop keeps the column-anchored popover.
     <div
       ref={ref}
       data-testid="create-popover"
@@ -182,14 +186,14 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
         </>
       )}
       <div className="mb-1 rounded-[9px] border-[1.5px] border-line px-2.5 py-1.5">
-        <DurationStepper label="slot" size={22} valueMs={durationMs} onChange={(ms) => setDurationMs(Math.max(15 * 60_000, Math.min(ms, maxDurationMs)))} />
+        <DurationStepper label="slot" size={22} valueMs={durationMs} onChange={(ms) => setDurationMs(Math.max(SLOT_MIN * MS_PER_MIN, Math.min(ms, maxDurationMs)))} />
       </div>
       <p data-testid="slot-label" className="mb-2 text-[13px] font-semibold text-inkSoft">{formatHm(startMs, zone)} – {formatHm(endMs, zone)}</p>
       {apiError && <p data-testid="create-error" className="mb-2 text-[11px] text-crit">{apiError.message}</p>}
       <button
         type="button"
         data-testid="create-submit"
-        disabled={(!existingChosen && ((!title.trim() && !titleOptional) || (showNewTaskFields && !dueLocal))) || pending}
+        disabled={!canSubmit}
         onClick={submit}
         className="w-full rounded-[20px] bg-indigo py-2 text-[14px] font-bold text-white disabled:opacity-50"
       >

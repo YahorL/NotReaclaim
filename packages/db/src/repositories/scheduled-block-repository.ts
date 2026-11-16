@@ -1,5 +1,6 @@
 import type { PrismaClient, ScheduledBlock } from '@prisma/client';
-import { NotFoundError, translatePrismaError } from '../errors.js';
+import { translatePrismaError } from '../errors.js';
+import { deleteOwned, updateOwned } from './owned.js';
 
 export interface CreateScheduledBlockInput {
   taskId?: string | null;
@@ -13,16 +14,10 @@ export interface CreateScheduledBlockInput {
   engineKey?: string | null;
 }
 
-export interface UpdateScheduledBlockInput {
-  title?: string;
-  startsAt?: Date;
-  endsAt?: Date;
-  pinned?: boolean;
+/** A block's owner (task/habit) is fixed at creation. */
+export type UpdateScheduledBlockInput = Partial<Omit<CreateScheduledBlockInput, 'taskId' | 'habitId'>> & {
   startedAt?: Date | null;
-  googleEventId?: string | null;
-  googleCalendarId?: string | null;
-  engineKey?: string | null;
-}
+};
 
 export function createScheduledBlockRepository(prisma: PrismaClient) {
   return {
@@ -46,41 +41,18 @@ export function createScheduledBlockRepository(prisma: PrismaClient) {
       });
     },
 
-    async setPinned(userId: string, id: string, pinned: boolean): Promise<ScheduledBlock> {
-      try {
-        const result = await prisma.scheduledBlock.updateMany({ where: { id, userId }, data: { pinned } });
-        if (result.count === 0) {
-          throw new NotFoundError(`ScheduledBlock ${id} not found for user`);
-        }
-        return await prisma.scheduledBlock.findFirstOrThrow({ where: { id, userId } });
-      } catch (error) {
-        if (error instanceof NotFoundError) throw error;
-        translatePrismaError(error);
-      }
+    update(userId: string, id: string, data: UpdateScheduledBlockInput): Promise<ScheduledBlock> {
+      return updateOwned(
+        `ScheduledBlock ${id} not found for user`,
+        () => prisma.scheduledBlock.updateMany({ where: { id, userId }, data }),
+        () => prisma.scheduledBlock.findFirstOrThrow({ where: { id, userId } }),
+      );
     },
 
-    async update(userId: string, id: string, data: UpdateScheduledBlockInput): Promise<ScheduledBlock> {
-      try {
-        const result = await prisma.scheduledBlock.updateMany({ where: { id, userId }, data });
-        if (result.count === 0) {
-          throw new NotFoundError(`ScheduledBlock ${id} not found for user`);
-        }
-        return await prisma.scheduledBlock.findFirstOrThrow({ where: { id, userId } });
-      } catch (error) {
-        if (error instanceof NotFoundError) throw error;
-        translatePrismaError(error);
-      }
-    },
-
-    async delete(userId: string, id: string): Promise<void> {
-      const result = await prisma.scheduledBlock.deleteMany({ where: { id, userId } });
-      if (result.count === 0) {
-        throw new NotFoundError(`ScheduledBlock ${id} not found for user`);
-      }
-    },
-
-    async deleteByUser(userId: string): Promise<void> {
-      await prisma.scheduledBlock.deleteMany({ where: { userId } });
+    delete(userId: string, id: string): Promise<void> {
+      return deleteOwned(`ScheduledBlock ${id} not found for user`, () =>
+        prisma.scheduledBlock.deleteMany({ where: { id, userId } }),
+      );
     },
   };
 }

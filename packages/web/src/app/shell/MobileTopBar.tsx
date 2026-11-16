@@ -1,10 +1,8 @@
 import type { ReactElement } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { Icons } from './icons';
 import { routeTitle } from './routeTitle';
-import { useCurrentOrNext } from './currentOrNext';
-import { useStartBlockMutation, useStopBlockMutation } from '../../api/queries';
-import { relativeDayTimeLabel } from '../priorities/priorityBucket';
+import { useNowNextControls } from './useNowNextControls';
 
 interface MobileTopBarProps {
   onNewTask: () => void;
@@ -19,11 +17,7 @@ interface MobileTopBarProps {
  */
 export function MobileTopBar({ onNewTask, now = Date.now }: MobileTopBarProps): ReactElement {
   const { pathname } = useLocation();
-  const navigate = useNavigate();
-  const startBlock = useStartBlockMutation();
-  const stopBlock = useStopBlockMutation();
-  const nowMs = now();
-  const { running, nextBlock } = useCurrentOrNext(nowMs);
+  const { running, nextBlock, nextLabel, start, stop, openPlanner } = useNowNextControls(now);
 
   return (
     <header data-testid="mobile-top-bar" className="flex h-14 shrink-0 items-center gap-2 bg-bg px-3 md:hidden">
@@ -34,7 +28,7 @@ export function MobileTopBar({ onNewTask, now = Date.now }: MobileTopBarProps): 
           <button
             type="button"
             data-testid="mobile-current-task"
-            onClick={() => void navigate('/')}
+            onClick={openPlanner}
             className="min-w-0 truncate rounded-[9px] bg-card px-2.5 py-1.5 text-[13px] font-semibold text-ink/70"
           >
             Now: {running.title}
@@ -42,7 +36,7 @@ export function MobileTopBar({ onNewTask, now = Date.now }: MobileTopBarProps): 
           <button
             type="button"
             data-testid="mobile-stop-task"
-            onClick={() => stopBlock.mutate(running.id)}
+            onClick={stop}
             className="shrink-0 rounded-[9px] bg-crit px-3 py-1.5 text-[13px] font-bold text-white coarse:py-2.5"
           >
             Stop
@@ -53,15 +47,15 @@ export function MobileTopBar({ onNewTask, now = Date.now }: MobileTopBarProps): 
           <button
             type="button"
             data-testid="mobile-next-task"
-            onClick={() => void navigate('/')}
+            onClick={openPlanner}
             className="min-w-0 truncate rounded-[9px] bg-card px-2.5 py-1.5 text-[13px] font-semibold text-ink/70"
           >
-            Next: {nextBlock.title} · {relativeDayTimeLabel(Date.parse(nextBlock.startsAt), nowMs)}
+            {nextLabel}
           </button>
           <button
             type="button"
             data-testid="mobile-next-task-start"
-            onClick={() => startBlock.mutate(nextBlock.id)}
+            onClick={start}
             className="shrink-0 rounded-[9px] bg-indigo px-3 py-1.5 text-[13px] font-bold text-white coarse:py-2.5"
           >
             Start

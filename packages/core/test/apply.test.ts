@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { ScheduledBlock as DbScheduledBlock } from '@notreclaim/db';
+import type { ScheduledBlock as DbScheduledBlock, CreateScheduledBlockInput, UpdateScheduledBlockInput } from '@notreclaim/db';
 import type { ScheduleResult } from '@notreclaim/scheduler';
 import { applyDesiredSchedule, planLocally, type ScheduleMirror } from '../src/apply.js';
 import { SettingsRequiredError } from '../src/errors.js';
@@ -12,9 +12,9 @@ function dbBlock(over: Partial<DbScheduledBlock> = {}): DbScheduledBlock {
   return {
     id: 'b1', userId: 'u1', taskId: 't1', habitId: null, title: 'A',
     startsAt: new Date('2026-01-05T09:00:00.000Z'), endsAt: new Date('2026-01-05T10:00:00.000Z'),
-    pinned: false, googleEventId: null, googleCalendarId: null, engineKey: 'task:t1:0',
+    pinned: false, googleEventId: null, googleCalendarId: null, engineKey: 'task:t1:0', startedAt: null,
     createdAt: new Date(0), updatedAt: new Date(0), ...over,
-  } as DbScheduledBlock;
+  };
 }
 const desired = (blocks: ScheduleResult['blocks']): ScheduleResult => ({ blocks, unscheduled: [] });
 const eBlock = (over: Partial<ScheduleResult['blocks'][number]> = {}) => ({
@@ -28,11 +28,11 @@ function fakeRepo(seed: DbScheduledBlock[] = []) {
   return {
     rows: () => rows,
     listByUserInRange: vi.fn(async (_u: string, s: Date, e: Date) => rows.filter((b) => b.startsAt < e && b.endsAt > s)),
-    create: vi.fn(async (userId: string, data: Record<string, unknown>) => {
-      const row = dbBlock({ id: `new-${++n}`, userId, ...data } as Partial<DbScheduledBlock>);
+    create: vi.fn(async (userId: string, data: CreateScheduledBlockInput) => {
+      const row = dbBlock({ id: `new-${++n}`, userId, ...data });
       rows.push(row); return row;
     }),
-    update: vi.fn(async (_u: string, id: string, data: Record<string, unknown>) => {
+    update: vi.fn(async (_u: string, id: string, data: UpdateScheduledBlockInput) => {
       const row = rows.find((r) => r.id === id)!; Object.assign(row, data); return row;
     }),
     delete: vi.fn(async (_u: string, id: string) => { rows = rows.filter((r) => r.id !== id); }),
@@ -63,7 +63,7 @@ describe('applyDesiredSchedule (local, no mirror)', () => {
     const res = await applyDesiredSchedule(repo, 'u1', desired([renamed]), { now: NOW, horizonEnd: HORIZON });
     expect(res).toEqual({ created: 0, updated: 1, deleted: 0, pinnedSynced: 0, pinnedFailed: 0 });
     expect(repo.update).toHaveBeenCalledWith('u1', 'b1', expect.objectContaining({ title: 'New name' }));
-    expect(repo.rows()[0].title).toBe('New name');
+    expect(repo.rows()[0]!.title).toBe('New name');
   });
 
   it('writes title and times in a single update when both changed', async () => {
