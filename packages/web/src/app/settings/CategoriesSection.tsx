@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import type { Category, WorkingHour } from '../../api/types';
+import type { Category } from '../../api/types';
 import { useCategoriesQuery, useCreateCategoryMutation, useUpdateCategoryMutation, useDeleteCategoryMutation } from '../../api/queries';
 import { WeeklyHoursEditor } from './WeeklyHoursEditor';
 import { validateCategoryForm } from './categoryForm';
@@ -24,7 +24,6 @@ function ColorSwatches({ categoryId, current, onSelect }: {
           className={`h-5 w-5 rounded-full border-2 transition-transform hover:scale-110 ${current === hex ? 'border-ink ring-2 ring-indigo/40' : 'border-transparent'}`}
         />
       ))}
-      {/* None swatch */}
       <button
         data-testid={`cat-color-${categoryId}-none`}
         onClick={() => onSelect(null)}
@@ -46,7 +45,6 @@ function CategoryRow({ category }: { category: Category }) {
   // Default category: tracks whether custom windows are toggled on.
   const [useCustom, setUseCustom] = useState<boolean>(() => category.isDefault ? category.windows !== null : true);
 
-  // Inline name editing
   const [localName, setLocalName] = useState(category.name);
   const nameRef = useRef<HTMLInputElement>(null);
 
@@ -65,12 +63,6 @@ function CategoryRow({ category }: { category: Category }) {
     }
   };
 
-  // Color selection
-  const handleColorSelect = (color: string | null) => {
-    updateM.mutate({ id: category.id, patch: { color } });
-  };
-
-  // Default-category custom hours toggle
   const handleCustomToggle = (checked: boolean) => {
     setUseCustom(checked);
     if (!checked) {
@@ -80,6 +72,19 @@ function CategoryRow({ category }: { category: Category }) {
   };
 
   const { ok, error } = validateCategoryForm(localName, days);
+
+  const hoursEditor = (
+    <>
+      <WeeklyHoursEditor days={days} onChange={setDay} idPrefix={`cat-${category.id}`} />
+      {!ok && <p className="mt-1 text-[11px] text-red-600">{error}</p>}
+      <button
+        data-testid={`save-${category.id}`}
+        disabled={!ok || updateM.isPending}
+        onClick={() => updateM.mutate({ id: category.id, patch: { windows: daysToWindows(days) } })}
+        className="mt-1 rounded-[9px] bg-indigo px-3 py-1 text-[12px] font-bold text-white disabled:opacity-50"
+      >Save hours</button>
+    </>
+  );
 
   return (
     <div className="mb-2 rounded-[11px] border border-line bg-card p-3" data-testid={`cat-row-${category.id}`}>
@@ -104,8 +109,11 @@ function CategoryRow({ category }: { category: Category }) {
         >Delete</button>
       </div>
 
-      {/* Color swatches for all categories */}
-      <ColorSwatches categoryId={category.id} current={category.color} onSelect={handleColorSelect} />
+      <ColorSwatches
+        categoryId={category.id}
+        current={category.color}
+        onSelect={(color) => updateM.mutate({ id: category.id, patch: { color } })}
+      />
 
       {category.isDefault ? (
         <div className="mt-2">
@@ -119,33 +127,13 @@ function CategoryRow({ category }: { category: Category }) {
             />
             Use custom working hours
           </label>
-          {useCustom && (
-            <>
-              <WeeklyHoursEditor days={days} onChange={setDay} idPrefix={`cat-${category.id}`} />
-              {!ok && <p className="mt-1 text-[11px] text-red-600">{error}</p>}
-              <button
-                data-testid={`save-${category.id}`}
-                disabled={!ok || updateM.isPending}
-                onClick={() => updateM.mutate({ id: category.id, patch: { windows: daysToWindows(days) } })}
-                className="mt-1 rounded-[9px] bg-indigo px-3 py-1 text-[12px] font-bold text-white disabled:opacity-50"
-              >Save hours</button>
-            </>
-          )}
+          {useCustom && hoursEditor}
           {!useCustom && (
             <p className="mt-1 text-[12px] text-inkSoft">Uses your working hours above.</p>
           )}
         </div>
       ) : (
-        <>
-          <WeeklyHoursEditor days={days} onChange={setDay} idPrefix={`cat-${category.id}`} />
-          {!ok && <p className="mt-1 text-[11px] text-red-600">{error}</p>}
-          <button
-            data-testid={`save-${category.id}`}
-            disabled={!ok || updateM.isPending}
-            onClick={() => updateM.mutate({ id: category.id, patch: { windows: daysToWindows(days) } })}
-            className="mt-1 rounded-[9px] bg-indigo px-3 py-1 text-[12px] font-bold text-white disabled:opacity-50"
-          >Save hours</button>
-        </>
+        hoursEditor
       )}
     </div>
   );
@@ -161,11 +149,11 @@ export function CategoriesSection() {
     setDays((ds) => patchDay(ds, weekday, patch));
   const { ok, error } = validateCategoryForm(name, days);
 
+  const resetNew = () => { setAdding(false); setName(''); setDays(windowsToDays([])); };
+
   const submit = () => {
-    const windows: WorkingHour[] = daysToWindows(days);
-    createM.mutate({ name: name.trim(), windows }, {
-      onSuccess: () => { setAdding(false); setName(''); setDays(windowsToDays([])); },
-    });
+    const windows = daysToWindows(days);
+    createM.mutate({ name: name.trim(), windows }, { onSuccess: resetNew });
   };
 
   return (
@@ -193,7 +181,7 @@ export function CategoriesSection() {
               className="rounded-[9px] bg-indigo px-3 py-1 text-[12px] font-bold text-white disabled:opacity-50"
             >Create</button>
             <button
-              onClick={() => { setAdding(false); setName(''); setDays(windowsToDays([])); }}
+              onClick={resetNew}
               className="rounded-[9px] border border-line px-3 py-1 text-[12px] font-semibold text-inkSoft hover:bg-indigoSoft"
             >Cancel</button>
           </div>
