@@ -25,6 +25,7 @@ import { makeReplan } from './replan-router.js';
 import { pollAndReplan } from './replan.js';
 import { startScheduler } from './scheduler.js';
 import { loadServerConfig } from './config.js';
+import { isGoogleConnected } from './auth/google-connection.js';
 
 async function main(): Promise<void> {
   const serverConfig = loadServerConfig();
@@ -59,10 +60,7 @@ async function main(): Promise<void> {
     syncPrimaryCalendar({ client, tokens, syncState: calendarSyncState, events: calendarEvents }, userId, now);
 
   const planLocallyBound = (userId: string, now: number) => planLocally(schedulingRepos, scheduledBlocks, userId, now);
-  const isConnected = async (userId: string): Promise<boolean> => {
-    const user = await users.findById(userId);
-    return user?.googleRefreshToken != null;
-  };
+  const isConnected = async (userId: string): Promise<boolean> => isGoogleConnected(await users.findById(userId));
   const replan = makeReplan({ reconcile: reconcileBound, planLocally: planLocallyBound, isConnected });
 
   const app = buildApp({

@@ -5,6 +5,7 @@ import { hashPassword, verifyPassword } from './auth/password.js';
 import { normalizeEmail } from './auth/email.js';
 import { ensureUserDefaults } from './auth/user-defaults.js';
 import { signSession } from './auth/token.js';
+import { isGoogleConnected } from './auth/google-connection.js';
 
 /** 403 denials shared by password registration and the Google callback. */
 const DENIAL_MESSAGES = {
@@ -49,7 +50,7 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
   app.get('/auth/google/status', guard, async (request) => {
     const user = await deps.repos.users.findById(request.userId);
     return {
-      connected: user?.googleRefreshToken != null,
+      connected: isGoogleConnected(user),
       brokenAt: user?.googleAuthBrokenAt?.toISOString() ?? null,
     };
   });
