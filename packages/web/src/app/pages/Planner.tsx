@@ -3,7 +3,7 @@ import { DndContext, DragOverlay, type DragEndEvent, type DragMoveEvent, type Dr
 import type { CalendarEvent, Task } from '../../api/types';
 import { ApiError } from '../../api/client';
 import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useHabitsQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation, useSettingsQuery } from '../../api/queries';
-import { dayColumns, daysThatFit, shiftDays, dayAnchor, rangeLabel, weekdayLabel, MS_PER_DAY } from '../planner/weekModel';
+import { dayColumns, daysThatFit, shiftDays, dayAnchor, rangeLabel, weekdayLabel } from '../planner/weekModel';
 import { toIso } from '../lib/time';
 import { useTimezone } from '../settings/useTimezone';
 import { useElementWidth } from '../planner/useElementWidth';
@@ -41,7 +41,8 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const dayCount = daysThatFit(gridWidth, compact);
   const days = useMemo(() => dayColumns(viewStartMs, dayCount, zone, dayStartMinute), [viewStartMs, dayCount, zone, dayStartMinute]);
   const rangeFromIso = toIso(viewStartMs);
-  const rangeToIso = toIso(viewStartMs + dayCount * MS_PER_DAY);
+  // The end of the last column, by wall-clock days: a 25h fall-back day is not cut an hour short.
+  const rangeToIso = toIso(shiftDays(viewStartMs, dayCount, zone));
   // Settings land after the first render — re-anchor the view when the zone or the day start
   // arrives (or the user changes either), otherwise the columns keep the pre-settings anchor.
   const prevAnchorRef = useRef(`${zone}|${dayStartMinute}`);

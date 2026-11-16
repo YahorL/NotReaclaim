@@ -317,3 +317,17 @@ describe('Planner compact layout', () => {
     expect(screen.queryByTestId('planner-task-panel')).toBeNull();
   });
 });
+
+describe('Planner range query in the settings zone', () => {
+  it('asks for the whole last column across a 25h fall-back day (New York)', async () => {
+    // Wed Oct 28 2026 12:00 EDT. The 7 columns run Oct 28 00:00 EDT → Nov 4 00:00 EST; Nov 1 is 25h.
+    const getSchedule = vi.fn(async () => [] as ScheduledBlock[]);
+    const api = makeApi({
+      getSchedule,
+      getSettings: vi.fn().mockResolvedValue({ id: 's', userId: 'u', timezone: 'America/New_York', workingHours: [], horizonDays: 14, defaultMinChunkMs: 1800000, defaultMaxChunkMs: 7200000, createdAt: '', updatedAt: '' }),
+    });
+    renderWithProviders(<Planner now={() => Date.parse('2026-10-28T16:00:00.000Z')} />, { api });
+    await waitFor(() => expect(getSchedule).toHaveBeenLastCalledWith('2026-10-28T04:00:00.000Z', '2026-11-04T05:00:00.000Z'));
+  });
+});
+
