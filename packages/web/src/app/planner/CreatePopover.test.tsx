@@ -398,3 +398,78 @@ describe('CreatePopover in the settings zone', () => {
     })));
   });
 });
+
+describe('CreatePopover due-default in the settings zone', () => {
+  const NY_DAY = Date.parse('2026-01-05T05:00:00.000Z'); // New York midnight, Mon Jan 5
+
+  it('New York: defaults to +7 days at 23:59 New York time (not 18:59 from a UTC midnight)', async () => {
+    const createTask = vi.fn(async () => ({ id: 't-d' }));
+    const createScheduledBlock = vi.fn(async () => ({ id: 'b-d' }));
+    renderWithProviders(
+      <CreatePopover dayStartMs={NY_DAY} startMin={540} topPct={18} onClose={vi.fn()} now={() => NY_DAY} zone="America/New_York" />,
+      { api: fakeApiClient({ createTask, createScheduledBlock, listCategories: vi.fn(async () => []) } as never) },
+    );
+    fireEvent.click(screen.getByTestId('mode-task'));
+    expect(screen.getByTestId('create-due')).toHaveValue('2026-01-12T23:59');
+    fireEvent.change(screen.getByTestId('create-title'), { target: { value: 'D' } });
+    fireEvent.click(screen.getByTestId('create-submit'));
+    await waitFor(() => expect(createTask).toHaveBeenCalledWith(expect.objectContaining({ dueBy: '2026-01-13T04:59:00.000Z' })));
+  });
+
+  it('New York: a column past the week-out day defaults to that day at 23:59', () => {
+    const jan15 = Date.parse('2026-01-15T05:00:00.000Z');
+    renderWithProviders(
+      <CreatePopover dayStartMs={jan15} startMin={540} topPct={18} onClose={vi.fn()} now={() => NY_DAY} zone="America/New_York" />,
+      { api: fakeApiClient() },
+    );
+    fireEvent.click(screen.getByTestId('mode-task'));
+    expect(screen.getByTestId('create-due')).toHaveValue('2026-01-15T23:59');
+  });
+
+  it('Tokyo: "today" is the Tokyo calendar day', () => {
+    const tokyoJan6 = Date.parse('2026-01-05T15:00:00.000Z'); // Tokyo midnight, Tue Jan 6
+    renderWithProviders(
+      <CreatePopover dayStartMs={tokyoJan6} startMin={540} topPct={18} onClose={vi.fn()} now={() => Date.parse('2026-01-05T20:00:00.000Z')} zone="Asia/Tokyo" />,
+      { api: fakeApiClient() },
+    );
+    fireEvent.click(screen.getByTestId('mode-task'));
+    expect(screen.getByTestId('create-due')).toHaveValue('2026-01-13T23:59');
+  });
+
+  it('DST: +7 calendar days across the New York spring-forward', () => {
+    const sat = Date.parse('2026-03-07T05:00:00.000Z'); // New York midnight, Sat Mar 7 (EST)
+    renderWithProviders(
+      <CreatePopover dayStartMs={sat} startMin={23 * 60} topPct={18} onClose={vi.fn()} now={() => Date.parse('2026-03-08T04:30:00.000Z')} zone="America/New_York" />,
+      { api: fakeApiClient() },
+    );
+    fireEvent.click(screen.getByTestId('mode-task'));
+    expect(screen.getByTestId('create-due')).toHaveValue('2026-03-14T23:59');
+  });
+
+  it('a shifted day-start column (03:00) defaults to 23:59 of the slot day, not 02:59 the next day', () => {
+    const col = Date.parse('2026-01-15T03:00:00.000Z'); // 03:00 column anchor (UTC settings)
+    renderWithProviders(
+      <CreatePopover dayStartMs={col} startMin={60} topPct={18} onClose={vi.fn()} now={() => DAY} zone="UTC" />,
+      { api: fakeApiClient() },
+    );
+    fireEvent.click(screen.getByTestId('mode-task'));
+    expect(screen.getByTestId('create-due')).toHaveValue('2026-01-15T23:59');
+  });
+
+  it('re-seeds an untouched default due when the zone resolves after opening; keeps an edited one', () => {
+    const now = () => Date.parse('2026-01-05T02:00:00.000Z'); // Jan 5 in UTC, still Jan 4 in New York
+    const col = Date.parse('2026-01-04T05:00:00.000Z'); // New York midnight, Sun Jan 4
+    const { rerender } = renderWithProviders(
+      <CreatePopover dayStartMs={col} startMin={540} topPct={18} onClose={vi.fn()} now={now} zone="UTC" />,
+      { api: fakeApiClient() },
+    );
+    fireEvent.click(screen.getByTestId('mode-task'));
+    expect(screen.getByTestId('create-due')).toHaveValue('2026-01-12T23:59');
+    rerender(<CreatePopover dayStartMs={col} startMin={540} topPct={18} onClose={vi.fn()} now={now} zone="America/New_York" />);
+    expect(screen.getByTestId('create-due')).toHaveValue('2026-01-11T23:59');
+    // A due the user typed is kept as typed when the zone changes again.
+    fireEvent.change(screen.getByTestId('create-due'), { target: { value: '2026-01-20T10:00' } });
+    rerender(<CreatePopover dayStartMs={col} startMin={540} topPct={18} onClose={vi.fn()} now={now} zone="Asia/Tokyo" />);
+    expect(screen.getByTestId('create-due')).toHaveValue('2026-01-20T10:00');
+  });
+});

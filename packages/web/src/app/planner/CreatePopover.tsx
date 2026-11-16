@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../../api/client';
 import { useCreateTaskMutation, useCreateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useCategoriesQuery } from '../../api/queries';
 import { DurationStepper } from '../components/DurationStepper';
-import { isoToZonedInput, zonedInputToIso } from '../lib/datetimeLocal';
-import { WINDOW_END_MIN, SLOT_MIN, localMidnight, formatHm } from './weekModel';
-import { MS_PER_MIN, MS_PER_DAY, toIso } from '../lib/time';
+import { zonedInputToIso } from '../lib/datetimeLocal';
+import { WINDOW_END_MIN, SLOT_MIN, formatHm } from './weekModel';
+import { MS_PER_MIN, toIso } from '../lib/time';
+import { defaultDueLocal } from '../tasks/taskForm';
+import { useZoneChange } from '../settings/useTimezone';
 import { isActiveTask } from '../priorities/priorityBucket';
 
 export interface CreatePopoverProps {
@@ -33,9 +35,16 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
   const [taskId, setTaskId] = useState('');
   const maxDurationMs = (WINDOW_END_MIN - startMin) * MS_PER_MIN;
   const [durationMs, setDurationMs] = useState(Math.min(30 * MS_PER_MIN, maxDurationMs));
-  const defaultDueMs = Math.max(dayStartMs, localMidnight(now()) + 7 * MS_PER_DAY) + (23 * 60 + 59) * MS_PER_MIN;
-  const defaultDueLocal = isoToZonedInput(toIso(defaultDueMs), zone);
-  const [dueLocal, setDueLocal] = useState(defaultDueLocal);
+  const startMs = dayStartMs + startMin * MS_PER_MIN;
+  // Same default as the New Task modal (+7 days, 23:59, settings zone) — but never before the
+  // day of the slot the task is being pinned to.
+  const seedDue = (z: string) => defaultDueLocal(now(), z, startMs);
+  const [dueLocal, setDueLocal] = useState(() => seedDue(zone));
+  // Opened before settings loaded (fallback zone): re-seed the default unless the user edited it.
+  useZoneChange(zone, (prev, next) => {
+    const prevSeed = seedDue(prev);
+    setDueLocal((cur) => (cur === prevSeed ? seedDue(next) : cur));
+  });
   const [afterLocal, setAfterLocal] = useState('');
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
@@ -58,7 +67,6 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
     }
   }, [categories, categoryId]);
 
-  const startMs = dayStartMs + startMin * MS_PER_MIN;
   const endMs = startMs + durationMs;
   const pending = createTaskM.isPending || createEventM.isPending || createBlockM.isPending;
   const hasTitle = titleOptional || existingChosen || title.trim() !== '';
