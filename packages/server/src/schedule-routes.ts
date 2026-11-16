@@ -29,7 +29,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
   });
 
   app.get('/schedule/preview', guard, async (request) => {
-    return computeDesiredSchedule(deps.schedulingRepos, request.userId, deps.now());
+    return computeDesiredSchedule(deps.repos, request.userId, deps.now());
   });
 
   app.post('/schedule/replan', guard, async (request) => {

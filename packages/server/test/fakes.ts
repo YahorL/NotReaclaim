@@ -1,5 +1,4 @@
 import type { Settings, Task, Habit, ScheduledBlock, CalendarEvent, User, Category, Subtask } from '@notreclaim/db';
-import type { SchedulingRepositories } from '@notreclaim/core';
 import { buildApp, type AppDeps } from '../src/app.js';
 import { createEventBus } from '../src/events.js';
 import type { ServerEvent } from '../src/events.js';
@@ -293,7 +292,6 @@ export interface TestAppOptions {
   categories?: Category[];
   subtasks?: Subtask[];
   reconcileResult?: AppDeps['reconcile'] extends (...a: never[]) => Promise<infer R> ? R : never;
-  schedulingReposOverride?: SchedulingRepositories;
   webClientUrl?: string;
   accessToken?: string;
   /** Full override of the token lookup — lets a test assert it was never even attempted. */
@@ -329,15 +327,6 @@ export function buildTestApp(opts: TestAppOptions = {}) {
   const emitted: ServerEvent[] = [];
   events.subscribe((e) => emitted.push(e));
 
-  const schedulingRepos: SchedulingRepositories = opts.schedulingReposOverride ?? {
-    settings,
-    calendarEvents,
-    tasks,
-    habits,
-    scheduledBlocks,
-    categories,
-  };
-
   const app = buildApp({
     repos: { settings, tasks, habits, scheduledBlocks, calendarEvents, categories, subtasks, users, invites },
     google: {
@@ -358,7 +347,6 @@ export function buildTestApp(opts: TestAppOptions = {}) {
         }),
       },
     },
-    schedulingRepos,
     reconcile: async (userId, now) => {
       reconcileCalls.push({ userId, now });
       return opts.reconcileResult ?? { created: 0, updated: 0, deleted: 0, pinned: 0, removed: 0 };

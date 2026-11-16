@@ -11,7 +11,6 @@ import type {
   UserRepository,
   InviteCodeRepository,
 } from '@notreclaim/db';
-import type { SchedulingRepositories } from '@notreclaim/core';
 import type { RegistrationMode } from './config.js';
 import type { GoogleClient, TokenService, ReconcileResult } from '@notreclaim/google';
 import { mapDomainError } from './errors.js';
@@ -45,7 +44,6 @@ export interface AppDeps {
     client: Pick<GoogleClient, 'getConsentUrl' | 'insertEvent' | 'deleteEvent' | 'patchEvent'>;
     tokens: Pick<TokenService, 'exchangeCodeForLink' | 'getAccessToken'>;
   };
-  schedulingRepos: SchedulingRepositories;
   reconcile: (userId: string, now: number) => Promise<ReconcileResult>;
   events: EventBus;
   config: { jwtSecret: string; googleRedirectUri: string; webClientUrl?: string; registrationMode: RegistrationMode };

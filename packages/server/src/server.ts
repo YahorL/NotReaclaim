@@ -67,7 +67,6 @@ async function main(): Promise<void> {
     logger: true,
     repos: { settings, tasks, habits, scheduledBlocks, calendarEvents, categories, subtasks, users, invites },
     google: { client, tokens },
-    schedulingRepos,
     reconcile: replan,
     events: bus,
     config: {
