@@ -1,4 +1,4 @@
-import { clampToWindow, snapClickToSlot, SLOT_MIN, WINDOW_END_MIN, WINDOW_START_MIN } from './weekModel';
+import { clampToWindow, snapClickToSlot, SLOT_MIN, WINDOW_SPAN_MIN } from './weekModel';
 import { MS_PER_MIN, toIso } from '../lib/time';
 
 /** Marks a drag that started on a task card in the planner side panel / Tasks sheet. */
@@ -73,8 +73,7 @@ export function pinnedBlockTimes({ durationMs, dayStartMs, startMin }: {
   dayStartMs: number;
   startMin: number;
 }): { startsAt: string; endsAt: string } {
-  const windowSpan = WINDOW_END_MIN - WINDOW_START_MIN;
-  const durationMin = Math.min(Math.max(SLOT_MIN, Math.round(durationMs / MS_PER_MIN)), windowSpan);
+  const durationMin = Math.min(Math.max(SLOT_MIN, Math.round(durationMs / MS_PER_MIN)), WINDOW_SPAN_MIN);
   const { startMin: s, endMin: e } = clampToWindow(startMin, durationMin);
   return {
     startsAt: toIso(dayStartMs + s * MS_PER_MIN),

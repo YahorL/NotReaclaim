@@ -6,6 +6,7 @@ export { MS_PER_DAY };
 
 export const WINDOW_START_MIN = 0;          // 00:00
 export const WINDOW_END_MIN = 24 * 60;      // 24:00 (full day)
+export const WINDOW_SPAN_MIN = WINDOW_END_MIN - WINDOW_START_MIN;
 /** The planner's slot size in minutes: drags, clicks and durations snap to it. */
 export const SLOT_MIN = 15;
 
@@ -81,19 +82,22 @@ export function placeInDay(startMs: number, endMs: number, dayStartMs: number): 
   const clampedStart = Math.max(startMin, WINDOW_START_MIN);
   const clampedEnd = Math.min(endMin, WINDOW_END_MIN);
   if (clampedEnd <= clampedStart) return null;
-  const span = WINDOW_END_MIN - WINDOW_START_MIN;
   return {
-    topPct: ((clampedStart - WINDOW_START_MIN) / span) * 100,
-    heightPct: ((clampedEnd - clampedStart) / span) * 100,
+    topPct: minuteToPct(clampedStart),
+    heightPct: ((clampedEnd - clampedStart) / WINDOW_SPAN_MIN) * 100,
   };
+}
+
+/** Vertical position (%) within a day column of a minute counted from the column start. */
+export function minuteToPct(minute: number): number {
+  return ((minute - WINDOW_START_MIN) / WINDOW_SPAN_MIN) * 100;
 }
 
 /** Vertical position (%) of the "now" line within this day's window, or null if not today/in-window. */
 export function nowLine(now: number, dayStartMs: number): number | null {
   const min = (now - dayStartMs) / MS_PER_MIN;
   if (min < WINDOW_START_MIN || min >= WINDOW_END_MIN) return null;
-  const span = WINDOW_END_MIN - WINDOW_START_MIN;
-  return ((min - WINDOW_START_MIN) / span) * 100;
+  return minuteToPct(min);
 }
 
 /** True when `now` falls within [dayStart, dayStart+24h). */
@@ -104,7 +108,7 @@ export function isToday(now: number, dayStartMs: number): boolean {
 /** One hour = 58px tall in the grid body (must match WeekGrid's h-[58px] rows). */
 export const HOUR_ROW_PX = 58;
 /** Fixed day-column pixel height: one 58px row per hour of the window (24 * 58 = 1392). */
-export const GRID_COLUMN_PX = ((WINDOW_END_MIN - WINDOW_START_MIN) / 60) * HOUR_ROW_PX;
+export const GRID_COLUMN_PX = (WINDOW_SPAN_MIN / 60) * HOUR_ROW_PX;
 
 /** Time-gutter width (px) — must match WeekGrid's first column. */
 export const TIME_GUTTER_PX = 64;
@@ -148,12 +152,12 @@ export function snapMinutes(min: number, step = SLOT_MIN): number {
 
 /** Convert a signed pixel delta within a day column to a signed minute delta. */
 export function pxToMinutes(px: number): number {
-  return (px / GRID_COLUMN_PX) * (WINDOW_END_MIN - WINDOW_START_MIN);
+  return (px / GRID_COLUMN_PX) * WINDOW_SPAN_MIN;
 }
 
 /** Convert a signed minute delta to a signed pixel delta within a day column (inverse of pxToMinutes). */
 export function minutesToPx(min: number): number {
-  return (min / (WINDOW_END_MIN - WINDOW_START_MIN)) * GRID_COLUMN_PX;
+  return (min / WINDOW_SPAN_MIN) * GRID_COLUMN_PX;
 }
 
 /**
@@ -199,8 +203,7 @@ export function dayOfMonth(ms: number, zone = 'UTC'): number {
 
 /** Map a click's fractional position within a day column (0..1) to a snapped start minute with room for a 15-min slot. */
 export function snapClickToSlot(fraction: number): number {
-  const span = WINDOW_END_MIN - WINDOW_START_MIN;
-  const min = snapMinutes(WINDOW_START_MIN + fraction * span);
+  const min = snapMinutes(WINDOW_START_MIN + fraction * WINDOW_SPAN_MIN);
   return Math.min(WINDOW_END_MIN - SLOT_MIN, Math.max(WINDOW_START_MIN, min));
 }
 
@@ -247,7 +250,7 @@ export function resizeHandleClass(heightPct: number, coarse: boolean): 'h-1.5' |
   if (!coarse) return 'h-1.5';
   // The percent → minutes roundtrip is lossy: an exactly-30-minute tile comes back as
   // 29.999999999999993, so compare with a tolerance far below one minute.
-  const spanMin = (heightPct / 100) * (WINDOW_END_MIN - WINDOW_START_MIN);
+  const spanMin = (heightPct / 100) * WINDOW_SPAN_MIN;
   return spanMin >= COARSE_RESIZE_MIN_SPAN_MIN - 1e-6 ? 'h-6' : 'h-1.5';
 }
 
