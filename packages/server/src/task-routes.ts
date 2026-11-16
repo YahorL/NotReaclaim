@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { computeSpentMs } from '@notreclaim/core';
+import { NotFoundError } from '@notreclaim/db';
 import type { AppDeps, AfterMutation } from './app.js';
 import { createTaskSchema, updateTaskSchema, listTasksQuerySchema, idParamSchema } from './schemas.js';
 
@@ -34,13 +35,10 @@ export function registerTaskRoutes(app: FastifyInstance, deps: AppDeps, afterMut
     return attachSpent(request.userId, tasks);
   });
 
-  app.get('/tasks/:id', guard, async (request, reply) => {
+  app.get('/tasks/:id', guard, async (request) => {
     const { id } = idParamSchema.parse(request.params);
     const task = await deps.repos.tasks.findById(request.userId, id);
-    if (!task) {
-      reply.code(404).send({ code: 'not_found', message: `Task ${id} not found` });
-      return;
-    }
+    if (!task) throw new NotFoundError(`Task ${id} not found`);
     const [withSpent] = await attachSpent(request.userId, [task]);
     return withSpent;
   });

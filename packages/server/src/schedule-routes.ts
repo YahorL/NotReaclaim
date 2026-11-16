@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { computeDesiredSchedule, horizonEndMs, round15, QUARTER_HOUR_MS } from '@notreclaim/core';
+import { NotFoundError } from '@notreclaim/db';
 import type { AppDeps, AfterMutation } from './app.js';
 import { rangeQuerySchema, idParamSchema, updateScheduledBlockSchema, createScheduledBlockSchema } from './schemas.js';
 
@@ -43,10 +44,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
   app.post('/schedule', guard, async (request, reply) => {
     const body = createScheduledBlockSchema.parse(request.body);
     const task = await deps.repos.tasks.findById(request.userId, body.taskId);
-    if (!task) {
-      reply.code(404).send({ code: 'not_found', message: `Task ${body.taskId} not found` });
-      return;
-    }
+    if (!task) throw new NotFoundError(`Task ${body.taskId} not found`);
     const block = await deps.repos.scheduledBlocks.create(request.userId, {
       taskId: task.id, title: task.title, startsAt: new Date(body.startsAt), endsAt: new Date(body.endsAt), pinned: true,
     });
@@ -71,10 +69,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
   app.post('/schedule/:id/start', guard, async (request, reply) => {
     const { id } = idParamSchema.parse(request.params);
     const blockRow = await deps.repos.scheduledBlocks.findById(request.userId, id);
-    if (!blockRow) {
-      reply.code(404).send({ code: 'not_found', message: `ScheduledBlock ${id} not found` });
-      return;
-    }
+    if (!blockRow) throw new NotFoundError(`ScheduledBlock ${id} not found`);
     if (!blockRow.taskId) {
       reply.code(400).send({ code: 'bad_request', message: 'Only task blocks can be started' });
       return;
@@ -95,10 +90,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
   app.post('/schedule/:id/stop', guard, async (request, reply) => {
     const { id } = idParamSchema.parse(request.params);
     const blockRow = await deps.repos.scheduledBlocks.findById(request.userId, id);
-    if (!blockRow) {
-      reply.code(404).send({ code: 'not_found', message: `ScheduledBlock ${id} not found` });
-      return;
-    }
+    if (!blockRow) throw new NotFoundError(`ScheduledBlock ${id} not found`);
     if (!blockRow.taskId) {
       reply.code(400).send({ code: 'bad_request', message: 'Only task blocks can be stopped' });
       return;

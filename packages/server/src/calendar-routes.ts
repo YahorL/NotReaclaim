@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { horizonEndMs } from '@notreclaim/core';
+import { NotFoundError } from '@notreclaim/db';
 import { PRIMARY_CALENDAR_ID } from '@notreclaim/google';
 import type { AppDeps, AfterMutation } from './app.js';
 import { rangeQuerySchema, createCalendarEventSchema, updateCalendarEventSchema, idParamSchema } from './schemas.js';
@@ -55,10 +56,7 @@ export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afte
     const { id } = idParamSchema.parse(request.params);
     const body = updateCalendarEventSchema.parse(request.body);
     const event = await deps.repos.calendarEvents.findById(request.userId, id);
-    if (!event || event.source !== 'app') {
-      reply.code(404).send({ code: 'not_found', message: `Event ${id} not found` });
-      return;
-    }
+    if (!event || event.source !== 'app') throw new NotFoundError(`Event ${id} not found`);
     const startsAt = body.startsAt ? new Date(body.startsAt) : event.startsAt;
     const endsAt = body.endsAt ? new Date(body.endsAt) : event.endsAt;
     if (endsAt.getTime() <= startsAt.getTime()) {
@@ -88,10 +86,7 @@ export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afte
   app.delete('/calendar/events/:id', guard, async (request, reply) => {
     const { id } = idParamSchema.parse(request.params);
     const event = await deps.repos.calendarEvents.findById(request.userId, id);
-    if (!event) {
-      reply.code(404).send({ code: 'not_found', message: `Event ${id} not found` });
-      return;
-    }
+    if (!event) throw new NotFoundError(`Event ${id} not found`);
     // Best-effort Google removal for events previously written back to the primary calendar.
     if (event.googleEventId && event.googleCalendarId) {
       try {

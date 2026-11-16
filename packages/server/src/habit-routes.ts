@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { NotFoundError } from '@notreclaim/db';
 import type { AppDeps, AfterMutation } from './app.js';
 import { createHabitSchema, updateHabitSchema, idParamSchema } from './schemas.js';
 
@@ -15,13 +16,10 @@ export function registerHabitRoutes(app: FastifyInstance, deps: AppDeps, afterMu
 
   app.get('/habits', guard, async (request) => deps.repos.habits.listByUser(request.userId));
 
-  app.get('/habits/:id', guard, async (request, reply) => {
+  app.get('/habits/:id', guard, async (request) => {
     const { id } = idParamSchema.parse(request.params);
     const habit = await deps.repos.habits.findById(request.userId, id);
-    if (!habit) {
-      reply.code(404).send({ code: 'not_found', message: `Habit ${id} not found` });
-      return;
-    }
+    if (!habit) throw new NotFoundError(`Habit ${id} not found`);
     return habit;
   });
 
