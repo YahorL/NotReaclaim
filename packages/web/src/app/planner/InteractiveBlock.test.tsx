@@ -11,7 +11,7 @@ const PX_PER_60MIN = minutesToPx(60); // 58px/hr (was (60/960)*GRID_COLUMN_PX)
 
 function renderBlock(onCommitOrOver: Parameters<typeof InteractiveBlock>[0]['onCommit'] | Partial<Parameters<typeof InteractiveBlock>[0]> = vi.fn()) {
   const defaults = {
-    id: 'b1', dayStartMs: DAY, dayIndex: 0, startMs: START, endMs: END,
+    dayStartMs: DAY, dayIndex: 0, startMs: START, endMs: END,
     topPct: 10, heightPct: 5, startLabel: '09:00', title: 'Write spec', kind: 'task' as const, pinned: false,
     onCommit: vi.fn(),
   };
@@ -26,7 +26,7 @@ function renderBlockInColumn(onCommit = vi.fn(), dayIndex = 0, colWidth = 120) {
   const { container } = render(
     <div>
       <InteractiveBlock
-        id="b1" dayStartMs={DAY} dayIndex={dayIndex} startMs={START} endMs={END}
+        dayStartMs={DAY} dayIndex={dayIndex} startMs={START} endMs={END}
         topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
         onCommit={onCommit}
       />
@@ -192,7 +192,7 @@ describe('InteractiveBlock cross-day move across a DST transition', () => {
     const { container } = render(
       <div>
         <InteractiveBlock
-          id="b1" dayStartMs={Date.parse('2026-03-07T08:00:00.000Z')} dayIndex={0}
+          dayStartMs={Date.parse('2026-03-07T08:00:00.000Z')} dayIndex={0}
           startMs={Date.parse('2026-03-07T14:00:00.000Z')} endMs={Date.parse('2026-03-07T15:00:00.000Z')}
           topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
           zone="America/New_York" onCommit={onCommit}
@@ -226,7 +226,7 @@ describe('InteractiveBlock held preview (flicker fix)', () => {
   it('after rerendering with new startMs/endMs props, the transform resets to 0 (cleared)', () => {
     const { rerender } = render(
       <InteractiveBlock
-        id="b1" dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
+        dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
         topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
         onCommit={vi.fn()}
       />,
@@ -242,7 +242,7 @@ describe('InteractiveBlock held preview (flicker fix)', () => {
     const NEW_END = END + 15 * 60_000;
     rerender(
       <InteractiveBlock
-        id="b1" dayStartMs={DAY} dayIndex={0} startMs={NEW_START} endMs={NEW_END}
+        dayStartMs={DAY} dayIndex={0} startMs={NEW_START} endMs={NEW_END}
         topPct={10} heightPct={5} startLabel="09:15" title="Write spec" kind="task" pinned={false}
         onCommit={vi.fn()}
       />,
@@ -278,7 +278,7 @@ describe('InteractiveBlock held preview (flicker fix)', () => {
   it('stays transition-none through the held preview AND the landed commit (no jump)', () => {
     const { rerender } = render(
       <InteractiveBlock
-        id="b1" dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
+        dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
         topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
         onCommit={vi.fn()}
       />,
@@ -294,7 +294,7 @@ describe('InteractiveBlock held preview (flicker fix)', () => {
     // painted frame, so top jumps to newTop with transform 0 and nothing animates.
     rerender(
       <InteractiveBlock
-        id="b1" dayStartMs={DAY} dayIndex={0} startMs={START + 15 * 60_000} endMs={END + 15 * 60_000}
+        dayStartMs={DAY} dayIndex={0} startMs={START + 15 * 60_000} endMs={END + 15 * 60_000}
         topPct={11.5} heightPct={5} startLabel="09:15" title="Write spec" kind="task" pinned={false}
         onCommit={vi.fn()}
       />,
@@ -308,7 +308,7 @@ describe('InteractiveBlock held preview (flicker fix)', () => {
   it('keeps the replan glide when props change without a drag', () => {
     const { rerender } = render(
       <InteractiveBlock
-        id="b1" dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
+        dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
         topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
         onCommit={vi.fn()}
       />,
@@ -316,7 +316,7 @@ describe('InteractiveBlock held preview (flicker fix)', () => {
     const el = screen.getByTestId('event-block');
     rerender(
       <InteractiveBlock
-        id="b1" dayStartMs={DAY} dayIndex={0} startMs={START + 60 * 60_000} endMs={END + 60 * 60_000}
+        dayStartMs={DAY} dayIndex={0} startMs={START + 60 * 60_000} endMs={END + 60 * 60_000}
         topPct={20} heightPct={5} startLabel="10:00" title="Write spec" kind="task" pinned={false}
         onCommit={vi.fn()}
       />,
@@ -329,7 +329,7 @@ describe('InteractiveBlock delete button', () => {
   function renderWithDelete(onDelete = vi.fn()) {
     render(
       <InteractiveBlock
-        id="b1" dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
+        dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
         topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
         onCommit={vi.fn()} onDelete={onDelete}
       />,
@@ -348,7 +348,7 @@ describe('InteractiveBlock delete button', () => {
     const onDelete = vi.fn();
     render(
       <InteractiveBlock
-        id="b1" dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
+        dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
         topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
         onCommit={onCommit} onDelete={onDelete}
       />,
@@ -370,7 +370,7 @@ describe('InteractiveBlock unpin button', () => {
   function renderPinnedBlock(onCommit = vi.fn(), onUnpin = vi.fn()) {
     render(
       <InteractiveBlock
-        id="b1" dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
+        dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
         topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={true}
         onCommit={onCommit} onUnpin={onUnpin}
       />,
@@ -451,7 +451,7 @@ describe('InteractiveBlock accent tinting', () => {
   it('movable task with accent: borderColor + color inline styles', () => {
     render(
       <InteractiveBlock
-        id="b1" dayStartMs={Date.parse('2026-01-05T00:00:00.000Z')} dayIndex={0}
+        dayStartMs={Date.parse('2026-01-05T00:00:00.000Z')} dayIndex={0}
         startMs={Date.parse('2026-01-05T09:00:00.000Z')} endMs={Date.parse('2026-01-05T10:00:00.000Z')}
         topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
         onCommit={vi.fn()} accent={ACCENT}
@@ -467,7 +467,7 @@ describe('InteractiveBlock accent tinting', () => {
   it('pinned task with accent: backgroundColor inline style, keeps white text', () => {
     render(
       <InteractiveBlock
-        id="b1" dayStartMs={Date.parse('2026-01-05T00:00:00.000Z')} dayIndex={0}
+        dayStartMs={Date.parse('2026-01-05T00:00:00.000Z')} dayIndex={0}
         startMs={Date.parse('2026-01-05T09:00:00.000Z')} endMs={Date.parse('2026-01-05T10:00:00.000Z')}
         topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned
         onCommit={vi.fn()} accent={ACCENT}
@@ -485,7 +485,7 @@ describe('InteractiveBlock on a coarse pointer', () => {
   afterEach(() => { vi.useRealTimers(); });
 
   const coarseProps = {
-    id: 'b1', dayStartMs: DAY, dayIndex: 0, startMs: START, endMs: END,
+    dayStartMs: DAY, dayIndex: 0, startMs: START, endMs: END,
     topPct: 10, heightPct: 5, startLabel: '09:00', title: 'Write spec',
     kind: 'task' as const, pinned: false, coarse: true,
   };
@@ -629,7 +629,7 @@ describe('InteractiveBlock scroll compensation', () => {
     const scroller = fakeScroller();
     render(
       <InteractiveBlock
-        id="b1" dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
+        dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
         topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
         onCommit={onCommit} getScrollContainer={() => scroller}
       />,
@@ -667,7 +667,7 @@ describe('InteractiveBlock scroll compensation', () => {
       const scroller = fakeScroller(); // rect top 0 / bottom 600 → bottom edge zone starts at 552
       render(
         <InteractiveBlock
-          id="b1" dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
+          dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
           topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
           onCommit={onCommit} getScrollContainer={() => scroller}
         />,

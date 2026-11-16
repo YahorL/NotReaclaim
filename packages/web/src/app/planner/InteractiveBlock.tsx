@@ -18,7 +18,6 @@ const finite = (n: number): number => (Number.isFinite(n) ? n : 0);
 const blockTouchScroll = (e: TouchEvent): void => { e.preventDefault(); };
 
 export interface InteractiveBlockProps {
-  id: string;
   dayStartMs: number;
   dayIndex: number;
   startMs: number;
@@ -49,7 +48,6 @@ export interface InteractiveBlockProps {
 type DragMode = 'move' | 'resize';
 
 export function InteractiveBlock(props: InteractiveBlockProps) {
-  // `id` is part of the props for the parent's onCommit binding; not read inside this component.
   const { dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, leftPct = 0, widthPct = 100, startLabel, title, kind, pinned, onCommit, onUnpin, onDelete, onClick, deleteLabel = 'Delete block', dayCount = 7, accent, zone = 'UTC', coarse = false, getScrollContainer } = props;
   // Refs hold the authoritative drag state; mutated directly so pointer handlers always
   // see the latest values regardless of React's batching/commit schedule.

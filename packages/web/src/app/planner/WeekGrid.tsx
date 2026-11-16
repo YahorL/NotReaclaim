@@ -282,7 +282,7 @@ export function WeekGrid(props: WeekGridProps) {
                     if (it.kind !== 'meeting' && blockId) {
                       return (
                         <InteractiveBlock
-                          key={it.key} id={blockId} dayStartMs={d} dayIndex={i}
+                          key={it.key} dayStartMs={d} dayIndex={i}
                           startMs={it.startMs} endMs={it.endMs}
                           topPct={pos.topPct} heightPct={pos.heightPct}
                           leftPct={leftPct} widthPct={widthPct}
@@ -308,7 +308,7 @@ export function WeekGrid(props: WeekGridProps) {
                     if (ev && ev.source === 'app') {
                       return (
                         <InteractiveBlock
-                          key={it.key} id={ev.id} dayStartMs={d} dayIndex={i}
+                          key={it.key} dayStartMs={d} dayIndex={i}
                           startMs={it.startMs} endMs={it.endMs}
                           topPct={pos.topPct} heightPct={pos.heightPct}
                           leftPct={leftPct} widthPct={widthPct}
