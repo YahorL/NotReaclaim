@@ -15,8 +15,22 @@ export interface PanelTaskDragData {
   taskId: string;
 }
 
+/** Marks a planner day column as a drop target. */
+export const DAY_COLUMN_DROP_TYPE = 'day-col';
+
+/** dnd-kit droppable id for the day column at `dayIndex`. */
+export function dayColumnDroppableId(dayIndex: number): string {
+  return `${DAY_COLUMN_DROP_TYPE}:${dayIndex}`;
+}
+
+/** The day index behind a `dayColumnDroppableId`, or null when `id` is not one. */
+export function dayIndexFromDroppableId(id: string): number | null {
+  const m = /^day-col:(\d+)$/.exec(id);
+  return m ? Number(m[1]) : null;
+}
+
 export interface DayColumnDropData {
-  type: 'day-col';
+  type: typeof DAY_COLUMN_DROP_TYPE;
   dayIndex: number;
   dayStartMs: number;
 }
@@ -58,7 +72,7 @@ export function dayDropFromOver({ overData, overRect, pointerY }: {
 }): DayDropTarget | null {
   if (!overData || typeof overData !== 'object') return null;
   const d = overData as Partial<DayColumnDropData>;
-  if (d.type !== 'day-col' || typeof d.dayIndex !== 'number' || typeof d.dayStartMs !== 'number') return null;
+  if (d.type !== DAY_COLUMN_DROP_TYPE || typeof d.dayIndex !== 'number' || typeof d.dayStartMs !== 'number') return null;
   if (overRect === null || pointerY === null) return null;
   const fraction = overRect.height > 0 ? (pointerY - overRect.top) / overRect.height : 0;
   return { dayIndex: d.dayIndex, dayStartMs: d.dayStartMs, startMin: snapClickToSlot(fraction) };

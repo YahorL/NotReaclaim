@@ -10,7 +10,7 @@ import { useCompactWidth, usePointerCoarse } from '../lib/useMediaQuery';
 import { useDragToScheduleSensors, pointerFirstCollision } from '../dnd/sensors';
 import { makeAnnouncements, POINTER_ONLY_DRAG_INSTRUCTIONS } from '../dnd/announcements';
 import { useLivePointerY } from '../dnd/useLivePointerY';
-import { dayDropFromOver, draggedTaskId, panelTaskDraggableId, scheduleDropResult, type DayDropTarget } from '../planner/scheduleDrop';
+import { dayDropFromOver, dayIndexFromDroppableId, draggedTaskId, panelTaskDraggableId, scheduleDropResult, type DayDropTarget } from '../planner/scheduleDrop';
 import { shouldCollapseSheet } from '../planner/dragSheet';
 import { Sheet } from '../components/Sheet';
 import { DrawerHost } from '../components/DrawerHost';
@@ -135,9 +135,8 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
     announcements: makeAnnouncements(
       (id) => (tasksQ.data ?? []).find((t) => panelTaskDraggableId(t.id) === id)?.title ?? null,
       (id) => {
-        const m = /^day-col:(\d+)$/.exec(id);
-        const i = m ? Number(m[1]) : -1;
-        const day = days[i];
+        const i = dayIndexFromDroppableId(id);
+        const day = i === null ? undefined : days[i];
         return day === undefined ? null : weekdayLabel(day, zone);
       },
     ),

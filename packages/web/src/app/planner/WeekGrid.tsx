@@ -7,6 +7,7 @@ import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY, snapClickToSlo
 import { CreatePopover } from './CreatePopover';
 import { MS_PER_MIN } from '../lib/time';
 import { layoutOverlaps } from './overlapLayout';
+import { DAY_COLUMN_DROP_TYPE, dayColumnDroppableId } from './scheduleDrop';
 import { Sheet } from '../components/Sheet';
 import { Icons } from '../shell/icons';
 
@@ -18,8 +19,8 @@ import { Icons } from '../shell/icons';
  */
 function DayDropZone({ dayIndex, dayStartMs }: { dayIndex: number; dayStartMs: number }) {
   const { setNodeRef } = useDroppable({
-    id: `day-col:${dayIndex}`,
-    data: { type: 'day-col', dayIndex, dayStartMs },
+    id: dayColumnDroppableId(dayIndex),
+    data: { type: DAY_COLUMN_DROP_TYPE, dayIndex, dayStartMs },
   });
   return (
     <div
