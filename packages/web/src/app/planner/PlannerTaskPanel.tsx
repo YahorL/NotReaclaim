@@ -4,7 +4,7 @@ import type { Task, SchedulePreview, UnscheduledItem } from '../../api/types';
 import { formatDurationShort } from '../lib/duration';
 import { PANEL_TASK_DRAG_TYPE, panelTaskDraggableId } from './scheduleDrop';
 import {
-  BUCKETS, BUCKET_META, priorityToBucket, sortBucket, relativeDayTimeLabel, nextBlockMsForTask,
+  BUCKETS, BUCKET_META, isActiveTask, priorityToBucket, sortBucket, relativeDayTimeLabel, nextBlockMsForTask,
 } from '../priorities/priorityBucket';
 
 export interface PlannerTaskPanelProps {
@@ -105,7 +105,7 @@ export function PlannerTaskPanel({ tasks, preview, nowMs, onComplete, onEdit, on
   const [tab, setTab] = useState<Tab>('priorities');
 
   const active = useMemo(
-    () => tasks.filter((t) => t.status === 'pending' || t.status === 'scheduled'),
+    () => tasks.filter(isActiveTask),
     [tasks],
   );
   const atRiskIds = useMemo(() => {

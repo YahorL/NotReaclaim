@@ -7,7 +7,7 @@ import { DrawerHost } from '../components/DrawerHost';
 import { useCompactWidth } from '../lib/useMediaQuery';
 import { Toolbar } from '../priorities/Toolbar';
 import { Board, type BoardColumn } from '../priorities/Board';
-import { type BoardColumnKey, BUCKETS, priorityToBucket, nextBlockMsForTask, sortBucket, sortCompleted } from '../priorities/priorityBucket';
+import { type BoardColumnKey, BUCKETS, isActiveTask, priorityToBucket, nextBlockMsForTask, sortBucket, sortCompleted } from '../priorities/priorityBucket';
 import { taskMovePatch } from '../priorities/boardDnd';
 import { boardPaneClass } from '../priorities/boardPane';
 
@@ -43,7 +43,7 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
       .filter((b) => colsVisible[b])
       .map((key) => ({
         key,
-        tasks: sortBucket(visible.filter((t) => (t.status === 'pending' || t.status === 'scheduled') && priorityToBucket(t.priority) === key)),
+        tasks: sortBucket(visible.filter((t) => isActiveTask(t) && priorityToBucket(t.priority) === key)),
       }));
 
     const extraCols: BoardColumn[] = [];

@@ -1,4 +1,4 @@
-import type { SchedulePreview } from '../../api/types';
+import type { SchedulePreview, Task } from '../../api/types';
 import { MS_PER_DAY } from '../lib/time';
 
 export const BUCKETS = ['critical', 'high', 'medium', 'low'] as const;
@@ -10,6 +10,11 @@ export function priorityToBucket(priority: number): BucketKey {
   if (priority === 2) return 'high';
   if (priority === 3) return 'medium';
   return 'low';
+}
+
+/** A task still waiting to be worked: pending or scheduled (not backlog, not completed). */
+export function isActiveTask(task: Pick<Task, 'status'>): boolean {
+  return task.status === 'pending' || task.status === 'scheduled';
 }
 
 export function bucketToPriority(bucket: BucketKey): 1 | 2 | 3 | 4 {

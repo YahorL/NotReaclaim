@@ -5,6 +5,7 @@ import { DurationStepper } from '../components/DurationStepper';
 import { isoToLocalInput, localInputToIso } from '../lib/duration';
 import { WINDOW_END_MIN, SLOT_MIN, localMidnight, formatHm } from './weekModel';
 import { MS_PER_MIN, MS_PER_DAY, toIso } from '../lib/time';
+import { isActiveTask } from '../priorities/priorityBucket';
 
 export interface CreatePopoverProps {
   dayStartMs: number;
@@ -44,7 +45,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
   const tasksQ = useTasksQuery();
   const categoriesQ = useCategoriesQuery();
   const categories = categoriesQ.data ?? [];
-  const activeTasks = (tasksQ.data ?? []).filter((t) => t.status === 'pending' || t.status === 'scheduled');
+  const activeTasks = (tasksQ.data ?? []).filter(isActiveTask);
   const existingChosen = mode === 'task' && taskId !== '';
   const showNewTaskFields = mode === 'task' && !existingChosen;
   const titleOptional = mode === 'blocked';

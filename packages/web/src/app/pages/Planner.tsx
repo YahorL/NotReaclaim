@@ -5,6 +5,7 @@ import { ApiError } from '../../api/client';
 import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useHabitsQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation, useSettingsQuery } from '../../api/queries';
 import { dayColumns, daysThatFit, shiftDays, dayAnchor, rangeLabel, weekdayLabel, MS_PER_DAY } from '../planner/weekModel';
 import { toIso } from '../lib/time';
+import { browserTimezone } from '../settings/settingsForm';
 import { useElementWidth } from '../planner/useElementWidth';
 import { useCompactWidth, usePointerCoarse } from '../lib/useMediaQuery';
 import { useDragToScheduleSensors, pointerFirstCollision } from '../dnd/sensors';
@@ -25,7 +26,7 @@ import { labelBlocksWithSubtasks } from '../planner/blockLabels';
 export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const nowMs = now();
   const settingsQ = useSettingsQuery();
-  const zone = settingsQ.data?.timezone ?? (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
+  const zone = settingsQ.data?.timezone ?? browserTimezone();
   // Visual day boundary: with 180 a column runs 03:00 → 03:00, so 01:30 still shows as "today".
   const dayStartMinute = settingsQ.data?.dayStartMinute ?? 0;
   const [viewStartMs, setViewStartMs] = useState(() => dayAnchor(nowMs, zone, dayStartMinute));
