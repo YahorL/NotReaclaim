@@ -1,15 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
-  msToHM, hmToMs, minutesToHHMM, hhmmToMinutes,
+  msToHM, minutesToHHMM, hhmmToMinutes,
   isoToLocalInput, localInputToIso, formatDurationShort,
 } from './duration';
 
 describe('duration', () => {
-  it('msToHM / hmToMs round-trip', () => {
+  it('msToHM splits ms into hours and minutes', () => {
     expect(msToHM(5_400_000)).toEqual({ hours: 1, minutes: 30 });
     expect(msToHM(1_800_000)).toEqual({ hours: 0, minutes: 30 });
-    expect(hmToMs(1, 30)).toBe(5_400_000);
-    expect(hmToMs(0, 30)).toBe(1_800_000);
   });
   it('minutesToHHMM / hhmmToMinutes round-trip', () => {
     expect(minutesToHHMM(360)).toBe('06:00');

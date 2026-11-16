@@ -5,10 +5,6 @@ export function msToHM(ms: number): { hours: number; minutes: number } {
   return { hours: Math.floor(totalMin / 60), minutes: totalMin % 60 };
 }
 
-export function hmToMs(hours: number, minutes: number): number {
-  return (hours * 60 + minutes) * MS_PER_MIN;
-}
-
 export function minutesToHHMM(min: number): string {
   const h = Math.floor(min / 60);
   const m = min % 60;
