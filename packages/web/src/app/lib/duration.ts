@@ -1,4 +1,4 @@
-const MS_PER_MIN = 60_000;
+import { MS_PER_MIN } from './time';
 
 export function msToHM(ms: number): { hours: number; minutes: number } {
   const totalMin = Math.round(ms / MS_PER_MIN);

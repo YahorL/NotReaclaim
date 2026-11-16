@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect, useLayoutEffect, type PointerEvent as ReactPointerEvent } from 'react';
 import { BASE, variantClass, type BlockKind } from './EventBlock';
-import { WINDOW_END_MIN, snapMinutes, pxToMinutes, minutesToPx, clampToWindow, shiftDays, clampDayDelta, formatHm, resizeHandleClass } from './weekModel';
+import { WINDOW_END_MIN, SLOT_MIN, snapMinutes, pxToMinutes, minutesToPx, clampToWindow, shiftDays, clampDayDelta, formatHm, resizeHandleClass } from './weekModel';
 import { IDLE, beginPress, pressMove, pressArm, endPress, isArmed, isTap, LONG_PRESS_MS, type PressState } from './longPress';
 import { useEdgeAutoScroll } from './edgeScroll';
+import { MS_PER_MIN, toIso } from '../lib/time';
 
-const MIN_DURATION_MIN = 15;
+const MIN_DURATION_MIN = SLOT_MIN;
 const HELD_TIMEOUT_MS = 1500;
-const iso = (ms: number): string => new Date(ms).toISOString();
 const finite = (n: number): number => (Number.isFinite(n) ? n : 0);
 
 /**
@@ -289,8 +289,8 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
 
     if (!mode) return;
 
-    const startMin = (startMs - dayStartMs) / 60_000;
-    const endMin = (endMs - dayStartMs) / 60_000;
+    const startMin = (startMs - dayStartMs) / MS_PER_MIN;
+    const endMin = (endMs - dayStartMs) / MS_PER_MIN;
 
     if (mode === 'move') {
       if (deltaMin === 0 && deltaDays === 0) { onClick?.(); return; } // a click, not a drag: no held preview
@@ -300,13 +300,13 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
       const dayStart = shiftDays(dayStartMs, deltaDays, zone);
       // Transfer to held preview before firing mutation
       holdPreview(captureMoveMin, 0, captureDayDelta, captureColWidth);
-      onCommit({ startsAt: iso(dayStart + moved.startMin * 60_000), endsAt: iso(dayStart + moved.endMin * 60_000), pinned: true });
+      onCommit({ startsAt: toIso(dayStart + moved.startMin * MS_PER_MIN), endsAt: toIso(dayStart + moved.endMin * MS_PER_MIN), pinned: true });
     } else {
       const newEndMin = Math.min(WINDOW_END_MIN, Math.max(startMin + MIN_DURATION_MIN, endMin + deltaMin));
       if (newEndMin === endMin) return; // zero-delta no-op: no held preview
       // Transfer to held preview before firing mutation
       holdPreview(0, captureGrowMin, 0, 0);
-      onCommit({ startsAt: iso(startMs), endsAt: iso(dayStartMs + newEndMin * 60_000), pinned: true });
+      onCommit({ startsAt: toIso(startMs), endsAt: toIso(dayStartMs + newEndMin * MS_PER_MIN), pinned: true });
     }
   };
 
@@ -321,8 +321,8 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
   // The drag label shows only during active drag AND when there is a non-zero live delta.
   const showDragLabel = activeDrag && (moveMin !== 0 || growMin !== 0 || dayDelta !== 0);
 
-  const previewStart = startMs + effectiveMoveMin * 60_000;
-  const previewEnd = effectiveGrowMin !== 0 ? endMs + effectiveGrowMin * 60_000 : endMs + effectiveMoveMin * 60_000;
+  const previewStart = startMs + effectiveMoveMin * MS_PER_MIN;
+  const previewEnd = effectiveGrowMin !== 0 ? endMs + effectiveGrowMin * MS_PER_MIN : endMs + effectiveMoveMin * MS_PER_MIN;
 
   const accentStyles = accent && kind !== 'meeting'
     ? pinned

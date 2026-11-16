@@ -1,7 +1,6 @@
 import type { CreateTaskInput } from '../../api/types';
 import { isoToLocalInput, localInputToIso } from '../lib/duration';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
+import { MS_PER_DAY } from '../lib/time';
 
 /** Local-time datetime-local string for the day of `ms` at hh:mm. */
 function atLocalTime(ms: number, hours: number, minutes: number): string {
@@ -33,7 +32,7 @@ export function defaultNewTaskForm(
     split: true,
     minChunkMs: settings?.defaultMinChunkMs ?? 30 * 60_000,
     maxChunkMs: settings?.defaultMaxChunkMs ?? 120 * 60_000,
-    dueByLocal: atLocalTime(now + 7 * DAY_MS, 23, 59),
+    dueByLocal: atLocalTime(now + 7 * MS_PER_DAY, 23, 59),
     notBeforeLocal: atLocalTime(now, 8, 0),
     categoryId: null,
   };

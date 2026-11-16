@@ -1,4 +1,5 @@
 import type { SchedulePreview } from '../../api/types';
+import { MS_PER_DAY } from '../lib/time';
 
 export const BUCKETS = ['critical', 'high', 'medium', 'low'] as const;
 export type BucketKey = (typeof BUCKETS)[number];
@@ -53,7 +54,7 @@ function startOfDay(ms: number): number {
 
 export function relativeDayTimeLabel(ms: number, now: number): string {
   const d = new Date(ms);
-  const diffDays = Math.round((startOfDay(ms) - startOfDay(now)) / (24 * 60 * 60 * 1000));
+  const diffDays = Math.round((startOfDay(ms) - startOfDay(now)) / MS_PER_DAY);
   if (diffDays === 0) return `Today ${timeLabel(d)}`;
   if (diffDays === 1) return `Tomorrow ${timeLabel(d)}`;
   const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(d);

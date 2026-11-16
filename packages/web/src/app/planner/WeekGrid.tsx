@@ -5,6 +5,7 @@ import { EventBlock, type BlockKind } from './EventBlock';
 import { InteractiveBlock } from './InteractiveBlock';
 import { placeInDay, nowLine, isToday, classifyBlock, MS_PER_DAY, snapClickToSlot, WINDOW_START_MIN, WINDOW_END_MIN, GRID_COLUMN_PX, dayAnchor, formatHm, weekdayLabel, dayOfMonth, hourRowLabel, timeGutterPx, popoverAlign, swipeDecision } from './weekModel';
 import { CreatePopover } from './CreatePopover';
+import { MS_PER_MIN } from '../lib/time';
 import { layoutOverlaps } from './overlapLayout';
 import { Sheet } from '../components/Sheet';
 import { Icons } from '../shell/icons';
@@ -122,7 +123,7 @@ export function WeekGrid(props: WeekGridProps) {
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const minOfDay = Math.max(0, Math.min(WINDOW_END_MIN, (nowMs - dayAnchor(nowMs, zone, dayStartMinute)) / 60_000));
+    const minOfDay = Math.max(0, Math.min(WINDOW_END_MIN, (nowMs - dayAnchor(nowMs, zone, dayStartMinute)) / MS_PER_MIN));
     el.scrollTop = Math.max(0, (minOfDay / (WINDOW_END_MIN - WINDOW_START_MIN)) * GRID_COLUMN_PX - 64);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- scroll to "now" once on mount
   }, []);

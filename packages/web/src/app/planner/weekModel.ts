@@ -1,10 +1,13 @@
 import { DateTime } from 'luxon';
 import type { ScheduledBlock } from '../../api/types';
+import { MS_PER_MIN, MS_PER_DAY } from '../lib/time';
+
+export { MS_PER_DAY };
 
 export const WINDOW_START_MIN = 0;          // 00:00
 export const WINDOW_END_MIN = 24 * 60;      // 24:00 (full day)
-const MS_PER_MIN = 60_000;
-export const MS_PER_DAY = 24 * 60 * 60 * 1000;
+/** The planner's slot size in minutes: drags, clicks and durations snap to it. */
+export const SLOT_MIN = 15;
 
 /** Monday 00:00 of the week containing `now`, in `zone`. */
 export function startOfWeek(now: number, zone = 'UTC'): number {
@@ -138,8 +141,8 @@ export function daysThatFit(widthPx: number, compact = false): number {
   return Math.max(1, Math.min(7, Math.floor((widthPx - gutter) / minCol)));
 }
 
-/** Round a minute value to the nearest `step` (default 15). */
-export function snapMinutes(min: number, step = 15): number {
+/** Round a minute value to the nearest `step` (default: one slot, 15). */
+export function snapMinutes(min: number, step = SLOT_MIN): number {
   return Math.round(min / step) * step;
 }
 
@@ -198,7 +201,7 @@ export function dayOfMonth(ms: number, zone = 'UTC'): number {
 export function snapClickToSlot(fraction: number): number {
   const span = WINDOW_END_MIN - WINDOW_START_MIN;
   const min = snapMinutes(WINDOW_START_MIN + fraction * span);
-  return Math.min(WINDOW_END_MIN - 15, Math.max(WINDOW_START_MIN, min));
+  return Math.min(WINDOW_END_MIN - SLOT_MIN, Math.max(WINDOW_START_MIN, min));
 }
 
 /** Clamp a horizontal day delta so dayIndex + delta stays within the rendered columns (0..lastIndex). */
