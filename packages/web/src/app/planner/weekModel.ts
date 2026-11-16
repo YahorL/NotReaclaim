@@ -1,14 +1,12 @@
 import { DateTime } from 'luxon';
 import type { ScheduledBlock } from '../../api/types';
-import { MS_PER_MIN, MS_PER_DAY } from '../lib/time';
+import { MS_PER_MIN, MS_PER_DAY, SLOT_MIN } from '../lib/time';
 
-export { MS_PER_DAY };
+export { MS_PER_DAY, SLOT_MIN };
 
 export const WINDOW_START_MIN = 0;          // 00:00
 export const WINDOW_END_MIN = 24 * 60;      // 24:00 (full day)
 export const WINDOW_SPAN_MIN = WINDOW_END_MIN - WINDOW_START_MIN;
-/** The planner's slot size in minutes: drags, clicks and durations snap to it. */
-export const SLOT_MIN = 15;
 
 /** Monday 00:00 of the week containing `now`, in `zone`. */
 export function startOfWeek(now: number, zone = 'UTC'): number {

@@ -1,6 +1,5 @@
 import { msToHM } from '../lib/duration';
-import { MS_PER_MIN } from '../lib/time';
-import { SLOT_MIN } from '../planner/weekModel';
+import { MS_PER_MIN, SLOT_MIN } from '../lib/time';
 import { Icons } from '../shell/icons';
 
 const STEP = SLOT_MIN * MS_PER_MIN;
