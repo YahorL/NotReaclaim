@@ -27,6 +27,7 @@ import type { EventBus } from './events.js';
 import { createConnectionRegistry } from './connection-registry.js';
 import { registerWebSocket } from './ws.js';
 import { replanAfterMutation } from './replan.js';
+import { verifySession } from './auth/token.js';
 
 export interface AppDeps {
   repos: {
@@ -72,16 +73,16 @@ export function buildApp(input: Omit<AppDeps, 'now'> & { now?: () => number; log
   app.register(fastifyJwt, { secret: deps.config.jwtSecret });
   app.decorateRequest('userId', '');
   app.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const payload = await request.jwtVerify<{ sub?: string }>();
-      if (!payload.sub) {
-        reply.code(401).send({ code: 'unauthorized', message: 'Invalid or missing token' });
-        return;
-      }
-      request.userId = payload.sub;
-    } catch {
+    // Same header rule as @fastify/jwt's request.jwtVerify(): a case-insensitive `Bearer`
+    // scheme followed by whitespace, and exactly two space-separated parts.
+    const header = request.headers.authorization;
+    const parts = header && /^Bearer\s/i.test(header) ? header.split(' ') : [];
+    const userId = parts.length === 2 ? verifySession(app, parts[1]!) : null;
+    if (!userId) {
       reply.code(401).send({ code: 'unauthorized', message: 'Invalid or missing token' });
+      return;
     }
+    request.userId = userId;
   });
 
   app.setErrorHandler((error, _request, reply) => {
