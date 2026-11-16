@@ -60,6 +60,9 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
   const startMs = dayStartMs + startMin * MS_PER_MIN;
   const endMs = startMs + durationMs;
   const pending = createTaskM.isPending || createEventM.isPending || createBlockM.isPending;
+  const hasTitle = titleOptional || existingChosen || title.trim() !== '';
+  const hasDue = !showNewTaskFields || dueLocal !== '';
+  const canSubmit = !pending && hasTitle && hasDue;
   const apiError = [createTaskM.error, createEventM.error, createBlockM.error].find((e) => e instanceof ApiError) as ApiError | undefined;
 
   useEffect(() => {
@@ -76,7 +79,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
   }, [onClose, compact]);
 
   const submit = () => {
-    if (pending || (!titleOptional && !existingChosen && !title.trim()) || (showNewTaskFields && !dueLocal)) return;
+    if (!canSubmit) return;
     if (mode === 'blocked') {
       createEventM.mutate(
         { title: title.trim() || DEFAULT_BLOCKED_TITLE, startsAt: toIso(startMs), endsAt: toIso(endMs), kind: 'blocked' },
@@ -87,7 +90,8 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
     } else if (existingChosen) {
       createBlockM.mutate({ taskId, startsAt: toIso(startMs), endsAt: toIso(endMs) }, { onSuccess: onClose });
     } else {
-      const dueBy = dueLocal ? localInputToIso(dueLocal) : toIso(defaultDueMs);
+      // Only the new-task branch gets here, and `canSubmit` requires a due date for it.
+      const dueBy = localInputToIso(dueLocal);
       const notBefore = afterLocal ? localInputToIso(afterLocal) : undefined;
       const catId = categoryId ?? undefined;
       createTaskM.mutate(
@@ -188,7 +192,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
       <button
         type="button"
         data-testid="create-submit"
-        disabled={(!existingChosen && ((!title.trim() && !titleOptional) || (showNewTaskFields && !dueLocal))) || pending}
+        disabled={!canSubmit}
         onClick={submit}
         className="w-full rounded-[20px] bg-indigo py-2 text-[14px] font-bold text-white disabled:opacity-50"
       >
