@@ -22,7 +22,7 @@ describe('splitDuration', () => {
     expect(splitDuration(0, 30)).toEqual([]);
   });
 
-  it('never exceeds maxChunkMs even when min and max conflict', () => {
+  it('never exceeds maxChunkMs', () => {
     const chunks = splitDuration(35, 30);
     expect(chunks.every((c) => c <= 30)).toBe(true);
     expect(chunks.reduce((a, b) => a + b, 0)).toBe(35);
