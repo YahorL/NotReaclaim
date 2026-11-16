@@ -16,7 +16,8 @@ export interface CreatePopoverProps {
   onClose: () => void;
   align?: 'left' | 'right';
   now?: () => number;
-  zone?: string;
+  /** Settings zone the slot label and the date fields are read in. */
+  zone: string;
   /**
    * Below md: render as plain form content — the host `Sheet` owns the chrome, the backdrop,
    * Escape and dismissal. Off, this is the column-anchored desktop popover.
@@ -29,7 +30,7 @@ type Mode = 'event' | 'task' | 'blocked';
 /** Blocked time is about the slot, not the label — an untitled entry just reads "Blocked". */
 const DEFAULT_BLOCKED_TITLE = 'Blocked';
 
-export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = 'left', now = () => Date.now(), zone = 'UTC', compact = false }: CreatePopoverProps) {
+export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = 'left', now = () => Date.now(), zone, compact = false }: CreatePopoverProps) {
   const [mode, setMode] = useState<Mode>('event');
   const [title, setTitle] = useState('');
   const [taskId, setTaskId] = useState('');

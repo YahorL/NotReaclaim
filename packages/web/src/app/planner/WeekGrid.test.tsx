@@ -6,8 +6,8 @@ import { within } from '@testing-library/react';
 import { WeekGrid, type WeekGridProps } from './WeekGrid';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 
-const MON = startOfWeek(Date.parse('2026-01-05T12:00:00.000Z')); // 2026-01-05
-const days = dayColumns(MON);
+const MON = startOfWeek(Date.parse('2026-01-05T12:00:00.000Z'), 'UTC'); // 2026-01-05
+const days = dayColumns(MON, 7, 'UTC');
 const WED_NOON = Date.parse('2026-01-07T12:00:00.000Z');
 
 const block = (over: Partial<ScheduledBlock> = {}): ScheduledBlock => ({

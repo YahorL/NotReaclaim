@@ -6,12 +6,13 @@ import { PrimaryButton, SecondaryButton } from '../components/Buttons';
 import { FIELD_CONTROL, FULL_ROW } from '../components/formStyles';
 import { useUpdateCalendarEventMutation, useDeleteCalendarEventMutation } from '../../api/queries';
 import { isoToZonedInput, zonedInputToIso } from '../lib/datetimeLocal';
+import { useZoneChange } from '../settings/useTimezone';
 
 export interface EventDrawerProps {
   event: CalendarEvent;
   onClose: () => void;
   /** Settings timezone the planner renders in — the drawer reads/writes wall-clock times in it. */
-  zone?: string;
+  zone: string;
   /** Hosted in a full-screen Sheet below md: drop the 440px panel chrome and the self-dismiss. */
   compact?: boolean;
 }
@@ -20,12 +21,20 @@ export interface EventDrawerProps {
  * Edit drawer for an app-created calendar event. Google-owned events mirror the remote
  * calendar and are not editable here, so the drawer renders nothing for them.
  */
-export function EventDrawer({ event, onClose, zone = 'UTC', compact = false }: EventDrawerProps) {
+export function EventDrawer({ event, onClose, zone, compact = false }: EventDrawerProps) {
   const seededStart = isoToZonedInput(event.startsAt, zone);
   const seededEnd = isoToZonedInput(event.endsAt, zone);
   const [title, setTitle] = useState(event.title);
   const [startLocal, setStartLocal] = useState(seededStart);
   const [endLocal, setEndLocal] = useState(seededEnd);
+  // Opened before settings loaded (fallback zone): re-read untouched times in the real zone, or
+  // they would differ from the new seeds and Save would send them — moving the event.
+  useZoneChange(zone, (prev, next) => {
+    const prevStart = isoToZonedInput(event.startsAt, prev);
+    const prevEnd = isoToZonedInput(event.endsAt, prev);
+    setStartLocal((cur) => (cur === prevStart ? isoToZonedInput(event.startsAt, next) : cur));
+    setEndLocal((cur) => (cur === prevEnd ? isoToZonedInput(event.endsAt, next) : cur));
+  });
   const updateM = useUpdateCalendarEventMutation();
   const deleteM = useDeleteCalendarEventMutation();
 

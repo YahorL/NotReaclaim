@@ -8,8 +8,12 @@ export const WINDOW_START_MIN = 0;          // 00:00
 export const WINDOW_END_MIN = 24 * 60;      // 24:00 (full day)
 export const WINDOW_SPAN_MIN = WINDOW_END_MIN - WINDOW_START_MIN;
 
+// Every calendar helper below takes the IANA `zone` as a REQUIRED argument: it is always the
+// user's settings.timezone (useTimezone). A default would silently mean UTC wherever a caller
+// forgot it — the bug class this module used to invite.
+
 /** Monday 00:00 of the week containing `now`, in `zone`. */
-export function startOfWeek(now: number, zone = 'UTC'): number {
+export function startOfWeek(now: number, zone: string): number {
   return DateTime.fromMillis(now, { zone }).startOf('week').toMillis(); // luxon weeks start Monday
 }
 
@@ -32,7 +36,7 @@ function anchorParts(dayStartMinute: number): { hour: number; minute: number; se
  * ±1h tolerance the zone-aware grid has carried since R16a). If the day-start time does not exist
  * on a spring-forward day, luxon shifts it forward to the first valid instant.
  */
-export function dayAnchor(ms: number, zone = 'UTC', dayStartMinute = 0): number {
+export function dayAnchor(ms: number, zone: string, dayStartMinute = 0): number {
   const parts = anchorParts(dayStartMinute);
   const day = DateTime.fromMillis(ms, { zone }).startOf('day');
   const sameDay = day.set(parts);
@@ -40,15 +44,15 @@ export function dayAnchor(ms: number, zone = 'UTC', dayStartMinute = 0): number 
   return day.minus({ days: 1 }).set(parts).toMillis();
 }
 
-/** `count` consecutive day-column starts from the column containing `startMs` (default 7). */
-export function dayColumns(startMs: number, count = 7, zone = 'UTC', dayStartMinute = 0): number[] {
+/** `count` consecutive day-column starts from the column containing `startMs`. */
+export function dayColumns(startMs: number, count: number, zone: string, dayStartMinute = 0): number[] {
   const parts = anchorParts(dayStartMinute);
   const base = DateTime.fromMillis(dayAnchor(startMs, zone, dayStartMinute), { zone });
   return Array.from({ length: count }, (_, i) => base.plus({ days: i }).set(parts).toMillis());
 }
 
 /** The zone-midnight `weeks` weeks from `weekStartMs`. */
-export function addWeeks(weekStartMs: number, weeks: number, zone = 'UTC'): number {
+export function addWeeks(weekStartMs: number, weeks: number, zone: string): number {
   return DateTime.fromMillis(weekStartMs, { zone }).plus({ weeks }).startOf('day').toMillis();
 }
 
@@ -174,28 +178,28 @@ export function hourRowLabel(index: number, dayStartMinute = 0): string {
 
 /** Zone midnight (00:00) of the day containing `ms`. Calendar-date semantics — for a shifted
  *  planner column start use `dayAnchor`. */
-export function localMidnight(ms: number, zone = 'UTC'): number {
+export function localMidnight(ms: number, zone: string): number {
   return DateTime.fromMillis(ms, { zone }).startOf('day').toMillis();
 }
 
 /** Shift a timestamp by whole days in `zone` (DST-safe; preserves wall-clock time). */
-export function shiftDays(ms: number, days: number, zone = 'UTC'): number {
+export function shiftDays(ms: number, days: number, zone: string): number {
   if (days === 0) return ms;
   return DateTime.fromMillis(ms, { zone }).plus({ days }).toMillis();
 }
 
 /** Time-of-day label (e.g. "09:00 AM") of `ms` rendered in `zone`. */
-export function formatHm(ms: number, zone = 'UTC'): string {
+export function formatHm(ms: number, zone: string): string {
   return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: zone });
 }
 
 /** 3-letter weekday (e.g. "Mon") of `ms` in `zone`. */
-export function weekdayLabel(ms: number, zone = 'UTC'): string {
+export function weekdayLabel(ms: number, zone: string): string {
   return new Date(ms).toLocaleDateString([], { weekday: 'short', timeZone: zone });
 }
 
 /** Day-of-month number of `ms` in `zone`. */
-export function dayOfMonth(ms: number, zone = 'UTC'): number {
+export function dayOfMonth(ms: number, zone: string): number {
   return Number(new Date(ms).toLocaleDateString('en-US', { day: 'numeric', timeZone: zone }));
 }
 
@@ -228,7 +232,7 @@ export function popoverAlign(dayIndex: number, dayCount: number): 'left' | 'righ
 }
 
 /** Toolbar label for the rendered window: one date in the 1-day view, `first – last` otherwise. */
-export function rangeLabel(days: number[], zone = 'UTC'): string {
+export function rangeLabel(days: number[], zone: string): string {
   if (days.length === 0) return '';
   const fmt = (ms: number) => new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric', timeZone: zone });
   const first = days[0]!;

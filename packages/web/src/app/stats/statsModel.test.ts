@@ -6,7 +6,7 @@ import {
 } from './statsModel';
 
 const NOW = Date.parse('2026-01-07T12:00:00.000Z'); // Wednesday
-const days = dayColumns(startOfWeek(NOW)); // Mon 2026-01-05 .. Sun 2026-01-11 (UTC)
+const days = dayColumns(startOfWeek(NOW, 'UTC'), 7, 'UTC'); // Mon 2026-01-05 .. Sun 2026-01-11 (UTC)
 
 const preview = (over: Partial<SchedulePreview> = {}): SchedulePreview => ({
   blocks: [

@@ -161,7 +161,7 @@ describe('EventDrawer', () => {
 
   it('compact drops the fixed 440px panel chrome and its own outside-dismiss', () => {
     const onClose = vi.fn();
-    renderWithProviders(<EventDrawer event={appEvent()} compact onClose={onClose} />, { api: api() });
+    renderWithProviders(<EventDrawer event={appEvent()} zone="UTC" compact onClose={onClose} />, { api: api() });
     const drawer = screen.getByTestId('event-drawer');
     expect(drawer.className).toContain('w-full');
     expect(drawer.className).not.toContain('w-[440px]');
@@ -169,3 +169,19 @@ describe('EventDrawer', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 });
+
+describe('EventDrawer when the zone resolves after opening', () => {
+  it('re-seeds untouched times so Save does not move the event', async () => {
+    const updateCalendarEvent = vi.fn(async () => appEvent());
+    const ev = appEvent();
+    const { rerender } = renderWithProviders(<EventDrawer event={ev} zone="UTC" onClose={vi.fn()} />, { api: api({ updateCalendarEvent }) });
+    expect(screen.getByTestId('event-start')).toHaveValue('2026-01-07T15:00');
+    rerender(<EventDrawer event={ev} zone="America/New_York" onClose={vi.fn()} />);
+    expect(screen.getByTestId('event-start')).toHaveValue('2026-01-07T10:00');
+    fireEvent.change(screen.getByTestId('event-title'), { target: { value: 'Coffee chat' } });
+    fireEvent.click(screen.getByTestId('event-save'));
+    await waitFor(() => expect(updateCalendarEvent).toHaveBeenCalled());
+    expect(updateCalendarEvent).toHaveBeenCalledWith('e9', { title: 'Coffee chat' });
+  });
+});
+

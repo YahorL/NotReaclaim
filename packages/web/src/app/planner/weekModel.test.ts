@@ -23,11 +23,11 @@ function block(over: Partial<ScheduledBlock> = {}): ScheduledBlock {
 
 describe('startOfWeek / dayColumns', () => {
   it('startOfWeek returns Monday 00:00 of the week', () => {
-    expect(startOfWeek(WED_NOON)).toBe(MON);
-    expect(startOfWeek(MON)).toBe(MON);
+    expect(startOfWeek(WED_NOON, 'UTC')).toBe(MON);
+    expect(startOfWeek(MON, 'UTC')).toBe(MON);
   });
   it('dayColumns returns 7 consecutive day starts', () => {
-    const cols = dayColumns(MON);
+    const cols = dayColumns(MON, 7, 'UTC');
     expect(cols).toHaveLength(7);
     expect(cols[0]).toBe(MON);
     expect(cols[6]).toBe(Date.parse('2026-01-11T00:00:00.000Z'));
@@ -37,9 +37,9 @@ describe('startOfWeek / dayColumns', () => {
 describe('addWeeks', () => {
   it('moves forward and backward by whole weeks to Monday midnight', () => {
     const MON2 = Date.parse('2026-01-12T00:00:00.000Z');
-    expect(addWeeks(MON, 1)).toBe(MON2);
-    expect(addWeeks(MON2, -1)).toBe(MON);
-    expect(addWeeks(MON, 0)).toBe(MON);
+    expect(addWeeks(MON, 1, 'UTC')).toBe(MON2);
+    expect(addWeeks(MON2, -1, 'UTC')).toBe(MON);
+    expect(addWeeks(MON, 0, 'UTC')).toBe(MON);
   });
 });
 
@@ -138,13 +138,13 @@ describe('minutesToPx', () => {
 describe('shiftDays', () => {
   const MON = Date.parse('2026-01-05T00:00:00.000Z'); // local midnight under TZ=UTC
   it('shifts whole days preserving wall-clock time', () => {
-    expect(shiftDays(MON, 1)).toBe(Date.parse('2026-01-06T00:00:00.000Z'));
-    expect(shiftDays(MON, -2)).toBe(Date.parse('2026-01-03T00:00:00.000Z'));
+    expect(shiftDays(MON, 1, 'UTC')).toBe(Date.parse('2026-01-06T00:00:00.000Z'));
+    expect(shiftDays(MON, -2, 'UTC')).toBe(Date.parse('2026-01-03T00:00:00.000Z'));
     const nineFifteen = Date.parse('2026-01-05T09:15:00.000Z');
-    expect(shiftDays(nineFifteen, 3)).toBe(Date.parse('2026-01-08T09:15:00.000Z'));
+    expect(shiftDays(nineFifteen, 3, 'UTC')).toBe(Date.parse('2026-01-08T09:15:00.000Z'));
   });
   it('zero days is identity', () => {
-    expect(shiftDays(MON, 0)).toBe(MON);
+    expect(shiftDays(MON, 0, 'UTC')).toBe(MON);
   });
 });
 
@@ -172,21 +172,21 @@ describe('snapClickToSlot', () => {
 describe('localMidnight', () => {
   it('strips hours/minutes/seconds to local midnight', () => {
     // MON is already 2026-01-05T00:00:00.000Z (= local midnight under TZ=UTC)
-    expect(localMidnight(MON)).toBe(MON);
+    expect(localMidnight(MON, 'UTC')).toBe(MON);
     // noon on Wednesday → same Wednesday midnight
-    expect(localMidnight(WED_NOON)).toBe(Date.parse('2026-01-07T00:00:00.000Z'));
+    expect(localMidnight(WED_NOON, 'UTC')).toBe(Date.parse('2026-01-07T00:00:00.000Z'));
     // one millisecond before midnight is still the prior day's midnight
     const beforeMidnight = Date.parse('2026-01-06T23:59:59.999Z');
-    expect(localMidnight(beforeMidnight)).toBe(Date.parse('2026-01-06T00:00:00.000Z'));
+    expect(localMidnight(beforeMidnight, 'UTC')).toBe(Date.parse('2026-01-06T00:00:00.000Z'));
   });
 });
 
 describe('dayColumns(count)', () => {
   it('returns the requested number of consecutive local-midnight days', () => {
     const start = new Date('2026-01-07T00:00:00').getTime();
-    expect(dayColumns(start, 3)).toHaveLength(3);
-    expect(dayColumns(start, 3)[1]).toBe(new Date('2026-01-08T00:00:00').getTime());
-    expect(dayColumns(start)).toHaveLength(7); // default
+    expect(dayColumns(start, 3, 'UTC')).toHaveLength(3);
+    expect(dayColumns(start, 3, 'UTC')[1]).toBe(new Date('2026-01-08T00:00:00').getTime());
+    expect(dayColumns(start, 7, 'UTC')).toHaveLength(7); // default
   });
 });
 
@@ -242,9 +242,9 @@ describe('dayStartMinute — shifted day boundary (Review 20)', () => {
   const D = (iso: string) => Date.parse(iso);
 
   it('defaults to the midnight boundary (dayAnchor === localMidnight)', () => {
-    expect(dayAnchor(WED_NOON)).toBe(localMidnight(WED_NOON));
-    expect(dayAnchor(MON)).toBe(MON);
-    expect(dayColumns(MON, 3, 'UTC', 0)).toEqual(dayColumns(MON, 3));
+    expect(dayAnchor(WED_NOON, 'UTC')).toBe(localMidnight(WED_NOON, 'UTC'));
+    expect(dayAnchor(MON, 'UTC')).toBe(MON);
+    expect(dayColumns(MON, 3, 'UTC', 0)).toEqual(dayColumns(MON, 3, 'UTC'));
   });
 
   it('anchors a timestamp to the column whose [start, next start) contains it', () => {
@@ -381,12 +381,12 @@ describe('popoverAlign', () => {
 
 describe('rangeLabel', () => {
   it('renders a single date for a one-day window', () => {
-    expect(rangeLabel([MON])).toBe('Jan 5');
+    expect(rangeLabel([MON], 'UTC')).toBe('Jan 5');
   });
 
   it('renders first – last for a multi-day window', () => {
-    expect(rangeLabel(dayColumns(MON))).toBe('Jan 5 – Jan 11');
-    expect(rangeLabel(dayColumns(MON, 2))).toBe('Jan 5 – Jan 6');
+    expect(rangeLabel(dayColumns(MON, 7, 'UTC'), 'UTC')).toBe('Jan 5 – Jan 11');
+    expect(rangeLabel(dayColumns(MON, 2, 'UTC'), 'UTC')).toBe('Jan 5 – Jan 6');
   });
 });
 
