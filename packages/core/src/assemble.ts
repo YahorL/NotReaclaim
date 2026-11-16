@@ -10,7 +10,6 @@ import { mergeIntervals, intersectIntervals } from '@notreclaim/scheduler';
 import type {
   SettingsRepository,
   CalendarEventRepository,
-  TaskRepository,
   HabitRepository,
   ScheduledBlockRepository,
   CategoryRepository,
@@ -27,7 +26,9 @@ import { computeSpentMs } from './spent.js';
 export interface SchedulingRepositories {
   settings: Pick<SettingsRepository, 'getByUserId'>;
   calendarEvents: Pick<CalendarEventRepository, 'listByUserInRange'>;
-  tasks: { listByUser(userId: string, opts?: { status?: TaskStatus }): Promise<Task[]> };
+  // Not Pick<TaskRepository, 'listByUser'>: the real method returns TaskWithSubtasks[], and
+  // scheduling needs only the Task columns — so fakes can supply plain Task rows.
+  tasks: { listByUser(userId: string): Promise<Task[]> };
   habits: Pick<HabitRepository, 'listByUser'>;
   scheduledBlocks: Pick<ScheduledBlockRepository, 'listByUserInRange'>;
   categories: Pick<CategoryRepository, 'listByUser'>;
