@@ -3,6 +3,7 @@ import { horizonEndMs } from '@notreclaim/core';
 import { NotFoundError } from '@notreclaim/db';
 import { PRIMARY_CALENDAR_ID } from '@notreclaim/google';
 import type { AppDeps, AfterMutation } from './app.js';
+import { bestEffortGoogleWrite } from './google-writeback.js';
 import { rangeQuerySchema, createCalendarEventSchema, updateCalendarEventSchema, idParamSchema } from './schemas.js';
 
 export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afterMutation: AfterMutation): void {
@@ -34,16 +35,16 @@ export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afte
     if (kind !== 'blocked') {
       // Best-effort Google write-back: connected users get the event mirrored to their
       // primary calendar; failures (or no Google account) leave the local row authoritative.
-      try {
-        const accessToken = await deps.google.tokens.getAccessToken(request.userId, deps.now());
-        const { googleEventId } = await deps.google.client.insertEvent(accessToken, PRIMARY_CALENDAR_ID, {
-          summary: body.title, startDateTime: body.startsAt, endDateTime: body.endsAt,
-        });
-        event = await deps.repos.calendarEvents.setGoogleIds(request.userId, event.id, PRIMARY_CALENDAR_ID, googleEventId);
-      } catch (err) {
-        // Not connected or a Google failure — the local row stands, but say so in the log.
-        app.log.warn({ err, eventId: event.id }, 'google write-back failed: event not mirrored');
-      }
+      await bestEffortGoogleWrite(
+        app, deps, request.userId,
+        { fields: { eventId: event.id }, message: 'google write-back failed: event not mirrored' },
+        async (accessToken) => {
+          const { googleEventId } = await deps.google.client.insertEvent(accessToken, PRIMARY_CALENDAR_ID, {
+            summary: body.title, startDateTime: body.startsAt, endDateTime: body.endsAt,
+          });
+          event = await deps.repos.calendarEvents.setGoogleIds(request.userId, event.id, PRIMARY_CALENDAR_ID, googleEventId);
+        },
+      );
     }
     afterMutation(request.userId);
     reply.code(201);
@@ -67,17 +68,16 @@ export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afte
     const updated = await deps.repos.calendarEvents.update(request.userId, id, { title, startsAt, endsAt });
     // Best-effort Google write-back for events previously mirrored to Google. PATCH (merge),
     // not PUT — the user may have added a description/location/attendees on the Google side.
-    if (event.googleEventId && event.googleCalendarId) {
-      try {
-        const accessToken = await deps.google.tokens.getAccessToken(request.userId, deps.now());
-        await deps.google.client.patchEvent(accessToken, event.googleCalendarId, event.googleEventId, {
+    // A failure leaves the Google copy stale, so it must be visible in the log.
+    const { googleEventId, googleCalendarId } = event;
+    if (googleEventId && googleCalendarId) {
+      await bestEffortGoogleWrite(
+        app, deps, request.userId,
+        { fields: { eventId: id }, message: 'google write-back failed: event edit not mirrored' },
+        (accessToken) => deps.google.client.patchEvent(accessToken, googleCalendarId, googleEventId, {
           summary: title, startDateTime: startsAt.toISOString(), endDateTime: endsAt.toISOString(),
-        });
-      } catch (err) {
-        // Not connected or a Google failure — the local row is authoritative, but the
-        // Google copy is now stale, so this must be visible in the log.
-        app.log.warn({ err, eventId: id }, 'google write-back failed: event edit not mirrored');
-      }
+        }),
+      );
     }
     afterMutation(request.userId);
     return updated;
@@ -88,14 +88,14 @@ export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afte
     const event = await deps.repos.calendarEvents.findById(request.userId, id);
     if (!event) throw new NotFoundError(`Event ${id} not found`);
     // Best-effort Google removal for events previously written back to the primary calendar.
-    if (event.googleEventId && event.googleCalendarId) {
-      try {
-        const accessToken = await deps.google.tokens.getAccessToken(request.userId, deps.now());
-        await deps.google.client.deleteEvent(accessToken, event.googleCalendarId, event.googleEventId);
-      } catch (err) {
-        // The local delete still proceeds, so the Google copy may be orphaned: log it.
-        app.log.warn({ err, eventId: id }, 'google write-back failed: event not removed remotely');
-      }
+    // The local delete still proceeds on failure, so the Google copy may be orphaned: log it.
+    const { googleEventId, googleCalendarId } = event;
+    if (googleEventId && googleCalendarId) {
+      await bestEffortGoogleWrite(
+        app, deps, request.userId,
+        { fields: { eventId: id }, message: 'google write-back failed: event not removed remotely' },
+        (accessToken) => deps.google.client.deleteEvent(accessToken, googleCalendarId, googleEventId),
+      );
     }
     await deps.repos.calendarEvents.delete(request.userId, id);
     afterMutation(request.userId);

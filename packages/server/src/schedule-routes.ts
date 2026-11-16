@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { computeDesiredSchedule, horizonEndMs, round15, QUARTER_HOUR_MS } from '@notreclaim/core';
 import { NotFoundError } from '@notreclaim/db';
 import type { AppDeps, AfterMutation } from './app.js';
+import { bestEffortGoogleWrite } from './google-writeback.js';
 import { rangeQuerySchema, idParamSchema, updateScheduledBlockSchema, createScheduledBlockSchema } from './schemas.js';
 
 export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afterMutation: AfterMutation): void {
@@ -114,16 +115,17 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
     // does mean nothing else will ever sweep the mirrored event, so remove it here —
     // best-effort, exactly like the calendar routes: a Google failure must not block the
     // local delete, and a row with no Google ids never even looks up a token.
+    // On a Google failure the row still goes, so the Google copy may be orphaned on the
+    // Auto-scheduled calendar: the helper logs it.
     const blockRow = await deps.repos.scheduledBlocks.findById(request.userId, id);
-    if (blockRow?.googleEventId && blockRow.googleCalendarId) {
-      try {
-        const accessToken = await deps.google.tokens.getAccessToken(request.userId, deps.now());
-        await deps.google.client.deleteEvent(accessToken, blockRow.googleCalendarId, blockRow.googleEventId);
-      } catch (err) {
-        // Not connected or a Google failure — the row still goes, so the Google copy may
-        // be orphaned on the Auto-scheduled calendar: log it.
-        app.log.warn({ err, blockId: id }, 'google write-back failed: block event not removed remotely');
-      }
+    const googleEventId = blockRow?.googleEventId;
+    const googleCalendarId = blockRow?.googleCalendarId;
+    if (googleEventId && googleCalendarId) {
+      await bestEffortGoogleWrite(
+        app, deps, request.userId,
+        { fields: { blockId: id }, message: 'google write-back failed: block event not removed remotely' },
+        (accessToken) => deps.google.client.deleteEvent(accessToken, googleCalendarId, googleEventId),
+      );
     }
     await deps.repos.scheduledBlocks.delete(request.userId, id);
     reply.code(204);
