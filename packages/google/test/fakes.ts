@@ -1,4 +1,14 @@
-import type { User, ScheduledBlock, CreateScheduledBlockInput, UpdateScheduledBlockInput, Settings, Task } from '@notreclaim/db';
+import type {
+  User,
+  ScheduledBlock,
+  CreateScheduledBlockInput,
+  UpdateScheduledBlockInput,
+  Settings,
+  Task,
+  CalendarSyncState,
+  UpsertSyncStateInput,
+  UpsertCalendarEventInput,
+} from '@notreclaim/db';
 import type { SchedulingRepositories } from '@notreclaim/core';
 import type {
   GoogleClient,
@@ -13,6 +23,8 @@ export function makeUser(over: Partial<User> = {}): User {
   return {
     id: 'u1',
     email: 'a@example.com',
+    passwordHash: null,
+    isAdmin: false,
     googleId: null,
     googleRefreshToken: null,
     googleAuthBrokenAt: null,
@@ -25,15 +37,6 @@ export function makeUser(over: Partial<User> = {}): User {
 
 /** Scriptable fake Google client. */
 export class FakeGoogleClient implements GoogleClient {
-  consentUrl = 'https://consent.example/auth';
-  exchangeResult: GoogleTokens = {
-    refreshToken: 'refresh-1',
-    accessToken: 'access-initial',
-    expiresAt: 0,
-    googleUserId: 'g-123',
-    email: 'a@example.com',
-    emailVerified: true,
-  };
   refreshResponses: Array<{ accessToken: string; expiresAt: number }> = [];
   /** When set, every refreshAccessToken call throws it (e.g. a revoked grant). */
   refreshError: Error | null = null;
@@ -41,16 +44,21 @@ export class FakeGoogleClient implements GoogleClient {
   refreshGate: Promise<void> | null = null;
   listQueue: Array<ListEventsResult | 'GONE'> = [];
   refreshCalls = 0;
-  exchangeCalls = 0;
   listCalls: ListEventsArgs[] = [];
 
   getConsentUrl(): string {
-    return this.consentUrl;
+    return 'https://consent.example/auth';
   }
 
   async exchangeCode(): Promise<GoogleTokens> {
-    this.exchangeCalls += 1;
-    return this.exchangeResult;
+    return {
+      refreshToken: 'refresh-1',
+      accessToken: 'access-initial',
+      expiresAt: 0,
+      googleUserId: 'g-123',
+      email: 'a@example.com',
+      emailVerified: true,
+    };
   }
 
   async refreshAccessToken(): Promise<{ accessToken: string; expiresAt: number }> {
@@ -69,16 +77,14 @@ export class FakeGoogleClient implements GoogleClient {
   }
 
   createdCalendars: string[] = [];
-  createCalendarResult = { calendarId: 'cal-auto' };
   insertedEvents: Array<{ calendarId: string; event: GoogleEventWrite }> = [];
   updatedEvents: Array<{ calendarId: string; googleEventId: string; event: GoogleEventWrite }> = [];
-  patchedEvents: Array<{ calendarId: string; googleEventId: string; event: GoogleEventWrite }> = [];
   deletedEvents: Array<{ calendarId: string; googleEventId: string }> = [];
   private insertCount = 0;
 
   async createCalendar(_accessToken: string, summary: string): Promise<{ calendarId: string }> {
     this.createdCalendars.push(summary);
-    return this.createCalendarResult;
+    return { calendarId: 'cal-auto' };
   }
 
   async insertEvent(_accessToken: string, calendarId: string, event: GoogleEventWrite): Promise<{ googleEventId: string }> {
@@ -91,9 +97,7 @@ export class FakeGoogleClient implements GoogleClient {
     this.updatedEvents.push({ calendarId, googleEventId, event });
   }
 
-  async patchEvent(_accessToken: string, calendarId: string, googleEventId: string, event: GoogleEventWrite): Promise<void> {
-    this.patchedEvents.push({ calendarId, googleEventId, event });
-  }
+  async patchEvent(): Promise<void> {}
 
   async deleteEvent(_accessToken: string, calendarId: string, googleEventId: string): Promise<void> {
     this.deletedEvents.push({ calendarId, googleEventId });
@@ -130,8 +134,6 @@ export function fakeUserRepo(seed: User[] = []) {
     },
   };
 }
-
-import type { CalendarSyncState, UpsertSyncStateInput, UpsertCalendarEventInput } from '@notreclaim/db';
 
 export function makeSyncState(over: Partial<CalendarSyncState> = {}): CalendarSyncState {
   return {
@@ -224,6 +226,7 @@ export function makeScheduledBlock(over: Partial<ScheduledBlock> = {}): Schedule
     googleEventId: null,
     googleCalendarId: null,
     engineKey: null,
+    startedAt: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
     ...over,
@@ -280,6 +283,10 @@ export function makeSettings(over: Partial<Settings> = {}): Settings {
     horizonDays: 1,
     defaultMinChunkMs: 1800000,
     defaultMaxChunkMs: 1800000,
+    meetingBufferMs: 0,
+    taskBufferMs: 0,
+    requireStartToTrack: false,
+    dayStartMinute: 0,
     createdAt: new Date(0),
     updatedAt: new Date(0),
     ...over,
@@ -292,12 +299,15 @@ export function makeTask(over: Partial<Task> = {}): Task {
     userId: 'u1',
     title: 'Focus',
     priority: 1,
+    sortOrder: 0,
     durationMs: 1800000,
     dueBy: new Date('2026-01-05T17:00:00.000Z'),
+    notBefore: null,
     minChunkMs: 1800000,
     maxChunkMs: 1800000,
-    category: null,
+    categoryId: null,
     status: 'pending',
+    completedAt: null,
     timeLoggedMs: 0,
     createdAt: new Date(0),
     updatedAt: new Date(0),
