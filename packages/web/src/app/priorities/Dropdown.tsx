@@ -1,14 +1,12 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { Icons } from '../shell/icons';
+import { useClickOutside } from '../components/useClickOutside';
 
 export function Dropdown({ icon, label, width = 240, children }: { icon: ReactNode; label: string; width?: number; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const onDown = (e: PointerEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener('pointerdown', onDown);
-    return () => document.removeEventListener('pointerdown', onDown);
-  }, []);
+  const close = useCallback(() => setOpen(false), []);
+  useClickOutside(ref, close);
   return (
     <div ref={ref} className="relative">
       <button type="button" aria-haspopup="true" aria-expanded={open} onClick={() => setOpen((v) => !v)} className={`flex items-center gap-1.5 rounded-[9px] px-3.5 py-2 text-[15.5px] font-bold text-indigo ${open ? 'bg-indigoSoft' : 'hover:bg-indigoSoft'}`}>

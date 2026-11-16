@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { DndContext, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { Task, Subtask } from '../../api/types';
 import { Icons } from '../shell/icons';
 import { useAppSensors, pointerFirstCollision } from '../dnd/sensors';
+import { useClickOutside } from '../components/useClickOutside';
 import { subtaskDropSortOrder } from '../tasks/subtaskDnd';
 import { type BoardColumnKey, columnMeta, relativeDayTimeLabel } from './priorityBucket';
 
@@ -87,12 +88,8 @@ export function TaskRow({ task, columnKey, nextMs, now, draggable = true, muted 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const subtaskSensors = useAppSensors();
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDown = (e: PointerEvent) => { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false); };
-    document.addEventListener('pointerdown', onDown);
-    return () => document.removeEventListener('pointerdown', onDown);
-  }, [menuOpen]);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+  useClickOutside(menuRef, closeMenu, menuOpen);
   const done = task.status === 'completed';
   const meta = `${dueShort(task.dueBy)}${nextMs !== null ? ` · Next: ${relativeDayTimeLabel(nextMs, now)}` : ''}`;
   const subtasks = task.subtasks ?? [];

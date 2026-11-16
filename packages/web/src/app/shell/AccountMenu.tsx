@@ -1,20 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
 import { Icons } from './icons';
+import { useClickOutside } from '../components/useClickOutside';
 
 export function AccountMenu() {
   const { signOut } = useAuth();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const onDown = (e: PointerEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('pointerdown', onDown);
-    return () => document.removeEventListener('pointerdown', onDown);
-  }, []);
+  const close = useCallback(() => setOpen(false), []);
+  useClickOutside(ref, close);
 
   return (
     <div ref={ref} className="relative">
