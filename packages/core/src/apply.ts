@@ -63,15 +63,19 @@ export async function applyDesiredSchedule(
   // so a reissued key must MOVE its old (possibly past) row — unique (userId, engineKey) —
   // instead of colliding on create. History stays intact: the delete sweep skips past rows.
   const existing = await scheduledBlocks.listByUserInRange(userId, new Date(0), new Date(horizonEnd));
-  const pinnedIds = new Set(existing.filter((b) => b.pinned).map((b) => b.id));
-  const existingByKey = new Map(
-    existing.filter((b) => !b.pinned && b.engineKey).map((b) => [b.engineKey as string, b]),
-  );
+  const pinnedIds = new Set<string>();
+  const existingByKey = new Map<string, DbScheduledBlock>();
   // Pinned rows are detached from engine planning but may still hold a unique
   // (userId, engineKey) — e.g. a drag-pinned chunk, or a pinned row now in the past.
-  const pinnedKeyHolders = new Map(
-    existing.filter((b) => b.pinned && b.engineKey).map((b) => [b.engineKey as string, b]),
-  );
+  const pinnedKeyHolders = new Map<string, DbScheduledBlock>();
+  for (const b of existing) {
+    if (b.pinned) {
+      pinnedIds.add(b.id);
+      if (b.engineKey) pinnedKeyHolders.set(b.engineKey, b);
+    } else if (b.engineKey) {
+      existingByKey.set(b.engineKey, b);
+    }
+  }
 
   const desiredNew = desired.blocks.filter((b) => !pinnedIds.has(b.id));
 
