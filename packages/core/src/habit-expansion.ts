@@ -49,8 +49,8 @@ export function expandHabit(
       // capped habit occurrence by the allowed-window day it consumed, so clipping would
       // make today's key churn on every replan (deleting + recreating the row and its
       // mirrored Google event). Nothing is placed in the past regardless — the free
-      // timeline these windows are intersected with is already clipped to `now` by
-      // `expandWorkingWindows`, and `periods[0]` starts at `now`.
+      // timeline these windows are intersected with starts at `now` (assemble hands the
+      // engine a `horizon` envelope beginning at `now`), and `periods[0]` starts at `now`.
       const dayStart = day.toMillis();
       const dayEnd = Math.min(day.plus({ days: 1 }).toMillis(), horizonEnd);
       if (dayEnd > dayStart) allowedWindows.push({ start: dayStart, end: dayEnd });
