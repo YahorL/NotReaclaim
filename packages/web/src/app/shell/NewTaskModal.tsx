@@ -8,6 +8,8 @@ import {
 import { FieldBox } from '../components/FieldBox';
 import { DurationStepper } from '../components/DurationStepper';
 import { PriorityPicker } from '../components/PriorityPicker';
+import { PrimaryButton } from '../components/Buttons';
+import { useFormState } from '../components/useFormState';
 
 const FALLBACK_WORKING_HOURS = [{ weekday: 1, startMinute: 540, endMinute: 1020 }];
 
@@ -17,8 +19,7 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
   const chunkDefaults = settingsQ.data
     ? { defaultMinChunkMs: settingsQ.data.defaultMinChunkMs, defaultMaxChunkMs: settingsQ.data.defaultMaxChunkMs }
     : undefined;
-  const [form, setForm] = useState<NewTaskFormState>(() => defaultNewTaskForm(now(), chunkDefaults));
-  const set = <K extends keyof NewTaskFormState>(k: K, v: NewTaskFormState[K]) => setForm((f) => ({ ...f, [k]: v }));
+  const [form, set] = useFormState<NewTaskFormState>(() => defaultNewTaskForm(now(), chunkDefaults));
 
   const categoriesQ = useCategoriesQuery();
   const createCategoryM = useCreateCategoryMutation();
@@ -144,14 +145,9 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
         {error && <p data-testid="modal-error" className="mb-2 text-[12px] text-crit">{error.message}</p>}
 
         <div className="flex items-center justify-end">
-          <button
-            type="button"
-            disabled={!ok || createM.isPending}
-            onClick={submit}
-            className="rounded-[30px] bg-indigo px-[34px] py-3 text-[17px] font-bold text-white shadow-[0_4px_12px_rgba(91,98,227,.35)] hover:bg-indigo600 disabled:opacity-50"
-          >
+          <PrimaryButton large type="button" disabled={!ok || createM.isPending} onClick={submit}>
             Create
-          </button>
+          </PrimaryButton>
         </div>
       </div>
     </div>
