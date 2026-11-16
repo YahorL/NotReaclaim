@@ -7,6 +7,8 @@ import { ensureUserDefaults } from './auth/user-defaults.js';
 import { signSession } from './auth/token.js';
 
 export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
+  const guard = { onRequest: [app.authenticate] };
+
   // State is a short-lived signed JWT so we can trust its purpose/userId/inviteCode on return.
   const signState = (data: Record<string, unknown>) => app.jwt.sign({ st: data }, { expiresIn: '10m' });
   const readState = (raw?: string): { purpose?: string; userId?: string; inviteCode?: string } => {
@@ -21,12 +23,12 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
     return { url: deps.google.client.getConsentUrl(deps.config.googleRedirectUri, state) };
   });
 
-  app.get('/auth/google/link', { onRequest: [app.authenticate] }, async (request) => {
+  app.get('/auth/google/link', guard, async (request) => {
     const state = signState({ purpose: 'link', userId: request.userId });
     return { url: deps.google.client.getConsentUrl(deps.config.googleRedirectUri, state) };
   });
 
-  app.get('/auth/google/status', { onRequest: [app.authenticate] }, async (request) => {
+  app.get('/auth/google/status', guard, async (request) => {
     const user = await deps.repos.users.findById(request.userId);
     return {
       connected: user?.googleRefreshToken != null,
@@ -137,8 +139,6 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
     if (!(await verifyPassword(user.passwordHash, body.password))) return invalid();
     return { token: signSession(app, user.id), userId: user.id };
   });
-
-  const guard = { onRequest: [app.authenticate] };
 
   app.post('/auth/set-password', guard, async (request, reply) => {
     const { password } = setPasswordSchema.parse(request.body);
