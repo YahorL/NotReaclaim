@@ -32,7 +32,7 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
   const signState = (data: Record<string, unknown>) => app.jwt.sign({ st: data }, { expiresIn: '10m' });
   const readState = (raw?: string): { purpose?: string; userId?: string; inviteCode?: string } => {
     if (!raw) return {};
-    try { return (app.jwt.verify<{ st: Record<string, unknown> }>(raw).st ?? {}) as never; }
+    try { return app.jwt.verify<{ st?: { purpose?: string; userId?: string; inviteCode?: string } }>(raw).st ?? {}; }
     catch { return {}; }
   };
 

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { NotFoundError, type Prisma } from '@notreclaim/db';
+import { NotFoundError } from '@notreclaim/db';
 import type { AppDeps, AfterMutation } from './app.js';
 import { settingsSchema } from './schemas.js';
 
@@ -14,10 +14,7 @@ export function registerSettingsRoutes(app: FastifyInstance, deps: AppDeps, afte
 
   app.put('/settings', guard, async (request) => {
     const body = settingsSchema.parse(request.body);
-    const settings = await deps.repos.settings.upsert(request.userId, {
-      ...body,
-      workingHours: body.workingHours as unknown as Prisma.InputJsonValue,
-    });
+    const settings = await deps.repos.settings.upsert(request.userId, body);
     afterMutation(request.userId);
     return settings;
   });
