@@ -84,7 +84,7 @@ async function main(): Promise<void> {
     listConnectedIds: () => users.listConnectedIds(),
     pollAndReplan: (userId) =>
       pollAndReplan(
-        { sync: syncBound, reconcile: reconcileBound, bus, now: () => Date.now(), log: (err) => app.log.error(err) },
+        { sync: syncBound, reconcile: reconcileBound, bus, now: () => Date.now() },
         userId,
       ),
     intervalMs: serverConfig.pollIntervalMs,
