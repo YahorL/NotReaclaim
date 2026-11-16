@@ -16,13 +16,13 @@ const emptyCategories = () => fakeApiClient({ listCategories: vi.fn().mockResolv
 
 describe('TaskDrawer', () => {
   it('renders spent / total / left', () => {
-    renderWithProviders(<TaskDrawer task={task({ durationMs: 7_200_000, spentMs: 1_800_000 })} onSave={vi.fn()} onCancel={vi.fn()} />, { api: emptyCategories() });
+    renderWithProviders(<TaskDrawer zone="UTC" task={task({ durationMs: 7_200_000, spentMs: 1_800_000 })} onSave={vi.fn()} onCancel={vi.fn()} />, { api: emptyCategories() });
     expect(screen.getByTestId('drawer-spent')).toHaveTextContent('30m / 2h · 1h 30m left');
   });
 
   it('prefills from the task and saves a converted patch', () => {
     const onSave = vi.fn();
-    renderWithProviders(<TaskDrawer task={task()} onSave={onSave} onCancel={vi.fn()} />, { api: emptyCategories() });
+    renderWithProviders(<TaskDrawer zone="UTC" task={task()} onSave={onSave} onCancel={vi.fn()} />, { api: emptyCategories() });
     expect(screen.getByText('1 hr 30 min')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('save'));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
@@ -35,7 +35,7 @@ describe('TaskDrawer', () => {
 
   it('blocks save and shows an error when min chunk > max chunk', () => {
     const onSave = vi.fn();
-    renderWithProviders(<TaskDrawer task={task()} onSave={onSave} onCancel={vi.fn()} />, { api: emptyCategories() });
+    renderWithProviders(<TaskDrawer zone="UTC" task={task()} onSave={onSave} onCancel={vi.fn()} />, { api: emptyCategories() });
     // min chunk starts at 30m; 7 × +15m = 135m > the 120m max chunk
     const inc = screen.getByRole('button', { name: 'increase min' });
     for (let i = 0; i < 7; i++) fireEvent.click(inc);
@@ -46,7 +46,7 @@ describe('TaskDrawer', () => {
 
   it('closes (onCancel) on a pointerdown outside the drawer, but not inside it', () => {
     const onCancel = vi.fn();
-    renderWithProviders(<TaskDrawer task={task()} onSave={vi.fn()} onCancel={onCancel} />, { api: emptyCategories() });
+    renderWithProviders(<TaskDrawer zone="UTC" task={task()} onSave={vi.fn()} onCancel={onCancel} />, { api: emptyCategories() });
     fireEvent.pointerDown(screen.getByTestId('task-drawer')); // inside → stays open
     expect(onCancel).not.toHaveBeenCalled();
     fireEvent.pointerDown(document.body); // outside → closes
@@ -55,7 +55,7 @@ describe('TaskDrawer', () => {
 
   it('surfaces a mutation ApiError', () => {
     renderWithProviders(
-      <TaskDrawer task={task()} onSave={vi.fn()} onCancel={vi.fn()} error={new ApiError(409, 'conflict', 'Nope')} />,
+      <TaskDrawer zone="UTC" task={task()} onSave={vi.fn()} onCancel={vi.fn()} error={new ApiError(409, 'conflict', 'Nope')} />,
       { api: emptyCategories() },
     );
     expect(screen.getByTestId('drawer-error')).toHaveTextContent('Nope');
@@ -63,7 +63,7 @@ describe('TaskDrawer', () => {
 
   it('cancel fires onCancel', () => {
     const onCancel = vi.fn();
-    renderWithProviders(<TaskDrawer task={task()} onSave={vi.fn()} onCancel={onCancel} />, { api: emptyCategories() });
+    renderWithProviders(<TaskDrawer zone="UTC" task={task()} onSave={vi.fn()} onCancel={onCancel} />, { api: emptyCategories() });
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
@@ -74,7 +74,7 @@ describe('TaskDrawer', () => {
       { id: 'cat-def', userId: 'u', name: 'Working Hours', windows: null, isDefault: true },
       { id: 'cat-p', userId: 'u', name: 'Personal', windows: [], isDefault: false },
     ]) } as never);
-    renderWithProviders(<TaskDrawer task={task({ categoryId: 'cat-def' })} onSave={onSave} onCancel={() => {}} />, { api });
+    renderWithProviders(<TaskDrawer zone="UTC" task={task({ categoryId: 'cat-def' })} onSave={onSave} onCancel={() => {}} />, { api });
     // wait for categories to load (options rendered)
     await screen.findByRole('option', { name: 'Personal' });
     fireEvent.change(screen.getByTestId('category-select'), { target: { value: 'cat-p' } });
@@ -87,7 +87,7 @@ describe('TaskDrawer', () => {
     const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue([
       { id: 'cat-p', userId: 'u', name: 'Personal', windows: [], isDefault: false },
     ]) } as never);
-    renderWithProviders(<TaskDrawer task={task({ categoryId: null }) as never} onSave={onSave} onCancel={() => {}} />, { api });
+    renderWithProviders(<TaskDrawer zone="UTC" task={task({ categoryId: null }) as never} onSave={onSave} onCancel={() => {}} />, { api });
     await screen.findByRole('option', { name: 'Personal' });
     expect(screen.getByTestId('category-select')).toHaveValue('');
   });
@@ -95,7 +95,7 @@ describe('TaskDrawer', () => {
   it('renders Schedule-after and saves notBefore', async () => {
     const onSave = vi.fn();
     const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue([]) } as never);
-    renderWithProviders(<TaskDrawer task={task({ notBefore: null }) as never} onSave={onSave} onCancel={() => {}} />, { api });
+    renderWithProviders(<TaskDrawer zone="UTC" task={task({ notBefore: null }) as never} onSave={onSave} onCancel={() => {}} />, { api });
     fireEvent.change(await screen.findByTestId('schedule-after'), { target: { value: '2026-01-06T13:00' } });
     fireEvent.click(screen.getByTestId('save'));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ notBefore: new Date('2026-01-06T13:00').toISOString() })));
@@ -107,7 +107,7 @@ describe('TaskDrawer', () => {
     const deleteSubtask = vi.fn().mockResolvedValue(undefined);
     const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue([]), createSubtask, updateSubtask, deleteSubtask } as never);
     const t = task({ id: 't', subtasks: [{ id: 's1', taskId: 't', title: 'a', done: false, sortOrder: 0 }] });
-    renderWithProviders(<TaskDrawer task={t as never} onSave={() => {}} onCancel={() => {}} />, { api });
+    renderWithProviders(<TaskDrawer zone="UTC" task={t as never} onSave={() => {}} onCancel={() => {}} />, { api });
 
     expect(await screen.findByText('a')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('subtask-toggle-s1'));
@@ -122,13 +122,13 @@ describe('TaskDrawer', () => {
 
 describe('TaskDrawer layout', () => {
   it('drawer root has w-[440px] class for two-column layout', () => {
-    renderWithProviders(<TaskDrawer task={task()} onSave={vi.fn()} onCancel={vi.fn()} />, { api: emptyCategories() });
+    renderWithProviders(<TaskDrawer zone="UTC" task={task()} onSave={vi.fn()} onCancel={vi.fn()} />, { api: emptyCategories() });
     const drawer = screen.getByTestId('task-drawer');
     expect(drawer.className).toContain('w-[440px]');
   });
 
   it('field grid is one column on a phone and two at md+', () => {
-    renderWithProviders(<TaskDrawer task={task()} onSave={vi.fn()} onCancel={vi.fn()} />, { api: emptyCategories() });
+    renderWithProviders(<TaskDrawer zone="UTC" task={task()} onSave={vi.fn()} onCancel={vi.fn()} />, { api: emptyCategories() });
     const grid = screen.getByTestId('task-drawer').querySelector('.grid') as HTMLElement;
     expect(grid).not.toBeNull();
     expect(grid.classList.contains('grid-cols-1')).toBe(true);      // 165px columns cannot hold a datetime input
@@ -136,7 +136,7 @@ describe('TaskDrawer layout', () => {
   });
 
   it('compact drops the fixed 440px panel chrome', () => {
-    renderWithProviders(<TaskDrawer task={task()} compact onSave={vi.fn()} onCancel={vi.fn()} />, { api: emptyCategories() });
+    renderWithProviders(<TaskDrawer zone="UTC" task={task()} compact onSave={vi.fn()} onCancel={vi.fn()} />, { api: emptyCategories() });
     const drawer = screen.getByTestId('task-drawer');
     expect(drawer.className).toContain('w-full');
     expect(drawer.className).not.toContain('w-[440px]');
@@ -146,7 +146,7 @@ describe('TaskDrawer layout', () => {
 
   it('compact installs no outside-dismiss of its own', () => {
     const onCancel = vi.fn();
-    renderWithProviders(<TaskDrawer task={task()} compact onSave={vi.fn()} onCancel={onCancel} />, { api: emptyCategories() });
+    renderWithProviders(<TaskDrawer zone="UTC" task={task()} compact onSave={vi.fn()} onCancel={onCancel} />, { api: emptyCategories() });
     fireEvent.pointerDown(document.body); // the event the hook listens to since the pointerdown flip
     expect(onCancel).not.toHaveBeenCalled();
   });
@@ -160,7 +160,7 @@ describe('TaskDrawer subtask drag handles', () => {
 
   it('each subtask row is a dnd-kit draggable, in sortOrder order', () => {
     const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue([]) } as never);
-    renderWithProviders(<TaskDrawer task={task({ id: 't', subtasks }) as never} onSave={() => {}} onCancel={() => {}} />, { api });
+    renderWithProviders(<TaskDrawer zone="UTC" task={task({ id: 't', subtasks }) as never} onSave={() => {}} onCancel={() => {}} />, { api });
     const first = screen.getByTestId('subtask-li-s1');
     const second = screen.getByTestId('subtask-li-s2');
     expect(first).toHaveAttribute('aria-roledescription', 'sortable');
@@ -175,7 +175,7 @@ describe('TaskDrawer subtask drag handles', () => {
 
   it('Space on a subtask control is not swallowed by the keyboard drag sensor', () => {
     const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue([]) } as never);
-    renderWithProviders(<TaskDrawer task={task({ id: 't', subtasks }) as never} onSave={() => {}} onCancel={() => {}} />, { api });
+    renderWithProviders(<TaskDrawer zone="UTC" task={task({ id: 't', subtasks }) as never} onSave={() => {}} onCancel={() => {}} />, { api });
     // The row carries the KeyboardSensor's onKeyDown, so a Space keydown from the delete button
     // bubbles into it. dnd-kit only ignores descendants when the row registered itself via
     // setActivatorNodeRef; without that it preventDefaults the key and the button goes dead.
@@ -193,15 +193,55 @@ describe('TaskDrawer subtask drag handles', () => {
 
   it('no longer uses native HTML5 drag attributes or an insert line', () => {
     const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue([]) } as never);
-    renderWithProviders(<TaskDrawer task={task({ id: 't', subtasks }) as never} onSave={() => {}} onCancel={() => {}} />, { api });
+    renderWithProviders(<TaskDrawer zone="UTC" task={task({ id: 't', subtasks }) as never} onSave={() => {}} onCancel={() => {}} />, { api });
     expect(screen.getByTestId('subtask-li-s1')).not.toHaveAttribute('draggable');
     expect(screen.queryByTestId('subtask-insert-line')).toBeNull();
   });
 
   it('grows the subtask checkbox and delete control on a coarse pointer', () => {
     const subtasks = [{ id: 's1', taskId: 't1', title: 'First', done: false, sortOrder: 0 }];
-    renderWithProviders(<TaskDrawer task={task({ subtasks })} onSave={vi.fn()} onCancel={vi.fn()} />, { api: emptyCategories() });
+    renderWithProviders(<TaskDrawer zone="UTC" task={task({ subtasks })} onSave={vi.fn()} onCancel={vi.fn()} />, { api: emptyCategories() });
     expect(screen.getByTestId('subtask-toggle-s1').parentElement!.className).toContain('coarse:p-2.5');
     expect(screen.getByTestId('subtask-delete-s1').className).toContain('coarse:p-3');
+  });
+});
+
+describe('TaskDrawer in the settings zone', () => {
+  it('shows due / schedule-after as settings-zone wall-clock and saves the same instants back', () => {
+    const onSave = vi.fn();
+    renderWithProviders(
+      <TaskDrawer task={task({ notBefore: '2026-06-01T02:30:00.000Z' } as Partial<Task>)} zone="America/New_York" onSave={onSave} onCancel={vi.fn()} />,
+      { api: emptyCategories() },
+    );
+    expect(screen.getByTestId('due-by')).toHaveValue('2026-06-01T13:00');
+    expect(screen.getByTestId('schedule-after')).toHaveValue('2026-05-31T22:30');
+    fireEvent.click(screen.getByTestId('save'));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      dueBy: '2026-06-01T17:00:00.000Z', notBefore: '2026-06-01T02:30:00.000Z',
+    }));
+  });
+
+  it('interprets an edited due date in the settings zone (Tokyo)', () => {
+    const onSave = vi.fn();
+    renderWithProviders(<TaskDrawer task={task()} zone="Asia/Tokyo" onSave={onSave} onCancel={vi.fn()} />, { api: emptyCategories() });
+    fireEvent.change(screen.getByTestId('due-by'), { target: { value: '2026-06-03T09:00' } });
+    fireEvent.click(screen.getByTestId('save'));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ dueBy: '2026-06-03T00:00:00.000Z' }));
+  });
+
+  it('re-seeds untouched date fields when the zone resolves late; an edited field keeps its wall-clock', () => {
+    const onSave = vi.fn();
+    const t = task();
+    const { rerender } = renderWithProviders(<TaskDrawer task={t} zone="UTC" onSave={onSave} onCancel={vi.fn()} />, { api: emptyCategories() });
+    expect(screen.getByTestId('due-by')).toHaveValue('2026-06-01T17:00');
+    fireEvent.change(screen.getByTestId('schedule-after'), { target: { value: '2026-06-01T08:00' } });
+    rerender(<TaskDrawer task={t} zone="America/New_York" onSave={onSave} onCancel={vi.fn()} />);
+    expect(screen.getByTestId('due-by')).toHaveValue('2026-06-01T13:00');
+    expect(screen.getByTestId('schedule-after')).toHaveValue('2026-06-01T08:00');
+    fireEvent.click(screen.getByTestId('save'));
+    // Untouched due keeps its stored instant; the typed schedule-after is read in the settings zone.
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      dueBy: '2026-06-01T17:00:00.000Z', notBefore: '2026-06-01T12:00:00.000Z',
+    }));
   });
 });

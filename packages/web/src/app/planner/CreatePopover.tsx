@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../../api/client';
 import { useCreateTaskMutation, useCreateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useCategoriesQuery } from '../../api/queries';
 import { DurationStepper } from '../components/DurationStepper';
-import { isoToLocalInput, localInputToIso } from '../lib/duration';
+import { isoToZonedInput, zonedInputToIso } from '../lib/datetimeLocal';
 import { WINDOW_END_MIN, SLOT_MIN, localMidnight, formatHm } from './weekModel';
 import { MS_PER_MIN, MS_PER_DAY, toIso } from '../lib/time';
 import { isActiveTask } from '../priorities/priorityBucket';
@@ -34,7 +34,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
   const maxDurationMs = (WINDOW_END_MIN - startMin) * MS_PER_MIN;
   const [durationMs, setDurationMs] = useState(Math.min(30 * MS_PER_MIN, maxDurationMs));
   const defaultDueMs = Math.max(dayStartMs, localMidnight(now()) + 7 * MS_PER_DAY) + (23 * 60 + 59) * MS_PER_MIN;
-  const defaultDueLocal = isoToLocalInput(toIso(defaultDueMs));
+  const defaultDueLocal = isoToZonedInput(toIso(defaultDueMs), zone);
   const [dueLocal, setDueLocal] = useState(defaultDueLocal);
   const [afterLocal, setAfterLocal] = useState('');
   const [categoryId, setCategoryId] = useState<string | null>(null);
@@ -62,7 +62,8 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
   const endMs = startMs + durationMs;
   const pending = createTaskM.isPending || createEventM.isPending || createBlockM.isPending;
   const hasTitle = titleOptional || existingChosen || title.trim() !== '';
-  const hasDue = !showNewTaskFields || dueLocal !== '';
+  const dueIso = dueLocal === '' ? null : zonedInputToIso(dueLocal, zone);
+  const hasDue = !showNewTaskFields || dueIso !== null;
   const canSubmit = !pending && hasTitle && hasDue;
   const apiError = [createTaskM.error, createEventM.error, createBlockM.error].find((e) => e instanceof ApiError) as ApiError | undefined;
 
@@ -91,9 +92,10 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
     } else if (existingChosen) {
       createBlockM.mutate({ taskId, startsAt: toIso(startMs), endsAt: toIso(endMs) }, { onSuccess: onClose });
     } else {
-      // Only the new-task branch gets here, and `canSubmit` requires a due date for it.
-      const dueBy = localInputToIso(dueLocal);
-      const notBefore = afterLocal ? localInputToIso(afterLocal) : undefined;
+      // Only the new-task branch gets here, and `canSubmit` requires a parseable due date for it.
+      if (dueIso === null) return;
+      const dueBy = dueIso;
+      const notBefore = afterLocal ? zonedInputToIso(afterLocal, zone) ?? undefined : undefined;
       const catId = categoryId ?? undefined;
       createTaskM.mutate(
         {

@@ -12,7 +12,8 @@ import { PrimaryButton, SecondaryButton } from '../components/Buttons';
 import { FIELD_CONTROL, FIELD_ERROR, FULL_ROW } from '../components/formStyles';
 import { useFormState } from '../components/useFormState';
 import { formatDurationShort } from '../lib/duration';
-import { type TaskFormState, toFormState, validateTaskForm, toUpdateInput } from './taskForm';
+import { type TaskFormState, toFormState, validateTaskForm, toUpdateInput, reseedDateFields } from './taskForm';
+import { useZoneChange } from '../settings/useTimezone';
 import { useCategoriesQuery, useCreateSubtaskMutation, useUpdateSubtaskMutation, useDeleteSubtaskMutation } from '../../api/queries';
 import { useAppSensors, pointerFirstCollision } from '../dnd/sensors';
 import { subtaskDropSortOrder } from './subtaskDnd';
@@ -52,6 +53,8 @@ function SortableSubtask({ subtask, onToggle, onDelete }: {
 
 export interface TaskDrawerProps {
   task: Task;
+  /** The settings zone the date fields are shown and entered in (`useTimezone`). */
+  zone: string;
   onSave: (patch: UpdateTaskInput) => void;
   onCancel: () => void;
   saving?: boolean;
@@ -60,8 +63,10 @@ export interface TaskDrawerProps {
   compact?: boolean;
 }
 
-export function TaskDrawer({ task, onSave, onCancel, saving = false, error = null, compact = false }: TaskDrawerProps) {
-  const [form, set] = useFormState<TaskFormState>(() => toFormState(task));
+export function TaskDrawer({ task, zone, onSave, onCancel, saving = false, error = null, compact = false }: TaskDrawerProps) {
+  const [form, set, setForm] = useFormState<TaskFormState>(() => toFormState(task, zone));
+  // Opened before settings loaded (fallback zone): re-read the untouched dates in the real zone.
+  useZoneChange(zone, (prev, next) => setForm((f) => reseedDateFields(f, toFormState(task, prev), toFormState(task, next))));
   const { ok, errors } = validateTaskForm(form);
   const categoriesQ = useCategoriesQuery();
   const categories = categoriesQ.data ?? [];
@@ -91,7 +96,7 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
       error={error}
       actions={(
         <>
-          <PrimaryButton data-testid="save" disabled={!ok || saving} onClick={() => { if (ok) onSave(toUpdateInput(form)); }}>Save</PrimaryButton>
+          <PrimaryButton data-testid="save" disabled={!ok || saving} onClick={() => { if (ok) onSave(toUpdateInput(form, zone)); }}>Save</PrimaryButton>
           <SecondaryButton onClick={onCancel}>Cancel</SecondaryButton>
         </>
       )}
@@ -126,7 +131,7 @@ export function TaskDrawer({ task, onSave, onCancel, saving = false, error = nul
             sits between the box and the error line. */}
         <div>
           <FieldBox label="Due by">
-            <input type="datetime-local" className={FIELD_CONTROL} value={form.dueByLocal} onChange={(e) => set('dueByLocal', e.target.value)} />
+            <input type="datetime-local" data-testid="due-by" className={FIELD_CONTROL} value={form.dueByLocal} onChange={(e) => set('dueByLocal', e.target.value)} />
           </FieldBox>
           <p className="mt-1 text-[11px] text-inkSoft">Leave empty for no deadline</p>
           {errors.dueByLocal && <p data-testid="err-dueByLocal" className={FIELD_ERROR}>{errors.dueByLocal}</p>}

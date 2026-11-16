@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   msToHM, minutesToHHMM, hhmmToMinutes,
-  isoToLocalInput, localInputToIso, formatDurationShort,
+  formatDurationShort,
 } from './duration';
 
 describe('duration', () => {
@@ -14,10 +14,6 @@ describe('duration', () => {
     expect(minutesToHHMM(545)).toBe('09:05');
     expect(hhmmToMinutes('06:00')).toBe(360);
     expect(hhmmToMinutes('09:05')).toBe(545);
-  });
-  it('isoToLocalInput / localInputToIso round-trip (TZ=UTC)', () => {
-    expect(isoToLocalInput('2026-06-01T17:00:00.000Z')).toBe('2026-06-01T17:00');
-    expect(localInputToIso('2026-06-01T17:00')).toBe('2026-06-01T17:00:00.000Z');
   });
   it('formatDurationShort', () => {
     expect(formatDurationShort(3_600_000)).toBe('1h');

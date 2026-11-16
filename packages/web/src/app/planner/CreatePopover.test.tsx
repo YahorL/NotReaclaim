@@ -376,3 +376,25 @@ describe('CreatePopover as a bottom sheet', () => {
     expect(screen.getByTestId('create-submit')).toBeInTheDocument();
   });
 });
+
+describe('CreatePopover in the settings zone', () => {
+  // New York midnight of Mon Jan 5 2026 (EST, UTC-5).
+  const NY_DAY = Date.parse('2026-01-05T05:00:00.000Z');
+
+  it('interprets typed due / schedule-after in the settings zone', async () => {
+    const createTask = vi.fn(async () => ({ id: 't-ny' }));
+    const createScheduledBlock = vi.fn(async () => ({ id: 'b-ny' }));
+    renderWithProviders(
+      <CreatePopover dayStartMs={NY_DAY} startMin={540} topPct={18} onClose={vi.fn()} now={() => NY_DAY} zone="America/New_York" />,
+      { api: fakeApiClient({ createTask, createScheduledBlock, listCategories: vi.fn(async () => []) } as never) },
+    );
+    fireEvent.click(screen.getByTestId('mode-task'));
+    fireEvent.change(screen.getByTestId('create-title'), { target: { value: 'NY task' } });
+    fireEvent.change(screen.getByTestId('create-due'), { target: { value: '2026-01-06T12:00' } });
+    fireEvent.change(screen.getByTestId('create-after'), { target: { value: '2026-01-05T10:00' } });
+    fireEvent.click(screen.getByTestId('create-submit'));
+    await waitFor(() => expect(createTask).toHaveBeenCalledWith(expect.objectContaining({
+      dueBy: '2026-01-06T17:00:00.000Z', notBefore: '2026-01-05T15:00:00.000Z',
+    })));
+  });
+});

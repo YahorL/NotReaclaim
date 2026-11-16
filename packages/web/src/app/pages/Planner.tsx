@@ -5,7 +5,7 @@ import { ApiError } from '../../api/client';
 import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useHabitsQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation, useSettingsQuery } from '../../api/queries';
 import { dayColumns, daysThatFit, shiftDays, dayAnchor, rangeLabel, weekdayLabel, MS_PER_DAY } from '../planner/weekModel';
 import { toIso } from '../lib/time';
-import { browserTimezone } from '../settings/settingsForm';
+import { useTimezone } from '../settings/useTimezone';
 import { useElementWidth } from '../planner/useElementWidth';
 import { useCompactWidth, usePointerCoarse } from '../lib/useMediaQuery';
 import { useDragToScheduleSensors, pointerFirstCollision } from '../dnd/sensors';
@@ -28,7 +28,7 @@ const DRAWER_DESKTOP_CLASS = 'fixed right-3 top-[84px] z-50';
 export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const nowMs = now();
   const settingsQ = useSettingsQuery();
-  const zone = settingsQ.data?.timezone ?? browserTimezone();
+  const zone = useTimezone();
   // Visual day boundary: with 180 a column runs 03:00 → 03:00, so 01:30 still shows as "today".
   const dayStartMinute = settingsQ.data?.dayStartMinute ?? 0;
   const [viewStartMs, setViewStartMs] = useState(() => dayAnchor(nowMs, zone, dayStartMinute));
@@ -267,7 +267,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
       {editing && (
         <DrawerHost compact={compact} label="Edit task" onClose={() => setEditingId(null)} desktopClass={DRAWER_DESKTOP_CLASS}>
           <TaskDrawer
-            task={editing} compact={compact} saving={updateTask.isPending}
+            task={editing} zone={zone} compact={compact} saving={updateTask.isPending}
             error={updateTask.error instanceof ApiError ? updateTask.error : null}
             onSave={(patch) => updateTask.mutate({ id: editing.id, patch }, { onSuccess: () => setEditingId(null) })}
             onCancel={() => setEditingId(null)}

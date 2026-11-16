@@ -3,8 +3,9 @@ import { ApiError } from '../../api/client';
 import { useCreateTaskMutation, useSettingsQuery, useCategoriesQuery, useCreateCategoryMutation } from '../../api/queries';
 import { Icons } from './icons';
 import {
-  type NewTaskFormState, defaultNewTaskForm, validateNewTaskForm, toCreateTaskInput,
+  type NewTaskFormState, defaultNewTaskForm, validateNewTaskForm, toCreateTaskInput, reseedDateFields,
 } from '../tasks/taskForm';
+import { useTimezone, useZoneChange } from '../settings/useTimezone';
 import { FieldBox } from '../components/FieldBox';
 import { DurationStepper } from '../components/DurationStepper';
 import { PriorityPicker } from '../components/PriorityPicker';
@@ -19,7 +20,13 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
   const chunkDefaults = settingsQ.data
     ? { defaultMinChunkMs: settingsQ.data.defaultMinChunkMs, defaultMaxChunkMs: settingsQ.data.defaultMaxChunkMs }
     : undefined;
-  const [form, set] = useFormState<NewTaskFormState>(() => defaultNewTaskForm(now(), chunkDefaults));
+  const zone = useTimezone();
+  const [form, set, setForm] = useFormState<NewTaskFormState>(() => defaultNewTaskForm(now(), zone, chunkDefaults));
+  // Opened before settings loaded (fallback zone): move the untouched date defaults to the real zone.
+  useZoneChange(zone, (prev, next) => {
+    const at = now();
+    setForm((f) => reseedDateFields(f, defaultNewTaskForm(at, prev), defaultNewTaskForm(at, next)));
+  });
 
   const categoriesQ = useCategoriesQuery();
   const createCategoryM = useCreateCategoryMutation();
@@ -39,7 +46,7 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
 
   const submit = () => {
     if (!ok) return;
-    createM.mutate(toCreateTaskInput(form), { onSuccess: () => onClose() });
+    createM.mutate(toCreateTaskInput(form, zone), { onSuccess: () => onClose() });
   };
 
   return (

@@ -16,19 +16,6 @@ export function hhmmToMinutes(s: string): number {
   return (h ?? 0) * 60 + (m ?? 0);
 }
 
-const pad = (n: number) => String(n).padStart(2, '0');
-
-/** ISO instant → "YYYY-MM-DDTHH:MM" in local time (for <input type="datetime-local">). */
-export function isoToLocalInput(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-/** datetime-local string (local time) → ISO instant. */
-export function localInputToIso(local: string): string {
-  return new Date(local).toISOString();
-}
-
 export function formatDurationShort(ms: number): string {
   const { hours, minutes } = msToHM(ms);
   if (hours && minutes) return `${hours}h ${minutes}m`;

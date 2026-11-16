@@ -152,3 +152,41 @@ describe('NewTaskModal', () => {
     expect(row.classList.contains('md:gap-4')).toBe(true);
   });
 });
+
+describe('NewTaskModal in the settings zone', () => {
+  const NY_SETTINGS = { id: 's', userId: 'u', timezone: 'America/New_York', workingHours: [], horizonDays: 14, defaultMinChunkMs: 1800000, defaultMaxChunkMs: 7200000, createdAt: '', updatedAt: '' };
+  // 02:00Z on Jan 7 is 21:00 on Jan 6 in New York.
+  const NY_EVENING = Date.parse('2026-01-07T02:00:00.000Z');
+
+  it('defaults and submits in the settings zone, not the browser zone', async () => {
+    const createTask = vi.fn(async () => task());
+    const api = fakeApiClient({ getSettings: vi.fn().mockResolvedValue(NY_SETTINGS), createTask } as never);
+    renderWithProviders(<NewTaskModal onClose={() => {}} now={() => NY_EVENING} />, { api });
+    await waitFor(() => expect(screen.getByTestId('due-date')).toHaveValue('2026-01-13T23:59'));
+    expect(screen.getByTestId('schedule-after')).toHaveValue('2026-01-06T08:00');
+    fireEvent.change(screen.getByPlaceholderText(/task name/i), { target: { value: 'Write' } });
+    fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
+    await waitFor(() => expect(createTask).toHaveBeenCalledWith(expect.objectContaining({
+      dueBy: '2026-01-14T04:59:00.000Z', notBefore: '2026-01-06T13:00:00.000Z',
+    })));
+  });
+
+  it('settings landing after the user edited a date keeps the edit and re-seeds the untouched default', async () => {
+    let resolveSettings!: (s: unknown) => void;
+    const getSettings = vi.fn(() => new Promise((r) => { resolveSettings = r; }));
+    const createTask = vi.fn(async () => task());
+    const api = fakeApiClient({ getSettings, createTask } as never);
+    renderWithProviders(<NewTaskModal onClose={() => {}} now={() => NY_EVENING} />, { api });
+    // Before settings: browser-zone (UTC in tests) fallback.
+    expect(screen.getByTestId('schedule-after')).toHaveValue('2026-01-07T08:00');
+    fireEvent.change(screen.getByTestId('due-date'), { target: { value: '2026-01-20T10:00' } });
+    resolveSettings(NY_SETTINGS);
+    await waitFor(() => expect(screen.getByTestId('schedule-after')).toHaveValue('2026-01-06T08:00'));
+    expect(screen.getByTestId('due-date')).toHaveValue('2026-01-20T10:00');
+    fireEvent.change(screen.getByPlaceholderText(/task name/i), { target: { value: 'Write' } });
+    fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
+    await waitFor(() => expect(createTask).toHaveBeenCalledWith(expect.objectContaining({
+      dueBy: '2026-01-20T15:00:00.000Z', notBefore: '2026-01-06T13:00:00.000Z',
+    })));
+  });
+});
