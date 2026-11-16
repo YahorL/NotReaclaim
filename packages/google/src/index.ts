@@ -20,7 +20,7 @@ export { createGoogleClient } from './google-client.js';
 export type { GoogleClientConfig } from './google-client.js';
 export { createTokenService } from './token-service.js';
 export type { TokenService, TokenServiceDeps } from './token-service.js';
-export { syncPrimaryCalendar } from './sync.js';
+export { syncPrimaryCalendar, PRIMARY_CALENDAR_ID } from './sync.js';
 export type { SyncDeps, SyncResult, AccessTokenProvider } from './sync.js';
 export type { GoogleEventWrite } from './client.js';
 export { toGoogleEventWrite } from './writeback.js';

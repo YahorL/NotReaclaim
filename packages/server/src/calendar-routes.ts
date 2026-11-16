@@ -1,9 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { horizonEndMs } from '@notreclaim/core';
+import { PRIMARY_CALENDAR_ID } from '@notreclaim/google';
 import type { AppDeps, AfterMutation } from './app.js';
 import { rangeQuerySchema, createCalendarEventSchema, updateCalendarEventSchema, idParamSchema } from './schemas.js';
-
-const PRIMARY = 'primary';
 
 export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afterMutation: AfterMutation): void {
   const guard = { onRequest: [app.authenticate] };
@@ -36,10 +35,10 @@ export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afte
       // primary calendar; failures (or no Google account) leave the local row authoritative.
       try {
         const accessToken = await deps.google.tokens.getAccessToken(request.userId, deps.now());
-        const { googleEventId } = await deps.google.client.insertEvent(accessToken, PRIMARY, {
+        const { googleEventId } = await deps.google.client.insertEvent(accessToken, PRIMARY_CALENDAR_ID, {
           summary: body.title, startDateTime: body.startsAt, endDateTime: body.endsAt,
         });
-        event = await deps.repos.calendarEvents.setGoogleIds(request.userId, event.id, PRIMARY, googleEventId);
+        event = await deps.repos.calendarEvents.setGoogleIds(request.userId, event.id, PRIMARY_CALENDAR_ID, googleEventId);
       } catch (err) {
         // Not connected or a Google failure — the local row stands, but say so in the log.
         app.log.warn({ err, eventId: event.id }, 'google write-back failed: event not mirrored');
