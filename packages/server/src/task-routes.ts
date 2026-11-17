@@ -2,7 +2,10 @@ import type { FastifyInstance } from 'fastify';
 import { computeSpentMs } from '@notreclaim/core';
 import { NotFoundError, type CategoryRepository } from '@notreclaim/db';
 import type { AppDeps, AfterMutation } from './app.js';
-import { createTaskSchema, updateTaskSchema, listTasksQuerySchema, idParamSchema } from './schemas.js';
+import { ZodError } from 'zod';
+import {
+  createTaskSchema, updateTaskSchema, listTasksQuerySchema, idParamSchema, CHUNK_ORDER,
+} from './schemas.js';
 
 /**
  * A client-supplied categoryId must name one of the caller's own categories: an unknown id
@@ -61,6 +64,13 @@ export function registerTaskRoutes(app: FastifyInstance, deps: AppDeps, afterMut
     const { id } = idParamSchema.parse(request.params);
     const { dueBy: dueByStr, notBefore: nbStr, ...rest } = updateTaskSchema.parse(request.body);
     await assertOwnCategory(deps.repos.categories, request.userId, rest.categoryId);
+    if (rest.minChunkMs !== undefined || rest.maxChunkMs !== undefined) {
+      const stored = await deps.repos.tasks.findById(request.userId, id);
+      if (!stored) throw new NotFoundError(`Task ${id} not found`);
+      if ((rest.minChunkMs ?? stored.minChunkMs) > (rest.maxChunkMs ?? stored.maxChunkMs)) {
+        throw new ZodError([{ code: 'custom', ...CHUNK_ORDER }]);
+      }
+    }
     const data = {
       ...rest,
       ...(dueByStr !== undefined ? { dueBy: dueByStr === null ? null : new Date(dueByStr) } : {}),

@@ -114,4 +114,16 @@ describe('settings routes', () => {
       expect(res.statusCode, timezone).toBe(200);
     }
   });
+
+  it('rejects defaultMinChunkMs > defaultMaxChunkMs with 400 and accepts equal values', async () => {
+    const { app, reconcileCalls } = buildTestApp({ settings: null });
+    const token = await tokenFor(app);
+    const auth = { authorization: `Bearer ${token}` };
+    const bad = await app.inject({ method: 'PUT', url: '/settings', headers: auth, payload: { ...settingsBody, defaultMinChunkMs: 1800001, defaultMaxChunkMs: 1800000 } });
+    expect(bad.statusCode).toBe(400);
+    expect(bad.json().code).toBe('validation_error');
+    expect(reconcileCalls).toEqual([]);
+    const equal = await app.inject({ method: 'PUT', url: '/settings', headers: auth, payload: { ...settingsBody, defaultMinChunkMs: 1800000, defaultMaxChunkMs: 1800000 } });
+    expect(equal.statusCode).toBe(200);
+  });
 });

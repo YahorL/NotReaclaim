@@ -15,7 +15,10 @@ const START_BEFORE_END = { message: 'startsAt must be before endsAt' };
 export const authCallbackQuerySchema = z.object({ code: z.string().min(1), state: z.string().optional() });
 export const consentQuerySchema = z.object({ invite: z.string().min(1).optional() });
 
-export const createTaskSchema = z.object({
+// Shared by the chunk-order refines below and the PATCH /tasks merged check in task-routes.
+export const CHUNK_ORDER = { message: 'minChunkMs must not exceed maxChunkMs', path: ['minChunkMs'] };
+
+const taskFieldsSchema = z.object({
   title: z.string().min(1),
   priority: z.number().int(),
   durationMs: z.number().int().positive(),
@@ -26,7 +29,10 @@ export const createTaskSchema = z.object({
   notBefore: z.string().datetime().nullable().optional(),
   sortOrder: z.number().optional(),
 });
-export const updateTaskSchema = createTaskSchema.partial().extend({
+export const createTaskSchema = taskFieldsSchema.refine((b) => b.minChunkMs <= b.maxChunkMs, CHUNK_ORDER);
+// Partial: chunk order is checked in the route against the stored row, and only when the
+// patch touches min or max, so rows that already conflict stay editable.
+export const updateTaskSchema = taskFieldsSchema.partial().extend({
   status: taskStatusSchema.optional(),
   timeLoggedMs: z.number().int().nonnegative().optional(),
 });
@@ -65,6 +71,8 @@ export const settingsSchema = z.object({
   requireStartToTrack: z.boolean().optional(),
   /** Visual planner day boundary, minutes past local midnight (0 = midnight, 180 = 03:00). */
   dayStartMinute: z.number().int().min(0).max(1439).optional(),
+}).refine((b) => b.defaultMinChunkMs <= b.defaultMaxChunkMs, {
+  message: 'defaultMinChunkMs must not exceed defaultMaxChunkMs', path: ['defaultMinChunkMs'],
 });
 
 export const workingHourEntrySchema = z.object({

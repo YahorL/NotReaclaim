@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { Category, ScheduledBlock } from '@notreclaim/db';
+import type { Category, ScheduledBlock, Task } from '@notreclaim/db';
 import { buildTestApp, tokenFor } from './fakes.js';
 
 const taskBody = {
@@ -355,5 +355,68 @@ describe('categoryId ownership', () => {
     expect(set.json().categoryId).toBe('cat-mine');
     const createdNull = await app.inject({ method: 'POST', url: '/tasks', headers: auth, payload: { ...taskBody, categoryId: null } });
     expect(createdNull.statusCode).toBe(201);
+  });
+});
+
+describe('min/max chunk order', () => {
+  const M = 60_000;
+  // A row stored with min > max before the server checked chunk order (or written out of band).
+  const conflicting = {
+    id: 'task-legacy', userId: 'u1', title: 'Legacy', priority: 1, sortOrder: 0,
+    durationMs: 90 * M, dueBy: null, notBefore: null, minChunkMs: 60 * M, maxChunkMs: 30 * M,
+    categoryId: null, status: 'pending', completedAt: null, timeLoggedMs: 0, createdAt: new Date(0), updatedAt: new Date(0),
+  } as Task;
+  const setup = async (tasks: Task[] = []) => {
+    const ctx = buildTestApp({ tasks });
+    return { ...ctx, auth: { authorization: `Bearer ${await tokenFor(ctx.app)}` } };
+  };
+
+  it('POST /tasks rejects minChunkMs > maxChunkMs with 400 validation_error', async () => {
+    const { app, auth, reconcileCalls } = await setup();
+    const res = await app.inject({ method: 'POST', url: '/tasks', headers: auth, payload: { ...taskBody, minChunkMs: 1800001, maxChunkMs: 1800000 } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().code).toBe('validation_error');
+    expect(reconcileCalls).toEqual([]);
+  });
+
+  it('POST /tasks accepts minChunkMs = maxChunkMs', async () => {
+    const { app, auth } = await setup();
+    const res = await app.inject({ method: 'POST', url: '/tasks', headers: auth, payload: { ...taskBody, minChunkMs: 1800000, maxChunkMs: 1800000 } });
+    expect(res.statusCode).toBe(201);
+  });
+
+  it('PATCH /tasks/:id rejects a patch whose min and max conflict', async () => {
+    const { app, auth } = await setup();
+    const id = (await app.inject({ method: 'POST', url: '/tasks', headers: auth, payload: taskBody })).json().id;
+    const res = await app.inject({ method: 'PATCH', url: `/tasks/${id}`, headers: auth, payload: { minChunkMs: 60 * M, maxChunkMs: 30 * M } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().code).toBe('validation_error');
+  });
+
+  it('PATCH /tasks/:id rejects min alone above the stored max (and max alone below the stored min)', async () => {
+    const { app, auth } = await setup();
+    // taskBody: min 15m, max 30m.
+    const id = (await app.inject({ method: 'POST', url: '/tasks', headers: auth, payload: taskBody })).json().id;
+    const minOnly = await app.inject({ method: 'PATCH', url: `/tasks/${id}`, headers: auth, payload: { minChunkMs: 45 * M } });
+    expect(minOnly.statusCode).toBe(400);
+    expect(minOnly.json().code).toBe('validation_error');
+    const maxOnly = await app.inject({ method: 'PATCH', url: `/tasks/${id}`, headers: auth, payload: { maxChunkMs: 10 * M } });
+    expect(maxOnly.statusCode).toBe(400);
+    const got = (await app.inject({ method: 'GET', url: `/tasks/${id}`, headers: auth })).json();
+    expect(got).toMatchObject({ minChunkMs: 15 * M, maxChunkMs: 30 * M });
+  });
+
+  it('PATCH /tasks/:id that touches neither min nor max still works on a stored conflicting row', async () => {
+    const { app, auth } = await setup([conflicting]);
+    const res = await app.inject({ method: 'PATCH', url: '/tasks/task-legacy', headers: auth, payload: { title: 'Renamed', durationMs: 120 * M } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ title: 'Renamed', minChunkMs: 60 * M, maxChunkMs: 30 * M });
+  });
+
+  it('PATCH /tasks/:id can repair a stored conflicting row by touching one side', async () => {
+    const { app, auth } = await setup([conflicting]);
+    const res = await app.inject({ method: 'PATCH', url: '/tasks/task-legacy', headers: auth, payload: { maxChunkMs: 90 * M } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ minChunkMs: 60 * M, maxChunkMs: 90 * M });
   });
 });
