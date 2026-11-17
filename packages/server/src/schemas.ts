@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isValidTimezone } from '@notreclaim/core';
 
 export const idParamSchema = z.object({ id: z.string().min(1) });
 
@@ -48,7 +49,7 @@ export const updateHabitSchema = createHabitSchema.partial().extend({
 });
 
 export const settingsSchema = z.object({
-  timezone: z.string().min(1),
+  timezone: z.string().refine(isValidTimezone, { message: 'timezone must be a valid IANA time zone' }),
   workingHours: z.array(
     z.object({
       weekday: z.number().int().min(0).max(6),

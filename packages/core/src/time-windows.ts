@@ -1,4 +1,4 @@
-import { DateTime } from 'luxon';
+import { DateTime, IANAZone } from 'luxon';
 import type { Interval } from '@notreclaim/scheduler';
 import { InvalidHorizonError, InvalidTimezoneError } from './errors.js';
 
@@ -30,6 +30,18 @@ export function atMinuteOfDay(day: DateTime, minute: number): number {
   return day
     .set({ hour: Math.floor(minute / 60), minute: minute % 60, second: 0, millisecond: 0 })
     .toMillis();
+}
+
+/**
+ * Whether `timezone` is a named IANA zone that every consumer accepts — for validating
+ * client input before it is stored. Stricter than `assertValidZone` by construction (it
+ * requires that check to pass too): luxon also accepts `local`/`system` (the server's own
+ * zone) and `UTC+3`, and Node's Intl accepts bare offsets like `+03:00`; none is an IANA name.
+ */
+export function isValidTimezone(timezone: string): boolean {
+  return IANAZone.isValidZone(timezone)
+    && !/^[+-]/.test(timezone)
+    && DateTime.fromMillis(0, { zone: timezone }).isValid;
 }
 
 /** Throw if the IANA timezone is invalid (clock-free check). */

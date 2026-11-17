@@ -90,4 +90,28 @@ describe('settings routes', () => {
     const ok = await app.inject({ method: 'PUT', url: '/settings', headers: auth, payload: { ...settingsBody, dayStartMinute: 1439 } });
     expect(ok.statusCode).toBe(200);
   });
+
+  it('rejects a timezone that is not a valid IANA zone with 400 and stores nothing', async () => {
+    const { app, reconcileCalls } = buildTestApp({ settings: null });
+    const token = await tokenFor(app);
+    const auth = { authorization: `Bearer ${token}` };
+    // "local"/"system" would silently mean the server's own zone; "+03:00" is a fixed offset.
+    for (const timezone of ['New York', 'Fantasia/Castle', 'local', 'system', '+03:00', '']) {
+      const res = await app.inject({ method: 'PUT', url: '/settings', headers: auth, payload: { ...settingsBody, timezone } });
+      expect(res.statusCode, timezone).toBe(400);
+      expect(res.json().code).toBe('validation_error');
+    }
+    expect(reconcileCalls).toEqual([]);
+    expect((await app.inject({ method: 'GET', url: '/settings', headers: auth })).statusCode).toBe(404);
+  });
+
+  it('accepts canonical and legacy-alias IANA zones', async () => {
+    const { app } = buildTestApp();
+    const token = await tokenFor(app);
+    const auth = { authorization: `Bearer ${token}` };
+    for (const timezone of ['UTC', 'Etc/GMT+5', 'Asia/Calcutta', 'Europe/Kiev', 'US/Pacific', 'GMT']) {
+      const res = await app.inject({ method: 'PUT', url: '/settings', headers: auth, payload: { ...settingsBody, timezone } });
+      expect(res.statusCode, timezone).toBe(200);
+    }
+  });
 });

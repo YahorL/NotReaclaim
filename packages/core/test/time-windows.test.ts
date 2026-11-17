@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { DateTime } from 'luxon';
-import { expandWorkingWindows, round15 } from '../src/time-windows.js';
+import { expandWorkingWindows, isValidTimezone, round15 } from '../src/time-windows.js';
 import { InvalidTimezoneError, InvalidHorizonError } from '../src/errors.js';
 
 const utc = (iso: string) => DateTime.fromISO(iso, { zone: 'utc' }).toMillis();
@@ -64,5 +64,28 @@ describe('round15', () => {
     expect(round15(Date.parse('2026-01-05T15:10:00.000Z'))).toBe(Date.parse('2026-01-05T15:15:00.000Z'));
     expect(round15(Date.parse('2026-01-05T15:07:00.000Z'))).toBe(Date.parse('2026-01-05T15:00:00.000Z'));
     expect(round15(Date.parse('2026-01-05T15:00:00.000Z'))).toBe(Date.parse('2026-01-05T15:00:00.000Z'));
+  });
+});
+
+describe('isValidTimezone', () => {
+  it('accepts every zone Intl lists (the web picker source) and legacy aliases browsers report', () => {
+    const listed = Intl.supportedValuesOf('timeZone');
+    expect(listed.filter((z) => !isValidTimezone(z))).toEqual([]);
+    for (const z of ['UTC', 'GMT', 'Etc/GMT+5', 'Asia/Calcutta', 'Europe/Kiev', 'US/Pacific']) {
+      expect(isValidTimezone(z), z).toBe(true);
+    }
+  });
+
+  it('rejects unknown names, luxon-only specifiers and bare offsets', () => {
+    for (const z of ['New York', 'Fantasia/Castle', '', ' America/New_York', 'local', 'system', 'UTC+3', '+03:00', '-05:00']) {
+      expect(isValidTimezone(z), z).toBe(false);
+    }
+  });
+
+  it('never accepts a zone that expandWorkingWindows would reject', () => {
+    for (const z of ['America/New_York', 'UTC', 'Etc/GMT+5']) {
+      expect(isValidTimezone(z)).toBe(true);
+      expect(() => expandWorkingWindows([], z, 0, 1)).not.toThrow();
+    }
   });
 });
