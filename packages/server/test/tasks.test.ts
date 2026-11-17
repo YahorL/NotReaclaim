@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { ScheduledBlock } from '@notreclaim/db';
+import type { Category, ScheduledBlock } from '@notreclaim/db';
 import { buildTestApp, tokenFor } from './fakes.js';
 
 const taskBody = {
@@ -99,7 +99,11 @@ describe('task routes', () => {
   });
 
   it('round-trips categoryId on task create and update', async () => {
-    const { app } = buildTestApp();
+    const { app } = buildTestApp({
+      categories: ['cat-1', 'cat-2'].map((id) => ({
+        id, userId: 'u1', name: id, windows: null, color: null, isDefault: false, createdAt: new Date(0), updatedAt: new Date(0),
+      }) as Category),
+    });
     const token = await tokenFor(app);
     const auth = { authorization: `Bearer ${token}` };
     const createRes = await app.inject({ method: 'POST', url: '/tasks', headers: auth, payload: { ...taskBody, categoryId: 'cat-1' } });
@@ -301,5 +305,55 @@ describe('GET /tasks spentMs', () => {
     const token = await tokenFor(app);
     const res = await app.inject({ method: 'GET', url: '/tasks', headers: { authorization: `Bearer ${token}` } });
     expect(res.json()[0].spentMs).toBe(0); // finished but un-started → not counted
+  });
+});
+
+describe('categoryId ownership', () => {
+  const cat = (id: string, userId: string) =>
+    ({ id, userId, name: id, windows: null, color: null, isDefault: false, createdAt: new Date(0), updatedAt: new Date(0) }) as Category;
+  const setup = async () => {
+    const ctx = buildTestApp({ categories: [cat('cat-mine', 'u1'), cat('cat-theirs', 'other')] });
+    const auth = { authorization: `Bearer ${await tokenFor(ctx.app)}` };
+    return { ...ctx, auth };
+  };
+
+  const rejected = [
+    { label: 'an unknown category id', categoryId: 'cat-missing' },
+    { label: "another user's category id", categoryId: 'cat-theirs' },
+  ];
+
+  it.each(rejected)('POST /tasks 404s for $label and stores nothing', async ({ categoryId }) => {
+    const { app, auth, reconcileCalls } = await setup();
+    const res = await app.inject({ method: 'POST', url: '/tasks', headers: auth, payload: { ...taskBody, categoryId } });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().code).toBe('not_found');
+    expect((await app.inject({ method: 'GET', url: '/tasks', headers: auth })).json()).toHaveLength(0);
+    expect(reconcileCalls).toEqual([]);
+  });
+
+  it.each(rejected)('PATCH /tasks/:id 404s for $label and leaves the task unchanged', async ({ categoryId }) => {
+    const { app, auth } = await setup();
+    const id = (await app.inject({ method: 'POST', url: '/tasks', headers: auth, payload: { ...taskBody, categoryId: 'cat-mine' } })).json().id;
+    const res = await app.inject({ method: 'PATCH', url: `/tasks/${id}`, headers: auth, payload: { categoryId, priority: 9 } });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().code).toBe('not_found');
+    const got = (await app.inject({ method: 'GET', url: `/tasks/${id}`, headers: auth })).json();
+    expect(got).toMatchObject({ categoryId: 'cat-mine', priority: 1 });
+  });
+
+  it('accepts the user\'s own category, null (clear) and an absent field', async () => {
+    const { app, auth } = await setup();
+    const created = await app.inject({ method: 'POST', url: '/tasks', headers: auth, payload: { ...taskBody, categoryId: 'cat-mine' } });
+    expect(created.statusCode).toBe(201);
+    const id = created.json().id;
+    const absent = await app.inject({ method: 'PATCH', url: `/tasks/${id}`, headers: auth, payload: { priority: 2 } });
+    expect(absent.json().categoryId).toBe('cat-mine');
+    const cleared = await app.inject({ method: 'PATCH', url: `/tasks/${id}`, headers: auth, payload: { categoryId: null } });
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.json().categoryId).toBeNull();
+    const set = await app.inject({ method: 'PATCH', url: `/tasks/${id}`, headers: auth, payload: { categoryId: 'cat-mine' } });
+    expect(set.json().categoryId).toBe('cat-mine');
+    const createdNull = await app.inject({ method: 'POST', url: '/tasks', headers: auth, payload: { ...taskBody, categoryId: null } });
+    expect(createdNull.statusCode).toBe(201);
   });
 });

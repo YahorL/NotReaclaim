@@ -1,8 +1,21 @@
 import type { FastifyInstance } from 'fastify';
 import { computeSpentMs } from '@notreclaim/core';
-import { NotFoundError } from '@notreclaim/db';
+import { NotFoundError, type CategoryRepository } from '@notreclaim/db';
 import type { AppDeps, AfterMutation } from './app.js';
 import { createTaskSchema, updateTaskSchema, listTasksQuerySchema, idParamSchema } from './schemas.js';
+
+/**
+ * A client-supplied categoryId must name one of the caller's own categories: an unknown id
+ * would otherwise hit the FK as an untranslated 500, and another user's id would be accepted.
+ * null (clear) and undefined (absent) pass through.
+ */
+async function assertOwnCategory(
+  categories: Pick<CategoryRepository, 'listByUser'>, userId: string, categoryId: string | null | undefined,
+): Promise<void> {
+  if (categoryId == null) return;
+  const owned = await categories.listByUser(userId);
+  if (!owned.some((c) => c.id === categoryId)) throw new NotFoundError(`Category ${categoryId} not found for user`);
+}
 
 export function registerTaskRoutes(app: FastifyInstance, deps: AppDeps, afterMutation: AfterMutation): void {
   const guard = { onRequest: [app.authenticate] };
@@ -17,6 +30,7 @@ export function registerTaskRoutes(app: FastifyInstance, deps: AppDeps, afterMut
 
   app.post('/tasks', guard, async (request, reply) => {
     const body = createTaskSchema.parse(request.body);
+    await assertOwnCategory(deps.repos.categories, request.userId, body.categoryId);
     const task = await deps.repos.tasks.create(request.userId, {
       ...body,
       dueBy: body.dueBy ? new Date(body.dueBy) : null,
@@ -46,6 +60,7 @@ export function registerTaskRoutes(app: FastifyInstance, deps: AppDeps, afterMut
   app.patch('/tasks/:id', guard, async (request) => {
     const { id } = idParamSchema.parse(request.params);
     const { dueBy: dueByStr, notBefore: nbStr, ...rest } = updateTaskSchema.parse(request.body);
+    await assertOwnCategory(deps.repos.categories, request.userId, rest.categoryId);
     const data = {
       ...rest,
       ...(dueByStr !== undefined ? { dueBy: dueByStr === null ? null : new Date(dueByStr) } : {}),
