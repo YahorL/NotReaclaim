@@ -108,18 +108,37 @@ export function defaultDueLocal(now: number, zone: string, notBeforeMs?: number)
   return zonedDayAtInput(now, zone, DEFAULT_DUE_DAYS, 23, 59, notBeforeMs);
 }
 
-export function defaultNewTaskForm(
-  now: number,
-  zone: string,
-  settings?: { defaultMinChunkMs: number; defaultMaxChunkMs: number },
-): NewTaskFormState {
+type ChunkFields = Pick<TaskFormState, 'minChunkMs' | 'maxChunkMs'>;
+type ChunkDefaults = { defaultMinChunkMs: number; defaultMaxChunkMs: number };
+
+/** The chunk sizes a new task starts with: the user's settings defaults, else a built-in 30 / 120 min. */
+export function chunkSeed(settings?: ChunkDefaults): ChunkFields {
+  return {
+    minChunkMs: settings?.defaultMinChunkMs ?? 30 * 60_000,
+    maxChunkMs: settings?.defaultMaxChunkMs ?? 120 * 60_000,
+  };
+}
+
+/**
+ * Re-seed after the chunk defaults changed (settings landing after the form opened on the
+ * fallback): a chunk field still equal to its previous seed takes the new one; a field the user
+ * already edited keeps its value. Same rule as `reseedDateFields`.
+ */
+export function reseedChunkFields<S extends ChunkFields>(form: S, prevSeed: ChunkFields, nextSeed: ChunkFields): S {
+  return {
+    ...form,
+    minChunkMs: form.minChunkMs === prevSeed.minChunkMs ? nextSeed.minChunkMs : form.minChunkMs,
+    maxChunkMs: form.maxChunkMs === prevSeed.maxChunkMs ? nextSeed.maxChunkMs : form.maxChunkMs,
+  };
+}
+
+export function defaultNewTaskForm(now: number, zone: string, settings?: ChunkDefaults): NewTaskFormState {
   return {
     title: '',
     priority: 4,
     durationMs: 60 * 60_000,
     split: true,
-    minChunkMs: settings?.defaultMinChunkMs ?? 30 * 60_000,
-    maxChunkMs: settings?.defaultMaxChunkMs ?? 120 * 60_000,
+    ...chunkSeed(settings),
     dueByLocal: defaultDueLocal(now, zone),
     notBeforeLocal: zonedDayAtInput(now, zone, 0, 8, 0),
     categoryId: null,

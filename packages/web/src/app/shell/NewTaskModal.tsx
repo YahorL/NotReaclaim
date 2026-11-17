@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { ApiError } from '../../api/client';
 import { useCreateTaskMutation, useSettingsQuery, useCategoriesQuery, useCreateCategoryMutation } from '../../api/queries';
 import { Icons } from './icons';
 import {
   type NewTaskFormState, defaultNewTaskForm, validateNewTaskForm, toCreateTaskInput, reseedDateFields,
+  chunkSeed, reseedChunkFields,
 } from '../tasks/taskForm';
+import { useValueChange } from '../components/useValueChange';
 import { useTimezone, useZoneChange } from '../settings/useTimezone';
 import { FieldBox } from '../components/FieldBox';
 import { DurationStepper } from '../components/DurationStepper';
@@ -17,11 +19,15 @@ const FALLBACK_WORKING_HOURS = [{ weekday: 1, startMinute: 540, endMinute: 1020 
 export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () => void; now?: () => number }) {
   const settingsQ = useSettingsQuery();
   const createM = useCreateTaskMutation();
-  const chunkDefaults = settingsQ.data
-    ? { defaultMinChunkMs: settingsQ.data.defaultMinChunkMs, defaultMaxChunkMs: settingsQ.data.defaultMaxChunkMs }
-    : undefined;
+  // Memoised on the two numbers so useValueChange sees a stable seed between settings changes.
+  const chunks = useMemo(
+    () => chunkSeed(settingsQ.data),
+    [settingsQ.data?.defaultMinChunkMs, settingsQ.data?.defaultMaxChunkMs],
+  );
   const zone = useTimezone();
-  const [form, set, setForm] = useFormState<NewTaskFormState>(() => defaultNewTaskForm(now(), zone, chunkDefaults));
+  const [form, set, setForm] = useFormState<NewTaskFormState>(() => defaultNewTaskForm(now(), zone, settingsQ.data));
+  // Opened before settings loaded (built-in chunk fallback): move the untouched chunk sizes to the user's defaults.
+  useValueChange(chunks, (prev, next) => setForm((f) => reseedChunkFields(f, prev, next)));
   // Opened before settings loaded (fallback zone): move the untouched date defaults to the real zone.
   useZoneChange(zone, (prev, next) => {
     const at = now();

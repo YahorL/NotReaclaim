@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { defaultNewTaskForm, validateNewTaskForm, toCreateTaskInput } from './taskForm';
+import { defaultNewTaskForm, validateNewTaskForm, toCreateTaskInput, chunkSeed, reseedChunkFields } from './taskForm';
 
 const NOW = Date.parse('2026-01-05T00:00:00.000Z');
 
@@ -118,5 +118,23 @@ describe('defaultNewTaskForm / toCreateTaskInput in the settings zone', () => {
     const s = defaultNewTaskForm(Date.parse('2026-03-08T04:30:00.000Z'), 'America/New_York');
     expect(s.dueByLocal).toBe('2026-03-14T23:59');
     expect(toCreateTaskInput({ ...s, title: 'X' }, 'America/New_York').dueBy).toBe('2026-03-15T03:59:00.000Z');
+  });
+});
+
+describe('chunk defaults seeding', () => {
+  const S = { defaultMinChunkMs: 45 * 60_000, defaultMaxChunkMs: 90 * 60_000 };
+
+  it('chunkSeed: settings defaults, else the built-in 30 / 120 fallback', () => {
+    expect(chunkSeed(S)).toEqual({ minChunkMs: 45 * 60_000, maxChunkMs: 90 * 60_000 });
+    expect(chunkSeed(undefined)).toEqual({ minChunkMs: 30 * 60_000, maxChunkMs: 120 * 60_000 });
+  });
+
+  it('reseedChunkFields: untouched fields take the new seed, edited fields keep their value', () => {
+    const form = { ...defaultNewTaskForm(0, 'UTC'), maxChunkMs: 135 * 60_000 };
+    const next = reseedChunkFields(form, chunkSeed(undefined), chunkSeed(S));
+    expect(next.minChunkMs).toBe(45 * 60_000);
+    expect(next.maxChunkMs).toBe(135 * 60_000);
+    // Everything else is carried through untouched.
+    expect({ ...next, minChunkMs: form.minChunkMs }).toEqual(form);
   });
 });

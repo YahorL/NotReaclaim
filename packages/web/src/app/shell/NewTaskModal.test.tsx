@@ -190,3 +190,56 @@ describe('NewTaskModal in the settings zone', () => {
     })));
   });
 });
+
+describe('NewTaskModal chunk defaults when settings land late', () => {
+  // Non-default chunk sizes so the 30/120 built-in fallback is distinguishable.
+  const SETTINGS = { id: 's', userId: 'u', timezone: 'UTC', workingHours: [], horizonDays: 14, defaultMinChunkMs: 45 * 60_000, defaultMaxChunkMs: 90 * 60_000, createdAt: '', updatedAt: '' };
+
+  function renderPending() {
+    let resolveSettings!: (s: unknown) => void;
+    const getSettings = vi.fn(() => new Promise((r) => { resolveSettings = r; }));
+    const createTask = vi.fn(async () => task());
+    renderWithProviders(<NewTaskModal onClose={() => {}} now={() => NOW} />, { api: fakeApiClient({ getSettings, createTask } as never) });
+    return { createTask, resolve: () => resolveSettings(SETTINGS) };
+  }
+  const create = () => {
+    fireEvent.change(screen.getByPlaceholderText(/task name/i), { target: { value: 'Write' } });
+    fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
+  };
+
+  it('untouched chunk fields pick up the settings defaults and the create payload carries them', async () => {
+    const { createTask, resolve } = renderPending();
+    // Before settings: the built-in 30 / 120 fallback.
+    expect(screen.getByText('30 mins')).toBeInTheDocument();
+    expect(screen.getByText('2 hrs')).toBeInTheDocument();
+    resolve();
+    await waitFor(() => expect(screen.getByText('45 mins')).toBeInTheDocument());
+    expect(screen.getByText('1 hr 30 min')).toBeInTheDocument();
+    create();
+    await waitFor(() => expect(createTask).toHaveBeenCalledWith(expect.objectContaining({ minChunkMs: 45 * 60_000, maxChunkMs: 90 * 60_000 })));
+  });
+
+  it('a chunk field the user edited before settings landed keeps the typed value', async () => {
+    const { createTask, resolve } = renderPending();
+    fireEvent.click(screen.getByRole('button', { name: 'increase max' })); // 120 → 135
+    expect(screen.getByText('2 hr 15 min')).toBeInTheDocument();
+    resolve();
+    await waitFor(() => expect(screen.getByText('45 mins')).toBeInTheDocument());
+    expect(screen.getByText('2 hr 15 min')).toBeInTheDocument();
+    create();
+    await waitFor(() => expect(createTask).toHaveBeenCalledWith(expect.objectContaining({ minChunkMs: 45 * 60_000, maxChunkMs: 135 * 60_000 })));
+  });
+
+  it('Split off: still sends min=max=duration after settings land, and toggling Split back on shows the settings defaults', async () => {
+    const { createTask, resolve } = renderPending();
+    fireEvent.click(screen.getByRole('button', { name: /split up/i }));
+    resolve();
+    await waitFor(() => expect(screen.getByText('45 mins')).toBeInTheDocument());
+    create();
+    await waitFor(() => expect(createTask).toHaveBeenCalledWith(expect.objectContaining({ minChunkMs: 3_600_000, maxChunkMs: 3_600_000 })));
+    fireEvent.click(screen.getByRole('button', { name: /split up/i }));
+    expect(screen.getByRole('button', { name: 'increase min' })).not.toBeDisabled();
+    expect(screen.getByText('45 mins')).toBeInTheDocument();
+    expect(screen.getByText('1 hr 30 min')).toBeInTheDocument();
+  });
+});

@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react';
 import { useSettingsQuery } from '../../api/queries';
 import { browserTimezone } from './settingsForm';
+import { useValueChange } from '../components/useValueChange';
 
 /**
  * The zone every time in the app renders and is entered in: `settings.timezone`. Until settings
@@ -18,13 +18,5 @@ export function useTimezone(): string {
  * so what is submitted is always read in the zone it was seeded in.
  */
 export function useZoneChange(zone: string, onChange: (prev: string, next: string) => void): void {
-  const prevRef = useRef(zone);
-  const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
-  useEffect(() => {
-    const prev = prevRef.current;
-    if (prev === zone) return;
-    prevRef.current = zone;
-    onChangeRef.current(prev, zone);
-  }, [zone]);
+  useValueChange(zone, onChange);
 }
