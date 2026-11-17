@@ -70,6 +70,27 @@ describe('useWebSocket', () => {
     expect(makeSocket).toHaveBeenCalledTimes(1);
   });
 
+  it('sign-out (token → null) closes the socket and cancels a pending reconnect with the old token', () => {
+    const qc = new QueryClient();
+    const sockets: FakeSocket[] = [];
+    const makeSocket = vi.fn((_url: string) => { const s = new FakeSocket(); sockets.push(s); return s; });
+    const { rerender } = renderHook(({ token }) => useWebSocket({ token, makeSocket }), {
+      wrapper: wrapper(qc), initialProps: { token: 'jwt-a' as string | null },
+    });
+    rerender({ token: null });
+    expect(sockets[0]!.closed).toBe(true);
+    sockets[0]!.emit('close', {}); // the close event the real socket fires afterwards
+    vi.advanceTimersByTime(5000);
+    expect(makeSocket).toHaveBeenCalledTimes(1);
+
+    // A drop that scheduled a reconnect, then sign-out before it fires: no reconnect as A.
+    rerender({ token: 'jwt-a' });
+    sockets[1]!.emit('close', {});
+    rerender({ token: null });
+    vi.advanceTimersByTime(5000);
+    expect(makeSocket).toHaveBeenCalledTimes(2);
+  });
+
   it('uses a stable default socket factory (no reconnect on re-render)', () => {
     const qc = new QueryClient();
     const ctor = vi.fn(() => ({ addEventListener() {}, close() {} }));
