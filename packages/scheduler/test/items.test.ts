@@ -789,3 +789,26 @@ describe('5-minute grid alignment (R24)', () => {
     });
   });
 });
+
+describe('scheduleTask with conflicting min/max (min wins)', () => {
+  const M = 60_000;
+  const H = 60 * M;
+  // An unsplit 60m task (min = max = 60m) whose duration was later edited to 90m.
+  const grown = { id: 't1', title: 'T', priority: 1, durationMs: 90 * M, dueBy: 10 * H, minChunkMs: 60 * M, maxChunkMs: 60 * M };
+
+  it('places the task as one block rather than two pieces below min', () => {
+    const res = scheduleTask([{ start: 0, end: 10 * H }], grown);
+    expect(res.blocks.map((b) => [b.start, b.end])).toEqual([[0, 90 * M]]);
+    expect(res.unscheduled).toEqual([]);
+  });
+
+  it('leaves the whole task unscheduled when the one block cannot fit before the deadline', () => {
+    // Two 45m gaps before the deadline: the old split would have filled both with 45m pieces.
+    const free = [{ start: 0, end: 45 * M }, { start: H, end: H + 45 * M }];
+    const res = scheduleTask(free, { ...grown, dueBy: 2 * H });
+    expect(res.blocks).toEqual([]);
+    expect(res.unscheduled).toEqual([
+      { sourceType: 'task', sourceId: 't1', title: 'T', reason: 'insufficient free time before due date', remainingMs: 90 * M },
+    ]);
+  });
+});

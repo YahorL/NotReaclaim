@@ -22,9 +22,13 @@ export interface FlexibleTask {
   durationMs: number;
   /** Deadline: every placed chunk must end at or before this epoch ms. */
   dueBy: number;
-  /** Smallest acceptable single block, in ms. */
+  /**
+   * Smallest acceptable single block, in ms. Pieces are never shorter than this
+   * unless less than min is left in total. When min and max cannot both hold,
+   * min wins (fewer, longer pieces); see `splitDuration`.
+   */
   minChunkMs: number;
-  /** Largest acceptable single block, in ms. */
+  /** Largest single block, in ms, as long as it is consistent with `minChunkMs`. */
   maxChunkMs: number;
   /**
    * Optional HARD restriction: placement is confined to these windows

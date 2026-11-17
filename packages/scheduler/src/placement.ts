@@ -2,16 +2,23 @@ import type { Interval } from './types.js';
 import { intersectIntervals, subtractIntervals, mergeIntervals } from './intervals.js';
 
 /**
- * Split `durationMs` into chunk sizes summing exactly to it, using the fewest
- * chunks such that none exceeds `maxChunkMs` (a hard upper bound), distributed
- * as evenly as possible. There is no minimum chunk size: minimizing the chunk
- * count already makes every chunk as large as the `maxChunkMs` cap allows.
+ * Split `durationMs` into chunk sizes summing exactly to it, distributed as evenly
+ * as possible. Uses the fewest chunks such that none exceeds `maxChunkMs`; that
+ * count already keeps every chunk >= `minChunkMs` whenever any count can satisfy
+ * both bounds. Pieces are never shorter than min unless less than min is left in
+ * total (then it is one piece of the remaining size). When min and max cannot
+ * both hold (e.g. an unsplit task, min = max = 60m, whose duration grew to 90m),
+ * min wins: fewer, longer pieces (`floor(d / min)`, at least one) that may exceed
+ * max. A non-positive or non-finite `minChunkMs` is ignored (max-only split).
  */
-export function splitDuration(durationMs: number, maxChunkMs: number): number[] {
+export function splitDuration(durationMs: number, maxChunkMs: number, minChunkMs = 0): number[] {
   if (durationMs <= 0) return [];
   if (durationMs <= maxChunkMs) return [durationMs];
 
-  const n = Math.ceil(durationMs / maxChunkMs);
+  let n = Math.ceil(durationMs / maxChunkMs);
+  if (Number.isFinite(minChunkMs) && minChunkMs > 0 && n * minChunkMs > durationMs) {
+    n = Math.max(1, Math.floor(durationMs / minChunkMs));
+  }
   const base = Math.floor(durationMs / n);
   const remainder = durationMs - base * n;
   const chunks: number[] = [];

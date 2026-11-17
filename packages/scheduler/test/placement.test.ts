@@ -152,3 +152,86 @@ describe('placeItem gapMs', () => {
     expect(first.free[0]!.end).toBe(12 * H - G); // leading gap reserved
   });
 });
+
+describe('splitDuration min wins over max on a conflict', () => {
+  const M = 60_000;
+  const Q = 15 * M;
+
+  /** The pre-change algorithm (max-only), inlined as the oracle for consistent inputs. */
+  const oldSplit = (d: number, max: number): number[] => {
+    if (d <= 0) return [];
+    if (d <= max) return [d];
+    const n = Math.ceil(d / max);
+    const base = Math.floor(d / n);
+    const remainder = d - base * n;
+    return Array.from({ length: n }, (_, k) => base + (k < remainder ? 1 : 0));
+  };
+  const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+
+  it('splits an unsplit task whose duration grew past min = max into one longer piece, not two short ones', () => {
+    expect(splitDuration(90 * M, 60 * M, 60 * M)).toEqual([90 * M]);
+  });
+
+  it('keeps every piece at or above min when no chunk count fits both bounds', () => {
+    expect(splitDuration(150 * M, 120 * M, 90 * M)).toEqual([150 * M]);
+    expect(splitDuration(119 * M, 60 * M, 60 * M)).toEqual([119 * M]);
+    // Several pieces still possible: 5h with min 2h, max 90m → 2 × 150m (was 4 × 75m).
+    expect(splitDuration(300 * M, 90 * M, 120 * M)).toEqual([150 * M, 150 * M]);
+  });
+
+  it('returns one piece of the remaining size when less than min is left in total', () => {
+    expect(splitDuration(20 * M, 30 * M, 45 * M)).toEqual([20 * M]); // d ≤ max
+    expect(splitDuration(50 * M, 30 * M, 60 * M)).toEqual([50 * M]); // d > max, d < min
+  });
+
+  it('returns one piece when the total fits in max', () => {
+    expect(splitDuration(45 * M, 60 * M, 15 * M)).toEqual([45 * M]);
+  });
+
+  it('deliberately reverses the d7d810a hard max cap when min and max conflict', () => {
+    // d7d810a made maxChunkMs a hard cap even then: (35, min 30, max 30) → [18, 17], both
+    // below min. The owner chose min-wins: fewer, longer pieces instead.
+    expect(splitDuration(35, 30, 30)).toEqual([35]);
+  });
+
+  it('ignores a degenerate min (≤ 0 or non-finite) exactly like the max-only split', () => {
+    for (const min of [0, -15, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      for (const [d, max] of [[35, 30], [90, 30], [50, 30], [20, 30], [0, 30]]) {
+        expect(splitDuration(d, max, min), `d=${d} max=${max} min=${min}`).toEqual(oldSplit(d, max));
+      }
+    }
+  });
+
+  it('property: matches the old split whenever min/max are consistent, never goes below min, sums to d', () => {
+    let cases = 0;
+    let conflicts = 0;
+    for (let d = Q; d <= 12 * 60 * M; d += Q) {
+      for (let min = Q; min <= 4 * 60 * M; min += Q) {
+        for (let max = Q; max <= 4 * 60 * M; max += Q) {
+          cases++;
+          const parts = splitDuration(d, max, min);
+          const label = `d=${d / M}m min=${min / M}m max=${max / M}m → ${parts.map((p) => p / M).join(',')}`;
+          expect(sum(parts), label).toBe(d);
+          expect(parts.every((p) => p > 0), label).toBe(true);
+          // Even distribution: pieces differ by at most 1 ms.
+          expect(Math.max(...parts) - Math.min(...parts), label).toBeLessThanOrEqual(1);
+          // A count n with n·min ≤ d ≤ n·max exists ⇔ ceil(d/max)·min ≤ d.
+          const consistent = Math.ceil(d / max) * min <= d;
+          if (consistent) {
+            expect(parts, label).toEqual(oldSplit(d, max));
+            expect(parts.every((p) => p <= max), label).toBe(true);
+          } else {
+            conflicts++;
+            expect(parts.length, label).toBe(Math.max(1, Math.floor(d / min)));
+            // Fewer, longer pieces: never more than the max-only split (equal only when d < min → [d]).
+            expect(parts.length, label).toBeLessThanOrEqual(oldSplit(d, max).length);
+          }
+          if (d < min) expect(parts, label).toEqual([d]);
+          else expect(parts.every((p) => p >= min), label).toBe(true);
+        }
+      }
+    }
+    expect(cases).toBe(48 * 16 * 16);
+    expect(conflicts).toBeGreaterThan(0);
+  });
+});

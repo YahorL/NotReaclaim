@@ -16,7 +16,7 @@ export interface ScheduleItemResult {
 
 /** Split a task into chunks and place them before its due date. */
 export function scheduleTask(free: Interval[], task: FlexibleTask, gapMs = 0): ScheduleItemResult {
-  const chunkSizes = splitDuration(task.durationMs, task.maxChunkMs);
+  const chunkSizes = splitDuration(task.durationMs, task.maxChunkMs, task.minChunkMs);
   const result = placeItem(free, chunkSizes, task.dueBy, task.allowedWindows, gapMs);
 
   const blocks: ScheduledBlock[] = result.placements.map((p, i) => ({
