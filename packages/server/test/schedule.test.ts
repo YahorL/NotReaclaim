@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ScheduledBlock, Settings } from '@notreclaim/db';
+import { GoogleApiError } from '@notreclaim/google';
 import { buildTestApp, tokenFor } from './fakes.js';
 
 function block(over: Partial<ScheduledBlock> = {}): ScheduledBlock {
@@ -287,5 +288,27 @@ describe('GET /schedule discard sweep (manual mode)', () => {
     const token = await tokenFor(app);
     const res = await app.inject({ method: 'GET', url: `/schedule${wide}`, headers: { authorization: `Bearer ${token}` } });
     expect((res.json() as unknown[]).length).toBe(1);
+  });
+});
+
+describe('POST /schedule/replan realtime', () => {
+  it('POST /schedule/replan emits schedule.updated with the counts so other clients refresh', async () => {
+    const counts = { created: 2, updated: 1, deleted: 0, pinned: 0, removed: 0, pinnedSynced: 0, pinnedFailed: 0 };
+    const { app, emitted, reconcileCalls } = buildTestApp({ reconcileResult: counts });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'POST', url: '/schedule/replan', headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual(counts);
+    expect(emitted).toEqual([{ type: 'schedule.updated', userId: 'u1', counts }]);
+    expect(reconcileCalls).toHaveLength(1); // no second, swallowed replan
+  });
+
+  it('POST /schedule/replan keeps its 502 on a Google failure and emits nothing', async () => {
+    const { app, emitted } = buildTestApp({ reconcileError: new GoogleApiError(500, 'backend error') });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'POST', url: '/schedule/replan', headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(502);
+    expect(res.json().code).toBe('google_api_error');
+    expect(emitted).toEqual([]);
   });
 });

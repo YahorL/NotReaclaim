@@ -297,6 +297,8 @@ export interface TestAppOptions {
   categories?: Category[];
   subtasks?: Subtask[];
   reconcileResult?: AppDeps['reconcile'] extends (...a: never[]) => Promise<infer R> ? R : never;
+  /** When set, every reconcile call records itself and then throws this. */
+  reconcileError?: unknown;
   webClientUrl?: string;
   accessToken?: string;
   /** Full override of the token lookup — lets a test assert it was never even attempted. */
@@ -354,6 +356,7 @@ export function buildTestApp(opts: TestAppOptions = {}) {
     },
     reconcile: async (userId, now) => {
       reconcileCalls.push({ userId, now });
+      if (opts.reconcileError !== undefined) throw opts.reconcileError;
       return opts.reconcileResult ?? { created: 0, updated: 0, deleted: 0, pinned: 0, removed: 0, pinnedSynced: 0, pinnedFailed: 0 };
     },
     events,
