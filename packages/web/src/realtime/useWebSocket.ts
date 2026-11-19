@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { invalidateForEvent, type ServerEvent } from './events';
+import { apiBaseUrl, webSocketUrl } from '../api/baseUrl';
 
 export interface SocketLike {
   addEventListener(type: string, listener: (ev: unknown) => void): void;
@@ -15,8 +16,7 @@ export interface UseWebSocketOptions {
 const RECONNECT_MS = 2000;
 
 function defaultUrl(): string {
-  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${proto}//${window.location.host}/ws`;
+  return webSocketUrl(apiBaseUrl(), window.location);
 }
 
 const defaultMakeSocket = (url: string): SocketLike => new WebSocket(url);

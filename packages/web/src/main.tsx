@@ -6,6 +6,7 @@ import { App } from './app/App';
 import { ApiProvider } from './api/ApiProvider';
 import { AuthProvider } from './auth/AuthContext';
 import { createApiClient } from './api/client';
+import { apiBaseUrl } from './api/baseUrl';
 import { createQueryClient } from './api/queryClient';
 import { tokenStore } from './auth/tokenStore';
 import './index.css';
@@ -17,7 +18,7 @@ const queryClient = createQueryClient({
   },
 });
 const api = createApiClient({
-  baseUrl: import.meta.env.VITE_API_URL ?? '',
+  baseUrl: apiBaseUrl(),
   getToken: () => tokenStore.get()?.token ?? null,
 });
 
