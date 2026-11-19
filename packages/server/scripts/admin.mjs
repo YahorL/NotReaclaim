@@ -3,48 +3,55 @@ import crypto from 'node:crypto';
 import { prisma, createUserRepository, createInviteCodeRepository, createSettingsRepository } from '@notreclaim/db';
 import { hashPassword } from '../dist/auth/password.js';
 import { ensureUserDefaults } from '../dist/auth/user-defaults.js';
+import { parseAdminArgs, resolveInviter, ADMIN_USAGE } from '../dist/admin-cli.js';
 
 const users = createUserRepository(prisma);
 const invites = createInviteCodeRepository(prisma);
 const settings = createSettingsRepository(prisma);
 
-function arg(name) {
-  const i = process.argv.indexOf(`--${name}`);
-  return i >= 0 ? process.argv[i + 1] : undefined;
+// Validate everything before touching the database: a bad invocation prints usage, no stack.
+const parsed = parseAdminArgs(process.argv.slice(2));
+if (parsed.kind === 'help') {
+  console.log(ADMIN_USAGE);
+} else if (parsed.kind === 'error') {
+  console.error(`admin: ${parsed.message}\n${ADMIN_USAGE}`);
+  process.exitCode = 2;
+} else {
+  try {
+    await run(parsed);
+  } catch (err) {
+    // Runtime failures (no such user, duplicate email, no admin) are one line, not a trace.
+    console.error(`admin: ${err instanceof Error ? err.message : String(err)}`);
+    process.exitCode = 1;
+  } finally {
+    await prisma.$disconnect();
+  }
 }
-const has = (name) => process.argv.includes(`--${name}`);
-const norm = (e) => e.trim().toLowerCase();
 
-const cmd = process.argv[2];
-try {
-  if (cmd === 'create-user') {
-    const email = norm(arg('email'));
-    const password = arg('password');
+async function run(args) {
+  if (args.kind === 'create-user') {
+    const { email, password, admin } = args;
     const passwordHash = password ? await hashPassword(password) : null;
-    const user = await users.create({ email, passwordHash, isAdmin: has('admin') });
+    const user = await users.create({ email, passwordHash, isAdmin: admin });
     await ensureUserDefaults(settings, user.id);
-    console.log(`created user ${user.id} <${email}>${has('admin') ? ' (admin)' : ''}${password ? '' : ' (google-only)'}`);
-  } else if (cmd === 'set-password') {
-    const user = await users.findByEmail(norm(arg('email')));
+    console.log(`created user ${user.id} <${email}>${admin ? ' (admin)' : ''}${password ? '' : ' (google-only)'}`);
+  } else if (args.kind === 'set-password') {
+    const user = await users.findByEmail(args.email);
     if (!user) throw new Error('no such user');
-    await users.update(user.id, { passwordHash: await hashPassword(arg('password')) });
+    await users.update(user.id, { passwordHash: await hashPassword(args.password) });
     console.log(`password updated for ${user.email}`);
-  } else if (cmd === 'create-invite') {
-    const admin = await users.findByEmail(norm(arg('by') ?? arg('email') ?? '')) ?? (await firstAdmin());
+  } else if (args.kind === 'create-invite') {
+    const issuer = await resolveInviter(args, { findByEmail: (e) => users.findByEmail(e), firstAdmin });
     const code = crypto.randomBytes(9).toString('base64url');
     await invites.create({
       code,
-      createdByUserId: admin.id,
-      email: arg('email') ? norm(arg('email')) : null,
-      maxUses: arg('max-uses') ? Number(arg('max-uses')) : 1,
-      expiresAt: arg('expires') ? new Date(arg('expires')) : null,
+      createdByUserId: issuer.id,
+      email: args.email,
+      maxUses: args.maxUses,
+      expiresAt: args.expiresAt,
     });
     console.log(`invite code: ${code}`);
-  } else {
-    console.log('usage: admin <create-user|set-password|create-invite> [--email] [--password] [--admin] [--max-uses] [--expires]');
   }
-} finally {
-  await prisma.$disconnect();
 }
 
 async function firstAdmin() {

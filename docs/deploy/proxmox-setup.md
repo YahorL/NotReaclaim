@@ -114,7 +114,10 @@ docker compose exec server node packages/server/scripts/admin.mjs \
   create-user --email you@example.com --password 'your-strong-password' --admin
 ```
 (Omit `--password` for a Google-only account that links by email on first Google sign-in.
-The CLI also has `set-password` and `create-invite`.)
+The CLI also has `set-password --email <e> --password <p>` and
+`create-invite [--email <invitee>] [--by <issuer email>] [--max-uses <n>] [--expires <date>]`:
+`--email` binds the code to that invitee, `--by` names the issuing user (default: the first
+admin). Run it with `help` for usage; a bad invocation prints usage and exits non-zero.)
 
 Now browse to `https://<machine>.<tailnet>.ts.net` from any device on your tailnet and log in.
 
