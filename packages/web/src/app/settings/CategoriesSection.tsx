@@ -45,8 +45,9 @@ function CategoryRow({ category }: { category: Category }) {
   const updateM = useUpdateCategoryMutation();
   const deleteM = useDeleteCategoryMutation();
   // Update and delete share one error line; whichever was triggered last owns it.
-  const update = (patch: UpdateCategoryInput) => { deleteM.reset(); updateM.mutate({ id: category.id, patch }); };
-  const remove = () => { updateM.reset(); deleteM.mutate(category.id); };
+  // Only a settled error is reset, so an in-flight request keeps its pending state and its result.
+  const update = (patch: UpdateCategoryInput) => { if (deleteM.isError) deleteM.reset(); updateM.mutate({ id: category.id, patch }); };
+  const remove = () => { if (updateM.isError) updateM.reset(); deleteM.mutate(category.id); };
   const rowError = updateM.isError ? updateM.error : deleteM.isError ? deleteM.error : null;
   // Seeded once from props; the row reflects in-place edits. key={id} is stable.
   const [days, setDays] = useState<DayState[]>(() => windowsToDays(category.windows));
@@ -161,7 +162,7 @@ export function CategoriesSection() {
     setDays((ds) => patchDay(ds, weekday, patch));
   const { ok, error } = validateCategoryForm(name, days);
 
-  const resetNew = () => { setAdding(false); setName(''); setDays(windowsToDays([])); createM.reset(); };
+  const resetNew = () => { setAdding(false); setName(''); setDays(windowsToDays([])); if (createM.isError) createM.reset(); };
 
   const submit = () => {
     const windows = daysToWindows(days);

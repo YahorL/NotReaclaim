@@ -127,4 +127,30 @@ describe('CategoriesSection', () => {
     await waitFor(() => expect(screen.getByTestId('new-category-error')).toHaveTextContent('A category with that name exists'));
     expect(screen.getByTestId('cat-name-input')).toHaveValue('Deep Work');
   });
+
+  it('a failed delete followed by a successful update in that row clears the error', async () => {
+    const deleteCategory = vi.fn().mockRejectedValue(new ApiError(409, 'conflict', 'Category is in use'));
+    const updateCategory = vi.fn().mockResolvedValue({ ...cats[1], color: '#4285f4' });
+    const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue(cats), deleteCategory, updateCategory } as never);
+    renderWithProviders(<CategoriesSection />, { api });
+    fireEvent.click(await screen.findByTestId('delete-cat-p'));
+    await waitFor(() => expect(screen.getByTestId('cat-error-cat-p')).toHaveTextContent('Category is in use'));
+    fireEvent.click(screen.getByTestId('cat-color-cat-p-#4285f4'));
+    await waitFor(() => expect(updateCategory).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByTestId('cat-error-cat-p')).not.toBeInTheDocument());
+  });
+
+  it('cancelling the add form after a failed create drops the stale error', async () => {
+    const createCategory = vi.fn().mockRejectedValue(new ApiError(409, 'conflict', 'A category with that name exists'));
+    const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue([cats[0]]), createCategory } as never);
+    renderWithProviders(<CategoriesSection />, { api });
+    fireEvent.click(await screen.findByTestId('add-category'));
+    fireEvent.change(screen.getByTestId('cat-name-input'), { target: { value: 'Deep Work' } });
+    fireEvent.click(screen.getByTestId('newcat-1-toggle'));
+    fireEvent.click(screen.getByTestId('save-new-category'));
+    await screen.findByTestId('new-category-error');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(screen.getByTestId('add-category'));
+    expect(screen.queryByTestId('new-category-error')).not.toBeInTheDocument();
+  });
 });
