@@ -19,6 +19,17 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
       const past = await deps.repos.scheduledBlocks.listByUserInRange(request.userId, new Date(0), new Date(now));
       for (const b of past) {
         if (b.taskId && b.startedAt == null && b.endsAt.getTime() <= now) {
+          // Remove the mirrored event too: nothing else ever will (reconcile only deletes
+          // events of rows it still holds, and drift only lists [now, horizon]). Best-effort
+          // and per row, same as DELETE /schedule/:id — a Google failure never fails the GET.
+          const { googleEventId, googleCalendarId } = b;
+          if (googleEventId && googleCalendarId) {
+            await bestEffortGoogleWrite(
+              app, deps, request.userId,
+              { fields: { blockId: b.id }, message: 'google write-back failed: discarded block event not removed remotely' },
+              (accessToken) => deps.google.client.deleteEvent(accessToken, googleCalendarId, googleEventId),
+            );
+          }
           await deps.repos.scheduledBlocks.delete(request.userId, b.id);
         }
       }

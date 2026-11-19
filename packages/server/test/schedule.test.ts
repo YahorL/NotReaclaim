@@ -289,6 +289,51 @@ describe('GET /schedule discard sweep (manual mode)', () => {
     const res = await app.inject({ method: 'GET', url: `/schedule${wide}`, headers: { authorization: `Bearer ${token}` } });
     expect((res.json() as unknown[]).length).toBe(1);
   });
+
+  it('also removes the mirrored Google event of each discarded block', async () => {
+    // Nothing else ever deletes it: reconcile only deletes events of rows it still holds,
+    // and detectDrift lists [now, horizon] only — a swept past row's event would be orphaned.
+    const deleted: Array<{ calendarId: string; googleEventId: string }> = [];
+    const missed = block({ id: 'missed', startsAt: new Date('2026-01-04T09:00:00.000Z'), endsAt: new Date('2026-01-04T09:30:00.000Z'), googleEventId: 'g-missed', googleCalendarId: 'cal-auto' });
+    const kept = block({ id: 'kept', startsAt: new Date('2026-01-04T10:00:00.000Z'), endsAt: new Date('2026-01-04T10:30:00.000Z'), startedAt: new Date('2026-01-04T10:00:00.000Z'), googleEventId: 'g-kept', googleCalendarId: 'cal-auto' });
+    const { app } = buildTestApp({
+      blocks: [missed, kept], settings: settings({ requireStartToTrack: true }), accessToken: 'access-1',
+      deleteEvent: async (_t, calendarId, googleEventId) => { deleted.push({ calendarId, googleEventId }); },
+    });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'GET', url: `/schedule${wide}`, headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(200);
+    expect(deleted).toEqual([{ calendarId: 'cal-auto', googleEventId: 'g-missed' }]);
+  });
+
+  it('a failing Google delete never fails the GET and still discards every row', async () => {
+    const a = block({ id: 'a', engineKey: 'task:t1:0', startsAt: new Date('2026-01-04T09:00:00.000Z'), endsAt: new Date('2026-01-04T09:30:00.000Z'), googleEventId: 'g-a', googleCalendarId: 'cal-auto' });
+    const b = block({ id: 'b', engineKey: 'task:t1:1', startsAt: new Date('2026-01-04T10:00:00.000Z'), endsAt: new Date('2026-01-04T10:30:00.000Z'), googleEventId: 'g-b', googleCalendarId: 'cal-auto' });
+    const attempted: string[] = [];
+    const { app } = buildTestApp({
+      blocks: [a, b], settings: settings({ requireStartToTrack: true }), accessToken: 'access-1',
+      deleteEvent: async (_t, _c, googleEventId) => { attempted.push(googleEventId); throw new Error('google down'); },
+    });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'GET', url: `/schedule${wide}`, headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toHaveLength(0);
+    expect(attempted.sort()).toEqual(['g-a', 'g-b']);
+  });
+
+  it('never reaches for a token when the discarded block has no Google event', async () => {
+    let tokenLookups = 0;
+    const missed = block({ id: 'missed', startsAt: new Date('2026-01-04T09:00:00.000Z'), endsAt: new Date('2026-01-04T09:30:00.000Z') });
+    const { app } = buildTestApp({
+      blocks: [missed], settings: settings({ requireStartToTrack: true }),
+      getAccessToken: async () => { tokenLookups += 1; return 'access-1'; },
+    });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'GET', url: `/schedule${wide}`, headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toHaveLength(0);
+    expect(tokenLookups).toBe(0);
+  });
 });
 
 describe('POST /schedule/replan realtime', () => {
