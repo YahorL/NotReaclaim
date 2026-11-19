@@ -321,6 +321,44 @@ describe('GET /schedule discard sweep (manual mode)', () => {
     expect(attempted.sort()).toEqual(['g-a', 'g-b']);
   });
 
+  it('a concurrent GET sweeping the same rows never fails either request', async () => {
+    // The planner can fire overlapping GET /schedule calls (range change + WS refetch). The
+    // Google round-trip inside the sweep widens the list-then-delete window, so the slower
+    // request must tolerate rows the other one already discarded.
+    const a = block({ id: 'a', engineKey: 'task:t1:0', startsAt: new Date('2026-01-04T09:00:00.000Z'), endsAt: new Date('2026-01-04T09:30:00.000Z'), googleEventId: 'g-a', googleCalendarId: 'cal-auto' });
+    const b = block({ id: 'b', engineKey: 'task:t1:1', startsAt: new Date('2026-01-04T10:00:00.000Z'), endsAt: new Date('2026-01-04T10:30:00.000Z'), googleEventId: 'g-b', googleCalendarId: 'cal-auto' });
+    let nested: Promise<{ statusCode: number }> | null = null;
+    let token = '';
+    const { app } = buildTestApp({
+      blocks: [a, b], settings: settings({ requireStartToTrack: true }), accessToken: 'access-1',
+      deleteEvent: async () => {
+        if (nested) return;
+        nested = app.inject({ method: 'GET', url: `/schedule${wide}`, headers: { authorization: `Bearer ${token}` } });
+        await nested;
+      },
+    });
+    token = await tokenFor(app);
+    const res = await app.inject({ method: 'GET', url: `/schedule${wide}`, headers: { authorization: `Bearer ${token}` } });
+    expect(nested).not.toBeNull();
+    expect((await nested!).statusCode).toBe(200);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toHaveLength(0);
+  });
+
+  it('discards a mirrored row without failing when Google is not connected', async () => {
+    const missed = block({ id: 'missed', startsAt: new Date('2026-01-04T09:00:00.000Z'), endsAt: new Date('2026-01-04T09:30:00.000Z'), googleEventId: 'g-missed', googleCalendarId: 'cal-auto' });
+    let deleteCalls = 0;
+    const { app } = buildTestApp({
+      blocks: [missed], settings: settings({ requireStartToTrack: true }), // no accessToken: token lookup throws
+      deleteEvent: async () => { deleteCalls += 1; },
+    });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'GET', url: `/schedule${wide}`, headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toHaveLength(0);
+    expect(deleteCalls).toBe(0);
+  });
+
   it('never reaches for a token when the discarded block has no Google event', async () => {
     let tokenLookups = 0;
     const missed = block({ id: 'missed', startsAt: new Date('2026-01-04T09:00:00.000Z'), endsAt: new Date('2026-01-04T09:30:00.000Z') });

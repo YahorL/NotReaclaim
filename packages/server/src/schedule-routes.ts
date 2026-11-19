@@ -19,6 +19,14 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
       const past = await deps.repos.scheduledBlocks.listByUserInRange(request.userId, new Date(0), new Date(now));
       for (const b of past) {
         if (b.taskId && b.startedAt == null && b.endsAt.getTime() <= now) {
+          // Row first: an overlapping GET may have discarded it already (it then owns the
+          // Google delete too), which must not fail this request.
+          try {
+            await deps.repos.scheduledBlocks.delete(request.userId, b.id);
+          } catch (err) {
+            if (err instanceof NotFoundError) continue;
+            throw err;
+          }
           // Remove the mirrored event too: nothing else ever will (reconcile only deletes
           // events of rows it still holds, and drift only lists [now, horizon]). Best-effort
           // and per row, same as DELETE /schedule/:id — a Google failure never fails the GET.
@@ -30,7 +38,6 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
               (accessToken) => deps.google.client.deleteEvent(accessToken, googleCalendarId, googleEventId),
             );
           }
-          await deps.repos.scheduledBlocks.delete(request.userId, b.id);
         }
       }
     }
