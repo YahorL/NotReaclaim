@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
+import { ApiError } from '../../api/client';
 import { CategoriesSection } from './CategoriesSection';
 
 const cats = [
@@ -91,5 +92,39 @@ describe('CategoriesSection', () => {
     // Uncheck → PATCHes windows:null
     fireEvent.click(toggle);
     await waitFor(() => expect(updateCategory).toHaveBeenCalledWith('cat-def', { windows: null }));
+  });
+
+  it('a rejected hours save shows the error in that row; a later successful save clears it', async () => {
+    const updateCategory = vi.fn()
+      .mockRejectedValueOnce(new ApiError(400, 'validation_error', 'startMinute must be before endMinute'))
+      .mockResolvedValueOnce(cats[1]);
+    const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue(cats), updateCategory } as never);
+    renderWithProviders(<CategoriesSection />, { api });
+    fireEvent.click(await screen.findByTestId('save-cat-p'));
+    await waitFor(() => expect(screen.getByTestId('cat-error-cat-p')).toHaveTextContent('startMinute must be before endMinute'));
+    expect(screen.queryByTestId('cat-error-cat-def')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('save-cat-p'));
+    await waitFor(() => expect(updateCategory).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByTestId('cat-error-cat-p')).not.toBeInTheDocument());
+  });
+
+  it('a failed delete (network error) shows an error in that row', async () => {
+    const deleteCategory = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue(cats), deleteCategory } as never);
+    renderWithProviders(<CategoriesSection />, { api });
+    fireEvent.click(await screen.findByTestId('delete-cat-p'));
+    await waitFor(() => expect(screen.getByTestId('cat-error-cat-p')).toHaveTextContent(/couldn't save/i));
+  });
+
+  it('a rejected create shows the error and keeps the form open', async () => {
+    const createCategory = vi.fn().mockRejectedValue(new ApiError(409, 'conflict', 'A category with that name exists'));
+    const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue([cats[0]]), createCategory } as never);
+    renderWithProviders(<CategoriesSection />, { api });
+    fireEvent.click(await screen.findByTestId('add-category'));
+    fireEvent.change(screen.getByTestId('cat-name-input'), { target: { value: 'Deep Work' } });
+    fireEvent.click(screen.getByTestId('newcat-1-toggle'));
+    fireEvent.click(screen.getByTestId('save-new-category'));
+    await waitFor(() => expect(screen.getByTestId('new-category-error')).toHaveTextContent('A category with that name exists'));
+    expect(screen.getByTestId('cat-name-input')).toHaveValue('Deep Work');
   });
 });

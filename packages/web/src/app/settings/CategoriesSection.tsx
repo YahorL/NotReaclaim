@@ -1,9 +1,16 @@
 import { useState, useRef } from 'react';
-import type { Category } from '../../api/types';
+import type { Category, UpdateCategoryInput } from '../../api/types';
+import { ApiError } from '../../api/client';
+import { FIELD_ERROR } from '../components/formStyles';
 import { useCategoriesQuery, useCreateCategoryMutation, useUpdateCategoryMutation, useDeleteCategoryMutation } from '../../api/queries';
 import { WeeklyHoursEditor } from './WeeklyHoursEditor';
 import { validateCategoryForm } from './categoryForm';
 import { type DayState, windowsToDays, daysToWindows, patchDay } from './weeklyHours';
+
+/** A mutation failure as text. Anything but an ApiError (e.g. a network TypeError) gets a generic line. */
+function saveErrorText(error: unknown): string {
+  return error instanceof ApiError ? error.message : "Couldn't save. Check your connection and try again.";
+}
 
 const COLOR_PALETTE = ['#5b62e3', '#4285f4', '#0f9d58', '#f4b400', '#db4437', '#9c27b0', '#00acc1', '#795548'];
 
@@ -37,6 +44,10 @@ function ColorSwatches({ categoryId, current, onSelect }: {
 function CategoryRow({ category }: { category: Category }) {
   const updateM = useUpdateCategoryMutation();
   const deleteM = useDeleteCategoryMutation();
+  // Update and delete share one error line; whichever was triggered last owns it.
+  const update = (patch: UpdateCategoryInput) => { deleteM.reset(); updateM.mutate({ id: category.id, patch }); };
+  const remove = () => { updateM.reset(); deleteM.mutate(category.id); };
+  const rowError = updateM.isError ? updateM.error : deleteM.isError ? deleteM.error : null;
   // Seeded once from props; the row reflects in-place edits. key={id} is stable.
   const [days, setDays] = useState<DayState[]>(() => windowsToDays(category.windows));
   const setDay = (weekday: number, patch: Partial<DayState>) =>
@@ -51,7 +62,7 @@ function CategoryRow({ category }: { category: Category }) {
   const handleNameCommit = () => {
     const trimmed = localName.trim();
     if (!trimmed || trimmed === category.name) return;
-    updateM.mutate({ id: category.id, patch: { name: trimmed } });
+    update({ name: trimmed });
   };
 
   const handleNameKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -67,7 +78,7 @@ function CategoryRow({ category }: { category: Category }) {
     setUseCustom(checked);
     if (!checked) {
       // Turning off: inherit global working hours
-      updateM.mutate({ id: category.id, patch: { windows: null } });
+      update({ windows: null });
     }
   };
 
@@ -80,7 +91,7 @@ function CategoryRow({ category }: { category: Category }) {
       <button
         data-testid={`save-${category.id}`}
         disabled={!ok || updateM.isPending}
-        onClick={() => updateM.mutate({ id: category.id, patch: { windows: daysToWindows(days) } })}
+        onClick={() => update({ windows: daysToWindows(days) })}
         className="mt-1 rounded-[9px] bg-indigo px-3 py-1 text-[12px] font-bold text-white disabled:opacity-50"
       >Save hours</button>
     </>
@@ -104,7 +115,7 @@ function CategoryRow({ category }: { category: Category }) {
         <button
           data-testid={`delete-${category.id}`}
           disabled={category.isDefault || deleteM.isPending}
-          onClick={() => deleteM.mutate(category.id)}
+          onClick={remove}
           className="rounded-[9px] px-2 py-0.5 text-[12px] font-semibold text-red-500 hover:bg-red-50 disabled:opacity-40"
         >Delete</button>
       </div>
@@ -112,7 +123,7 @@ function CategoryRow({ category }: { category: Category }) {
       <ColorSwatches
         categoryId={category.id}
         current={category.color}
-        onSelect={(color) => updateM.mutate({ id: category.id, patch: { color } })}
+        onSelect={(color) => update({ color })}
       />
 
       {category.isDefault ? (
@@ -135,6 +146,7 @@ function CategoryRow({ category }: { category: Category }) {
       ) : (
         hoursEditor
       )}
+      {rowError && <p data-testid={`cat-error-${category.id}`} className={FIELD_ERROR}>{saveErrorText(rowError)}</p>}
     </div>
   );
 }
@@ -149,7 +161,7 @@ export function CategoriesSection() {
     setDays((ds) => patchDay(ds, weekday, patch));
   const { ok, error } = validateCategoryForm(name, days);
 
-  const resetNew = () => { setAdding(false); setName(''); setDays(windowsToDays([])); };
+  const resetNew = () => { setAdding(false); setName(''); setDays(windowsToDays([])); createM.reset(); };
 
   const submit = () => {
     const windows = daysToWindows(days);
@@ -173,6 +185,7 @@ export function CategoriesSection() {
           />
           <WeeklyHoursEditor days={days} onChange={setDay} idPrefix="newcat" />
           {!ok && <p className="mb-1 text-[11px] text-red-600">{error}</p>}
+          {createM.isError && <p data-testid="new-category-error" className={FIELD_ERROR}>{saveErrorText(createM.error)}</p>}
           <div className="mt-2 flex gap-2">
             <button
               data-testid="save-new-category"
