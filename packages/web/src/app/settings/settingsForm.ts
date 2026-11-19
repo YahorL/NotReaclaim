@@ -55,6 +55,12 @@ export interface SettingsFormErrors {
   days?: Partial<Record<number, string>>;
 }
 
+/** The rule for `meetingBufferMs` / `taskBufferMs`, shared by the Settings form and the Buffers page. */
+export function validateBufferMs(ms: number): string | undefined {
+  if (!Number.isInteger(ms) || ms < 0) return 'Buffer must be a whole number of minutes (≥ 0)';
+  return undefined;
+}
+
 export function validateSettingsForm(s: SettingsFormState): { ok: boolean; errors: SettingsFormErrors } {
   const errors: SettingsFormErrors = {};
   if (!s.timezone.trim()) errors.timezone = 'Timezone is required';
@@ -63,8 +69,10 @@ export function validateSettingsForm(s: SettingsFormState): { ok: boolean; error
   if (!(s.defaultMaxChunkMs > 0)) errors.defaultMaxChunkMs = 'Max chunk must be positive';
   else if (s.defaultMinChunkMs > s.defaultMaxChunkMs) errors.defaultMaxChunkMs = 'Max chunk must be ≥ min chunk';
 
-  if (!Number.isInteger(s.meetingBufferMs) || s.meetingBufferMs < 0) errors.meetingBufferMs = 'Buffer must be a whole number of minutes (≥ 0)';
-  if (!Number.isInteger(s.taskBufferMs) || s.taskBufferMs < 0) errors.taskBufferMs = 'Buffer must be a whole number of minutes (≥ 0)';
+  const meetingBufferError = validateBufferMs(s.meetingBufferMs);
+  if (meetingBufferError) errors.meetingBufferMs = meetingBufferError;
+  const taskBufferError = validateBufferMs(s.taskBufferMs);
+  if (taskBufferError) errors.taskBufferMs = taskBufferError;
 
   const dayStart = s.dayStartMinute ?? 0;
   if (!Number.isInteger(dayStart) || dayStart < 0 || dayStart > 1439) errors.dayStartMinute = 'Day start must be a time of day';
