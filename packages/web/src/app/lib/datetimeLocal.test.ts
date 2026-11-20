@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isoToZonedInput, zonedInputToIso, zonedDayAtInput, isValidLocalInput } from './datetimeLocal';
+import { isoToZonedInput, zonedInputToIso, zonedDayAtInput } from './datetimeLocal';
 
 describe('datetimeLocal', () => {
   it('isoToZonedInput / zonedInputToIso round-trip in UTC', () => {
@@ -50,12 +50,5 @@ describe('zonedDayAtInput', () => {
     const now = Date.parse('2026-01-05T12:00:00.000Z');
     expect(zonedDayAtInput(now, 'Pacific/Auckland', 7, 23, 59, Date.parse('2026-01-20T11:30:00.000Z'))).toBe('2026-01-21T23:59');
     expect(zonedDayAtInput(now, 'Pacific/Auckland', 7, 23, 59, now)).toBe('2026-01-13T23:59');
-  });
-});
-
-describe('isValidLocalInput', () => {
-  it('accepts a datetime-local value and rejects garbage', () => {
-    expect(isValidLocalInput('2026-06-01T17:00')).toBe(true);
-    expect(isValidLocalInput('not-a-date')).toBe(false);
   });
 });

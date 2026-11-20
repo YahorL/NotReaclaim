@@ -14,11 +14,6 @@ export function zonedInputToIso(local: string, zone: string): string | null {
   return dt.isValid ? dt.toUTC().toISO() : null;
 }
 
-/** True when `local` is a parseable `datetime-local` value (validity does not depend on the zone). */
-export function isValidLocalInput(local: string): boolean {
-  return DateTime.fromISO(local).isValid;
-}
-
 /**
  * `datetime-local` value for `hour:minute` wall-clock on the calendar day `plusDays` after the day
  * containing `ms` in `zone` — at least the day containing `notBeforeMs` when given. Days are

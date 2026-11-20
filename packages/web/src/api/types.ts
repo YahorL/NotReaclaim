@@ -161,6 +161,10 @@ export interface ReconcileResult {
   pinnedSynced?: number;
   /** Pinned blocks whose Google write failed this cycle; absent from older responses. */
   pinnedFailed?: number;
+  /** Engine blocks that got their first Google event this cycle; absent from older responses. */
+  attached?: number;
+  /** Engine blocks whose Google insert failed this cycle (retried next cycle); absent from older responses. */
+  attachFailed?: number;
 }
 
 export interface CreateTaskInput {
