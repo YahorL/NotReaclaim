@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Task } from '../../api/types';
-import { toFormState, validateTaskForm, toUpdateInput, isUnsplit, withDuration, dateFieldToIso, type TaskFormState } from './taskForm';
+import { toFormState, validateTaskForm, toUpdateInput, isUnsplit, withDuration, dateFieldToIso, toDateSeed, type TaskFormState } from './taskForm';
 
 const task = (over: Partial<Task> = {}): Task => ({
   id: 't1', userId: 'u1', title: 'Write spec', priority: 2, sortOrder: 0, durationMs: 5_400_000,
@@ -130,6 +130,44 @@ describe('date fields that do not convert in the zone', () => {
   it('never maps a failed conversion to null in the payload', () => {
     expect(() => toUpdateInput(validState({ notBeforeLocal: 'not-a-date' }), 'UTC')).toThrow();
     expect(() => toUpdateInput(validState(), UNKNOWN_ZONE)).toThrow();
+  });
+});
+
+describe('toUpdateInput with the seed: untouched dates keep their stored instant', () => {
+  const NY = 'America/New_York';
+  // Both instants show as "2026-11-01T01:30" in New York; re-reading that string picks 06:30Z.
+  const EDT_0130 = '2026-11-01T05:30:00.000Z';
+  const EST_0130 = '2026-11-01T06:30:00.000Z';
+  const ambiguous = task({ dueBy: EDT_0130, notBefore: EST_0130 } as Partial<Task>);
+
+  it('a title-only edit sends both ambiguous-hour instants back exactly', () => {
+    const seed = toDateSeed(ambiguous, NY);
+    const form = { ...toFormState(ambiguous, NY), title: 'Renamed' };
+    expect(form.dueByLocal).toBe('2026-11-01T01:30');
+    const out = toUpdateInput(form, NY, seed);
+    expect(out.dueBy).toBe(EDT_0130);
+    expect(out.notBefore).toBe(EST_0130);
+  });
+
+  it('a field the user changed is converted in the zone', () => {
+    const seed = toDateSeed(ambiguous, NY);
+    const out = toUpdateInput({ ...toFormState(ambiguous, NY), dueByLocal: '2026-11-02T09:00' }, NY, seed);
+    expect(out.dueBy).toBe('2026-11-02T14:00:00.000Z');
+    expect(out.notBefore).toBe(EST_0130);
+  });
+
+  it('clearing a field still sends null (clear), not the stored instant', () => {
+    const seed = toDateSeed(ambiguous, NY);
+    const out = toUpdateInput({ ...toFormState(ambiguous, NY), dueByLocal: '', notBeforeLocal: '' }, NY, seed);
+    expect(out.dueBy).toBeNull();
+    expect(out.notBefore).toBeNull();
+  });
+
+  it('toDateSeed pairs each shown wall-clock with the instant it came from', () => {
+    expect(toDateSeed(ambiguous, NY)).toEqual({
+      dueByLocal: '2026-11-01T01:30', notBeforeLocal: '2026-11-01T01:30', dueBy: EDT_0130, notBefore: EST_0130,
+    });
+    expect(toDateSeed(task({ dueBy: null }), 'UTC')).toEqual({ dueByLocal: '', notBeforeLocal: '', dueBy: null, notBefore: null });
   });
 });
 

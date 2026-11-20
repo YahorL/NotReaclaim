@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { DndContext, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -12,7 +12,7 @@ import { PrimaryButton, SecondaryButton } from '../components/Buttons';
 import { FIELD_CONTROL, FIELD_ERROR, FULL_ROW } from '../components/formStyles';
 import { useFormState } from '../components/useFormState';
 import { formatDurationShort } from '../lib/duration';
-import { type TaskFormState, toFormState, validateTaskForm, toUpdateInput, reseedDateFields, isUnsplit, withDuration } from './taskForm';
+import { type DateSeed, type TaskFormState, toFormState, toDateSeed, validateTaskForm, toUpdateInput, reseedDateFields, isUnsplit, withDuration } from './taskForm';
 import { useZoneChange } from '../settings/useTimezone';
 import { useCategoriesQuery, useCreateSubtaskMutation, useUpdateSubtaskMutation, useDeleteSubtaskMutation } from '../../api/queries';
 import { useAppSensors, pointerFirstCollision } from '../dnd/sensors';
@@ -74,8 +74,18 @@ export function TaskDrawer({ task, zone, onSave, onCancel, saving = false, error
     setChunksFollow(false);
     set(key, ms);
   };
+  // The date strings actually seeded, paired with the stored instants they show — captured with the
+  // form (same render, same task and zone), not recomputed from a later `task` prop. Save sends an
+  // untouched date back as that instant, and the zone re-seed compares against these strings.
+  const seedRef = useRef<DateSeed | null>(null);
+  if (seedRef.current === null) seedRef.current = toDateSeed(task, zone);
   // Opened before settings loaded (fallback zone): re-read the untouched dates in the real zone.
-  useZoneChange(zone, (prev, next) => setForm((f) => reseedDateFields(f, toFormState(task, prev), toFormState(task, next))));
+  useZoneChange(zone, (_prev, next) => {
+    const prevSeed = seedRef.current!;
+    const nextSeed = toDateSeed(prevSeed, next);
+    seedRef.current = nextSeed;
+    setForm((f) => reseedDateFields(f, prevSeed, nextSeed));
+  });
   const { ok, errors } = validateTaskForm(form, zone);
   const categoriesQ = useCategoriesQuery();
   const categories = categoriesQ.data ?? [];
@@ -105,7 +115,7 @@ export function TaskDrawer({ task, zone, onSave, onCancel, saving = false, error
       error={error}
       actions={(
         <>
-          <PrimaryButton data-testid="save" disabled={!ok || saving} onClick={() => { if (ok) onSave(toUpdateInput(form, zone)); }}>Save</PrimaryButton>
+          <PrimaryButton data-testid="save" disabled={!ok || saving} onClick={() => { if (ok) onSave(toUpdateInput(form, zone, seedRef.current!)); }}>Save</PrimaryButton>
           <SecondaryButton onClick={onCancel}>Cancel</SecondaryButton>
         </>
       )}

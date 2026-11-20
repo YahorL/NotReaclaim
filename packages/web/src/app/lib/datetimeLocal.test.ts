@@ -20,6 +20,21 @@ describe('datetimeLocal', () => {
   });
 });
 
+describe('zonedInputToIso across New York DST transitions (documents luxon 3 behaviour)', () => {
+  it('spring-forward gap: a skipped wall time moves forward by the gap (02:30 → 03:30 EDT)', () => {
+    // 2026-03-08 02:00–03:00 does not exist in New York.
+    expect(zonedInputToIso('2026-03-08T02:30', 'America/New_York')).toBe('2026-03-08T07:30:00.000Z');
+    expect(isoToZonedInput('2026-03-08T07:30:00.000Z', 'America/New_York')).toBe('2026-03-08T03:30');
+  });
+
+  it('fall-back overlap: both 01:30s show as "01:30", which converts back to the LATER one (EST, −05:00)', () => {
+    // 2026-11-01 01:00–02:00 happens twice: first in EDT (−04:00), then in EST (−05:00).
+    expect(isoToZonedInput('2026-11-01T05:30:00.000Z', 'America/New_York')).toBe('2026-11-01T01:30'); // EDT pass
+    expect(isoToZonedInput('2026-11-01T06:30:00.000Z', 'America/New_York')).toBe('2026-11-01T01:30'); // EST pass
+    expect(zonedInputToIso('2026-11-01T01:30', 'America/New_York')).toBe('2026-11-01T06:30:00.000Z');
+  });
+});
+
 describe('zonedDayAtInput', () => {
   it('lands on the settings-zone calendar day, not the UTC one', () => {
     // 02:00Z Jan 7 is Jan 6 in New York; 20:00Z Jan 6 is Jan 7 in Tokyo.

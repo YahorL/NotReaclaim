@@ -246,6 +246,57 @@ describe('TaskDrawer in the settings zone', () => {
   });
 });
 
+describe('TaskDrawer: untouched dates are sent back unchanged', () => {
+  const EDT_0130 = '2026-11-01T05:30:00.000Z'; // New York 01:30, first pass (EDT)
+  const EST_0130 = '2026-11-01T06:30:00.000Z'; // New York 01:30, second pass (EST)
+
+  it('a rename keeps due / schedule-after in the repeated DST hour at their exact instants', () => {
+    const onSave = vi.fn();
+    renderWithProviders(
+      <TaskDrawer task={task({ dueBy: EDT_0130, notBefore: EST_0130 } as Partial<Task>)} zone="America/New_York" onSave={onSave} onCancel={vi.fn()} />,
+      { api: emptyCategories() },
+    );
+    expect(screen.getByTestId('due-by')).toHaveValue('2026-11-01T01:30');
+    fireEvent.change(screen.getByDisplayValue('Write spec'), { target: { value: 'Renamed' } });
+    fireEvent.click(screen.getByTestId('save'));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ title: 'Renamed', dueBy: EDT_0130, notBefore: EST_0130 }));
+  });
+
+  it('the untouched baseline follows the zone re-seed', () => {
+    const onSave = vi.fn();
+    const t = task({ dueBy: EDT_0130 });
+    const { rerender } = renderWithProviders(<TaskDrawer task={t} zone="UTC" onSave={onSave} onCancel={vi.fn()} />, { api: emptyCategories() });
+    rerender(<TaskDrawer task={t} zone="America/New_York" onSave={onSave} onCancel={vi.fn()} />);
+    expect(screen.getByTestId('due-by')).toHaveValue('2026-11-01T01:30');
+    fireEvent.click(screen.getByTestId('save'));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ dueBy: EDT_0130 }));
+  });
+
+  it('a changed date is converted and a cleared one is sent as null', () => {
+    const onSave = vi.fn();
+    renderWithProviders(
+      <TaskDrawer task={task({ dueBy: EDT_0130, notBefore: EST_0130 } as Partial<Task>)} zone="America/New_York" onSave={onSave} onCancel={vi.fn()} />,
+      { api: emptyCategories() },
+    );
+    fireEvent.change(screen.getByTestId('due-by'), { target: { value: '2026-11-02T09:00' } });
+    fireEvent.change(screen.getByTestId('schedule-after'), { target: { value: '' } });
+    fireEvent.click(screen.getByTestId('save'));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ dueBy: '2026-11-02T14:00:00.000Z', notBefore: null }));
+  });
+
+  it('in a zone that cannot show the dates (fields seed empty) a rename does not clear them', () => {
+    const onSave = vi.fn();
+    renderWithProviders(
+      <TaskDrawer task={task({ notBefore: EST_0130 } as Partial<Task>)} zone="Mars/Olympus_Mons" onSave={onSave} onCancel={vi.fn()} />,
+      { api: emptyCategories() },
+    );
+    expect(screen.getByTestId('due-by')).toHaveValue('');
+    fireEvent.change(screen.getByDisplayValue('Write spec'), { target: { value: 'Renamed' } });
+    fireEvent.click(screen.getByTestId('save'));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ dueBy: '2026-06-01T17:00:00.000Z', notBefore: EST_0130 }));
+  });
+});
+
 describe('TaskDrawer: a date that does not convert in the zone', () => {
   it('shows a Schedule-after error and blocks Save instead of saving "no value"', () => {
     const onSave = vi.fn();

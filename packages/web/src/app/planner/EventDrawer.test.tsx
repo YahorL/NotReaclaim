@@ -41,10 +41,26 @@ describe('EventDrawer', () => {
 
   it('a title-only save leaves the times alone even in the DST fall-back ambiguous hour', async () => {
     // 2026-11-01T06:30Z is 01:30 in New York *after* the fall-back (EST, UTC-5); re-parsing
-    // "2026-11-01T01:30" resolves the repeated wall time to the earlier offset (EDT, 05:30Z),
-    // so an instant comparison would wrongly report the untouched times as edited.
+    // "2026-11-01T01:30" resolves the repeated wall time to the LATER offset (EST, 06:30Z), so
+    // this instant happens to round-trip — the EDT case below is the one that would not.
     const updateCalendarEvent = vi.fn(async () => appEvent());
     const ambiguous = appEvent({ startsAt: '2026-11-01T06:30:00.000Z', endsAt: '2026-11-01T07:00:00.000Z' });
+    renderWithProviders(
+      <EventDrawer event={ambiguous} zone="America/New_York" onClose={vi.fn()} />,
+      { api: api({ updateCalendarEvent }) },
+    );
+    expect(screen.getByTestId('event-start')).toHaveValue('2026-11-01T01:30');
+    fireEvent.change(screen.getByTestId('event-title'), { target: { value: 'Coffee chat' } });
+    fireEvent.click(screen.getByTestId('event-save'));
+    await waitFor(() => expect(updateCalendarEvent).toHaveBeenCalledTimes(1));
+    expect(updateCalendarEvent).toHaveBeenCalledWith('e9', { title: 'Coffee chat' });
+  });
+
+  it('a title-only save leaves an event at the FIRST (EDT) 01:30 alone', async () => {
+    // 2026-11-01T05:30Z is 01:30 EDT; "2026-11-01T01:30" re-parses to 06:30Z, an hour later, so
+    // only the string comparison keeps this untouched start from moving.
+    const updateCalendarEvent = vi.fn(async () => appEvent());
+    const ambiguous = appEvent({ startsAt: '2026-11-01T05:30:00.000Z', endsAt: '2026-11-01T07:00:00.000Z' });
     renderWithProviders(
       <EventDrawer event={ambiguous} zone="America/New_York" onClose={vi.fn()} />,
       { api: api({ updateCalendarEvent }) },

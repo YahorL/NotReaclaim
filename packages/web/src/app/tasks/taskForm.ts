@@ -61,13 +61,23 @@ function fieldToIso(local: string, zone: string): string | null {
   return iso;
 }
 
+/**
+ * Date field → payload value. With a `seed`, a field still showing the wall-clock it was seeded
+ * with sends the stored instant it came from instead of a re-conversion: wall-clock → instant is
+ * not one-to-one (luxon reads a repeated fall-back wall time as its LATER offset), so re-reading an
+ * untouched field could move it by an hour on an unrelated save.
+ */
+function dateValue(local: string, zone: string, seed?: { local: string; iso: string | null }): string | null {
+  return seed !== undefined && local === seed.local ? seed.iso : fieldToIso(local, zone);
+}
+
 /** Shared fields → API input (empty date fields become null). */
-function toTaskInput(s: TaskFormState, zone: string) {
+function toTaskInput(s: TaskFormState, zone: string, seed?: DateSeed) {
   return {
     title: s.title.trim(),
     durationMs: s.durationMs,
-    dueBy: fieldToIso(s.dueByLocal, zone),
-    notBefore: fieldToIso(s.notBeforeLocal, zone),
+    dueBy: dateValue(s.dueByLocal, zone, seed && { local: seed.dueByLocal, iso: seed.dueBy }),
+    notBefore: dateValue(s.notBeforeLocal, zone, seed && { local: seed.notBeforeLocal, iso: seed.notBefore }),
     minChunkMs: s.minChunkMs,
     maxChunkMs: s.maxChunkMs,
     categoryId: s.categoryId,
@@ -92,8 +102,13 @@ export function validateTaskForm(s: TaskFormState, zone: string): { ok: boolean;
   return validateFields(s, true, zone);
 }
 
-export function toUpdateInput(s: TaskFormState, zone: string): UpdateTaskInput {
-  return toTaskInput(s, zone);
+/**
+ * Form → PATCH body. Pass the drawer's `seed` (`toDateSeed`, re-seeded with the zone): a date the
+ * user did not change then goes back as its exact stored instant, a changed one is converted in
+ * `zone`, and a cleared one is null. Without a seed every date field is converted.
+ */
+export function toUpdateInput(s: TaskFormState, zone: string, seed?: DateSeed): UpdateTaskInput {
+  return toTaskInput(s, zone, seed);
 }
 
 /**
@@ -116,6 +131,24 @@ export function withDuration<S extends TaskFormState>(form: S, durationMs: numbe
 }
 
 type DateFields = Pick<TaskFormState, 'dueByLocal' | 'notBeforeLocal'>;
+
+/** What the edit form's date fields were seeded with: the wall-clock shown, and the instant behind it. */
+export interface DateSeed extends DateFields {
+  dueBy: string | null;
+  notBefore: string | null;
+}
+
+/** The date seed for `t` in `zone` — the same strings `toFormState` shows. */
+export function toDateSeed(t: Pick<Task, 'dueBy' | 'notBefore'>, zone: string): DateSeed {
+  const dueBy = t.dueBy ?? null;
+  const notBefore = t.notBefore ?? null;
+  return {
+    dueBy,
+    notBefore,
+    dueByLocal: dueBy ? isoToZonedInput(dueBy, zone) : '',
+    notBeforeLocal: notBefore ? isoToZonedInput(notBefore, zone) : '',
+  };
+}
 
 /**
  * Re-seed after the zone changed (settings landing after the form opened in the fallback zone):

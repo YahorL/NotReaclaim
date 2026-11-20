@@ -56,7 +56,8 @@ export function EventDrawer({ event, onClose, zone, compact = false }: EventDraw
     // fields must stay untouched. Changes are detected on the *input strings* vs. what the
     // fields were seeded with — comparing instants instead would misfire whenever the
     // minute-precision round-trip isn't lossless (seconds/ms on the stored event, and the
-    // DST fall-back hour, where luxon resolves the repeated wall time to the earlier offset).
+    // DST fall-back hour, where luxon reads the repeated wall time as its LATER, standard-time
+    // offset — an event at the first, daylight-time 01:30 would re-parse an hour later).
     const patch: UpdateCalendarEventInput = {};
     if (title.trim() !== event.title) patch.title = title.trim();
     if (startLocal !== seededStart && startIso !== null) patch.startsAt = startIso;
