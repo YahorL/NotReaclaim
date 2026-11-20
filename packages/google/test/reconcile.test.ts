@@ -378,3 +378,129 @@ describe('reconcile: blocks planned locally before Google was linked (googleEven
     expect(store.all()).toHaveLength(0);
   });
 });
+
+describe('reconcile: never-mirrored blocks when a Google insert fails or the row vanishes', () => {
+  const TASKS = [
+    makeTask({ id: 't1', title: 'One' }),
+    makeTask({ id: 't2', title: 'Two' }),
+    makeTask({ id: 't3', title: 'Three' }),
+  ];
+
+  /** Every count reconcile reports: asserting the whole object catches a key dropped on the way out. */
+  const counts = (over: Partial<Awaited<ReturnType<typeof reconcile>>>) => ({
+    created: 0, updated: 0, deleted: 0, pinned: 0, removed: 0,
+    pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0, ...over,
+  });
+
+  async function plannedLocally(tasks: ReturnType<typeof makeTask>[]) {
+    const store = fakeScheduledBlockStore();
+    await planLocally(fakeSchedulingRepos({ settings: makeSettings(), tasks, blockStore: store }), store, 'u1', NOW);
+    expect(store.all()).toHaveLength(tasks.length);
+    expect(store.all().every((b) => b.googleEventId == null)).toBe(true);
+    return store;
+  }
+
+  function nextCycle(client: FakeGoogleClient, store: ReturnType<typeof fakeScheduledBlockStore>) {
+    client.listQueue = [{ events: googleEventsFromStore(store) }];
+    client.insertedEvents = [];
+    client.updatedEvents = [];
+    client.deletedEvents = [];
+  }
+
+  const rateLimited = (title: string) => (event: GoogleEventWrite) =>
+    event.summary === title ? new GoogleApiError(429, 'POST events: Rate Limit Exceeded') : undefined;
+
+  /** Mimics @notreclaim/db's NotFoundError (matched by name in core's apply). */
+  class NotFoundError extends Error {
+    constructor(message: string) { super(message); this.name = 'NotFoundError'; }
+  }
+
+  it('unchanged: mirroring one block counts as one attach', async () => {
+    const store = await plannedLocally([makeTask({ id: 't1' })]);
+    const client = new StrictIdGoogleClient();
+    client.listQueue = [{ events: [] }];
+    const deps = buildDeps({ store, tasks: [makeTask({ id: 't1' })], client });
+
+    const result = await reconcile(deps, 'u1', NOW);
+
+    expect(result).toEqual(counts({ attached: 1 }));
+  });
+
+  it('unchanged: one rejected insert does not abort the cycle; the block is mirrored exactly once next cycle', async () => {
+    const store = await plannedLocally(TASKS);
+    const client = new StrictIdGoogleClient();
+    client.insertFailure = rateLimited('Two');
+    client.listQueue = [{ events: [] }];
+    const deps = buildDeps({ store, tasks: TASKS, client });
+
+    const result = await reconcile(deps, 'u1', NOW);
+
+    expect(result).toEqual(counts({ attached: 2, attachFailed: 1 }));
+    expect(client.insertedEvents.map((e) => e.event.summary)).toEqual(['One', 'Three']);
+    expect(store.all().find((b) => b.title === 'Two')!.googleEventId).toBeNull();
+    expect(store.all().find((b) => b.title === 'Three')!.googleEventId).not.toBeNull();
+
+    client.insertFailure = null;
+    nextCycle(client, store);
+    const second = await reconcile(deps, 'u1', NOW);
+
+    expect(second).toEqual(counts({ attached: 1 }));
+    expect(client.insertedEvents.map((e) => e.event.summary)).toEqual(['Two']);
+    expect(client.updatedEvents).toHaveLength(0);
+    expect(client.deletedEvents).toHaveLength(0);
+    const ids = store.all().map((b) => b.googleEventId);
+    expect(ids.every((id) => id != null)).toBe(true);
+    expect(new Set(ids).size).toBe(3); // one event per block, none duplicated
+  });
+
+  it('changed: a rejected insert still moves the block; it is mirrored next cycle as an unchanged block', async () => {
+    const store = await plannedLocally(TASKS);
+    const two = store.all().find((b) => b.title === 'Two')!;
+    const desiredStart = two.startsAt.toISOString();
+    two.startsAt = new Date('2026-01-05T14:00:00.000Z');
+    two.endsAt = new Date('2026-01-05T14:30:00.000Z');
+    const client = new StrictIdGoogleClient();
+    client.insertFailure = rateLimited('Two');
+    client.listQueue = [{ events: [] }];
+    const deps = buildDeps({ store, tasks: TASKS, client });
+
+    const result = await reconcile(deps, 'u1', NOW);
+
+    expect(result).toEqual(counts({ updated: 1, attached: 2, attachFailed: 1 }));
+    const moved = store.all().find((b) => b.id === two.id)!;
+    expect(moved.startsAt.toISOString()).toBe(desiredStart);
+    expect(moved.googleEventId).toBeNull();
+
+    client.insertFailure = null;
+    nextCycle(client, store);
+    const second = await reconcile(deps, 'u1', NOW);
+
+    expect(second).toEqual(counts({ attached: 1 }));
+    expect(client.insertedEvents).toHaveLength(1);
+    expect(client.insertedEvents[0]).toMatchObject({ event: { summary: 'Two', startDateTime: desiredStart } });
+    expect(new Set(store.all().map((b) => b.googleEventId)).size).toBe(3);
+  });
+
+  it('a block deleted while its event is being inserted gets that event deleted from Google', async () => {
+    const store = await plannedLocally(TASKS);
+    const twoId = store.all().find((b) => b.title === 'Two')!.id;
+    const realUpdate = store.update;
+    store.update = async (userId, id, data) => {
+      if (id === twoId) { // DELETE /schedule/:id landed between the insert and the id write
+        await store.delete(userId, id);
+        throw new NotFoundError(`ScheduledBlock ${id} not found for user`);
+      }
+      return realUpdate(userId, id, data);
+    };
+    const client = new StrictIdGoogleClient();
+    client.listQueue = [{ events: [] }];
+    const deps = buildDeps({ store, tasks: TASKS, client });
+
+    const result = await reconcile(deps, 'u1', NOW);
+
+    const twoEvent = `g-evt-${client.insertedEvents.findIndex((e) => e.event.summary === 'Two') + 1}`;
+    expect(client.deletedEvents).toEqual([{ calendarId: 'cal-auto', googleEventId: twoEvent }]);
+    expect(result).toEqual(counts({ attached: 2 }));
+    expect(store.all().map((b) => b.title).sort()).toEqual(['One', 'Three']);
+  });
+});

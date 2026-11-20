@@ -87,7 +87,15 @@ export class FakeGoogleClient implements GoogleClient {
     return { calendarId: 'cal-auto' };
   }
 
+  /**
+   * Opt-in failure hook: return an error to make that insert throw it (e.g. a 429). A failed
+   * insert is not recorded and consumes no `g-evt-N` id, as Google would issue none.
+   */
+  insertFailure: ((event: GoogleEventWrite) => Error | undefined) | null = null;
+
   async insertEvent(_accessToken: string, calendarId: string, event: GoogleEventWrite): Promise<{ googleEventId: string }> {
+    const failure = this.insertFailure?.(event);
+    if (failure) throw failure;
     this.insertCount += 1;
     this.insertedEvents.push({ calendarId, event });
     return { googleEventId: `g-evt-${this.insertCount}` };
