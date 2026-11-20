@@ -232,6 +232,33 @@ describe('Planner', () => {
     expect(screen.getByText(/pointer or touch only/i)).toBeInTheDocument();
     expect(screen.queryByText(/press the space bar/i)).toBeNull();
   });
+
+  it('re-seeds the edit drawer when another task is edited while it stays mounted', async () => {
+    // Keyboard activation of another card's Edit (a click with no pointerdown) never trips the
+    // drawer's outside-dismiss, so the drawer stays mounted while the edited task changes.
+    const mk = (id: string, title: string, dueBy: string): Task => ({
+      id, userId: 'u1', title, priority: 2, sortOrder: 0, durationMs: 3_600_000, dueBy,
+      minChunkMs: 1_800_000, maxChunkMs: 3_600_000, categoryId: null, status: 'pending',
+      completedAt: null, createdAt: '', updatedAt: '',
+    });
+    const updateTask = vi.fn(async () => mk('b', 'B task', '2026-01-12T15:00:00.000Z'));
+    const api = makeApi({
+      getSchedule: vi.fn(async () => [] as ScheduledBlock[]),
+      listTasks: vi.fn(async () => [mk('a', 'A task', '2026-01-10T17:00:00.000Z'), mk('b', 'B task', '2026-01-12T15:00:00.000Z')]),
+      updateTask,
+    });
+    renderWithProviders(<Planner now={() => NOW} />, { api });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Edit A task' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Edit A task' }));
+    expect(within(screen.getByTestId('task-drawer')).getByDisplayValue('A task')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit B task' }));
+    const drawer = screen.getByTestId('task-drawer');
+    expect(within(drawer).getByDisplayValue('B task')).toBeInTheDocument();
+    fireEvent.click(within(drawer).getByTestId('save'));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith('b', expect.objectContaining({
+      title: 'B task', dueBy: '2026-01-12T15:00:00.000Z',
+    })));
+  });
 });
 
 describe('Planner compact layout', () => {

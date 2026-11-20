@@ -79,6 +79,23 @@ describe('Habits page', () => {
     // MobileTabBar is a fixed z-40 bar: a z-40 overlay lets its taps through to the tabs.
     expect(screen.getByTestId('habit-drawer').parentElement!.className).toContain('z-50');
   });
+
+  it('re-seeds the edit drawer when another habit is edited while it stays mounted', async () => {
+    // The desktop overlay is not a focus trap: keyboard activation of another row's Edit switches
+    // the edited habit without unmounting the drawer.
+    const updateHabit = vi.fn(async () => habit());
+    const listHabits = vi.fn(async () => [habit(), habit({ id: 'h2', title: 'Read', perPeriod: 2 })]);
+    renderWithProviders(<Habits />, { api: makeApi({ listHabits, updateHabit }) });
+    await waitFor(() => expect(screen.getByText('Read')).toBeInTheDocument());
+    const [editRun, editRead] = screen.getAllByRole('button', { name: 'Edit' });
+    fireEvent.click(editRun!);
+    expect(within(screen.getByTestId('habit-drawer')).getByDisplayValue('Run')).toBeInTheDocument();
+    fireEvent.click(editRead!);
+    const drawer = screen.getByTestId('habit-drawer');
+    expect(within(drawer).getByDisplayValue('Read')).toBeInTheDocument();
+    fireEvent.click(within(drawer).getByTestId('save'));
+    await waitFor(() => expect(updateHabit).toHaveBeenCalledWith('h2', expect.objectContaining({ title: 'Read', perPeriod: 2 })));
+  });
 });
 
 describe('Habits page compact layout', () => {

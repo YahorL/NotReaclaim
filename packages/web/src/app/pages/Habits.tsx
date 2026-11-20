@@ -58,7 +58,9 @@ export function Habits() {
           onClose={() => setEditing(null)}
           desktopClass="fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-4"
         >
-          <HabitDrawer habit={editing} compact={compact} saving={updateM.isPending}
+          {/* Keyed by id: the drawer seeds its form once at mount, and the overlay is no focus
+              trap, so keyboard Edit on another row switches the habit under a mounted drawer. */}
+          <HabitDrawer key={editing.id} habit={editing} compact={compact} saving={updateM.isPending}
             error={updateM.error instanceof ApiError ? updateM.error : null}
             onSave={(patch) => updateM.mutate({ id: editing.id, patch }, { onSuccess: () => setEditing(null) })}
             onCancel={() => setEditing(null)} />

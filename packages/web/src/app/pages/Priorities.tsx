@@ -108,7 +108,9 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
       </div>
       {editing && (
         <DrawerHost compact={compact} label="Edit task" onClose={() => setEditingId(null)} desktopClass="fixed right-3 top-[84px] z-50">
+          {/* Keyed by id: the drawer seeds its form once at mount — see Planner. */}
           <TaskDrawer
+            key={editing.id}
             task={editing} zone={zone} compact={compact} saving={updateM.isPending}
             error={updateM.error instanceof ApiError ? updateM.error : null}
             onSave={(patch) => updateM.mutate({ id: editing.id, patch }, { onSuccess: () => setEditingId(null) })}

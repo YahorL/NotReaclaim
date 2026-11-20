@@ -268,7 +268,10 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
       )}
       {editing && (
         <DrawerHost compact={compact} label="Edit task" onClose={() => setEditingId(null)} desktopClass={DRAWER_DESKTOP_CLASS}>
+          {/* Keyed by id: the drawer seeds its form once at mount, so switching the edited task
+              while it stays mounted (keyboard Edit, a coarse-pointer tile tap at md+) must remount it. */}
           <TaskDrawer
+            key={editing.id}
             task={editing} zone={zone} compact={compact} saving={updateTask.isPending}
             error={updateTask.error instanceof ApiError ? updateTask.error : null}
             onSave={(patch) => updateTask.mutate({ id: editing.id, patch }, { onSuccess: () => setEditingId(null) })}

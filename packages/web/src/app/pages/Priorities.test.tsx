@@ -111,6 +111,28 @@ describe('Priorities board', () => {
     expect(screen.getByTestId('task-drawer')).toBeInTheDocument();
   });
 
+  it('re-seeds the edit drawer when the edited task changes while it stays mounted', async () => {
+    // A click (no pointerdown) on another row is what keyboard activation produces: the drawer's
+    // outside-dismiss never fires, so the drawer stays mounted while the edited task changes.
+    const updateTask = vi.fn(async () => task());
+    const listTasks = vi.fn(async () => [
+      task({ id: 'c1', title: 'Critical thing', priority: 1, dueBy: '2026-03-02T15:00:00.000Z' }),
+      task({ id: 'l1', title: 'Low thing', priority: 4, dueBy: '2026-06-01T17:00:00.000Z' }),
+    ]);
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateTask }) });
+    await waitFor(() => expect(screen.getByText('Low thing')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Low thing'));
+    expect(within(screen.getByTestId('task-drawer')).getByDisplayValue('Low thing')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Critical thing'));
+    const drawer = screen.getByTestId('task-drawer');
+    expect(within(drawer).getByDisplayValue('Critical thing')).toBeInTheDocument();
+    expect(within(drawer).queryByDisplayValue('Low thing')).toBeNull();
+    fireEvent.click(within(drawer).getByTestId('save'));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith('c1', expect.objectContaining({
+      title: 'Critical thing', dueBy: '2026-03-02T15:00:00.000Z',
+    })));
+  });
+
   // ── Lifecycle column tests ──────────────────────────────────────────────────
 
   it('renders a completed task in column-completed, not in its priority bucket', async () => {
