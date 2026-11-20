@@ -35,3 +35,49 @@ describe('invalidateForEvent', () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: ['schedule'] });
   });
 });
+
+describe('invalidateForEvent: data.changed', () => {
+  const invalidated = (spy: ReturnType<typeof spyClient>['spy']) => spy.mock.calls.map(([f]) => (f as { queryKey: unknown }).queryKey);
+
+  it.each([
+    ['tasks', ['tasks']],
+    ['habits', ['habits']],
+    ['categories', ['categories']],
+    ['settings', ['settings']],
+    ['calendarEvents', ['calendarEvents']],
+    ['schedule', ['schedule']],
+    ['googleStatus', ['googleStatus']],
+  ] as const)('resource %s invalidates exactly its own query root', (resource, root) => {
+    const { qc, spy } = spyClient();
+    invalidateForEvent(qc, { type: 'data.changed', userId: 'u1', resources: [resource] });
+    expect(invalidated(spy)).toEqual([root]);
+  });
+
+  it('invalidates every listed resource, once each, and nothing else', () => {
+    const { qc, spy } = spyClient();
+    invalidateForEvent(qc, { type: 'data.changed', userId: 'u1', resources: ['schedule', 'tasks'] });
+    expect(invalidated(spy)).toEqual([['schedule'], ['tasks']]);
+  });
+
+  it('skips resource names it does not know (a newer server) and keeps the known ones', () => {
+    const { qc, spy } = spyClient();
+    const event = { type: 'data.changed', userId: 'u1', resources: ['someday', 'habits', 'toString'] };
+    expect(() => invalidateForEvent(qc, event as never)).not.toThrow();
+    expect(invalidated(spy)).toEqual([['habits']]);
+  });
+
+  it('tolerates a missing or non-array resources field', () => {
+    const { qc, spy } = spyClient();
+    expect(() => invalidateForEvent(qc, { type: 'data.changed', userId: 'u1' } as never)).not.toThrow();
+    expect(() => invalidateForEvent(qc, { type: 'data.changed', userId: 'u1', resources: 'habits' } as never)).not.toThrow();
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe('invalidateForEvent: unknown event types', () => {
+  it('ignores an event type it does not know, without throwing', () => {
+    const { qc, spy } = spyClient();
+    expect(() => invalidateForEvent(qc, { type: 'future.thing', userId: 'u1' } as never)).not.toThrow();
+    expect(spy).not.toHaveBeenCalled();
+  });
+});

@@ -38,6 +38,34 @@ describe('useWebSocket', () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: ['schedule'] });
   });
 
+  it('maps a data.changed frame to its query roots', () => {
+    const qc = new QueryClient();
+    const spy = vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    const socket = new FakeSocket();
+
+    renderHook(() => useWebSocket({ token: 'jwt', makeSocket: () => socket }), { wrapper: wrapper(qc) });
+    socket.emit('message', { data: JSON.stringify({ type: 'data.changed', userId: 'u1', resources: ['habits', 'schedule'] }) });
+
+    expect(spy.mock.calls.map(([f]) => (f as { queryKey: unknown }).queryKey)).toEqual([['habits'], ['schedule']]);
+  });
+
+  it('ignores frames of an unknown event type (and non-object JSON) and keeps handling later ones', () => {
+    const qc = new QueryClient();
+    const spy = vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    const socket = new FakeSocket();
+
+    renderHook(() => useWebSocket({ token: 'jwt', makeSocket: () => socket }), { wrapper: wrapper(qc) });
+    expect(() => {
+      socket.emit('message', { data: JSON.stringify({ type: 'future.thing', userId: 'u1', payload: 1 }) });
+      socket.emit('message', { data: 'null' });
+      socket.emit('message', { data: '42' });
+    }).not.toThrow();
+    expect(spy).not.toHaveBeenCalled();
+
+    socket.emit('message', { data: JSON.stringify({ type: 'schedule.updated', userId: 'u1', counts: {} }) });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['schedule'] });
+  });
+
   it('does not connect without a token', () => {
     const qc = new QueryClient();
     const makeSocket = vi.fn(() => new FakeSocket());
