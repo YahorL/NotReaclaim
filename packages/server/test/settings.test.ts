@@ -126,4 +126,43 @@ describe('settings routes', () => {
     const equal = await app.inject({ method: 'PUT', url: '/settings', headers: auth, payload: { ...settingsBody, defaultMinChunkMs: 1800000, defaultMaxChunkMs: 1800000 } });
     expect(equal.statusCode).toBe(200);
   });
+
+  // Same per-window rules as the category routes: core silently shifts an out-of-range minute
+  // into a neighbouring day and silently drops an empty/inverted window.
+  it('rejects working-hour windows the category routes reject, and stores nothing', async () => {
+    const { app, reconcileCalls } = buildTestApp({ settings: null });
+    const token = await tokenFor(app);
+    const auth = { authorization: `Bearer ${token}` };
+    const cases = {
+      'startMinute -60': { weekday: 1, startMinute: -60, endMinute: 1020 },
+      'endMinute 1500': { weekday: 1, startMinute: 540, endMinute: 1500 },
+      'start == end': { weekday: 1, startMinute: 540, endMinute: 540 },
+      'start > end': { weekday: 1, startMinute: 1020, endMinute: 540 },
+    };
+    for (const [label, window] of Object.entries(cases)) {
+      const res = await app.inject({ method: 'PUT', url: '/settings', headers: auth, payload: { ...settingsBody, workingHours: [window] } });
+      expect(res.statusCode, label).toBe(400);
+      expect(res.json().code, label).toBe('validation_error');
+    }
+    expect(reconcileCalls).toEqual([]);
+    expect((await app.inject({ method: 'GET', url: '/settings', headers: auth })).statusCode).toBe(404);
+  });
+
+  it('still accepts an empty week, the new-user defaults, and 0..1439 / full-day 0..1440 windows', async () => {
+    const { app } = buildTestApp({ settings: null });
+    const token = await tokenFor(app);
+    const auth = { authorization: `Bearer ${token}` };
+    const defaults = [1, 2, 3, 4, 5].map((weekday) => ({ weekday, startMinute: 540, endMinute: 1020 })); // ensureUserDefaults
+    const shapes = {
+      'empty week': [],
+      'ensureUserDefaults': defaults,
+      '00:00-23:59': [{ weekday: 0, startMinute: 0, endMinute: 1439 }],
+      'full day': [{ weekday: 6, startMinute: 0, endMinute: 1440 }],
+    };
+    for (const [label, workingHours] of Object.entries(shapes)) {
+      const res = await app.inject({ method: 'PUT', url: '/settings', headers: auth, payload: { ...settingsBody, workingHours } });
+      expect(res.statusCode, label).toBe(200);
+      expect(res.json().workingHours, label).toEqual(workingHours);
+    }
+  });
 });

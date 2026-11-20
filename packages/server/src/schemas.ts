@@ -54,15 +54,21 @@ export const updateHabitSchema = createHabitSchema.partial().extend({
   status: z.enum(['active', 'paused']).optional(),
 });
 
+/**
+ * One weekly window, shared by settings working hours and category hours. The bounds and
+ * start < end are not cosmetic: core turns an out-of-range minute into a time on a
+ * neighbouring day and silently drops an empty/inverted window.
+ */
+export const workingHourEntrySchema = z.object({
+  weekday: z.number().int().min(0).max(6),
+  startMinute: z.number().int().min(0).max(1440),
+  endMinute: z.number().int().min(0).max(1440),
+}).refine((w) => w.startMinute < w.endMinute, { message: 'startMinute must be before endMinute' });
+
 export const settingsSchema = z.object({
   timezone: z.string().refine(isValidTimezone, { message: 'timezone must be a valid IANA time zone' }),
-  workingHours: z.array(
-    z.object({
-      weekday: z.number().int().min(0).max(6),
-      startMinute: z.number().int(),
-      endMinute: z.number().int(),
-    }),
-  ),
+  // An empty week is allowed here (unlike category windows): it means "no working hours".
+  workingHours: z.array(workingHourEntrySchema),
   horizonDays: z.number().int().positive().optional(),
   defaultMinChunkMs: z.number().int().positive(),
   defaultMaxChunkMs: z.number().int().positive(),
@@ -74,12 +80,6 @@ export const settingsSchema = z.object({
 }).refine((b) => b.defaultMinChunkMs <= b.defaultMaxChunkMs, {
   message: 'defaultMinChunkMs must not exceed defaultMaxChunkMs', path: ['defaultMinChunkMs'],
 });
-
-export const workingHourEntrySchema = z.object({
-  weekday: z.number().int().min(0).max(6),
-  startMinute: z.number().int().min(0).max(1440),
-  endMinute: z.number().int().min(0).max(1440),
-}).refine((w) => w.startMinute < w.endMinute, { message: 'startMinute must be before endMinute' });
 
 export const createCategorySchema = z.object({
   name: z.string().min(1),
