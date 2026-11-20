@@ -1,11 +1,17 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { apiBaseUrl, webSocketUrl } from './baseUrl';
 
 const httpPage = { protocol: 'http:', host: 'app.local:5173', href: 'http://app.local:5173/planner' };
 const httpsPage = { protocol: 'https:', host: 'app.example.com', href: 'https://app.example.com/planner' };
 
+afterEach(() => { vi.unstubAllEnvs(); });
+
 describe('apiBaseUrl', () => {
   it('is empty when unset or empty', () => {
+    // `undefined` falls through to the default parameter, i.e. the env, so make it truly unset here.
+    // (vitest 1.x stubEnv takes strings only: stub first so unstubAllEnvs restores the original, then delete.)
+    vi.stubEnv('VITE_API_URL', '');
+    delete import.meta.env.VITE_API_URL;
     expect(apiBaseUrl(undefined)).toBe('');
     expect(apiBaseUrl('')).toBe('');
   });
