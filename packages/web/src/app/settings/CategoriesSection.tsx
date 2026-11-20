@@ -163,6 +163,10 @@ export function CategoriesSection() {
   const { ok, error } = validateCategoryForm(name, days);
 
   const resetNew = () => { setAdding(false); setName(''); setDays(windowsToDays([])); if (createM.isError) createM.reset(); };
+  // Opening starts clean: a create cancelled while in flight can fail AFTER the cancel's reset, and
+  // its error must not greet the next form. Resetting also detaches that create's callbacks, so a
+  // late success cannot close the new form either.
+  const openNew = () => { createM.reset(); setAdding(true); };
 
   const submit = () => {
     const windows = daysToWindows(days);
@@ -201,7 +205,7 @@ export function CategoriesSection() {
           </div>
         </div>
       ) : (
-        <button data-testid="add-category" onClick={() => setAdding(true)} className="mt-1 rounded-[9px] px-2 py-1 text-[13px] font-bold text-indigo hover:bg-indigoSoft">+ Add category</button>
+        <button data-testid="add-category" onClick={openNew} className="mt-1 rounded-[9px] px-2 py-1 text-[13px] font-bold text-indigo hover:bg-indigoSoft">+ Add category</button>
       )}
     </section>
   );

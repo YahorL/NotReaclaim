@@ -153,4 +153,23 @@ describe('CategoriesSection', () => {
     fireEvent.click(screen.getByTestId('add-category'));
     expect(screen.queryByTestId('new-category-error')).not.toBeInTheDocument();
   });
+
+  it('a create that fails after the form was cancelled does not resurface when the form is reopened', async () => {
+    let rejectCreate!: (e: unknown) => void;
+    const createCategory = vi.fn(() => new Promise((_res, rej) => { rejectCreate = rej; }));
+    const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue([cats[0]]), createCategory } as never);
+    renderWithProviders(<CategoriesSection />, { api });
+    fireEvent.click(await screen.findByTestId('add-category'));
+    fireEvent.change(screen.getByTestId('cat-name-input'), { target: { value: 'Deep Work' } });
+    fireEvent.click(screen.getByTestId('newcat-1-toggle'));
+    fireEvent.click(screen.getByTestId('save-new-category'));
+    await waitFor(() => expect(createCategory).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' })); // still in flight
+    rejectCreate(new ApiError(409, 'conflict', 'A category with that name exists'));
+    await new Promise((r) => setTimeout(r, 0)); // let the rejection settle
+    fireEvent.click(screen.getByTestId('add-category'));
+    expect(screen.queryByTestId('new-category-error')).not.toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByTestId('new-category-error')).not.toBeInTheDocument();
+  });
 });
