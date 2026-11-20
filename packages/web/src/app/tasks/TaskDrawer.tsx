@@ -68,7 +68,12 @@ export function TaskDrawer({ task, zone, onSave, onCancel, saving = false, error
   // Seeded once, like the form: a task loaded unsplit keeps min = max = duration until the user
   // edits a chunk stepper (then it is a split task by their choice). A refetch does not re-arm it.
   const [chunksFollow, setChunksFollow] = useState(() => isUnsplit(task));
-  const setChunk = (key: 'minChunkMs' | 'maxChunkMs', ms: number) => { setChunksFollow(false); set(key, ms); };
+  // A press that changes nothing (the stepper's 15-min floor) is not an edit and keeps the rule armed.
+  const setChunk = (key: 'minChunkMs' | 'maxChunkMs', ms: number) => {
+    if (ms === form[key]) return;
+    setChunksFollow(false);
+    set(key, ms);
+  };
   // Opened before settings loaded (fallback zone): re-read the untouched dates in the real zone.
   useZoneChange(zone, (prev, next) => setForm((f) => reseedDateFields(f, toFormState(task, prev), toFormState(task, next))));
   const { ok, errors } = validateTaskForm(form);

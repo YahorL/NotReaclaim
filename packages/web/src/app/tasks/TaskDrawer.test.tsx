@@ -297,4 +297,15 @@ describe('TaskDrawer: unsplit task (min = max = duration) keeps its chunks on th
     fireEvent.click(screen.getByTestId('save'));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ durationMs: 4_500_000, minChunkMs: H, maxChunkMs: 4_500_000 }));
   });
+
+  it('a chunk stepper press that changes nothing (at the 15-min floor) does not stop the chunks following', () => {
+    const onSave = vi.fn();
+    const Q = 900_000;
+    renderWithProviders(<TaskDrawer zone="UTC" task={task({ durationMs: Q, minChunkMs: Q, maxChunkMs: Q })} onSave={onSave} onCancel={vi.fn()} />, { api: emptyCategories() });
+    fireEvent.click(screen.getByRole('button', { name: 'decrease min' }));      // already at the floor: no change
+    fireEvent.click(screen.getByRole('button', { name: 'increase duration' })); // 30m
+    fireEvent.click(screen.getByTestId('save'));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ durationMs: 2 * Q, minChunkMs: 2 * Q, maxChunkMs: 2 * Q }));
+  });
 });
+
