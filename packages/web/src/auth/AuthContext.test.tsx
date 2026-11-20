@@ -72,6 +72,22 @@ describe('AuthContext and the query cache', () => {
     expect(qc.getQueryData(['settings'])).toBeUndefined();
   });
 
+  it('signOut refetches nothing afterwards — no request goes out without a token', async () => {
+    const tokensSeen: (string | null)[] = [];
+    const fetchTasks = vi.fn(async () => { tokensSeen.push(tokenStore.get()?.token ?? null); return 'A-tasks'; });
+    const qc = renderAs(fetchTasks);
+    await waitFor(() => expect(fetchTasks).toHaveBeenCalledTimes(1)); // mount refetch as A
+    fireEvent.click(screen.getByText('out'));
+    // The usual refetch triggers after a sign-out: a late realtime invalidation and a window refocus.
+    await act(async () => {
+      await qc.invalidateQueries();
+      window.dispatchEvent(new Event('focus'));
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(fetchTasks).toHaveBeenCalledTimes(1);
+    expect(tokensSeen).toEqual(['jwt-a']);
+  });
+
   it('signing in as someone else without a reload drops the previous user’s data and refetches', async () => {
     let resolveB!: (v: string) => void;
     const fetchTasks = vi.fn(() => (tokenStore.get()?.token === 'jwt-b'

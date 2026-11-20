@@ -186,7 +186,7 @@ describe('dayColumns(count)', () => {
     const start = new Date('2026-01-07T00:00:00').getTime();
     expect(dayColumns(start, 3, 'UTC')).toHaveLength(3);
     expect(dayColumns(start, 3, 'UTC')[1]).toBe(new Date('2026-01-08T00:00:00').getTime());
-    expect(dayColumns(start, 7, 'UTC')).toHaveLength(7); // default
+    expect(dayColumns(start, 7, 'UTC')).toHaveLength(7); // a full week
   });
 });
 

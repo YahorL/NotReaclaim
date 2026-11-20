@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { screen, fireEvent, waitFor, act } from '@testing-library/react';
 import type { Settings } from '../../api/types';
 import { ApiError } from '../../api/client';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
@@ -56,6 +56,22 @@ describe('Buffers page', () => {
     await waitFor(() => expect((screen.getByTestId('meeting-buffer') as HTMLInputElement).value).toBe('5'));
     fireEvent.change(screen.getByTestId('meeting-buffer'), { target: { value: '-5' } });
     fireEvent.click(screen.getByTestId('save'));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(putSettings).not.toHaveBeenCalled();
+  });
+
+  it('the Save handler itself refuses an invalid form, independently of the disabled attribute', async () => {
+    // A click on a disabled button never reaches onClick (jsdom and React both drop it), so the test
+    // above would pass without the handler's own guard. Call the handler directly to pin the guard.
+    const putSettings = vi.fn(async () => settings());
+    const api = fakeApiClient({ getSettings: async () => settings(), putSettings } as never);
+    renderWithProviders(<Buffers />, { api });
+    await waitFor(() => expect((screen.getByTestId('meeting-buffer') as HTMLInputElement).value).toBe('5'));
+    fireEvent.change(screen.getByTestId('meeting-buffer'), { target: { value: '-5' } });
+    const save = screen.getByTestId('save');
+    expect(save).toBeDisabled();
+    const propsKey = Object.keys(save).find((k) => k.startsWith('__reactProps$'))!;
+    act(() => { (save as unknown as Record<string, { onClick: () => void }>)[propsKey]!.onClick(); });
     await new Promise((r) => setTimeout(r, 0));
     expect(putSettings).not.toHaveBeenCalled();
   });
