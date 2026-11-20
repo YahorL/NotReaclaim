@@ -79,6 +79,25 @@ export function toUpdateInput(s: TaskFormState, zone: string): UpdateTaskInput {
   return toTaskInput(s, zone);
 }
 
+/**
+ * An unsplit task is scheduled as one chunk the size of the task, stored as min = max = duration
+ * (`toCreateTaskInput`); there is no separate flag, so this shape IS the flag.
+ */
+export function isUnsplit(t: Pick<Task, 'durationMs' | 'minChunkMs' | 'maxChunkMs'>): boolean {
+  return t.minChunkMs === t.durationMs && t.maxChunkMs === t.durationMs;
+}
+
+/**
+ * Set the duration. With `chunksFollow` (the task was loaded unsplit and the user has not touched
+ * min or max since), min and max move with it so the task stays unsplit; otherwise only the
+ * duration changes.
+ */
+export function withDuration<S extends TaskFormState>(form: S, durationMs: number, chunksFollow: boolean): S {
+  return chunksFollow
+    ? { ...form, durationMs, minChunkMs: durationMs, maxChunkMs: durationMs }
+    : { ...form, durationMs };
+}
+
 type DateFields = Pick<TaskFormState, 'dueByLocal' | 'notBeforeLocal'>;
 
 /**

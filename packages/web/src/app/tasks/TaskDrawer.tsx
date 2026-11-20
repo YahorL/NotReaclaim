@@ -12,7 +12,7 @@ import { PrimaryButton, SecondaryButton } from '../components/Buttons';
 import { FIELD_CONTROL, FIELD_ERROR, FULL_ROW } from '../components/formStyles';
 import { useFormState } from '../components/useFormState';
 import { formatDurationShort } from '../lib/duration';
-import { type TaskFormState, toFormState, validateTaskForm, toUpdateInput, reseedDateFields } from './taskForm';
+import { type TaskFormState, toFormState, validateTaskForm, toUpdateInput, reseedDateFields, isUnsplit, withDuration } from './taskForm';
 import { useZoneChange } from '../settings/useTimezone';
 import { useCategoriesQuery, useCreateSubtaskMutation, useUpdateSubtaskMutation, useDeleteSubtaskMutation } from '../../api/queries';
 import { useAppSensors, pointerFirstCollision } from '../dnd/sensors';
@@ -65,6 +65,10 @@ export interface TaskDrawerProps {
 
 export function TaskDrawer({ task, zone, onSave, onCancel, saving = false, error = null, compact = false }: TaskDrawerProps) {
   const [form, set, setForm] = useFormState<TaskFormState>(() => toFormState(task, zone));
+  // Seeded once, like the form: a task loaded unsplit keeps min = max = duration until the user
+  // edits a chunk stepper (then it is a split task by their choice). A refetch does not re-arm it.
+  const [chunksFollow, setChunksFollow] = useState(() => isUnsplit(task));
+  const setChunk = (key: 'minChunkMs' | 'maxChunkMs', ms: number) => { setChunksFollow(false); set(key, ms); };
   // Opened before settings loaded (fallback zone): re-read the untouched dates in the real zone.
   useZoneChange(zone, (prev, next) => setForm((f) => reseedDateFields(f, toFormState(task, prev), toFormState(task, next))));
   const { ok, errors } = validateTaskForm(form);
@@ -118,7 +122,7 @@ export function TaskDrawer({ task, zone, onSave, onCancel, saving = false, error
 
         {/* Row: Duration | Hours */}
         <FormField label="Duration" error={errors.durationMs} errorTestId="err-durationMs">
-          <DurationStepper label="duration" size={22} valueMs={form.durationMs} onChange={(ms) => set('durationMs', ms)} />
+          <DurationStepper label="duration" size={22} valueMs={form.durationMs} onChange={(ms) => setForm((f) => withDuration(f, ms, chunksFollow))} />
         </FormField>
         <FormField label="Hours">
           <select data-testid="category-select" className={`${FIELD_CONTROL} appearance-none`} value={form.categoryId ?? ''} onChange={(e) => set('categoryId', e.target.value || null)}>
@@ -142,10 +146,10 @@ export function TaskDrawer({ task, zone, onSave, onCancel, saving = false, error
 
         {/* Row: Min chunk | Max chunk (chunk sizes together) */}
         <FormField label="Min chunk" error={errors.minChunkMs} errorTestId="err-minChunkMs">
-          <DurationStepper label="min" size={22} valueMs={form.minChunkMs} onChange={(ms) => set('minChunkMs', ms)} />
+          <DurationStepper label="min" size={22} valueMs={form.minChunkMs} onChange={(ms) => setChunk('minChunkMs', ms)} />
         </FormField>
         <FormField label="Max chunk" error={errors.maxChunkMs} errorTestId="err-maxChunkMs">
-          <DurationStepper label="max" size={22} valueMs={form.maxChunkMs} onChange={(ms) => set('maxChunkMs', ms)} />
+          <DurationStepper label="max" size={22} valueMs={form.maxChunkMs} onChange={(ms) => setChunk('maxChunkMs', ms)} />
         </FormField>
       </div>
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Task } from '../../api/types';
-import { toFormState, validateTaskForm, toUpdateInput, type TaskFormState } from './taskForm';
+import { toFormState, validateTaskForm, toUpdateInput, isUnsplit, withDuration, type TaskFormState } from './taskForm';
 
 const task = (over: Partial<Task> = {}): Task => ({
   id: 't1', userId: 'u1', title: 'Write spec', priority: 2, sortOrder: 0, durationMs: 5_400_000,
@@ -95,5 +95,35 @@ describe('taskForm in the settings zone', () => {
   it('round-trips an instant unchanged through the edit form in a non-UTC zone', () => {
     const state = toFormState(task(), 'Pacific/Auckland');
     expect(toUpdateInput(state, 'Pacific/Auckland').dueBy).toBe('2026-06-01T17:00:00.000Z');
+  });
+});
+
+describe('unsplit tasks: chunk sizes follow the duration', () => {
+  const H = 3_600_000;
+  const M = 60_000;
+  const unsplit = task({ durationMs: H, minChunkMs: H, maxChunkMs: H });
+
+  it('isUnsplit is true only when min = max = duration', () => {
+    expect(isUnsplit(unsplit)).toBe(true);
+    expect(isUnsplit(task({ durationMs: H, minChunkMs: 30 * M, maxChunkMs: H }))).toBe(false);
+    expect(isUnsplit(task({ durationMs: H, minChunkMs: H, maxChunkMs: 2 * H }))).toBe(false);
+    expect(isUnsplit(task({ durationMs: 90 * M, minChunkMs: H, maxChunkMs: H }))).toBe(false);
+  });
+
+  it('60 → 90 on an unsplit task saves 90 / 90 / 90', () => {
+    const form = withDuration(toFormState(unsplit, 'UTC'), 90 * M, true);
+    expect(validateTaskForm(form).ok).toBe(true);
+    expect(toUpdateInput(form, 'UTC')).toEqual(expect.objectContaining({ durationMs: 90 * M, minChunkMs: 90 * M, maxChunkMs: 90 * M }));
+  });
+
+  it('60 → 30 on an unsplit task saves 30 / 30 / 30', () => {
+    const form = withDuration(toFormState(unsplit, 'UTC'), 30 * M, true);
+    expect(validateTaskForm(form).ok).toBe(true);
+    expect(toUpdateInput(form, 'UTC')).toEqual(expect.objectContaining({ durationMs: 30 * M, minChunkMs: 30 * M, maxChunkMs: 30 * M }));
+  });
+
+  it('without follow (split task, or chunks edited by hand) only the duration changes', () => {
+    const form = withDuration(validState({ durationMs: H, minChunkMs: 45 * M, maxChunkMs: 75 * M }), 90 * M, false);
+    expect(form).toEqual(validState({ durationMs: 90 * M, minChunkMs: 45 * M, maxChunkMs: 75 * M }));
   });
 });

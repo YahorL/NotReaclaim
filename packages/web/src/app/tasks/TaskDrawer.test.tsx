@@ -245,3 +245,56 @@ describe('TaskDrawer in the settings zone', () => {
     }));
   });
 });
+
+describe('TaskDrawer: unsplit task (min = max = duration) keeps its chunks on the duration', () => {
+  const H = 3_600_000;
+  const unsplit = () => task({ durationMs: H, minChunkMs: H, maxChunkMs: H });
+
+  it('60 → 90 via the duration stepper PATCHes 90 / 90 / 90 and the chunk steppers show it', () => {
+    const onSave = vi.fn();
+    renderWithProviders(<TaskDrawer zone="UTC" task={unsplit()} onSave={onSave} onCancel={vi.fn()} />, { api: emptyCategories() });
+    const inc = screen.getByRole('button', { name: 'increase duration' });
+    fireEvent.click(inc);
+    fireEvent.click(inc);
+    expect(screen.getAllByText('1 hr 30 min')).toHaveLength(3); // duration, min, max
+    fireEvent.click(screen.getByTestId('save'));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ durationMs: 5_400_000, minChunkMs: 5_400_000, maxChunkMs: 5_400_000 }));
+  });
+
+  it('60 → 30 via the duration stepper PATCHes 30 / 30 / 30', () => {
+    const onSave = vi.fn();
+    renderWithProviders(<TaskDrawer zone="UTC" task={unsplit()} onSave={onSave} onCancel={vi.fn()} />, { api: emptyCategories() });
+    const dec = screen.getByRole('button', { name: 'decrease duration' });
+    fireEvent.click(dec);
+    fireEvent.click(dec);
+    fireEvent.click(screen.getByTestId('save'));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ durationMs: 1_800_000, minChunkMs: 1_800_000, maxChunkMs: 1_800_000 }));
+  });
+
+  it('once the user edits a chunk stepper, their chunk values are kept', () => {
+    const onSave = vi.fn();
+    renderWithProviders(<TaskDrawer zone="UTC" task={unsplit()} onSave={onSave} onCancel={vi.fn()} />, { api: emptyCategories() });
+    fireEvent.click(screen.getByRole('button', { name: 'decrease min' }));   // min 45m: now a split task
+    fireEvent.click(screen.getByRole('button', { name: 'increase duration' })); // 75m
+    fireEvent.click(screen.getByTestId('save'));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ durationMs: 4_500_000, minChunkMs: 2_700_000, maxChunkMs: H }));
+  });
+
+  it('a split task (as loaded) changes only its duration, as before', () => {
+    const onSave = vi.fn();
+    renderWithProviders(<TaskDrawer zone="UTC" task={task()} onSave={onSave} onCancel={vi.fn()} />, { api: emptyCategories() });
+    fireEvent.click(screen.getByRole('button', { name: 'increase duration' }));
+    fireEvent.click(screen.getByTestId('save'));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ durationMs: 6_300_000, minChunkMs: 1_800_000, maxChunkMs: 7_200_000 }));
+  });
+
+  it('a refetched task prop mid-edit does not clobber the edit or re-arm the follow rule', () => {
+    const onSave = vi.fn();
+    const { rerender } = renderWithProviders(<TaskDrawer zone="UTC" task={unsplit()} onSave={onSave} onCancel={vi.fn()} />, { api: emptyCategories() });
+    fireEvent.click(screen.getByRole('button', { name: 'increase max' }));      // max 75m: user chose split
+    rerender(<TaskDrawer zone="UTC" task={unsplit()} onSave={onSave} onCancel={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'increase duration' })); // 75m
+    fireEvent.click(screen.getByTestId('save'));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ durationMs: 4_500_000, minChunkMs: H, maxChunkMs: 4_500_000 }));
+  });
+});
