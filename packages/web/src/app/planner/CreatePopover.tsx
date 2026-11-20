@@ -38,12 +38,17 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
   const startMs = dayStartMs + startMin * MS_PER_MIN;
   // Same default as the New Task modal (+7 days, 23:59, settings zone) — but never before the
   // day of the slot the task is being pinned to.
-  const seedDue = (z: string) => defaultDueLocal(now(), z, startMs);
-  const [dueLocal, setDueLocal] = useState(() => seedDue(zone));
+  const [dueLocal, setDueLocal] = useState(() => defaultDueLocal(now(), zone, startMs));
+  // The default actually seeded, kept rather than rebuilt: the clock may have crossed midnight and
+  // the slot (`startMs`) moves with the zone, so a rebuilt "previous seed" would no longer match.
+  const seededDueRef = useRef<string | null>(null);
+  if (seededDueRef.current === null) seededDueRef.current = dueLocal;
   // Opened before settings loaded (fallback zone): re-seed the default unless the user edited it.
-  useZoneChange(zone, (prev, next) => {
-    const prevSeed = seedDue(prev);
-    setDueLocal((cur) => (cur === prevSeed ? seedDue(next) : cur));
+  useZoneChange(zone, (_prev, next) => {
+    const prevSeed = seededDueRef.current;
+    const nextSeed = defaultDueLocal(now(), next, startMs);
+    seededDueRef.current = nextSeed;
+    setDueLocal((cur) => (cur === prevSeed ? nextSeed : cur));
   });
   const [afterLocal, setAfterLocal] = useState('');
   const [categoryId, setCategoryId] = useState<string | null>(null);

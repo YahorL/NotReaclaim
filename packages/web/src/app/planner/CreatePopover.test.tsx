@@ -456,6 +456,17 @@ describe('CreatePopover due-default in the settings zone', () => {
     expect(screen.getByTestId('create-due')).toHaveValue('2026-01-15T23:59');
   });
 
+  it('re-seeds the untouched default due although the clock crossed midnight since it was seeded', () => {
+    let clock = Date.parse('2026-01-05T23:59:00.000Z'); // 23:59 in the (UTC) fallback zone
+    const props = { dayStartMs: DAY, startMin: 540, topPct: 18, onClose: vi.fn(), now: () => clock };
+    const { rerender } = renderWithProviders(<CreatePopover {...props} zone="UTC" />, { api: fakeApiClient() });
+    fireEvent.click(screen.getByTestId('mode-task'));
+    expect(screen.getByTestId('create-due')).toHaveValue('2026-01-12T23:59');
+    clock = Date.parse('2026-01-06T00:01:00.000Z'); // the zone lands after midnight — Jan 6 09:01 in Tokyo
+    rerender(<CreatePopover {...props} zone="Asia/Tokyo" />);
+    expect(screen.getByTestId('create-due')).toHaveValue('2026-01-13T23:59');
+  });
+
   it('re-seeds an untouched default due when the zone resolves after opening; keeps an edited one', () => {
     const now = () => Date.parse('2026-01-05T02:00:00.000Z'); // Jan 5 in UTC, still Jan 4 in New York
     const col = Date.parse('2026-01-04T05:00:00.000Z'); // New York midnight, Sun Jan 4

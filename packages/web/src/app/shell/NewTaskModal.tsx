@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { ApiError } from '../../api/client';
 import { useCreateTaskMutation, useSettingsQuery, useCategoriesQuery, useCreateCategoryMutation } from '../../api/queries';
 import { Icons } from './icons';
 import {
-  type NewTaskFormState, defaultNewTaskForm, validateNewTaskForm, toCreateTaskInput, reseedDateFields,
+  type DateFields, type NewTaskFormState, defaultNewTaskForm, validateNewTaskForm, toCreateTaskInput, reseedDateFields,
   chunkSeed, reseedChunkFields,
 } from '../tasks/taskForm';
 import { useValueChange } from '../components/useValueChange';
@@ -29,10 +29,17 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
   const [form, set, setForm] = useFormState<NewTaskFormState>(() => defaultNewTaskForm(now(), zone, settingsQ.data));
   // Opened before settings loaded (built-in chunk fallback): move the untouched chunk sizes to the user's defaults.
   useValueChange(chunks, (prev, next) => setForm((f) => reseedChunkFields(f, prev, next)));
+  // The date defaults actually seeded, kept rather than rebuilt from the clock: by the time the zone
+  // lands "today" may have moved (opened at 23:59), and a rebuilt seed would no longer match.
+  const dateSeedRef = useRef<DateFields | null>(null);
+  if (dateSeedRef.current === null) dateSeedRef.current = { dueByLocal: form.dueByLocal, notBeforeLocal: form.notBeforeLocal };
   // Opened before settings loaded (fallback zone): move the untouched date defaults to the real zone.
-  useZoneChange(zone, (prev, next) => {
-    const at = now();
-    setForm((f) => reseedDateFields(f, defaultNewTaskForm(at, prev), defaultNewTaskForm(at, next)));
+  useZoneChange(zone, (_prev, next) => {
+    const prevSeed = dateSeedRef.current!;
+    const fresh = defaultNewTaskForm(now(), next);
+    const nextSeed = { dueByLocal: fresh.dueByLocal, notBeforeLocal: fresh.notBeforeLocal };
+    dateSeedRef.current = nextSeed;
+    setForm((f) => reseedDateFields(f, prevSeed, nextSeed));
   });
 
   const categoriesQ = useCategoriesQuery();

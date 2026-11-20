@@ -130,7 +130,7 @@ export function withDuration<S extends TaskFormState>(form: S, durationMs: numbe
     : { ...form, durationMs };
 }
 
-type DateFields = Pick<TaskFormState, 'dueByLocal' | 'notBeforeLocal'>;
+export type DateFields = Pick<TaskFormState, 'dueByLocal' | 'notBeforeLocal'>;
 
 /** What the edit form's date fields were seeded with: the wall-clock shown, and the instant behind it. */
 export interface DateSeed extends DateFields {

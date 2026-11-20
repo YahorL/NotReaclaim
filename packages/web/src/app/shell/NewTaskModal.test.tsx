@@ -191,6 +191,29 @@ describe('NewTaskModal in the settings zone', () => {
   });
 });
 
+describe('NewTaskModal zone re-seed when the clock crossed midnight', () => {
+  const TOKYO_SETTINGS = { id: 's', userId: 'u', timezone: 'Asia/Tokyo', workingHours: [], horizonDays: 14, defaultMinChunkMs: 1800000, defaultMaxChunkMs: 7200000, createdAt: '', updatedAt: '' };
+
+  it('re-seeds the untouched defaults although "today" in the fallback zone moved since they were seeded', async () => {
+    let clock = Date.parse('2026-01-05T23:59:00.000Z'); // opened at 23:59 in the (UTC) fallback zone
+    let resolveSettings!: (s: unknown) => void;
+    const getSettings = vi.fn(() => new Promise((r) => { resolveSettings = r; }));
+    const createTask = vi.fn(async () => task());
+    renderWithProviders(<NewTaskModal onClose={() => {}} now={() => clock} />, { api: fakeApiClient({ getSettings, createTask } as never) });
+    expect(screen.getByTestId('due-date')).toHaveValue('2026-01-12T23:59');
+    expect(screen.getByTestId('schedule-after')).toHaveValue('2026-01-05T08:00');
+    clock = Date.parse('2026-01-06T00:01:00.000Z'); // settings arrive after midnight — Jan 6 09:01 in Tokyo
+    resolveSettings(TOKYO_SETTINGS);
+    await waitFor(() => expect(screen.getByTestId('due-date')).toHaveValue('2026-01-13T23:59'));
+    expect(screen.getByTestId('schedule-after')).toHaveValue('2026-01-06T08:00');
+    fireEvent.change(screen.getByPlaceholderText(/task name/i), { target: { value: 'Write' } });
+    fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
+    await waitFor(() => expect(createTask).toHaveBeenCalledWith(expect.objectContaining({
+      dueBy: '2026-01-13T14:59:00.000Z', notBefore: '2026-01-05T23:00:00.000Z',
+    })));
+  });
+});
+
 describe('NewTaskModal chunk defaults when settings land late', () => {
   // Non-default chunk sizes so the 30/120 built-in fallback is distinguishable.
   const SETTINGS = { id: 's', userId: 'u', timezone: 'UTC', workingHours: [], horizonDays: 14, defaultMinChunkMs: 45 * 60_000, defaultMaxChunkMs: 90 * 60_000, createdAt: '', updatedAt: '' };
