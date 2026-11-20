@@ -43,7 +43,7 @@ describe('applyDesiredSchedule (local, no mirror)', () => {
   it('creates a new block with null google fields and engineKey set', async () => {
     const repo = fakeRepo([]);
     const res = await applyDesiredSchedule(repo, 'u1', desired([eBlock()]), { now: NOW, horizonEnd: HORIZON });
-    expect(res).toEqual({ created: 1, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0 });
+    expect(res).toEqual({ created: 1, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(repo.create).toHaveBeenCalledWith('u1', expect.objectContaining({
       engineKey: 'task:t1:0', googleEventId: null, googleCalendarId: null, title: 'A',
     }));
@@ -53,7 +53,7 @@ describe('applyDesiredSchedule (local, no mirror)', () => {
     const repo = fakeRepo([dbBlock()]);
     const moved = eBlock({ start: Date.parse('2026-01-05T11:00:00.000Z'), end: Date.parse('2026-01-05T12:00:00.000Z') });
     const res = await applyDesiredSchedule(repo, 'u1', desired([moved]), { now: NOW, horizonEnd: HORIZON });
-    expect(res).toEqual({ created: 0, updated: 1, deleted: 0, pinnedSynced: 0, pinnedFailed: 0 });
+    expect(res).toEqual({ created: 0, updated: 1, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
   });
 
   it('updates a keyed block whose title changed even when its times are identical', async () => {
@@ -61,7 +61,7 @@ describe('applyDesiredSchedule (local, no mirror)', () => {
     const repo = fakeRepo([dbBlock({ title: 'Old name' })]);
     const renamed = eBlock({ title: 'New name' });
     const res = await applyDesiredSchedule(repo, 'u1', desired([renamed]), { now: NOW, horizonEnd: HORIZON });
-    expect(res).toEqual({ created: 0, updated: 1, deleted: 0, pinnedSynced: 0, pinnedFailed: 0 });
+    expect(res).toEqual({ created: 0, updated: 1, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(repo.update).toHaveBeenCalledWith('u1', 'b1', expect.objectContaining({ title: 'New name' }));
     expect(repo.rows()[0]!.title).toBe('New name');
   });
@@ -73,7 +73,7 @@ describe('applyDesiredSchedule (local, no mirror)', () => {
       start: Date.parse('2026-01-05T11:00:00.000Z'), end: Date.parse('2026-01-05T12:00:00.000Z'),
     });
     const res = await applyDesiredSchedule(repo, 'u1', desired([moved]), { now: NOW, horizonEnd: HORIZON });
-    expect(res).toEqual({ created: 0, updated: 1, deleted: 0, pinnedSynced: 0, pinnedFailed: 0 });
+    expect(res).toEqual({ created: 0, updated: 1, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(repo.update).toHaveBeenCalledTimes(1);
     expect(repo.update).toHaveBeenCalledWith('u1', 'b1', {
       startsAt: new Date('2026-01-05T11:00:00.000Z'),
@@ -85,7 +85,7 @@ describe('applyDesiredSchedule (local, no mirror)', () => {
   it('is a complete no-op when title and times are unchanged', async () => {
     const repo = fakeRepo([dbBlock()]);
     const res = await applyDesiredSchedule(repo, 'u1', desired([eBlock()]), { now: NOW, horizonEnd: HORIZON });
-    expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0 });
+    expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(repo.update).not.toHaveBeenCalled();
     expect(repo.create).not.toHaveBeenCalled();
     expect(repo.delete).not.toHaveBeenCalled();
@@ -94,7 +94,7 @@ describe('applyDesiredSchedule (local, no mirror)', () => {
   it('deletes a keyed block no longer desired, and leaves pinned blocks untouched', async () => {
     const repo = fakeRepo([dbBlock(), dbBlock({ id: 'b2', engineKey: 'task:t9:0' }), dbBlock({ id: 'p1', pinned: true, engineKey: null })]);
     const res = await applyDesiredSchedule(repo, 'u1', desired([eBlock()]), { now: NOW, horizonEnd: HORIZON });
-    expect(res).toEqual({ created: 0, updated: 0, deleted: 1, pinnedSynced: 0, pinnedFailed: 0 });
+    expect(res).toEqual({ created: 0, updated: 0, deleted: 1, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(repo.delete).toHaveBeenCalledWith('u1', 'b2');
     expect(repo.delete).not.toHaveBeenCalledWith('u1', 'p1');
   });
@@ -136,7 +136,7 @@ describe('applyDesiredSchedule (with mirror)', () => {
     };
     const renamed = eBlock({ title: 'New name' });
     const res = await applyDesiredSchedule(repo, 'u1', desired([renamed]), { now: NOW, horizonEnd: HORIZON, mirror });
-    expect(res).toEqual({ created: 0, updated: 1, deleted: 0, pinnedSynced: 0, pinnedFailed: 0 });
+    expect(res).toEqual({ created: 0, updated: 1, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(mirror.update).toHaveBeenCalledTimes(1);
     expect(mirror.update).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'New name' }),
@@ -172,13 +172,13 @@ describe('applyDesiredSchedule (pinned blocks are mirrored too)', () => {
     expect(mirror.create).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1', sourceType: 'task', sourceId: 't1', title: 'A' }));
     expect(repo.create).not.toHaveBeenCalled(); // the row exists: update it, never re-create it
     expect(repo.update).toHaveBeenCalledWith('u1', 'p1', { googleEventId: 'g1', googleCalendarId: 'cal1' });
-    expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 1, pinnedFailed: 0 });
+    expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 1, pinnedFailed: 0, attached: 0, attachFailed: 0 });
   });
 
   it('does not mirror a pinned block without a mirror (local planning)', async () => {
     const repo = fakeRepo([pinned()]);
     const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON });
-    expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0 });
+    expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(repo.update).not.toHaveBeenCalled();
   });
 
@@ -206,7 +206,7 @@ describe('applyDesiredSchedule (pinned blocks are mirrored too)', () => {
       expect.objectContaining({ id: 'p1' }),
     );
     expect(mirror.create).not.toHaveBeenCalled();
-    expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 1, pinnedFailed: 0 });
+    expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 1, pinnedFailed: 0, attached: 0, attachFailed: 0 });
   });
 
   it('pushes a pinned block whose title diverges from the mirror snapshot', async () => {
@@ -227,7 +227,7 @@ describe('applyDesiredSchedule (pinned blocks are mirrored too)', () => {
     });
     expect(mirror.create).not.toHaveBeenCalled();
     expect(mirror.update).not.toHaveBeenCalled();
-    expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0 });
+    expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
   });
 
   it('does not guess when the cycle observed nothing for the pinned row', async () => {
@@ -289,7 +289,7 @@ describe('applyDesiredSchedule (pinned blocks are mirrored too)', () => {
     expect(create).toHaveBeenCalledTimes(2);
     expect(repo.update).toHaveBeenCalledWith('u1', 'p2', { googleEventId: 'g2', googleCalendarId: 'cal1' });
     expect(repo.update).not.toHaveBeenCalledWith('u1', 'p1', expect.anything());
-    expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 1, pinnedFailed: 1 });
+    expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 1, pinnedFailed: 1, attached: 0, attachFailed: 0 });
   });
 
   it('skips a pinned row that belongs to neither a task nor a habit', async () => {
@@ -298,6 +298,232 @@ describe('applyDesiredSchedule (pinned blocks are mirrored too)', () => {
     const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON, mirror });
     expect(mirror.create).not.toHaveBeenCalled();
     expect(res.pinnedSynced).toBe(0);
+  });
+});
+
+/**
+ * Engine rows with no external event yet (planned locally before the calendar was linked).
+ * The first reconcile after linking can make dozens of sequential inserts, so one rejected
+ * insert must not abort the apply, and an insert whose row vanished mid-apply (DELETE
+ * /schedule/:id runs outside the replan queue) must not leave an orphan event behind.
+ */
+describe('applyDesiredSchedule (unmirrored engine rows)', () => {
+  /** Mimics @notreclaim/db's NotFoundError (core recognises it by name, see apply.ts). */
+  class NotFoundError extends Error {
+    constructor(message: string) { super(message); this.name = 'NotFoundError'; }
+  }
+
+  const at = (hh: number) => ({
+    startsAt: new Date(`2026-01-05T${String(hh).padStart(2, '0')}:00:00.000Z`),
+    endsAt: new Date(`2026-01-05T${String(hh).padStart(2, '0')}:30:00.000Z`),
+  });
+  const ms = (hh: number) => ({ start: at(hh).startsAt.getTime(), end: at(hh).endsAt.getTime() });
+  const row = (t: string, hh: number, over: Partial<DbScheduledBlock> = {}) =>
+    dbBlock({ id: `b-${t}`, taskId: t, engineKey: `task:${t}:0`, title: t, ...at(hh), ...over });
+  const want = (t: string, hh: number) => eBlock({ id: `task:${t}:0`, sourceId: t, title: t, ...ms(hh) });
+
+  /**
+   * A mirror that behaves like reconcile's: `update` of a never-mirrored row inserts. Inserts
+   * for the block ids in `failing` throw (Google 403/429/5xx); every insert ever attempted is
+   * recorded so a test can prove nothing was inserted twice.
+   */
+  function insertingMirror(opts: { failing?: Set<string>; deleteFails?: boolean } = {}) {
+    let n = 0;
+    const inserted: string[] = [];
+    const create = vi.fn(async (block: { id: string }) => {
+      if (opts.failing?.has(block.id)) throw new Error('google 429');
+      inserted.push(block.id);
+      return { googleEventId: `g-${++n}`, googleCalendarId: 'cal1' };
+    });
+    const mirror = {
+      create,
+      update: vi.fn(async (block: { id: string }, existing: DbScheduledBlock) =>
+        existing.googleEventId == null ? create(block) : undefined),
+      delete: vi.fn(async (_existing: DbScheduledBlock) => {
+        if (opts.deleteFails) throw new Error('google 503');
+      }),
+    };
+    return { mirror: mirror as unknown as ScheduleMirror & typeof mirror, inserted };
+  }
+
+  /** A repo whose `update` of `goneId` finds the row deleted by a concurrent writer. */
+  function vanishingRepo(seed: DbScheduledBlock[], goneId: string) {
+    const repo = fakeRepo(seed);
+    const real = repo.update.getMockImplementation()!;
+    repo.update.mockImplementation(async (u, id, data) => {
+      if (id === goneId) {
+        await repo.delete(u, id);
+        throw new NotFoundError(`ScheduledBlock ${id} not found for user`);
+      }
+      return real(u, id, data);
+    });
+    return repo;
+  }
+
+  it('B1 unchanged: one failing insert is isolated; the rest of the apply still runs and the row is retried once', async () => {
+    const repo = fakeRepo([
+      row('t1', 9), row('t2', 10), row('t3', 11),
+      row('t9', 15), // stale: no longer desired -> swept
+      dbBlock({ id: 'p1', pinned: true, engineKey: null, ...at(16) }),
+    ]);
+    const plan = desired([want('t1', 9), want('t2', 10), want('t3', 11), want('t4', 12)]);
+    const first = insertingMirror({ failing: new Set(['task:t2:0']) });
+
+    const res = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, mirror: first.mirror });
+
+    expect(res).toEqual({
+      created: 1, updated: 0, deleted: 1, pinnedSynced: 1, pinnedFailed: 0, attached: 2, attachFailed: 1,
+    });
+    const byKey = (k: string) => repo.rows().find((r) => r.engineKey === k)!;
+    expect(byKey('task:t1:0').googleEventId).not.toBeNull();
+    expect(byKey('task:t2:0').googleEventId).toBeNull(); // left unmirrored, to retry
+    expect(byKey('task:t3:0').googleEventId).not.toBeNull(); // later rows still mirrored
+    expect(byKey('task:t4:0').googleEventId).not.toBeNull(); // later desired blocks still created
+    expect(repo.rows().some((r) => r.id === 'b-t9')).toBe(false); // sweep ran
+    expect(repo.rows().find((r) => r.id === 'p1')!.googleEventId).not.toBeNull(); // pinned pass ran
+
+    const second = insertingMirror();
+    const again = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, mirror: second.mirror });
+
+    expect(again).toEqual({
+      created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 1, attachFailed: 0,
+    });
+    expect(second.inserted).toEqual(['task:t2:0']);
+    const everInserted = [...first.inserted, ...second.inserted];
+    expect(new Set(everInserted).size).toBe(everInserted.length); // nothing inserted twice
+    expect(repo.rows().every((r) => r.googleEventId != null)).toBe(true);
+  });
+
+  it('B1 changed: a failing insert still moves the row in the DB; it is mirrored next cycle as an unchanged row', async () => {
+    const repo = fakeRepo([
+      row('t1', 9), row('t2', 14), row('t3', 11), // t2 sits off its desired 10:00 slot
+      row('t9', 15),
+      dbBlock({ id: 'p1', pinned: true, engineKey: null, ...at(16) }),
+    ]);
+    const plan = desired([want('t1', 9), want('t2', 10), want('t3', 11), want('t4', 12)]);
+    const first = insertingMirror({ failing: new Set(['task:t2:0']) });
+
+    const res = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, mirror: first.mirror });
+
+    expect(res).toEqual({
+      created: 1, updated: 1, deleted: 1, pinnedSynced: 1, pinnedFailed: 0, attached: 2, attachFailed: 1,
+    });
+    const t2 = repo.rows().find((r) => r.engineKey === 'task:t2:0')!;
+    expect(t2.startsAt).toEqual(at(10).startsAt); // the plan itself still applied
+    expect(t2.googleEventId).toBeNull();
+    expect(repo.rows().find((r) => r.engineKey === 'task:t3:0')!.googleEventId).not.toBeNull();
+    expect(repo.rows().find((r) => r.engineKey === 'task:t4:0')!.googleEventId).not.toBeNull();
+    expect(repo.rows().some((r) => r.id === 'b-t9')).toBe(false);
+    expect(repo.rows().find((r) => r.id === 'p1')!.googleEventId).not.toBeNull();
+
+    const second = insertingMirror();
+    const again = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, mirror: second.mirror });
+
+    expect(again).toEqual({
+      created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 1, attachFailed: 0,
+    });
+    expect(second.inserted).toEqual(['task:t2:0']);
+    expect(repo.rows().every((r) => r.googleEventId != null)).toBe(true);
+  });
+
+  it('B1 changed: a successful insert stores the ids with the move and counts as updated AND attached', async () => {
+    const repo = fakeRepo([row('t1', 14)]);
+    const { mirror } = insertingMirror();
+    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9)]), { now: NOW, horizonEnd: HORIZON, mirror });
+    expect(res).toEqual({ created: 0, updated: 1, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 1, attachFailed: 0 });
+    expect(repo.update).toHaveBeenCalledTimes(1);
+    expect(repo.rows()[0]).toMatchObject({ googleEventId: 'g-1', googleCalendarId: 'cal1', startsAt: at(9).startsAt });
+  });
+
+  it('B2 unchanged: a row deleted after its event was inserted gets the event deleted; the apply carries on', async () => {
+    const repo = vanishingRepo([row('t1', 9), row('t2', 10), row('t3', 11)], 'b-t2');
+    const plan = desired([want('t1', 9), want('t2', 10), want('t3', 11), want('t4', 12)]);
+    const { mirror, inserted } = insertingMirror();
+
+    const res = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, mirror });
+
+    expect(inserted).toContain('task:t2:0');
+    expect(mirror.delete).toHaveBeenCalledTimes(1);
+    expect(mirror.delete).toHaveBeenCalledWith(expect.objectContaining({ id: 'b-t2', googleEventId: 'g-2', googleCalendarId: 'cal1' }));
+    // Gone is neither an attach nor a failure of the user's plan.
+    expect(res).toEqual({ created: 1, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 2, attachFailed: 0 });
+    expect(repo.rows().map((r) => r.engineKey).sort()).toEqual(['task:t1:0', 'task:t3:0', 'task:t4:0']);
+    expect(repo.rows().every((r) => r.googleEventId != null)).toBe(true);
+  });
+
+  it('B2 unchanged: a failing compensating delete is counted, never thrown', async () => {
+    const repo = vanishingRepo([row('t1', 9), row('t2', 10), row('t3', 11)], 'b-t2');
+    const plan = desired([want('t1', 9), want('t2', 10), want('t3', 11)]);
+    const { mirror } = insertingMirror({ deleteFails: true });
+
+    const res = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, mirror });
+
+    expect(mirror.delete).toHaveBeenCalledWith(expect.objectContaining({ id: 'b-t2', googleEventId: 'g-2' }));
+    expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 2, attachFailed: 1 });
+    expect(repo.rows().find((r) => r.engineKey === 'task:t3:0')!.googleEventId).not.toBeNull();
+  });
+
+  it('B2 changed: a row deleted after its event was inserted gets the event deleted and is not counted as updated', async () => {
+    const repo = vanishingRepo([row('t1', 9), row('t2', 14), row('t3', 11)], 'b-t2');
+    const plan = desired([want('t1', 9), want('t2', 10), want('t3', 11)]);
+    const { mirror } = insertingMirror();
+
+    const res = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, mirror });
+
+    expect(mirror.delete).toHaveBeenCalledWith(expect.objectContaining({ id: 'b-t2', googleEventId: 'g-2' }));
+    expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 2, attachFailed: 0 });
+  });
+
+  it('B2 changed: a failing compensating delete is counted, never thrown', async () => {
+    const repo = vanishingRepo([row('t1', 9), row('t2', 14), row('t3', 11)], 'b-t2');
+    const plan = desired([want('t1', 9), want('t2', 10), want('t3', 11)]);
+    const { mirror } = insertingMirror({ deleteFails: true });
+
+    const res = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, mirror });
+
+    expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 2, attachFailed: 1 });
+  });
+
+  it('B2 pinned: a pinned row deleted after its event was inserted gets the event deleted (neither synced nor failed)', async () => {
+    const repo = vanishingRepo([
+      dbBlock({ id: 'p1', pinned: true, engineKey: null, ...at(9) }),
+      dbBlock({ id: 'p2', pinned: true, engineKey: null, ...at(10) }),
+    ], 'p1');
+    const { mirror } = insertingMirror();
+
+    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON, mirror });
+
+    expect(mirror.delete).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1', googleEventId: 'g-1' }));
+    expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 1, pinnedFailed: 0, attached: 0, attachFailed: 0 });
+    expect(repo.rows()).toHaveLength(1);
+    expect(repo.rows()[0]).toMatchObject({ id: 'p2', googleEventId: 'g-2' });
+  });
+
+  it('B2 pinned: a failing compensating delete counts as a pinned failure', async () => {
+    const repo = vanishingRepo([dbBlock({ id: 'p1', pinned: true, engineKey: null, ...at(9) })], 'p1');
+    const { mirror } = insertingMirror({ deleteFails: true });
+
+    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON, mirror });
+
+    expect(mirror.delete).toHaveBeenCalledTimes(1);
+    expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 1, attached: 0, attachFailed: 0 });
+  });
+
+  it('a non-NotFound DB failure after an insert is not mistaken for a vanished row', async () => {
+    // Only the external insert is isolated: a DB failure propagates like every other DB
+    // write in apply, and the row may still exist, so its event must never be deleted blind.
+    const repo = fakeRepo([row('t1', 9), row('t2', 10)]);
+    const real = repo.update.getMockImplementation()!;
+    repo.update.mockImplementation(async (u, id, data) => {
+      if (id === 'b-t1') throw new Error('connection reset');
+      return real(u, id, data);
+    });
+    const { mirror } = insertingMirror();
+
+    await expect(applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10)]), {
+      now: NOW, horizonEnd: HORIZON, mirror,
+    })).rejects.toThrow('connection reset');
+    expect(mirror.delete).not.toHaveBeenCalled();
   });
 });
 
@@ -349,7 +575,7 @@ describe('applyDesiredSchedule across time (stale past blocks)', () => {
     const repo = fakeRepo([pinnedHolder]);
     const reissued = eBlock({ start: Date.parse('2026-01-05T11:00:00.000Z'), end: Date.parse('2026-01-05T12:00:00.000Z') });
     const res = await applyDesiredSchedule(repo, 'u1', desired([reissued]), { now: NOW, horizonEnd: HORIZON });
-    expect(res).toEqual({ created: 1, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0 });
+    expect(res).toEqual({ created: 1, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(repo.update).toHaveBeenCalledWith('u1', 'p1', { engineKey: null });
     expect(repo.create).toHaveBeenCalledWith('u1', expect.objectContaining({ engineKey: 'task:t1:0' }));
     expect(repo.delete).not.toHaveBeenCalled(); // the pinned row itself is untouched apart from the key release
@@ -362,7 +588,7 @@ describe('applyDesiredSchedule across time (stale past blocks)', () => {
     const repo = fakeRepo([dbBlock()]); // task:t1:0 placed 2026-01-05, entirely in the past
     const reissued = eBlock({ start: Date.parse('2026-01-12T09:00:00.000Z'), end: Date.parse('2026-01-12T10:00:00.000Z') });
     const res = await applyDesiredSchedule(repo, 'u1', desired([reissued]), { now: LATER, horizonEnd: LATER_HORIZON });
-    expect(res).toEqual({ created: 0, updated: 1, deleted: 0, pinnedSynced: 0, pinnedFailed: 0 });
+    expect(res).toEqual({ created: 0, updated: 1, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(repo.create).not.toHaveBeenCalled();
     expect(repo.update).toHaveBeenCalledWith('u1', 'b1', {
       startsAt: new Date('2026-01-12T09:00:00.000Z'), endsAt: new Date('2026-01-12T10:00:00.000Z'), title: 'A',
@@ -374,28 +600,28 @@ describe('applyDesiredSchedule across time (stale past blocks)', () => {
   it('keeps a habit row that has already begun when its key is no longer desired', async () => {
     const repo = fakeRepo([dbBlock({ taskId: null, habitId: 'h1', engineKey: 'habit:h1:day' })]);
     const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: MID_BLOCK, horizonEnd: HORIZON });
-    expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0 });
+    expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(repo.delete).not.toHaveBeenCalled();
   });
 
   it('still sweeps a TASK row that has begun but is no longer desired', async () => {
     const repo = fakeRepo([dbBlock()]); // task:t1:0, 09:00–10:00, in progress at 09:30
     const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: MID_BLOCK, horizonEnd: HORIZON });
-    expect(res).toEqual({ created: 0, updated: 0, deleted: 1, pinnedSynced: 0, pinnedFailed: 0 });
+    expect(res).toEqual({ created: 0, updated: 0, deleted: 1, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(repo.delete).toHaveBeenCalledWith('u1', 'b1');
   });
 
   it('still sweeps a habit row that has NOT begun yet', async () => {
     const repo = fakeRepo([dbBlock({ taskId: null, habitId: 'h1', engineKey: 'habit:h1:day' })]);
     const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON });
-    expect(res).toEqual({ created: 0, updated: 0, deleted: 1, pinnedSynced: 0, pinnedFailed: 0 });
+    expect(res).toEqual({ created: 0, updated: 0, deleted: 1, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(repo.delete).toHaveBeenCalledWith('u1', 'b1');
   });
 
   it('preserves past blocks whose keys are no longer desired (history kept)', async () => {
     const repo = fakeRepo([dbBlock()]); // key task:t1:0 not desired anymore
     const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: LATER, horizonEnd: LATER_HORIZON });
-    expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0 });
+    expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(repo.delete).not.toHaveBeenCalled();
   });
 });
