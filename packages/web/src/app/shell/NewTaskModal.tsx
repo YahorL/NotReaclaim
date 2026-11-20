@@ -12,6 +12,7 @@ import { FieldBox } from '../components/FieldBox';
 import { DurationStepper } from '../components/DurationStepper';
 import { PriorityPicker } from '../components/PriorityPicker';
 import { PrimaryButton } from '../components/Buttons';
+import { FIELD_ERROR } from '../components/formStyles';
 import { useFormState } from '../components/useFormState';
 
 const FALLBACK_WORKING_HOURS = [{ weekday: 1, startMinute: 540, endMinute: 1020 }];
@@ -47,7 +48,7 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
     }
   }, [categories, form.categoryId]);
 
-  const { ok } = validateNewTaskForm(form);
+  const { ok, errors } = validateNewTaskForm(form, zone);
   const error = createM.error instanceof ApiError ? createM.error : null;
 
   const submit = () => {
@@ -142,6 +143,7 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
               onChange={(e) => set('notBeforeLocal', e.target.value)}
               className="w-full min-w-0 text-[15px] font-bold text-ink outline-none"
             />
+            {errors.notBeforeLocal && <p data-testid="err-notBeforeLocal" className={FIELD_ERROR}>{errors.notBeforeLocal}</p>}
           </FieldBox>
           <FieldBox label="Due date">
             <input
@@ -152,6 +154,7 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
               className="w-full min-w-0 text-[15px] font-bold text-ink outline-none"
             />
             <p className="mt-1 text-[11px] text-inkSoft">Leave empty for no deadline</p>
+            {errors.dueByLocal && <p data-testid="err-dueByLocal" className={FIELD_ERROR}>{errors.dueByLocal}</p>}
           </FieldBox>
         </div>
 

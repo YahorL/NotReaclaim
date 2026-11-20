@@ -246,6 +246,19 @@ describe('TaskDrawer in the settings zone', () => {
   });
 });
 
+describe('TaskDrawer: a date that does not convert in the zone', () => {
+  it('shows a Schedule-after error and blocks Save instead of saving "no value"', () => {
+    const onSave = vi.fn();
+    // A zone this runtime's Intl does not know: no wall-clock converts in it.
+    renderWithProviders(<TaskDrawer task={task({ dueBy: null })} zone="Mars/Olympus_Mons" onSave={onSave} onCancel={vi.fn()} />, { api: emptyCategories() });
+    fireEvent.change(screen.getByTestId('schedule-after'), { target: { value: '2026-06-01T08:00' } });
+    expect(screen.getByTestId('err-notBeforeLocal')).toBeInTheDocument();
+    expect(screen.getByTestId('save')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('save'));
+    expect(onSave).not.toHaveBeenCalled();
+  });
+});
+
 describe('TaskDrawer: unsplit task (min = max = duration) keeps its chunks on the duration', () => {
   const H = 3_600_000;
   const unsplit = () => task({ durationMs: H, minChunkMs: H, maxChunkMs: H });

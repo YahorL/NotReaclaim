@@ -2,10 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../../api/client';
 import { useCreateTaskMutation, useCreateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useCategoriesQuery } from '../../api/queries';
 import { DurationStepper } from '../components/DurationStepper';
-import { zonedInputToIso } from '../lib/datetimeLocal';
 import { WINDOW_END_MIN, SLOT_MIN, formatHm } from './weekModel';
 import { MS_PER_MIN, toIso } from '../lib/time';
-import { defaultDueLocal } from '../tasks/taskForm';
+import { dateFieldToIso, defaultDueLocal } from '../tasks/taskForm';
 import { useZoneChange } from '../settings/useTimezone';
 import { isActiveTask } from '../priorities/priorityBucket';
 
@@ -71,9 +70,13 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
   const endMs = startMs + durationMs;
   const pending = createTaskM.isPending || createEventM.isPending || createBlockM.isPending;
   const hasTitle = titleOptional || existingChosen || title.trim() !== '';
-  const dueIso = dueLocal === '' ? null : zonedInputToIso(dueLocal, zone);
-  const hasDue = !showNewTaskFields || dueIso !== null;
-  const canSubmit = !pending && hasTitle && hasDue;
+  // The popover's due date is required (a pinned new task needs one), so empty is not "no value"
+  // here. Schedule after is optional: empty → none, but a typed value that does not convert in the
+  // zone blocks Create rather than silently creating the task without it.
+  const dueIso = dateFieldToIso(dueLocal, zone);
+  const afterIso = dateFieldToIso(afterLocal, zone);
+  const datesOk = !showNewTaskFields || (typeof dueIso === 'string' && afterIso !== undefined);
+  const canSubmit = !pending && hasTitle && datesOk;
   const apiError = [createTaskM.error, createEventM.error, createBlockM.error].find((e) => e instanceof ApiError) as ApiError | undefined;
 
   useEffect(() => {
@@ -101,10 +104,10 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
     } else if (existingChosen) {
       createBlockM.mutate({ taskId, startsAt: toIso(startMs), endsAt: toIso(endMs) }, { onSuccess: onClose });
     } else {
-      // Only the new-task branch gets here, and `canSubmit` requires a parseable due date for it.
-      if (dueIso === null) return;
+      // Only the new-task branch gets here, and `canSubmit` requires both dates to convert for it.
+      if (typeof dueIso !== 'string' || afterIso === undefined) return;
       const dueBy = dueIso;
-      const notBefore = afterLocal ? zonedInputToIso(afterLocal, zone) ?? undefined : undefined;
+      const notBefore = afterIso ?? undefined;
       const catId = categoryId ?? undefined;
       createTaskM.mutate(
         {
@@ -171,6 +174,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
               onChange={(e) => setDueLocal(e.target.value)}
               className="w-full rounded-[9px] border-[1.5px] border-line px-3 py-1.5 text-[13px] font-semibold outline-none focus:border-indigo"
             />
+            {dueIso === undefined && <p data-testid="create-due-error" className="mt-0.5 text-[11px] text-crit">Enter a valid due date</p>}
           </div>
           <div className="mb-2">
             <label className="mb-0.5 block text-[11px] font-semibold text-inkSoft">Hours</label>
@@ -193,6 +197,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
               onChange={(e) => setAfterLocal(e.target.value)}
               className="w-full rounded-[9px] border-[1.5px] border-line px-3 py-1.5 text-[13px] font-semibold outline-none focus:border-indigo"
             />
+            {afterIso === undefined && <p data-testid="create-after-error" className="mt-0.5 text-[11px] text-crit">Enter a valid date or leave it empty</p>}
           </div>
         </>
       )}

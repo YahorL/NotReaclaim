@@ -76,7 +76,7 @@ export function TaskDrawer({ task, zone, onSave, onCancel, saving = false, error
   };
   // Opened before settings loaded (fallback zone): re-read the untouched dates in the real zone.
   useZoneChange(zone, (prev, next) => setForm((f) => reseedDateFields(f, toFormState(task, prev), toFormState(task, next))));
-  const { ok, errors } = validateTaskForm(form);
+  const { ok, errors } = validateTaskForm(form, zone);
   const categoriesQ = useCategoriesQuery();
   const categories = categoriesQ.data ?? [];
   const createSubtaskM = useCreateSubtaskMutation();
@@ -145,7 +145,7 @@ export function TaskDrawer({ task, zone, onSave, onCancel, saving = false, error
           <p className="mt-1 text-[11px] text-inkSoft">Leave empty for no deadline</p>
           {errors.dueByLocal && <p data-testid="err-dueByLocal" className={FIELD_ERROR}>{errors.dueByLocal}</p>}
         </div>
-        <FormField label="Schedule after">
+        <FormField label="Schedule after" error={errors.notBeforeLocal} errorTestId="err-notBeforeLocal">
           <input type="datetime-local" data-testid="schedule-after" className={FIELD_CONTROL} value={form.notBeforeLocal} onChange={(e) => set('notBeforeLocal', e.target.value)} />
         </FormField>
 

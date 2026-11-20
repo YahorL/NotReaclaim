@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Task } from '../../api/types';
-import { toFormState, validateTaskForm, toUpdateInput, isUnsplit, withDuration, type TaskFormState } from './taskForm';
+import { toFormState, validateTaskForm, toUpdateInput, isUnsplit, withDuration, dateFieldToIso, type TaskFormState } from './taskForm';
 
 const task = (over: Partial<Task> = {}): Task => ({
   id: 't1', userId: 'u1', title: 'Write spec', priority: 2, sortOrder: 0, durationMs: 5_400_000,
@@ -26,17 +26,17 @@ describe('taskForm', () => {
   });
 
   it('validateTaskForm flags empty title, non-positive durations, min>max, bad due', () => {
-    expect(validateTaskForm(validState()).ok).toBe(true);
-    expect(validateTaskForm(validState({ title: '   ' })).errors.title).toBeTruthy();
-    expect(validateTaskForm(validState({ durationMs: 0 })).errors.durationMs).toBeTruthy();
-    expect(validateTaskForm(validState({ minChunkMs: 8_000_000 })).errors.maxChunkMs).toBeTruthy();
-    expect(validateTaskForm(validState({ dueByLocal: 'not-a-date' })).errors.dueByLocal).toBeTruthy();
+    expect(validateTaskForm(validState(), 'UTC').ok).toBe(true);
+    expect(validateTaskForm(validState({ title: '   ' }), 'UTC').errors.title).toBeTruthy();
+    expect(validateTaskForm(validState({ durationMs: 0 }), 'UTC').errors.durationMs).toBeTruthy();
+    expect(validateTaskForm(validState({ minChunkMs: 8_000_000 }), 'UTC').errors.maxChunkMs).toBeTruthy();
+    expect(validateTaskForm(validState({ dueByLocal: 'not-a-date' }), 'UTC').errors.dueByLocal).toBeTruthy();
   });
 
   it('accepts an empty due date', () => {
     const s = validState({ dueByLocal: '' });
-    expect(validateTaskForm(s).ok).toBe(true);
-    expect(validateTaskForm(s).errors.dueByLocal).toBeUndefined();
+    expect(validateTaskForm(s, 'UTC').ok).toBe(true);
+    expect(validateTaskForm(s, 'UTC').errors.dueByLocal).toBeUndefined();
   });
 
   it('emits a null dueBy for an empty due date', () => {
@@ -44,7 +44,7 @@ describe('taskForm', () => {
   });
 
   it('still rejects an unparseable due date', () => {
-    expect(validateTaskForm(validState({ dueByLocal: 'not-a-date' })).ok).toBe(false);
+    expect(validateTaskForm(validState({ dueByLocal: 'not-a-date' }), 'UTC').ok).toBe(false);
   });
 
   it('maps a null dueBy back to an empty field', () => {
@@ -98,6 +98,41 @@ describe('taskForm in the settings zone', () => {
   });
 });
 
+describe('date fields that do not convert in the zone', () => {
+  // A zone this runtime's Intl does not know: luxon cannot convert any wall-clock in it.
+  const UNKNOWN_ZONE = 'Mars/Olympus_Mons';
+
+  it('dateFieldToIso: empty → null (no value), convertible → ISO, unconvertible → undefined', () => {
+    expect(dateFieldToIso('', 'UTC')).toBeNull();
+    expect(dateFieldToIso('', UNKNOWN_ZONE)).toBeNull();
+    expect(dateFieldToIso('2026-06-01T08:00', 'America/New_York')).toBe('2026-06-01T12:00:00.000Z');
+    expect(dateFieldToIso('2026-06-01T08:00', UNKNOWN_ZONE)).toBeUndefined();
+    expect(dateFieldToIso('not-a-date', 'UTC')).toBeUndefined();
+  });
+
+  it('flags BOTH date fields when they do not convert in the zone', () => {
+    const r = validateTaskForm(validState({ notBeforeLocal: '2026-06-01T08:00' }), UNKNOWN_ZONE);
+    expect(r.ok).toBe(false);
+    expect(r.errors.dueByLocal).toBeTruthy();
+    expect(r.errors.notBeforeLocal).toBeTruthy();
+  });
+
+  it('flags an unparseable Schedule after (it used to be saved as "no value")', () => {
+    const r = validateTaskForm(validState({ notBeforeLocal: 'not-a-date' }), 'UTC');
+    expect(r.ok).toBe(false);
+    expect(r.errors.notBeforeLocal).toBeTruthy();
+  });
+
+  it('empty date fields stay valid in any zone (no deadline / no schedule-after)', () => {
+    expect(validateTaskForm(validState({ dueByLocal: '', notBeforeLocal: '' }), UNKNOWN_ZONE).ok).toBe(true);
+  });
+
+  it('never maps a failed conversion to null in the payload', () => {
+    expect(() => toUpdateInput(validState({ notBeforeLocal: 'not-a-date' }), 'UTC')).toThrow();
+    expect(() => toUpdateInput(validState(), UNKNOWN_ZONE)).toThrow();
+  });
+});
+
 describe('unsplit tasks: chunk sizes follow the duration', () => {
   const H = 3_600_000;
   const M = 60_000;
@@ -112,13 +147,13 @@ describe('unsplit tasks: chunk sizes follow the duration', () => {
 
   it('60 → 90 on an unsplit task saves 90 / 90 / 90', () => {
     const form = withDuration(toFormState(unsplit, 'UTC'), 90 * M, true);
-    expect(validateTaskForm(form).ok).toBe(true);
+    expect(validateTaskForm(form, 'UTC').ok).toBe(true);
     expect(toUpdateInput(form, 'UTC')).toEqual(expect.objectContaining({ durationMs: 90 * M, minChunkMs: 90 * M, maxChunkMs: 90 * M }));
   });
 
   it('60 → 30 on an unsplit task saves 30 / 30 / 30', () => {
     const form = withDuration(toFormState(unsplit, 'UTC'), 30 * M, true);
-    expect(validateTaskForm(form).ok).toBe(true);
+    expect(validateTaskForm(form, 'UTC').ok).toBe(true);
     expect(toUpdateInput(form, 'UTC')).toEqual(expect.objectContaining({ durationMs: 30 * M, minChunkMs: 30 * M, maxChunkMs: 30 * M }));
   });
 

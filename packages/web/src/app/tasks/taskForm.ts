@@ -1,5 +1,5 @@
 import type { CreateTaskInput, Task, UpdateTaskInput } from '../../api/types';
-import { isoToZonedInput, isValidLocalInput, zonedDayAtInput, zonedInputToIso } from '../lib/datetimeLocal';
+import { isoToZonedInput, zonedDayAtInput, zonedInputToIso } from '../lib/datetimeLocal';
 
 /**
  * The fields shared by the task edit drawer and the new-task modal. The date fields are wall-clock
@@ -25,23 +25,40 @@ export interface NewTaskFormState extends TaskFormState {
 export type TaskFormErrors = Partial<Record<keyof TaskFormState, string>>;
 
 /**
- * Shared validation. `checkChunkOrder` gates the min ≤ max rule: the create form only applies it
- * when splitting, because unsplit chunks collapse to the duration.
+ * A wall-clock date field read in `zone`: empty → null (the field's "no value" — no deadline, no
+ * schedule-after); otherwise its ISO instant, or `undefined` when it does not convert (unparseable,
+ * or a zone this browser's Intl does not know). `undefined` is a validation error, never a value.
  */
-function validateFields(s: TaskFormState, checkChunkOrder: boolean): { ok: boolean; errors: TaskFormErrors } {
+export function dateFieldToIso(local: string, zone: string): string | null | undefined {
+  if (!local) return null;
+  return zonedInputToIso(local, zone) ?? undefined;
+}
+
+/**
+ * Shared validation. `checkChunkOrder` gates the min ≤ max rule: the create form only applies it
+ * when splitting, because unsplit chunks collapse to the duration. Both date fields are checked in
+ * `zone`, the zone the payload builders convert them in.
+ */
+function validateFields(s: TaskFormState, checkChunkOrder: boolean, zone: string): { ok: boolean; errors: TaskFormErrors } {
   const errors: TaskFormErrors = {};
   if (!s.title.trim()) errors.title = 'Title is required';
   if (!(s.durationMs > 0)) errors.durationMs = 'Duration must be positive';
   if (!(s.minChunkMs > 0)) errors.minChunkMs = 'Min chunk must be positive';
   if (!(s.maxChunkMs > 0)) errors.maxChunkMs = 'Max chunk must be positive';
   else if (checkChunkOrder && s.minChunkMs > s.maxChunkMs) errors.maxChunkMs = 'Max chunk must be ≥ min chunk';
-  if (s.dueByLocal && !isValidLocalInput(s.dueByLocal)) errors.dueByLocal = 'Enter a valid due date or leave it empty';
+  if (dateFieldToIso(s.dueByLocal, zone) === undefined) errors.dueByLocal = 'Enter a valid due date or leave it empty';
+  if (dateFieldToIso(s.notBeforeLocal, zone) === undefined) errors.notBeforeLocal = 'Enter a valid date or leave it empty';
   return { ok: Object.keys(errors).length === 0, errors };
 }
 
-/** Wall-clock field in `zone` → ISO instant; empty (or unparseable) → null. */
+/**
+ * Date field → payload value. Callers validate first, so a field that does not convert here is a
+ * bug: throw rather than let it travel as null, which the server reads as "clear the value".
+ */
 function fieldToIso(local: string, zone: string): string | null {
-  return local ? zonedInputToIso(local, zone) : null;
+  const iso = dateFieldToIso(local, zone);
+  if (iso === undefined) throw new Error(`date field "${local}" does not convert in ${zone}; validate the form before building its payload`);
+  return iso;
 }
 
 /** Shared fields → API input (empty date fields become null). */
@@ -71,8 +88,8 @@ export function toFormState(t: Task, zone: string): TaskFormState {
   };
 }
 
-export function validateTaskForm(s: TaskFormState): { ok: boolean; errors: TaskFormErrors } {
-  return validateFields(s, true);
+export function validateTaskForm(s: TaskFormState, zone: string): { ok: boolean; errors: TaskFormErrors } {
+  return validateFields(s, true, zone);
 }
 
 export function toUpdateInput(s: TaskFormState, zone: string): UpdateTaskInput {
@@ -164,8 +181,8 @@ export function defaultNewTaskForm(now: number, zone: string, settings?: ChunkDe
   };
 }
 
-export function validateNewTaskForm(s: NewTaskFormState): { ok: boolean; errors: TaskFormErrors } {
-  return validateFields(s, s.split);
+export function validateNewTaskForm(s: NewTaskFormState, zone: string): { ok: boolean; errors: TaskFormErrors } {
+  return validateFields(s, s.split, zone);
 }
 
 export function toCreateTaskInput(s: NewTaskFormState, zone: string): CreateTaskInput {

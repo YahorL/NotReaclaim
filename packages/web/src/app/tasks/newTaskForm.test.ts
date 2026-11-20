@@ -21,17 +21,17 @@ describe('newTaskForm', () => {
 
   it('validates title, positive duration, and min <= max', () => {
     const base = defaultNewTaskForm(NOW, 'UTC');
-    expect(validateNewTaskForm({ ...base, title: '' }).ok).toBe(false);
-    expect(validateNewTaskForm({ ...base, durationMs: 0 }).ok).toBe(false);
-    expect(validateNewTaskForm({ ...base, title: 'x', minChunkMs: 9_000_000, maxChunkMs: 1_000_000 }).ok).toBe(false);
-    expect(validateNewTaskForm({ ...base, title: 'Write spec' }).ok).toBe(true);
+    expect(validateNewTaskForm({ ...base, title: '' }, 'UTC').ok).toBe(false);
+    expect(validateNewTaskForm({ ...base, durationMs: 0 }, 'UTC').ok).toBe(false);
+    expect(validateNewTaskForm({ ...base, title: 'x', minChunkMs: 9_000_000, maxChunkMs: 1_000_000 }, 'UTC').ok).toBe(false);
+    expect(validateNewTaskForm({ ...base, title: 'Write spec' }, 'UTC').ok).toBe(true);
   });
 
   it('ignores min > max when split is off (chunks collapse to duration)', () => {
     const base = defaultNewTaskForm(Date.parse('2026-01-05T00:00:00.000Z'), 'UTC');
-    expect(validateNewTaskForm({ ...base, title: 'x', split: false, minChunkMs: 9_000_000, maxChunkMs: 1_000_000 }).ok).toBe(true);
+    expect(validateNewTaskForm({ ...base, title: 'x', split: false, minChunkMs: 9_000_000, maxChunkMs: 1_000_000 }, 'UTC').ok).toBe(true);
     // still invalid when split is on
-    expect(validateNewTaskForm({ ...base, title: 'x', split: true, minChunkMs: 9_000_000, maxChunkMs: 1_000_000 }).ok).toBe(false);
+    expect(validateNewTaskForm({ ...base, title: 'x', split: true, minChunkMs: 9_000_000, maxChunkMs: 1_000_000 }, 'UTC').ok).toBe(false);
   });
 
   it('defaults priority to 4 (Low)', () => {
@@ -61,7 +61,7 @@ describe('newTaskForm', () => {
 
   it('accepts an empty due date', () => {
     const validState = { ...defaultNewTaskForm(NOW, 'UTC'), title: 'Write spec' };
-    expect(validateNewTaskForm({ ...validState, dueByLocal: '' }).ok).toBe(true);
+    expect(validateNewTaskForm({ ...validState, dueByLocal: '' }, 'UTC').ok).toBe(true);
   });
 
   it('emits a null dueBy for an empty due date', () => {
@@ -79,6 +79,24 @@ describe('newTaskForm', () => {
     expect(toCreateTaskInput({ ...base, title: 'X', notBeforeLocal: '' }, 'UTC').notBefore).toBeNull();
     const out = toCreateTaskInput({ ...base, title: 'X', notBeforeLocal: '2026-01-06T13:00' }, 'UTC');
     expect(out.notBefore).toBe(new Date('2026-01-06T13:00').toISOString());
+  });
+});
+
+describe('new-task date fields that do not convert in the zone', () => {
+  const UNKNOWN_ZONE = 'Mars/Olympus_Mons';
+
+  it('blocks the form and flags each unconvertible date field', () => {
+    const s = { ...defaultNewTaskForm(NOW, 'UTC'), title: 'X' };
+    const r = validateNewTaskForm(s, UNKNOWN_ZONE);
+    expect(r.ok).toBe(false);
+    expect(r.errors.dueByLocal).toBeTruthy();
+    expect(r.errors.notBeforeLocal).toBeTruthy();
+    expect(validateNewTaskForm({ ...s, dueByLocal: '', notBeforeLocal: '' }, UNKNOWN_ZONE).ok).toBe(true);
+  });
+
+  it('never maps a failed conversion to null in the create payload', () => {
+    const s = { ...defaultNewTaskForm(NOW, 'UTC'), title: 'X' };
+    expect(() => toCreateTaskInput(s, UNKNOWN_ZONE)).toThrow();
   });
 });
 
