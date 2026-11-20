@@ -42,7 +42,6 @@ export function fakeApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     register: notImplemented('register'),
     login: notImplemented('login'),
     setPassword: notImplemented('setPassword'),
-    changeEmail: notImplemented('changeEmail'),
     getLinkGoogleUrl: notImplemented('getLinkGoogleUrl'),
     getGoogleStatus: notImplemented('getGoogleStatus'),
   };

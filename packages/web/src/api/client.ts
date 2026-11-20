@@ -52,7 +52,6 @@ export interface ApiClient {
   register(body: { email: string; password: string; inviteCode?: string }): Promise<{ token: string; userId: string }>;
   login(body: { email: string; password: string }): Promise<{ token: string; userId: string }>;
   setPassword(password: string): Promise<void>;
-  changeEmail(email: string): Promise<{ id: string; email: string }>;
   getLinkGoogleUrl(): Promise<{ url: string }>;
   getGoogleStatus(): Promise<GoogleStatus>;
 }
@@ -130,7 +129,6 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
     register: (body) => request('POST', '/auth/register', body),
     login: (body) => request('POST', '/auth/login', body),
     setPassword: (password) => request('POST', '/auth/set-password', { password }),
-    changeEmail: (email) => request('PATCH', '/auth/email', { email }),
     getLinkGoogleUrl: () => request('GET', '/auth/google/link'),
     getGoogleStatus: () => request('GET', '/auth/google/status'),
   };
