@@ -299,6 +299,8 @@ export interface TestAppOptions {
   reconcileResult?: AppDeps['reconcile'] extends (...a: never[]) => Promise<infer R> ? R : never;
   /** When set, every reconcile call records itself and then throws this. */
   reconcileError?: unknown;
+  /** Full override of the injected replan (e.g. a real makeReplan over fakes); bypasses reconcileCalls. */
+  reconcile?: AppDeps['reconcile'];
   webClientUrl?: string;
   accessToken?: string;
   /** Full override of the token lookup — lets a test assert it was never even attempted. */
@@ -354,11 +356,11 @@ export function buildTestApp(opts: TestAppOptions = {}) {
         }),
       },
     },
-    reconcile: async (userId, now) => {
+    reconcile: opts.reconcile ?? (async (userId, now) => {
       reconcileCalls.push({ userId, now });
       if (opts.reconcileError !== undefined) throw opts.reconcileError;
       return opts.reconcileResult ?? { created: 0, updated: 0, deleted: 0, pinned: 0, removed: 0, pinnedSynced: 0, pinnedFailed: 0 };
-    },
+    }),
     events,
     config: { jwtSecret: 'test-secret', googleRedirectUri: 'http://localhost:3000/auth/google/callback', webClientUrl: opts.webClientUrl, registrationMode: opts.registrationMode ?? 'open' },
     now: () => FIXED_NOW,

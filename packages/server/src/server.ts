@@ -61,6 +61,8 @@ async function main(): Promise<void> {
 
   const planLocallyBound = (userId: string, now: number) => planLocally(schedulingRepos, scheduledBlocks, userId, now);
   const isConnected = async (userId: string): Promise<boolean> => isGoogleConnected(await users.findById(userId));
+  // The ONE replan every entry point uses (routes via buildApp AND the poll below): it is
+  // serialised per user, so a second instance or a direct reconcileBound call would bypass it.
   const replan = makeReplan({ reconcile: reconcileBound, planLocally: planLocallyBound, isConnected });
 
   const app = buildApp({
@@ -84,7 +86,7 @@ async function main(): Promise<void> {
     listConnectedIds: () => users.listConnectedIds(),
     pollAndReplan: (userId) =>
       pollAndReplan(
-        { sync: syncBound, reconcile: reconcileBound, bus, now: () => Date.now() },
+        { sync: syncBound, reconcile: replan, bus, now: () => Date.now() },
         userId,
       ),
     intervalMs: serverConfig.pollIntervalMs,
