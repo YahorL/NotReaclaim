@@ -6,6 +6,7 @@ import { normalizeEmail } from './auth/email.js';
 import { ensureUserDefaults } from './auth/user-defaults.js';
 import { signSession } from './auth/token.js';
 import { isGoogleConnected } from './auth/google-connection.js';
+import { dataChanged } from './events.js';
 
 /** 403 denials shared by password registration and the Google callback. */
 const DENIAL_MESSAGES = {
@@ -73,6 +74,8 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
       if (await deps.repos.users.setGoogleAuthBroken(userId, null)) {
         deps.events.emit({ type: 'google.status', userId, broken: false });
       }
+      // Any link can flip `connected` (false → true), which google.status doesn't cover.
+      deps.events.emit(dataChanged(userId, 'googleStatus'));
     };
 
     const finish = (userId: string) => {

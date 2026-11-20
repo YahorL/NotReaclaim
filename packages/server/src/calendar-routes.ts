@@ -5,9 +5,11 @@ import type { AppDeps, AfterMutation } from './app.js';
 import { bestEffortGoogleWrite } from './google-writeback.js';
 import { resolveRange } from './range.js';
 import { rangeQuerySchema, createCalendarEventSchema, updateCalendarEventSchema, idParamSchema } from './schemas.js';
+import { dataChanged } from './events.js';
 
 export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afterMutation: AfterMutation): void {
   const guard = { onRequest: [app.authenticate] };
+  const announce = (userId: string) => deps.events.emit(dataChanged(userId, 'calendarEvents', 'schedule'));
 
   app.get('/calendar/events', guard, async (request) => {
     const query = rangeQuerySchema.parse(request.query);
@@ -40,6 +42,7 @@ export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afte
         },
       );
     }
+    announce(request.userId);
     afterMutation(request.userId);
     reply.code(201);
     return event;
@@ -73,6 +76,7 @@ export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afte
         }),
       );
     }
+    announce(request.userId);
     afterMutation(request.userId);
     return updated;
   });
@@ -92,6 +96,7 @@ export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afte
       );
     }
     await deps.repos.calendarEvents.delete(request.userId, id);
+    announce(request.userId);
     afterMutation(request.userId);
     return reply.code(204).send();
   });

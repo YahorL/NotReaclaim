@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { computeSpentMs } from '@notreclaim/core';
 import { NotFoundError, type CategoryRepository } from '@notreclaim/db';
 import type { AppDeps, AfterMutation } from './app.js';
+import { dataChanged } from './events.js';
 import { ZodError } from 'zod';
 import {
   createTaskSchema, updateTaskSchema, listTasksQuerySchema, idParamSchema, CHUNK_ORDER,
@@ -47,7 +48,11 @@ export function registerTaskRoutes(app: FastifyInstance, deps: AppDeps, afterMut
   app.get('/tasks', guard, async (request) => {
     const query = listTasksQuerySchema.parse(request.query);
     const cutoff = new Date(deps.now() - 30 * 24 * 60 * 60 * 1000);
-    await deps.repos.tasks.purgeCompletedBefore(request.userId, cutoff);
+    // Announce only a purge that removed something, so the refetch it triggers can't loop.
+    // Purged tasks cascade-delete their blocks, so the schedule changes too.
+    if ((await deps.repos.tasks.purgeCompletedBefore(request.userId, cutoff)) > 0) {
+      deps.events.emit(dataChanged(request.userId, 'tasks', 'schedule'));
+    }
     const tasks = await deps.repos.tasks.listByUser(request.userId, query.status ? { status: query.status } : {});
     return attachSpent(request.userId, tasks);
   });

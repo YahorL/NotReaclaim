@@ -5,9 +5,13 @@ import type { AppDeps, AfterMutation } from './app.js';
 import { bestEffortGoogleWrite } from './google-writeback.js';
 import { resolveRange } from './range.js';
 import { rangeQuerySchema, idParamSchema, updateScheduledBlockSchema, createScheduledBlockSchema } from './schemas.js';
+import { dataChanged } from './events.js';
 
 export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afterMutation: AfterMutation): void {
   const guard = { onRequest: [app.authenticate] };
+  // A block write can create, move, start, stop or remove time already spent, so it changes the
+  // tasks' spentMs as well as the schedule.
+  const announceBlockWrite = (userId: string) => deps.events.emit(dataChanged(userId, 'schedule', 'tasks'));
 
   app.get('/schedule', guard, async (request) => {
     const query = rangeQuerySchema.parse(request.query);
@@ -17,6 +21,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
     // Manual mode: discard past task blocks that were never started (self-heal on load).
     if (settings?.requireStartToTrack) {
       const past = await deps.repos.scheduledBlocks.listByUserInRange(request.userId, new Date(0), new Date(now));
+      let discarded = 0;
       for (const b of past) {
         if (b.taskId && b.startedAt == null && b.endsAt.getTime() <= now) {
           // Row first: an overlapping GET may have discarded it already (it then owns the
@@ -27,6 +32,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
             if (err instanceof NotFoundError) continue;
             throw err;
           }
+          discarded++;
           // Remove the mirrored event too: nothing else ever will (reconcile only deletes
           // events of rows it still holds, and drift only lists [now, horizon]). Best-effort
           // and per row, same as DELETE /schedule/:id — a Google failure never fails the GET.
@@ -40,6 +46,10 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
           }
         }
       }
+      // Only when a row actually went: the refetch this triggers in every tab finds nothing
+      // left to discard, so it cannot loop. Un-started blocks never count as spent time in
+      // manual mode, so tasks are unaffected.
+      if (discarded > 0) deps.events.emit(dataChanged(request.userId, 'schedule'));
     }
 
     const { start, end } = await resolveRange(query, () => now, async () => settings?.horizonDays);
@@ -65,6 +75,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
     const block = await deps.repos.scheduledBlocks.create(request.userId, {
       taskId: task.id, title: task.title, startsAt: new Date(body.startsAt), endsAt: new Date(body.endsAt), pinned: true,
     });
+    announceBlockWrite(request.userId);
     afterMutation(request.userId);
     reply.code(201);
     return block;
@@ -79,6 +90,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
       ...(body.pinned !== undefined ? { pinned: body.pinned } : {}),
     };
     const block = await deps.repos.scheduledBlocks.update(request.userId, id, data);
+    announceBlockWrite(request.userId);
     afterMutation(request.userId);
     return block;
   });
@@ -107,6 +119,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
       data.startsAt = new Date(snapped);
     }
     const block = await deps.repos.scheduledBlocks.update(request.userId, blockRow.id, data);
+    announceBlockWrite(request.userId);
     afterMutation(request.userId);
     return block;
   });
@@ -122,6 +135,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
     // (no zero-length block) and never past the original end (Stop only shortens).
     const newEnd = Math.min(endMs, Math.max(round15(now), minEnd));
     const block = await deps.repos.scheduledBlocks.update(request.userId, blockRow.id, { endsAt: new Date(newEnd), pinned: true });
+    announceBlockWrite(request.userId);
     afterMutation(request.userId);
     return block;
   });
@@ -146,6 +160,8 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
       );
     }
     await deps.repos.scheduledBlocks.delete(request.userId, id);
+    // Still no replan — just tell the other tabs (there are no replan counts to report).
+    announceBlockWrite(request.userId);
     return reply.code(204).send();
   });
 }
