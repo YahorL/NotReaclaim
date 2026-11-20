@@ -239,7 +239,7 @@ describe('Planner', () => {
     const mk = (id: string, title: string, dueBy: string): Task => ({
       id, userId: 'u1', title, priority: 2, sortOrder: 0, durationMs: 3_600_000, dueBy,
       minChunkMs: 1_800_000, maxChunkMs: 3_600_000, categoryId: null, status: 'pending',
-      completedAt: null, createdAt: '', updatedAt: '',
+      completedAt: null, timeLoggedMs: 0, createdAt: '', updatedAt: '',
     });
     const updateTask = vi.fn(async () => mk('b', 'B task', '2026-01-12T15:00:00.000Z'));
     const api = makeApi({
