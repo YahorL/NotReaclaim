@@ -9,7 +9,7 @@ function task(over: Partial<Task> = {}): Task {
   return {
     id: 't1', userId: 'u1', title: 'Write spec', priority: 2, sortOrder: 0,
     durationMs: 3_600_000, dueBy: '2026-01-10T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1,
-    categoryId: null, notBefore: null, status: 'pending', completedAt: null, timeLoggedMs: 0,
+    categoryId: null, notBefore: null, status: 'pending', completedAt: null,
     createdAt: '', updatedAt: '', subtasks: [], ...over,
   } as Task;
 }

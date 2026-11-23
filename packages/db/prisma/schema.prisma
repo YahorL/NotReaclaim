@@ -113,7 +113,6 @@ model Task {
   categoryId   String?
   status       TaskStatus @default(pending)
   completedAt  DateTime?  @db.Timestamptz
-  timeLoggedMs Int        @default(0)
   createdAt    DateTime   @default(now()) @db.Timestamptz
   updatedAt    DateTime   @updatedAt @db.Timestamptz
 

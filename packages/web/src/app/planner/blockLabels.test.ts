@@ -5,7 +5,7 @@ import { labelBlocksWithSubtasks } from './blockLabels';
 const block = (id: string, taskId: string | null, startsAt: string): ScheduledBlock =>
   ({ id, userId: 'u', taskId, habitId: taskId ? null : 'h1', title: 'Write report', startsAt, endsAt: startsAt, pinned: false, engineKey: null } as ScheduledBlock);
 const task = (id: string, title: string, subtasks: Array<{ id: string; title: string; done: boolean }>): Task =>
-  ({ id, userId: 'u', title, priority: 2, sortOrder: 0, durationMs: 1, dueBy: '', minChunkMs: 1, maxChunkMs: 1, categoryId: null, status: 'pending', timeLoggedMs: 0, createdAt: '', updatedAt: '', subtasks: subtasks.map((s) => ({ ...s, taskId: id })) } as Task);
+  ({ id, userId: 'u', title, priority: 2, sortOrder: 0, durationMs: 1, dueBy: '', minChunkMs: 1, maxChunkMs: 1, categoryId: null, status: 'pending', createdAt: '', updatedAt: '', subtasks: subtasks.map((s) => ({ ...s, taskId: id })) } as Task);
 
 describe('labelBlocksWithSubtasks', () => {
   it('labels a task\'s blocks with its open subtasks in start order', () => {

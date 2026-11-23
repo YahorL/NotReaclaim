@@ -37,7 +37,7 @@ describe('schedule routes', () => {
       tasks: [{
         id: 't1', userId: 'u1', title: 'T', priority: 1, durationMs: 1800000,
         dueBy: new Date('2026-01-05T17:00:00.000Z'), minChunkMs: 1800000, maxChunkMs: 1800000,
-        sortOrder: 0, notBefore: null, categoryId: null, status: 'pending', completedAt: null, timeLoggedMs: 0,
+        sortOrder: 0, notBefore: null, categoryId: null, status: 'pending', completedAt: null,
         createdAt: new Date(0), updatedAt: new Date(0),
       }],
     });
@@ -164,7 +164,7 @@ describe('schedule routes', () => {
 describe('POST /schedule', () => {
   const seedTask = { id: 'task-1', userId: 'u1', title: 'Deep work', priority: 2, durationMs: 3_600_000,
     dueBy: new Date('2026-01-09T17:00:00.000Z'), minChunkMs: 3_600_000, maxChunkMs: 3_600_000, categoryId: null,
-    notBefore: null, status: 'pending', timeLoggedMs: 0, createdAt: new Date(0), updatedAt: new Date(0), subtasks: [] };
+    notBefore: null, status: 'pending', createdAt: new Date(0), updatedAt: new Date(0), subtasks: [] };
   const body = { taskId: 'task-1', startsAt: '2026-01-06T09:00:00.000Z', endsAt: '2026-01-06T10:00:00.000Z' };
 
   it('creates a pinned block for an owned task, reflows, 201', async () => {

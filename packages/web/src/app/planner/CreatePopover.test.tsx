@@ -117,8 +117,8 @@ describe('CreatePopover', () => {
   it('pins an existing task at the slot instead of creating a new one', async () => {
     const onClose = vi.fn();
     const listTasks = vi.fn(async () => [
-      { id: 't1', userId: 'u1', title: 'Existing job', priority: 2, durationMs: 3_600_000, dueBy: '2026-01-09T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1, categoryId: null, status: 'pending', timeLoggedMs: 0, createdAt: '', updatedAt: '' },
-      { id: 't2', userId: 'u1', title: 'Done job', priority: 2, durationMs: 1, dueBy: '2026-01-09T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1, categoryId: null, status: 'completed', timeLoggedMs: 0, createdAt: '', updatedAt: '' },
+      { id: 't1', userId: 'u1', title: 'Existing job', priority: 2, durationMs: 3_600_000, dueBy: '2026-01-09T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1, categoryId: null, status: 'pending', createdAt: '', updatedAt: '' },
+      { id: 't2', userId: 'u1', title: 'Done job', priority: 2, durationMs: 1, dueBy: '2026-01-09T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1, categoryId: null, status: 'completed', createdAt: '', updatedAt: '' },
     ]);
     const createTask = vi.fn();
     const createScheduledBlock = vi.fn(async () => ({ id: 'b-1' }));
@@ -197,7 +197,7 @@ describe('CreatePopover', () => {
 
   it('task mode: existing-task selection hides due/category/after fields', async () => {
     const listTasks = vi.fn(async () => [
-      { id: 't1', userId: 'u1', title: 'Some task', priority: 2, durationMs: 3_600_000, dueBy: '2026-01-09T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1, categoryId: null, status: 'pending', timeLoggedMs: 0, createdAt: '', updatedAt: '' },
+      { id: 't1', userId: 'u1', title: 'Some task', priority: 2, durationMs: 3_600_000, dueBy: '2026-01-09T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1, categoryId: null, status: 'pending', createdAt: '', updatedAt: '' },
     ]);
     const listCategories = vi.fn(async () => fakeCategories);
     renderWithProviders(<CreatePopover {...baseProps} />, { api: fakeApiClient({ listTasks, listCategories } as never) });

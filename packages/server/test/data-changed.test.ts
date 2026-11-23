@@ -20,7 +20,7 @@ const settingsRow = (over: Partial<Settings> = {}): Settings => ({
 const taskRow = (over: Partial<Task> = {}): Task => ({
   id: 't1', userId: 'u1', title: 'T', priority: 1, sortOrder: 0, durationMs: 1800000,
   dueBy: null, notBefore: null, minChunkMs: 1800000, maxChunkMs: 1800000, categoryId: null,
-  status: 'pending', completedAt: null, timeLoggedMs: 0, createdAt: new Date(0), updatedAt: new Date(0), ...over,
+  status: 'pending', completedAt: null, createdAt: new Date(0), updatedAt: new Date(0), ...over,
 }) as Task;
 const habitRow: Habit = {
   id: 'h1', userId: 'u1', title: 'Gym', priority: 2, chunkMs: 1800000, perPeriod: 3, eligibleDays: [1, 3, 5],

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { buildTestApp, tokenFor } from './fakes.js';
 import type { Subtask, Task } from '@notreclaim/db';
 
-const seededTask = { id: 't1', userId: 'u1', title: 'T', priority: 1, durationMs: 1, dueBy: new Date(0), minChunkMs: 1, maxChunkMs: 1, categoryId: null, notBefore: null, status: 'pending', timeLoggedMs: 0, createdAt: new Date(0), updatedAt: new Date(0), subtasks: [] } as unknown as Task;
+const seededTask = { id: 't1', userId: 'u1', title: 'T', priority: 1, durationMs: 1, dueBy: new Date(0), minChunkMs: 1, maxChunkMs: 1, categoryId: null, notBefore: null, status: 'pending', createdAt: new Date(0), updatedAt: new Date(0), subtasks: [] } as unknown as Task;
 
 describe('subtask routes', () => {
   it('creates a subtask under the user\'s task', async () => {

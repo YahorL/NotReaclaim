@@ -252,14 +252,14 @@ describe('task routes', () => {
       id: 'old-done', userId: 'u1', title: 'old', priority: 1, sortOrder: 0,
       durationMs: 1, dueBy: new Date(0), minChunkMs: 1, maxChunkMs: 1,
       categoryId: null, notBefore: null, status: 'completed', completedAt: THIRTY_ONE_DAYS_AGO,
-      timeLoggedMs: 0, createdAt: new Date(0), updatedAt: new Date(0), subtasks: [],
+      createdAt: new Date(0), updatedAt: new Date(0), subtasks: [],
     } as unknown as import('@notreclaim/db').Task;
 
     const recentCompleted = {
       id: 'recent-done', userId: 'u1', title: 'recent', priority: 1, sortOrder: 0,
       durationMs: 1, dueBy: new Date(0), minChunkMs: 1, maxChunkMs: 1,
       categoryId: null, notBefore: null, status: 'completed', completedAt: FIVE_DAYS_AGO,
-      timeLoggedMs: 0, createdAt: new Date(0), updatedAt: new Date(0), subtasks: [],
+      createdAt: new Date(0), updatedAt: new Date(0), subtasks: [],
     } as unknown as import('@notreclaim/db').Task;
 
     const { app } = buildTestApp({ tasks: [oldCompleted, recentCompleted] });
@@ -278,7 +278,7 @@ describe('GET /tasks spentMs', () => {
   const taskRow = {
     id: 't1', userId: 'u1', title: 'T', priority: 1, sortOrder: 0, durationMs: 3_600_000,
     dueBy: new Date('2026-01-09T17:00:00.000Z'), notBefore: null, minChunkMs: 1, maxChunkMs: 1,
-    categoryId: null, status: 'pending', completedAt: null, timeLoggedMs: 0,
+    categoryId: null, status: 'pending', completedAt: null,
     createdAt: new Date(0), updatedAt: new Date(0), subtasks: [],
   };
   const finished: ScheduledBlock = {
@@ -364,7 +364,7 @@ describe('min/max chunk order', () => {
   const conflicting = {
     id: 'task-legacy', userId: 'u1', title: 'Legacy', priority: 1, sortOrder: 0,
     durationMs: 90 * M, dueBy: null, notBefore: null, minChunkMs: 60 * M, maxChunkMs: 30 * M,
-    categoryId: null, status: 'pending', completedAt: null, timeLoggedMs: 0, createdAt: new Date(0), updatedAt: new Date(0),
+    categoryId: null, status: 'pending', completedAt: null, createdAt: new Date(0), updatedAt: new Date(0),
   } as Task;
   const setup = async (tasks: Task[] = []) => {
     const ctx = buildTestApp({ tasks });

@@ -18,7 +18,7 @@ export function fakeTaskRepo(seed: Task[] = []) {
   const make = (userId: string, data: CreateTaskInput): TaskWithSubtasks => ({
     id: `task-${++n}`, userId, sortOrder: 0,
     dueBy: new Date(0), categoryId: null, notBefore: null,
-    status: 'pending', completedAt: null, timeLoggedMs: 0, createdAt: new Date(0), updatedAt: new Date(0),
+    status: 'pending', completedAt: null, createdAt: new Date(0), updatedAt: new Date(0),
     subtasks: [],
     ...data,
   });

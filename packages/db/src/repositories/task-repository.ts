@@ -29,7 +29,6 @@ export interface CreateTaskInput {
 export type UpdateTaskInput = Partial<CreateTaskInput> & {
   status?: TaskStatus;
   completedAt?: Date | null;
-  timeLoggedMs?: number;
 };
 
 export function createTaskRepository(prisma: PrismaClient) {

@@ -32,7 +32,6 @@ export interface Task {
   categoryId: string | null;
   status: TaskStatus;
   completedAt: string | null;
-  timeLoggedMs: number;
   spentMs?: number;
   subtasks?: Subtask[];
   createdAt: string;
@@ -178,7 +177,7 @@ export interface CreateTaskInput {
   maxChunkMs: number;
   categoryId?: string | null;
 }
-export type UpdateTaskInput = Partial<CreateTaskInput> & { status?: TaskStatus; timeLoggedMs?: number };
+export type UpdateTaskInput = Partial<CreateTaskInput> & { status?: TaskStatus };
 
 export interface CreateHabitInput {
   title: string;

@@ -75,7 +75,7 @@ describe('Planner', () => {
     const taskWithSubtask: Task = {
       id: 't1', userId: 'u1', title: 'Write spec', priority: 2, sortOrder: 0,
       durationMs: 3_600_000, dueBy: '2026-01-10T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1,
-      categoryId: null, status: 'pending', completedAt: null, timeLoggedMs: 0, createdAt: '', updatedAt: '',
+      categoryId: null, status: 'pending', completedAt: null, createdAt: '', updatedAt: '',
       subtasks: [{ id: 's1', taskId: 't1', title: 'outline', done: false, sortOrder: 0 }],
     };
     const api = makeApi({ listTasks: vi.fn(async () => [taskWithSubtask]) });
@@ -201,7 +201,7 @@ describe('Planner', () => {
     const task: Task = {
       id: 't1', userId: 'u1', title: 'Write spec', priority: 2, sortOrder: 0,
       durationMs: 3_600_000, dueBy: '2026-01-10T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1,
-      categoryId: 'cat-1', status: 'pending', completedAt: null, timeLoggedMs: 0, createdAt: '', updatedAt: '',
+      categoryId: 'cat-1', status: 'pending', completedAt: null, createdAt: '', updatedAt: '',
     };
     const category: Category = { id: 'cat-1', userId: 'u1', name: 'Deep Work', windows: null, color: '#5b62e3', isDefault: false };
     const api = fakeApiClient({
@@ -239,7 +239,7 @@ describe('Planner', () => {
     const mk = (id: string, title: string, dueBy: string): Task => ({
       id, userId: 'u1', title, priority: 2, sortOrder: 0, durationMs: 3_600_000, dueBy,
       minChunkMs: 1_800_000, maxChunkMs: 3_600_000, categoryId: null, status: 'pending',
-      completedAt: null, timeLoggedMs: 0, createdAt: '', updatedAt: '',
+      completedAt: null, createdAt: '', updatedAt: '',
     });
     const updateTask = vi.fn(async () => mk('b', 'B task', '2026-01-12T15:00:00.000Z'));
     const api = makeApi({
@@ -269,7 +269,7 @@ describe('Planner compact layout', () => {
   const compactTask = {
     id: 't1', userId: 'u1', title: 'Write spec', priority: 2, sortOrder: 0,
     durationMs: 3_600_000, dueBy: '2026-01-10T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1,
-    categoryId: null, notBefore: null, status: 'pending', completedAt: null, timeLoggedMs: 0,
+    categoryId: null, notBefore: null, status: 'pending', completedAt: null,
     createdAt: '', updatedAt: '', subtasks: [],
   } as unknown as Task;
 

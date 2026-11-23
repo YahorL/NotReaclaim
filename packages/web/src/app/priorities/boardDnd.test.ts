@@ -15,7 +15,7 @@ const cols: BoardDropColumn[] = [
 const task = (over: Partial<Task> = {}): Task => ({
   id: 't1', userId: 'u1', title: 'T', priority: 2, sortOrder: 0, durationMs: 1,
   dueBy: null, minChunkMs: 1, maxChunkMs: 1, categoryId: null, status: 'pending',
-  completedAt: null, timeLoggedMs: 0, createdAt: '', updatedAt: '', ...over,
+  completedAt: null, createdAt: '', updatedAt: '', ...over,
 });
 
 describe('columnDroppableId / overColumnKey', () => {

@@ -34,7 +34,6 @@ export const createTaskSchema = taskFieldsSchema.refine((b) => b.minChunkMs <= b
 // patch touches min or max, so rows that already conflict stay editable.
 export const updateTaskSchema = taskFieldsSchema.partial().extend({
   status: taskStatusSchema.optional(),
-  timeLoggedMs: z.number().int().nonnegative().optional(),
 });
 export const listTasksQuerySchema = z.object({
   status: taskStatusSchema.optional(),

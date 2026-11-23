@@ -316,7 +316,6 @@ export function makeTask(over: Partial<Task> = {}): Task {
     categoryId: null,
     status: 'pending',
     completedAt: null,
-    timeLoggedMs: 0,
     createdAt: new Date(0),
     updatedAt: new Date(0),
     ...over,
