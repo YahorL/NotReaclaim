@@ -50,8 +50,13 @@ const minutesText = (ms: number) => String(Math.round(ms / 60000));
 
 type BufferField = 'meeting' | 'task';
 type BufferTexts = Record<BufferField, string>;
-/** `text`: the fields as typed. `baseline`: what the server has now, as shown in a field. */
-type BufferFormState = { text: BufferTexts; baseline: BufferTexts };
+/**
+ * `text`: the fields as typed. `baseline`: what the server has now, as shown in a field.
+ * `follows`: how many server values have been followed (see followServer), so a save can tell
+ * whether one arrived while it was in flight; a value can leave and come back (15, then 30 again),
+ * so comparing values cannot.
+ */
+type BufferFormState = { text: BufferTexts; baseline: BufferTexts; follows: number };
 const FIELDS = ['meeting', 'task'] as const;
 const KEYS = { meeting: 'meetingBufferMs', task: 'taskBufferMs' } as const;
 
@@ -64,24 +69,27 @@ const KEYS = { meeting: 'meetingBufferMs', task: 'taskBufferMs' } as const;
 function followServer(form: BufferFormState, server: BufferTexts): BufferFormState {
   const text = { ...form.text };
   for (const f of FIELDS) if (form.text[f] === form.baseline[f]) text[f] = server[f];
-  return { text, baseline: server };
+  return { text, baseline: server, follows: form.follows + 1 };
 }
 
 /**
- * A save landed. For each sent field: if no newer server value arrived while it was in flight, the
- * server now has the sent text, which becomes the baseline. If one did (the baseline moved since
- * sending), the order of the two writes is unknown here, so the baseline is not moved back; a field
- * still showing the sent text counts as not edited and shows that newer value, and the refetch this
- * save triggers settles it (it brings whichever write the server kept).
+ * A save landed. For each sent field: if no server value was followed since sending, the server now
+ * has the sent text, which becomes the baseline. If one was (the server announces a write, this
+ * save's own included, before it replies), the order of the writes is unknown here, so the baseline
+ * stays the last value followed; a field still showing the sent text counts as not edited and shows
+ * that value, and the refetch this save triggers settles it (it brings whichever write the server
+ * kept). The check counts follows rather than comparing the baseline with the value sent over: the
+ * baseline can leave that value and come back to it (our 15 arrives, another tab sets 30 back), and
+ * taking that for "nothing arrived" would mark the server's value as an edit and send it later.
  */
-function afterSave(form: BufferFormState, sent: ReadonlyArray<{ field: BufferField; text: string; over: string }>): BufferFormState {
+function afterSave(form: BufferFormState, sent: ReadonlyArray<{ field: BufferField; text: string }>, followsAtSend: number): BufferFormState {
   const text = { ...form.text };
   const baseline = { ...form.baseline };
   for (const s of sent) {
-    if (form.baseline[s.field] === s.over) baseline[s.field] = s.text;
+    if (form.follows === followsAtSend) baseline[s.field] = s.text;
     else if (form.text[s.field] === s.text) text[s.field] = form.baseline[s.field];
   }
-  return { text, baseline };
+  return { ...form, text, baseline };
 }
 
 function BuffersForm({ initial, version, firstTime, onSave, saving, justSaved, saveError }: {
@@ -104,7 +112,7 @@ function BuffersForm({ initial, version, firstTime, onSave, saving, justSaved, s
   );
   // Only a field whose text differs from its baseline is sent: an untouched one could revert a
   // change saved elsewhere, or round a stored 90 000 ms (shown as 2) to 120 000.
-  const [form, setForm] = useState<BufferFormState>(() => ({ text: seed, baseline: seed }));
+  const [form, setForm] = useState<BufferFormState>(() => ({ text: seed, baseline: seed, follows: 0 }));
   useValueChange(seed, (_prev, next) => setForm((f) => followServer(f, next)));
   const { text: { meeting: meetingText, task: taskText }, baseline } = form;
   const setText = (field: BufferField) => (value: string) => setForm((f) => ({ ...f, text: { ...f.text, [field]: value } }));
@@ -134,8 +142,9 @@ function BuffersForm({ initial, version, firstTime, onSave, saving, justSaved, s
   const save = () => {
     if (!canSave) return;
     setEditedSinceSave(false);
-    const sent = FIELDS.filter((f) => KEYS[f] in toSend).map((f) => ({ field: f, text: form.text[f], over: form.baseline[f] }));
-    onSave(toSend, () => setForm((f) => afterSave(f, sent)));
+    const sent = FIELDS.filter((f) => KEYS[f] in toSend).map((f) => ({ field: f, text: form.text[f] }));
+    const followsAtSend = form.follows;
+    onSave(toSend, () => setForm((f) => afterSave(f, sent, followsAtSend)));
   };
 
   return (

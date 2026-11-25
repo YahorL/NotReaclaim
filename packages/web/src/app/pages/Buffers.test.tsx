@@ -469,6 +469,163 @@ describe('Buffers page', () => {
       fireEvent.click(screen.getByTestId('save'));
       await waitFor(() => expect(patchSettings).toHaveBeenCalledWith({ taskBufferMs: 900_000 }));
     });
+
+    // The real server applies a PATCH when the request arrives and announces the write over the
+    // realtime channel before it replies, so this tab's own write usually comes back as a refetch
+    // while the save is still pending. A field can then leave the value it was sent over and come
+    // back to it (15 arrives, then another tab sets the old 30 back) before the response lands.
+    describe('a save whose own write is refetched before its response lands (as with the real server)', () => {
+      const day = (n: number) => `2026-02-${String(n).padStart(2, '0')}T00:00:00.000Z`;
+      const min = (n: number) => n * 60_000;
+
+      const mountServer = async (start: Partial<Settings>) => {
+        let version = 1;
+        let row = settings({ ...start, updatedAt: day(version) });
+        /** A write reaching the server (this tab's PATCH or another tab's): the row and updatedAt move on. */
+        const write = (patch: Partial<Settings>) => { version += 1; row = { ...row, ...patch, updatedAt: day(version) }; return row; };
+        // This tab's PATCH is applied on arrival; its response is held until `respond()`.
+        let pendingResponse: (() => void) | null = null;
+        const patchSettings = vi.fn((patch: Partial<Settings>) => {
+          const after = write(patch);
+          return new Promise<Settings>((resolve) => { pendingResponse = () => resolve(after); });
+        });
+        // A held GET reads the row when it is sent and answers when released (a slow refetch).
+        let holdGets = false;
+        let releaseGet: (() => void) | null = null;
+        const getSettings = vi.fn(() => {
+          const snapshot = row;
+          if (!holdGets) return Promise.resolve(snapshot);
+          return new Promise<Settings>((resolve) => { releaseGet = () => resolve(snapshot); });
+        });
+        const api = fakeApiClient({ getSettings, patchSettings } as never);
+        let client!: QueryClient;
+        renderWithProviders(<><Buffers /><GrabClient onClient={(c) => { client = c; }} /></>, { api });
+        await waitFor(() => expect(valueOf('task-buffer')).toBe(String((row.taskBufferMs ?? 0) / 60_000)));
+        // Waits a macrotask too: the query hands its update to React in a setTimeout(0) batch, and each
+        // refetched row must render before the next write, as with a real realtime refetch.
+        const tick = async () => { await act(async () => { await new Promise((r) => setTimeout(r, 0)); }); };
+        const refetch = async () => { await act(async () => { await client.invalidateQueries(); }); await tick(); };
+        return {
+          write, patchSettings, getSettings, refetch, tick,
+          serverRow: () => row,
+          /** Types into a field and saves; resolves once the PATCH has reached the server. */
+          typeAndSave: async (id: string, value: string) => {
+            const calls = patchSettings.mock.calls.length;
+            fireEvent.change(screen.getByTestId(id), { target: { value } });
+            fireEvent.click(screen.getByTestId('save'));
+            await waitFor(() => expect(patchSettings).toHaveBeenCalledTimes(calls + 1));
+          },
+          /** The held response lands; then this save's own refetch settles. */
+          respond: async () => {
+            const gets = getSettings.mock.calls.length;
+            await act(async () => { pendingResponse!(); });
+            await waitFor(() => expect(screen.getByTestId('saved')).toBeInTheDocument());
+            await waitFor(() => expect(getSettings.mock.calls.length).toBeGreaterThan(gets));
+            await tick();
+          },
+          /** A refetch whose GET reads the row now but answers only on `releaseHeldGet()`. */
+          startSlowRefetch: async () => {
+            const gets = getSettings.mock.calls.length;
+            holdGets = true;
+            await act(async () => { void client.invalidateQueries(); });
+            await waitFor(() => expect(getSettings).toHaveBeenCalledTimes(gets + 1));
+          },
+          releaseHeldGet: async () => { holdGets = false; await act(async () => { releaseGet!(); }); await tick(); },
+        };
+      };
+
+      /** Task 30 (or 10). This tab saves 15; its own write is refetched (15); the other tab sets the start value back. */
+      const ownWriteThenOldValueBack = async (startMin: number) => {
+        const t = await mountServer({ taskBufferMs: min(startMin) });
+        await t.typeAndSave('task-buffer', '15');
+        await t.refetch(); // the realtime event for this tab's own write: 15
+        t.write({ taskBufferMs: min(startMin) }); // the other tab
+        await t.refetch();
+        await waitFor(() => expect(valueOf('task-buffer')).toBe(String(startMin)));
+        await t.respond();
+        return t;
+      };
+
+      it('the other tab sets 30 back while our 15 is pending → shows 30 with nothing to save', async () => {
+        await ownWriteThenOldValueBack(30);
+        expect(valueOf('task-buffer')).toBe('30');
+        expect(screen.getByTestId('save')).toBeDisabled();
+      });
+
+      it('the other tab sets 10 back while our 15 is pending → shows 10 with nothing to save', async () => {
+        await ownWriteThenOldValueBack(10);
+        expect(valueOf('task-buffer')).toBe('10');
+        expect(screen.getByTestId('save')).toBeDisabled();
+      });
+
+      it('after that, a later save of the other field alone does not send the task value back over a newer one', async () => {
+        const t = await ownWriteThenOldValueBack(30);
+        t.write({ taskBufferMs: min(40) }); // the other tab again
+        await t.refetch();
+        await t.typeAndSave('meeting-buffer', '7');
+        expect(t.patchSettings).toHaveBeenLastCalledWith({ meetingBufferMs: min(7) });
+        expect(t.serverRow().taskBufferMs).toBe(min(40));
+        expect(valueOf('task-buffer')).toBe('40');
+      });
+
+      it('after that, Save stays disabled with nothing typed, so a bare click sends nothing', async () => {
+        const t = await ownWriteThenOldValueBack(30);
+        t.write({ taskBufferMs: min(40) });
+        await t.refetch();
+        expect(screen.getByTestId('save')).toBeDisabled();
+        fireEvent.click(screen.getByTestId('save'));
+        await t.tick();
+        expect(t.patchSettings).toHaveBeenCalledTimes(1);
+        expect(valueOf('task-buffer')).toBe('40');
+      });
+
+      it('the meeting field behaves the same: a later task-only save does not send the meeting value back over a newer one', async () => {
+        const t = await mountServer({});
+        await t.typeAndSave('meeting-buffer', '8');
+        await t.refetch(); // own write: 8
+        t.write({ meetingBufferMs: min(5) }); // the other tab sets 5 back
+        await t.refetch();
+        await waitFor(() => expect(valueOf('meeting-buffer')).toBe('5'));
+        await t.respond();
+        t.write({ meetingBufferMs: min(12) });
+        await t.refetch();
+        await t.typeAndSave('task-buffer', '20');
+        expect(t.patchSettings).toHaveBeenLastCalledWith({ taskBufferMs: min(20) });
+        expect(t.serverRow().meetingBufferMs).toBe(min(12));
+        expect(valueOf('meeting-buffer')).toBe('12');
+      });
+
+      // The own write's refetch never renders on its own: the next thing seen is the other tab's 30
+      // (it also sets meeting 20, so the test can see it land).
+      it('our 15 is overwritten by the other tab\'s 30 before we see it → ends showing 30, not 15 as saved', async () => {
+        const t = await mountServer({ taskBufferMs: min(30) });
+        await t.typeAndSave('task-buffer', '15');
+        t.write({ meetingBufferMs: min(20), taskBufferMs: min(30) });
+        await t.refetch();
+        await waitFor(() => expect(valueOf('meeting-buffer')).toBe('20'));
+        await t.respond();
+        expect(t.serverRow().taskBufferMs).toBe(min(30));
+        await waitFor(() => expect(valueOf('task-buffer')).toBe('30'));
+        expect(screen.getByTestId('save')).toBeDisabled();
+      });
+
+      // A refetch sent before our PATCH reached the server (it carries the other tab's meeting 20 and
+      // the old task 10) lands while the save is pending. The task field may show 10 for a moment;
+      // this save's own refetch then settles it on what the server has: the 15 just saved.
+      it('a slow refetch from before our save, changing only the other field, lands while it is pending → ends showing the value just saved', async () => {
+        const t = await mountServer({});
+        t.write({ meetingBufferMs: min(20) }); // the other tab
+        await t.startSlowRefetch(); // its realtime refetch, slow: reads meeting 20 / task 10
+        await t.typeAndSave('task-buffer', '15');
+        await t.releaseHeldGet();
+        await waitFor(() => expect(valueOf('meeting-buffer')).toBe('20'));
+        await t.respond();
+        expect(t.serverRow().taskBufferMs).toBe(min(15));
+        await waitFor(() => expect(valueOf('task-buffer')).toBe('15'));
+        expect(valueOf('meeting-buffer')).toBe('20');
+        expect(screen.getByTestId('save')).toBeDisabled();
+      });
+    });
   });
 
   describe('only the fields that will be sent are validated', () => {
