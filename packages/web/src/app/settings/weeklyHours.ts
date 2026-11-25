@@ -33,3 +33,23 @@ export function daysToWindows(days: DayState[]): WorkingHour[] {
 export function patchDay(days: DayState[], weekday: number, patch: Partial<DayState>): DayState[] {
   return days.map((d) => (d.weekday === weekday ? { ...d, ...patch } : d));
 }
+
+const MIN_PER_DAY = 24 * 60;
+
+/** Total hours across the windows; an inverted or empty window counts 0, `null` (inherit) is 0. */
+export function weeklyHoursTotal(windows: WorkingHour[] | null): number {
+  const minutes = (windows ?? []).reduce((a, w) => a + Math.max(0, w.endMinute - w.startMinute), 0);
+  return minutes / 60;
+}
+
+/** "35h per week" / "37.5h per week" (one decimal at most). */
+export function weeklyHoursLabel(hours: number): string {
+  return `${Math.round(hours * 10) / 10}h per week`;
+}
+
+/** Where a start–end window sits on a 24-hour bar, in percent; zero width when end ≤ start. */
+export function coverage(start: string, end: string): { leftPct: number; widthPct: number } {
+  const a = start ? hhmmToMinutes(start) : 0;
+  const b = end ? hhmmToMinutes(end) : 0;
+  return { leftPct: (a / MIN_PER_DAY) * 100, widthPct: (Math.max(0, b - a) / MIN_PER_DAY) * 100 };
+}

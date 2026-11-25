@@ -77,8 +77,10 @@ describe('SettingsForm', () => {
 
   it('grows the weekday checkboxes on a coarse pointer', () => {
     render(<SettingsForm initial={initial()} onSave={vi.fn()} timezones={['UTC']} />);
+    // The custom checkbox is 20px (h-5) everywhere now; a coarse pointer grows it to 24px.
     const toggle = screen.getByTestId('day-1-toggle');
-    expect(toggle.className).toContain('coarse:h-5');
+    expect(toggle.className).toContain('coarse:h-6');
+    expect(toggle.className).toContain('coarse:w-6');
     expect(toggle.parentElement!.className).toContain('coarse:py-2');
   });
 
