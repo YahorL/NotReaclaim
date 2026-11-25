@@ -7,7 +7,7 @@ import { LONG_PRESS_MS } from './longPress';
 const DAY = Date.parse('2026-01-05T00:00:00.000Z'); // local midnight (TZ=UTC)
 const START = Date.parse('2026-01-05T09:00:00.000Z');
 const END = Date.parse('2026-01-05T10:00:00.000Z');
-const PX_PER_60MIN = minutesToPx(60); // 58px/hr (was (60/960)*GRID_COLUMN_PX)
+const PX_PER_60MIN = minutesToPx(60); // one hour row (HOUR_ROW_PX)
 
 function renderBlock(onCommitOrOver: Parameters<typeof InteractiveBlock>[0]['onCommit'] | Partial<Parameters<typeof InteractiveBlock>[0]> = vi.fn()) {
   const defaults = {
@@ -82,7 +82,7 @@ describe('InteractiveBlock', () => {
     renderBlock();
     const el = screen.getByTestId('event-block');
     fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
-    fireEvent.pointerMove(el, { clientX: 50, clientY: 107, pointerId: 1 }); // 7px ≈ 7.2min → snaps to 0
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 107, pointerId: 1 }); // 7px = 7min → snaps to 0
     expect(el.style.transform).toBe('translate(0px, 0px)');
     expect(screen.queryByTestId('drag-label')).not.toBeInTheDocument();
   });
@@ -91,8 +91,8 @@ describe('InteractiveBlock', () => {
     renderBlock();
     const el = screen.getByTestId('event-block');
     fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
-    fireEvent.pointerMove(el, { clientX: 50, clientY: 120, pointerId: 1 }); // 20px ≈ 20.7min → snaps to 15 → 14.5px
-    expect(el.style.transform).toBe('translate(0px, 14.5px)');
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 120, pointerId: 1 }); // 20px ≈ 20min → snaps to 15
+    expect(el.style.transform).toBe(`translate(0px, ${minutesToPx(15)}px)`);
     expect(screen.getByTestId('drag-label')).toHaveTextContent(
       `${fmt(START + 15 * 60_000)} – ${fmt(END + 15 * 60_000)}`,
     );
@@ -104,7 +104,7 @@ describe('InteractiveBlock', () => {
     fireEvent.pointerDown(handle, { clientY: 200, pointerId: 1 });
     fireEvent.pointerMove(handle, { clientY: 200 + PX_PER_60MIN, pointerId: 1 });
     const el = screen.getByTestId('event-block');
-    expect(el.style.height).toBe('calc(5% + 58px)');
+    expect(el.style.height).toBe(`calc(5% + ${minutesToPx(60)}px)`);
     expect(screen.getByTestId('drag-label')).toHaveTextContent(
       `${fmt(START)} – ${fmt(END + 60 * 60_000)}`,
     );
@@ -675,7 +675,7 @@ describe('InteractiveBlock scroll compensation', () => {
       const el = screen.getByTestId('event-block');
       fireEvent.pointerDown(el, { clientX: 50, clientY: 560, pointerId: 1 });
       fireEvent.pointerMove(el, { clientX: 50, clientY: 590, pointerId: 1 });
-      // 30px of finger travel ≈ 31 min → snapped to +30.
+      // 30px of finger travel = 30 min → snapped to +30.
       expect(screen.getByTestId('drag-label')).toHaveTextContent(
         `${fmt(START + 30 * 60_000)} – ${fmt(END + 30 * 60_000)}`,
       );
@@ -684,7 +684,7 @@ describe('InteractiveBlock scroll compensation', () => {
       const step = 12; // edgeScrollStep(590, 0, 600)
       act(() => { frames.splice(0).forEach((cb) => cb(0)); });
       expect(scroller.scrollTop).toBe(step);
-      // 30px of finger + 12px of scroll ≈ 43 min → snapped to +45, with no new pointermove.
+      // 30px of finger + 12px of scroll = 42 min → snapped to +45, with no new pointermove.
       expect(screen.getByTestId('drag-label')).toHaveTextContent(
         `${fmt(START + 45 * 60_000)} – ${fmt(END + 45 * 60_000)}`,
       );

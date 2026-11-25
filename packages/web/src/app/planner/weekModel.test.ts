@@ -99,8 +99,8 @@ describe('isToday', () => {
 
 describe('grid geometry', () => {
   it('exports the fixed column geometry constants', () => {
-    expect(HOUR_ROW_PX).toBe(58);
-    expect(GRID_COLUMN_PX).toBe(((WINDOW_END_MIN - WINDOW_START_MIN) / 60) * 58); // 24 * 58 = 1392
+    expect(HOUR_ROW_PX).toBe(60);
+    expect(GRID_COLUMN_PX).toBe(((WINDOW_END_MIN - WINDOW_START_MIN) / 60) * 60); // 24 * 60 = 1440
   });
 
   it('snapMinutes rounds to the nearest step (default 15)', () => {
@@ -112,7 +112,7 @@ describe('grid geometry', () => {
   });
 
   it('pxToMinutes maps the column height to the full window span', () => {
-    expect(pxToMinutes(GRID_COLUMN_PX)).toBe(WINDOW_END_MIN - WINDOW_START_MIN); // 1392px -> 1440 min
+    expect(pxToMinutes(GRID_COLUMN_PX)).toBe(WINDOW_END_MIN - WINDOW_START_MIN); // 1440px -> 1440 min
     expect(Math.round(pxToMinutes(HOUR_ROW_PX))).toBe(60); // one row -> 60 min
     expect(pxToMinutes(0)).toBe(0);
     expect(pxToMinutes(-GRID_COLUMN_PX)).toBe(-(WINDOW_END_MIN - WINDOW_START_MIN));
@@ -127,11 +127,11 @@ describe('grid geometry', () => {
 
 describe('minutesToPx', () => {
   it('is the inverse of pxToMinutes', () => {
-    expect(minutesToPx(60)).toBeCloseTo(58);
-    expect(minutesToPx(15)).toBeCloseTo(14.5);
+    expect(minutesToPx(60)).toBeCloseTo(60);
+    expect(minutesToPx(15)).toBeCloseTo(15);
     expect(pxToMinutes(minutesToPx(37))).toBeCloseTo(37);
     expect(minutesToPx(0)).toBe(0);
-    expect(minutesToPx(-30)).toBeCloseTo(-29);
+    expect(minutesToPx(-30)).toBeCloseTo(-30);
   });
 });
 

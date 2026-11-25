@@ -251,7 +251,7 @@ export function WeekGrid(props: WeekGridProps) {
           <div className="grid" style={{ gridTemplateColumns: gridCols }}>
             <div data-testid="hour-gutter">
               {HOURS.map((h) => (
-                <div key={h} className="relative h-[58px]">
+                <div key={h} className="relative h-[60px]">
                   <span className={`absolute -top-[8px] font-semibold text-[#a6aab8] ${compact ? 'right-[6px] text-[10px]' : 'right-[10px] text-[12px]'}`}>{hourRowLabel(h, dayStartMinute)}</span>
                 </div>
               ))}
@@ -269,7 +269,7 @@ export function WeekGrid(props: WeekGridProps) {
                   }}
                 >
                   <DayDropZone dayIndex={i} dayStartMs={d} />
-                  {HOURS.map((h) => <div key={h} className="h-[58px] border-t border-[#f1f2f6]" />)}
+                  {HOURS.map((h) => <div key={h} className="h-[60px] border-t border-[#f1f2f6]" />)}
                   {dayItems.map((it) => {
                     const pos = placeInDay(it.startMs, it.endMs, d);
                     if (!pos) return null;

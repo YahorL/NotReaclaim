@@ -107,9 +107,9 @@ export function isToday(now: number, dayStartMs: number): boolean {
   return now >= dayStartMs && now < dayStartMs + MS_PER_DAY;
 }
 
-/** One hour = 58px tall in the grid body (must match WeekGrid's h-[58px] rows). */
-export const HOUR_ROW_PX = 58;
-/** Fixed day-column pixel height: one 58px row per hour of the window (24 * 58 = 1392). */
+/** One hour = 60px tall in the grid body (must match WeekGrid's h-[60px] rows). */
+export const HOUR_ROW_PX = 60;
+/** Fixed day-column pixel height: one 60px row per hour of the window (24 * 60 = 1440). */
 export const GRID_COLUMN_PX = (WINDOW_SPAN_MIN / 60) * HOUR_ROW_PX;
 
 /** Time-gutter width (px) — must match WeekGrid's first column. */
@@ -242,7 +242,7 @@ export function rangeLabel(days: number[], zone: string): string {
 
 /**
  * Minutes a tile must span before a coarse pointer earns the enlarged resize target. Below it a
- * 24px handle would cover the whole tile (a 15-min block is 14.5px tall) and eat the tap that
+ * 24px handle would cover the whole tile (a 15-min block is 15px tall) and eat the tap that
  * should open the drawer.
  */
 export const COARSE_RESIZE_MIN_SPAN_MIN = 30;
