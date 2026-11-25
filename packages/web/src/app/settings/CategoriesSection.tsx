@@ -9,6 +9,7 @@ import { CAPS_LABEL, CHECKBOX, DANGER_TEXT_BTN, INPUT } from '../forms/controls'
 import { WeeklyHoursEditor } from './WeeklyHoursEditor';
 import { validateCategoryForm } from './categoryForm';
 import { type DayState, windowsToDays, daysToWindows, patchDay, weeklyHoursTotal, weeklyHoursLabel } from './weeklyHours';
+import { checkInkOn } from '../lib/contrast';
 
 /** A mutation failure as text. Anything but an ApiError (e.g. a network TypeError) gets a generic line. */
 function saveErrorText(error: unknown): string {
@@ -66,9 +67,9 @@ function ColorSwatches({ categoryId, categoryName, current, onSelect }: {
             onKeyDown={(e) => onKey(e, i)}
             title={sw.name}
             style={sw.hex
-              ? { backgroundColor: sw.hex, boxShadow: on ? ringFor(sw.hex) : 'inset 0 1px 0 rgba(255,255,255,.3)' }
+              ? { backgroundColor: sw.hex, color: checkInkOn(sw.hex), boxShadow: on ? ringFor(sw.hex) : 'inset 0 1px 0 rgba(255,255,255,.3)' }
               : (on ? { boxShadow: ringFor('rgb(var(--c-text-1) / .6)') } : undefined)}
-            className={`flex h-7 w-7 items-center justify-center rounded-pill transition-transform hover:scale-110 coarse:h-10 coarse:w-10 ${sw.hex ? 'text-white' : 'border-[1.5px] border-dashed border-fg/45 text-fg'}`}
+            className={`flex h-7 w-7 items-center justify-center rounded-pill transition-transform hover:scale-110 coarse:h-10 coarse:w-10 ${sw.hex ? '' : 'border-[1.5px] border-dashed border-fg/45 text-fg'}`}
           >
             {on && (
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10" /></svg>

@@ -21,6 +21,14 @@ describe('Segmented', () => {
     expect(screen.getByRole('tab', { name: 'Beta' })).toHaveAttribute('aria-selected', 'false');
   });
 
+  it('only the selected tab points aria-controls at a panel (the others\' panels are not rendered)', () => {
+    render(<Harness kind="tablist" />);
+    expect(screen.getByRole('tab', { name: 'Beta' })).not.toHaveAttribute('aria-controls');
+    fireEvent.click(screen.getByRole('tab', { name: 'Beta' }));
+    expect(screen.getByRole('tab', { name: 'Beta' })).toHaveAttribute('aria-controls', 'seg-panel-b');
+    expect(screen.getByRole('tab', { name: 'Alpha' })).not.toHaveAttribute('aria-controls');
+  });
+
   it('as a radiogroup: radios with aria-checked', () => {
     render(<Harness kind="radiogroup" />);
     expect(screen.getByRole('radiogroup', { name: 'Pick' })).toBeInTheDocument();

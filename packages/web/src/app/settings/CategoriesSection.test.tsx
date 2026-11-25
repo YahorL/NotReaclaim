@@ -69,6 +69,15 @@ describe('CategoriesSection', () => {
     await waitFor(() => expect(updateCategory).toHaveBeenCalledWith('cat-p', { color: '#4285f4' }));
   });
 
+  it('draws the check in dark ink on light swatches (Amber, Cyan) and white on the rest', async () => {
+    const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue(cats) } as never);
+    renderWithProviders(<CategoriesSection />, { api });
+    await screen.findByTestId('cat-row-cat-p');
+    expect(screen.getByTestId('cat-color-cat-p-#f4b400').style.color).toBe('rgb(17, 18, 20)');
+    expect(screen.getByTestId('cat-color-cat-p-#00acc1').style.color).toBe('rgb(17, 18, 20)');
+    expect(screen.getByTestId('cat-color-cat-p-#5b62e3').style.color).toBe('rgb(255, 255, 255)');
+  });
+
   it('PATCHes color to null when the none swatch is clicked', async () => {
     const catWithColor = { ...cats[1], color: '#4285f4' };
     const updateCategory = vi.fn().mockResolvedValue({ ...catWithColor, color: null });

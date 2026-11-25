@@ -43,7 +43,9 @@ export function Segmented<K extends string>({ kind, label, options, value, onCha
             type="button"
             role={tabs ? 'tab' : 'radio'}
             id={tabs && idBase ? `${idBase}-tab-${o.key}` : undefined}
-            aria-controls={tabs && idBase ? `${idBase}-panel-${o.key}` : undefined}
+            // Only the selected tab's panel is rendered: pointing the others at a missing id is an
+            // invalid reference (and some screen readers announce it as a broken control).
+            aria-controls={tabs && idBase && on ? `${idBase}-panel-${o.key}` : undefined}
             aria-selected={tabs ? on : undefined}
             aria-checked={tabs ? undefined : on}
             tabIndex={on ? 0 : -1}
