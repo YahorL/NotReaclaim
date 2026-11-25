@@ -153,10 +153,13 @@ describe('NewTaskModal', () => {
       return createCategory.mock.calls[0]![0] as { name: string; windows: unknown[] };
     }
 
-    it('never sends an empty window list when working hours are empty', async () => {
+    it('never sends an empty window list when working hours are empty: falls back to a new account\'s week (Mon–Fri 09:00–17:00)', async () => {
       const body = await createCategoryWith([], null);
       expect(body.windows.length).toBeGreaterThan(0);
-      expect(body).toEqual({ name: 'Deep Work', windows: [{ weekday: 1, startMinute: 540, endMinute: 1020 }] });
+      expect(body).toEqual({
+        name: 'Deep Work',
+        windows: [1, 2, 3, 4, 5].map((weekday) => ({ weekday, startMinute: 540, endMinute: 1020 })),
+      });
     });
 
     it('copies the default category\'s own hours when it has them (it does not inherit working hours)', async () => {

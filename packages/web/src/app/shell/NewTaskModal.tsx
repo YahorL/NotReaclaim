@@ -15,7 +15,8 @@ import { PrimaryButton } from '../components/Buttons';
 import { FIELD_ERROR } from '../components/formStyles';
 import { useFormState } from '../components/useFormState';
 
-const FALLBACK_WORKING_HOURS = [{ weekday: 1, startMinute: 540, endMinute: 1020 }];
+/** Mon–Fri 09:00–17:00: the week a brand-new account gets (server `DEFAULT_WORKING_HOURS` in packages/server/src/auth/user-defaults.ts). */
+const FALLBACK_WORKING_HOURS = [1, 2, 3, 4, 5].map((weekday) => ({ weekday, startMinute: 540, endMinute: 1020 }));
 
 export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () => void; now?: () => number }) {
   const settingsQ = useSettingsQuery();
