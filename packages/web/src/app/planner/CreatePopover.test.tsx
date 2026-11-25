@@ -107,6 +107,15 @@ describe('CreatePopover', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('keeps an Escape that a surface above it (the search palette) already handled', () => {
+    const onClose = vi.fn();
+    renderWithProviders(<CreatePopover {...baseProps} onClose={onClose} />, { api: fakeApiClient() });
+    const handled = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    handled.preventDefault();
+    document.dispatchEvent(handled);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it('caps the duration so the slot cannot extend past the 24:00 window end', () => {
     renderWithProviders(<CreatePopover {...baseProps} startMin={1425} />, { api: fakeApiClient() });
     expect(screen.getByTestId('slot-label').textContent).toMatch(/11:45 PM.*12:00 AM|23:45.*00:00/); // 23:45 – 24:00 (15 min max)

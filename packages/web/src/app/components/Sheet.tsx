@@ -84,9 +84,12 @@ export function useFocusTrap<T extends HTMLElement>(ref: RefObject<T>, { onEscap
   // listener fires on every mounted surface at once: AppShell renders NewTaskModal as a sibling, so
   // on compact a modal can sit over an open sheet and Escape would dismiss the sheet behind it --
   // and a drawer can be stacked in a sheet. The focus trap makes the topmost surface the one that
-  // receives the key.
+  // receives the key. Escape is also marked handled (preventDefault) so document-level Escape
+  // listeners underneath (the desktop CreatePopover, the planner's deselect) stand down. It is NOT
+  // stopped: dnd-kit's KeyboardSensor listens on the document and must still see Escape to cancel
+  // a keyboard drag that started inside a sheet.
   return (e: ReactKeyboardEvent<HTMLElement>) => {
-    if (e.key === 'Escape') { onEscape?.(); return; }
+    if (e.key === 'Escape') { e.preventDefault(); onEscape?.(); return; }
     if (e.key !== 'Tab') return;
     const el = ref.current;
     if (!el) return;

@@ -94,6 +94,20 @@ describe('TaskSearchPalette', () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 
+  it('marks its Escape as handled so document-level Escape listeners underneath stand down', () => {
+    const { input } = renderPalette();
+    const seen: boolean[] = [];
+    const onDoc = (e: KeyboardEvent) => { if (e.key === 'Escape') seen.push(e.defaultPrevented); };
+    document.addEventListener('keydown', onDoc);
+    try {
+      expect(fireEvent.keyDown(input, { key: 'Escape' })).toBe(false); // false = default prevented
+    } finally {
+      document.removeEventListener('keydown', onDoc);
+    }
+    // Prevented, not stopped: dnd-kit's KeyboardSensor listens on the document.
+    expect(seen).toEqual([true]);
+  });
+
   // StrictMode (main.tsx) runs effects twice in dev: the first cleanup refocuses the opener, so
   // `autoFocus` alone ends with the trap focusing the dialog container instead of the combobox.
   it('focuses the combobox under StrictMode when opened from a focused button', () => {

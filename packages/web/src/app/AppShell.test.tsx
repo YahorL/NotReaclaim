@@ -143,6 +143,46 @@ describe('AppShell task search', () => {
     expect(screen.getByRole('dialog', { name: 'Search tasks' })).toBeInTheDocument();
   });
 
+  it('does not open over the New task dialog, even with focus on a non-field control', () => {
+    renderWithProviders(<AppShell />, { api: makeApi() });
+    fireEvent.click(screen.getAllByRole('button', { name: 'New task' })[0]!);
+    const dialog = screen.getByRole('dialog', { name: 'New task' });
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    const close = within(dialog).getByRole('button', { name: 'Close' });
+    close.focus();
+    fireEvent.keyDown(close, { key: '/' });
+    fireEvent.keyDown(close, { key: 'k', ctrlKey: true });
+    expect(screen.queryByRole('dialog', { name: 'Search tasks' })).toBeNull();
+  });
+
+  it('does not open over an open popover or menu', () => {
+    renderWithProviders(<AppShell />, { api: makeApi() });
+    const popover = document.createElement('div');
+    popover.setAttribute('data-testid', 'create-popover');
+    document.body.appendChild(popover);
+    fireEvent.keyDown(document.body, { key: '/' });
+    expect(screen.queryByRole('dialog', { name: 'Search tasks' })).toBeNull();
+    popover.remove();
+
+    fireEvent.click(screen.getByRole('button', { name: /account menu/i }));
+    fireEvent.keyDown(document.body, { key: 'k', metaKey: true });
+    expect(screen.queryByRole('dialog', { name: 'Search tasks' })).toBeNull();
+  });
+
+  it('survives keydowns without a key (Chrome autofill)', () => {
+    renderWithProviders(<AppShell />, { api: makeApi() });
+    const errors: unknown[] = [];
+    const onError = (e: ErrorEvent) => { errors.push(e.error); e.preventDefault(); };
+    window.addEventListener('error', onError);
+    try {
+      // A bare Event has no `key` at all (KeyboardEvent would default it to '').
+      document.body.dispatchEvent(Object.assign(new Event('keydown', { bubbles: true }), { ctrlKey: true }));
+    } finally {
+      window.removeEventListener('error', onError);
+    }
+    expect(errors).toEqual([]);
+  });
+
   it('opens the selected task in the shell-hosted task drawer', async () => {
     renderWithProviders(<AppShell />, { api: makeApi({ listTasks: async () => tasks as never }) });
     fireEvent.click(screen.getByRole('button', { name: 'Search tasks' }));

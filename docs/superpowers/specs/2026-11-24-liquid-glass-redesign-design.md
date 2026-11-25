@@ -287,7 +287,8 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
   - The pill still renders on `/`. Task 3.5 owns the `pathname !== '/'` gate.
 - **Search.**
   - Palette state, the `/` and Ctrl/Cmd+K listener (`useTaskSearchShortcut`) and `ShellTaskDrawer` live in `AppShell`.
-  - The shortcut is ignored in editable targets, while any `[aria-modal="true"]` is open, and for keys that were already prevented.
+  - The shortcut is ignored in editable targets (event target or focused element), while any overlay is open (`OVERLAY_OPEN_SELECTOR` in `lib/overlay.ts`: `[role=dialog]`, `[aria-modal=true]`, `[role=menu]`, the create popover — shared with the planner's Escape-to-deselect), and for keys that were already prevented. `NewTaskModal` is `role=dialog aria-modal=true aria-label="New task"` ahead of its P5 restyle.
+  - `useFocusTrap`'s Escape calls `preventDefault` (not `stopPropagation`: dnd-kit's KeyboardSensor listens on the document and must still see Escape to cancel a keyboard drag inside a sheet). Document-level Escape listeners (CreatePopover, Planner deselect) ignore `defaultPrevented` events, so Escape in the palette no longer closes the create popover under it.
   - A blank query shows "Type to search your tasks"; nothing listed matches "No tasks match".
   - Below md the header is hidden and `MobileTopBar` pins "no search button", so search on phones is keyboard-only (hardware `/`). Decide in P8 whether to add a mobile entry point.
   - Z-tiers: shell drawer `z-[55]` (above page drawers at z-50), palette `z-[60]`, toast region `z-[70]`.
@@ -331,7 +332,7 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
 - **Selection (§5.4, Q6 default applied):**
   - **md+, any pointer:** a click, tap or Enter selects. Behaviour changes: an iPad tap no longer opens the TaskDrawer, and a desktop click on an app event no longer opens the EventDrawer. The card's Open buttons do both.
   - **Below md:** a tap opens the TaskDrawer or EventDrawer. Habit and Google tiles toast "Edit habits on the Habits page" / "Synced from Google Calendar" (they have no drawer). One change: before P3, a task tile opened its drawer only on a coarse pointer, so a mouse click below md did nothing. Now any pointer below md opens it.
-  - Escape deselects unless an `[aria-modal="true"]` surface or the create popover is open.
+  - Escape deselects unless an overlay (`isOverlayOpen()`: dialog, sheet, menu, create popover) is open or the Escape was already handled.
   - Keyboard selection moves focus to the card heading. Closing the card hands focus back to the tile's body.
   - **Known:** the desktop TaskDrawer does not close on Esc (pre-existing). Esc with a drawer open deselects the card underneath.
 - **Detail card with the panel hidden** floats at the grid's bottom-right (`absolute`, `shadow-lift`) instead of taking a side column. Narrowing the grid would change `daysThatFit` and could page the selected block out of view, which clears the selection.

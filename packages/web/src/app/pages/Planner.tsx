@@ -6,6 +6,7 @@ import { ApiError } from '../../api/client';
 import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useHabitsQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation, useSettingsQuery, useStopBlockMutation } from '../../api/queries';
 import { dayColumns, daysThatFit, shiftDays, dayAnchor, rangeLabel, weekdayLabel } from '../planner/weekModel';
 import { toIso } from '../lib/time';
+import { isOverlayOpen } from '../lib/overlay';
 import { useTimezone } from '../settings/useTimezone';
 import { useElementWidth } from '../planner/useElementWidth';
 import { useCompactWidth, usePointerCoarse } from '../lib/useMediaQuery';
@@ -204,7 +205,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
     if (!selectedKey) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
-      if (document.querySelector('[aria-modal="true"],[data-testid="create-popover"]')) return;
+      if (isOverlayOpen()) return;
       closeDetail();
     };
     document.addEventListener('keydown', onKey);

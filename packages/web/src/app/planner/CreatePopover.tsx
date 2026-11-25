@@ -90,7 +90,8 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
     // click — which would then land on the day column underneath and re-open the form at
     // another slot. That is exactly the "I can't close it" report this sheet fixes.
     if (compact) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    // A surface above the popover (the search palette) that already handled Escape keeps it.
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented) onClose(); };
     const onDown = (e: PointerEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
     document.addEventListener('keydown', onKey);
     document.addEventListener('pointerdown', onDown);

@@ -4,6 +4,7 @@ import { useFocusTrap } from '../components/Sheet';
 import { BUCKET_META, dueLabel, priorityToBucket } from '../priorities/priorityBucket';
 import { Icons } from './icons';
 import { searchTasks } from './taskSearch';
+import { isOverlayOpen } from '../lib/overlay';
 
 export interface TaskSearchPaletteProps {
   tasks: readonly Task[];
@@ -136,8 +137,9 @@ function isEditable(target: EventTarget | null): boolean {
 }
 
 /**
- * Global `/` and Ctrl/Cmd+K → open the palette. Ignored while typing in a field, while any modal
- * dialog is open (the palette itself included), and for keys something else already handled.
+ * Global `/` and Ctrl/Cmd+K → open the palette. Ignored while typing in a field (the event target
+ * or the focused element), while any dialog, sheet, menu or the create popover is open (the
+ * palette itself included), and for keys something else already handled.
  */
 export function useTaskSearchShortcut(onOpen: () => void): void {
   const openRef = useRef(onOpen);
@@ -149,8 +151,8 @@ export function useTaskSearchShortcut(onOpen: () => void): void {
       // `key` can be missing on synthetic keydowns (e.g. Chrome autofill).
       const modK = e.key?.toLowerCase() === 'k' && (e.ctrlKey || e.metaKey) && !e.shiftKey;
       if (!slash && !modK) return;
-      if (isEditable(e.target)) return;
-      if (document.querySelector('[aria-modal="true"]')) return;
+      if (isEditable(e.target) || isEditable(document.activeElement)) return;
+      if (isOverlayOpen()) return;
       e.preventDefault();
       openRef.current();
     }
