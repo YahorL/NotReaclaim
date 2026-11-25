@@ -217,6 +217,22 @@ describe('GET /schedule manual-mode sweep: order', () => {
     expect((await h.raw.blocks.listByUserInRange('u1', new Date(0), new Date(8.64e15))).map((b) => b.id)).toEqual(['b']);
     expect(h.dataChangedCount()).toBe(0);
   });
+
+  it('a row with a googleEventId but no googleCalendarId is swept without a token lookup or Google call', async () => {
+    const h = harness({
+      settings: manual,
+      blocks: [block({ id: 'a', startsAt: T('2026-01-04T09:00:00.000Z'), endsAt: T('2026-01-04T09:30:00.000Z'), googleEventId: 'g-a', googleCalendarId: null })],
+    });
+    const res = await h.send('GET', `/schedule${wide}`);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([]);
+    expect(h.trace).toEqual([
+      'blocks.listByUserInRange',
+      'blocks.delete a',
+      'emit data.changed [schedule] | replans=0',
+      'blocks.listByUserInRange',
+    ]);
+  });
 });
 
 describe('POST /schedule/:id/start and /stop: time snapping', () => {
@@ -317,6 +333,18 @@ describe('DELETE /schedule/:id: order', () => {
       'blocks.delete b1',
     ]);
     expect(h.dataChangedCount()).toBe(0);
+  });
+
+  it('a row with a googleEventId but no googleCalendarId never reaches for a token: the row is deleted, then announced', async () => {
+    const h = harness({ settings: settings(), blocks: [block({ id: 'b1', pinned: true, googleEventId: 'g-1', googleCalendarId: null })] });
+    const res = await h.send('DELETE', '/schedule/b1');
+    expect(res.statusCode).toBe(204);
+    expect(h.trace).toEqual([
+      'blocks.findById b1',
+      'blocks.delete b1',
+      'emit data.changed [schedule,tasks] | replans=0',
+    ]);
+    expect(await h.raw.blocks.listByUserInRange('u1', new Date(0), new Date(8.64e15))).toEqual([]);
   });
 });
 
@@ -432,6 +460,19 @@ describe('DELETE /calendar/events/:id: order', () => {
     const res = await h.send('DELETE', '/calendar/events/nope');
     expect(res.statusCode).toBe(404);
     expect(h.trace).toEqual(['events.findById nope']);
+  });
+
+  it('a row with a googleEventId but no googleCalendarId never reaches for a token: the row is deleted, then announced and replanned', async () => {
+    const h = harness({ settings: settings(), calendarEvents: [event({ googleEventId: 'g1', googleCalendarId: null })] });
+    const res = await h.send('DELETE', '/calendar/events/e1');
+    expect(res.statusCode).toBe(204);
+    expect(h.trace).toEqual([
+      'events.findById e1',
+      'events.delete e1',
+      'emit data.changed [calendarEvents,schedule] | replans=0',
+    ]);
+    expect(await h.raw.events.listByUserInRange('u1', new Date(0), new Date(8.64e15))).toEqual([]);
+    expect(h.reconcileCalls).toHaveLength(1);
   });
 });
 
