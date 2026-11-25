@@ -22,6 +22,16 @@ const RESOURCE_ROOTS: Record<DataResource, QueryKey> = {
   googleStatus: queryKeys.googleStatusRoot,
 };
 
+/**
+ * Refresh everything a realtime event could have refreshed — for a socket that has just come back
+ * after a drop, whose missed events are gone. `RESOURCE_ROOTS` names every root (the other event
+ * types refresh subsets of it; `events.test.ts` pins that). Through `invalidateRoot`, so the
+ * schedule / calendar-event roots wait for a pending planner write to settle.
+ */
+export function invalidateAllEventRoots(qc: QueryClient): void {
+  for (const root of Object.values(RESOURCE_ROOTS)) invalidateRoot(qc, root);
+}
+
 /** Invalidate the query keys affected by a server event. Invalidating a root key (e.g.
  *  ['schedule']) matches every ['schedule', ...] key (including ['schedule','preview']) by prefix.
  *  Anything unrecognised — an event type or a resource name from a newer server — is ignored,

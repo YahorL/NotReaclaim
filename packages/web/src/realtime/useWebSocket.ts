@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { invalidateForEvent, type ServerEvent } from './events';
+import { invalidateAllEventRoots, invalidateForEvent, type ServerEvent } from './events';
 import { apiBaseUrl, webSocketUrl } from '../api/baseUrl';
 
 export interface SocketLike {
@@ -30,6 +30,9 @@ export function useWebSocket({ token, makeSocket = defaultMakeSocket }: UseWebSo
     let intentionallyClosed = false;
     let socket: SocketLike | undefined;
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+    // Scoped to this effect run, not a ref: StrictMode's dev remount and a token change both start
+    // a fresh run, so the first open of the surviving socket / the new token is never a "reopen".
+    let hasOpened = false;
 
     const connect = () => {
       const url = `${defaultUrl()}?token=${encodeURIComponent(token)}`;
@@ -38,6 +41,13 @@ export function useWebSocket({ token, makeSocket = defaultMakeSocket }: UseWebSo
       } catch {
         return; // environment without WebSocket (e.g. jsdom tests); skip realtime
       }
+      socket.addEventListener('open', () => {
+        if (intentionallyClosed) return; // a discarded socket that opened anyway
+        // Events sent while the connection was down are lost: catch up on a REopen only — the
+        // first open follows the page's own initial fetches.
+        if (hasOpened) invalidateAllEventRoots(qc);
+        hasOpened = true;
+      });
       socket.addEventListener('message', (ev) => {
         try {
           const event = JSON.parse((ev as MessageEvent).data as string) as ServerEvent;
