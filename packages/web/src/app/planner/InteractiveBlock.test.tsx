@@ -147,6 +147,45 @@ describe('InteractiveBlock', () => {
     expect(screen.getByTestId('drag-label').textContent).toMatch(/^2h 15m · ends 11:15\sAM$/);
   });
 
+  it('a resize commits at least one 15-minute slot', () => {
+    const onCommit = renderBlock();
+    const handle = screen.getByTestId('resize-handle');
+    fireEvent.pointerDown(handle, { clientY: 500, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientY: 500 - 3 * PX_PER_60MIN, pointerId: 1 });
+    expect(screen.getByTestId('drag-label').textContent).toMatch(/^15m · ends 9:15\sAM$/);
+    fireEvent.pointerUp(handle, { clientY: 500 - 3 * PX_PER_60MIN, pointerId: 1 });
+    expect(onCommit).toHaveBeenCalledWith({ startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T09:15:00.000Z', pinned: true });
+  });
+
+  it('a resize never runs past the end of the column', () => {
+    const onCommit = renderBlock();
+    const handle = screen.getByTestId('resize-handle');
+    fireEvent.pointerDown(handle, { clientY: 100, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientY: 100 + 30 * PX_PER_60MIN, pointerId: 1 });
+    expect(onCommit).toHaveBeenCalledWith({ startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-06T00:00:00.000Z', pinned: true });
+  });
+
+  it('a zero-delta resize commits nothing and never selects', () => {
+    const onClick = vi.fn();
+    const onCommit = renderBlock({ onClick });
+    const handle = screen.getByTestId('resize-handle');
+    fireEvent.pointerDown(handle, { clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientY: 105, pointerId: 1 }); // 5 min → snaps to 0
+    fireEvent.pointerUp(handle, { clientY: 105, pointerId: 1 });
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('the grip widens while resizing (22 → 30px pill, via the wrapper\'s data-resizing)', () => {
+    renderBlock();
+    const handle = screen.getByTestId('resize-handle');
+    expect(handle.className).toContain('after:w-[22px]');
+    expect(handle.className).toContain('group-data-[resizing=true]:after:w-[30px]');
+    fireEvent.pointerDown(handle, { clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientY: 130, pointerId: 1 });
+    expect(screen.getByTestId('event-block')).toHaveAttribute('data-resizing', 'true');
+  });
+
   it('resize never shrinks the raw height below 12px', () => {
     renderBlock();
     const handle = screen.getByTestId('resize-handle');
@@ -642,11 +681,16 @@ describe('InteractiveBlock on a coarse pointer', () => {
     expect(onCommit).toHaveBeenCalledTimes(1);
   });
 
-  it('gives a tall tile a 24px, scroll-proof resize target', () => {
+  it('gives a tall tile a 16px, scroll-proof resize target', () => {
     render(<InteractiveBlock {...coarseProps} heightPct={4.1667} onCommit={vi.fn()} />); // 60 min
     const handle = screen.getByTestId('resize-handle');
-    expect(handle.className).toContain('h-6');
+    expect(handle.className).toContain('h-4');
     expect(handle.className).toContain('touch-none');
+  });
+
+  it('shows the grip without a hover on touch', () => {
+    render(<InteractiveBlock {...coarseProps} heightPct={4.1667} onCommit={vi.fn()} />);
+    expect(screen.getByTestId('resize-handle')).toHaveAttribute('data-grip-visible', 'true');
   });
 
   it('keeps the small target on a 15-minute tile', () => {

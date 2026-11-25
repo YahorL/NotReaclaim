@@ -188,10 +188,13 @@ export function CalendarBlock(props: CalendarBlockProps) {
       )}
       {children}
       {resize && (
+        // The grip pill (prototype `.rsz::after`): fades in on hover / keyboard focus, always
+        // shown on touch (no hover), and widens 22 → 30px while resizing.
         <span
           data-testid="resize-handle"
+          data-grip-visible={coarse ? 'true' : undefined}
           onPointerDown={resize.onPointerDown}
-          className={`absolute inset-x-0 bottom-0 z-[2] cursor-ns-resize after:absolute after:bottom-[3px] after:left-1/2 after:h-[3px] after:w-[22px] after:-translate-x-1/2 after:rounded-full after:bg-current after:opacity-0 after:transition-opacity after:content-[''] group-hover:after:opacity-75 ${resize.className}`}
+          className={`absolute inset-x-0 bottom-0 z-[2] cursor-ns-resize after:absolute after:bottom-[3px] after:left-1/2 after:h-[3px] after:w-[22px] after:-translate-x-1/2 after:rounded-full after:bg-current after:transition-[opacity,width] after:duration-200 after:content-[''] group-hover:after:opacity-75 group-focus-within:after:opacity-75 group-data-[resizing=true]:after:w-[30px] group-data-[resizing=true]:after:opacity-75 ${coarse ? 'after:opacity-50' : 'after:opacity-0'} ${resize.className}`}
         />
       )}
     </div>

@@ -241,19 +241,25 @@ export function rangeLabel(days: number[], zone: string): string {
 }
 
 /**
- * Minutes a tile must span before a coarse pointer earns the enlarged resize target. Below it a
- * 24px handle would cover the whole tile (a 15-min block is 15px tall) and eat the tap that
- * should open the drawer.
+ * Minutes a tile must span before it earns more than the 6px resize bar. Below it a bigger handle
+ * would cover most of the tile (a 15-min block is 15px tall) and eat the press that should move
+ * it or open it.
  */
 export const COARSE_RESIZE_MIN_SPAN_MIN = 30;
 
-/** Literal Tailwind height class for the resize hit area. It is invisible — only the target grows. */
-export function resizeHandleClass(heightPct: number, coarse: boolean): 'h-1.5' | 'h-6' {
-  if (!coarse) return 'h-1.5';
+/**
+ * Literal Tailwind height class for the resize hit area (invisible — only the target grows; the
+ * grip pill is drawn by CalendarBlock). Fine pointer: the design's 10px handle. Coarse pointer: a
+ * bigger target that still never reaches the lower half of the tile, so a long-press move started
+ * low on a tile is a move, not a resize (P3 note) — 12px on 30–59 min tiles, 16px from an hour.
+ */
+export function resizeHandleClass(heightPct: number, coarse: boolean): 'h-1.5' | 'h-2.5' | 'h-3' | 'h-4' {
   // The percent → minutes roundtrip is lossy: an exactly-30-minute tile comes back as
   // 29.999999999999993, so compare with a tolerance far below one minute.
-  const spanMin = (heightPct / 100) * WINDOW_SPAN_MIN;
-  return spanMin >= COARSE_RESIZE_MIN_SPAN_MIN - 1e-6 ? 'h-6' : 'h-1.5';
+  const spanMin = (heightPct / 100) * WINDOW_SPAN_MIN + 1e-6;
+  if (spanMin < COARSE_RESIZE_MIN_SPAN_MIN) return 'h-1.5';
+  if (!coarse) return 'h-2.5';
+  return spanMin >= 60 ? 'h-4' : 'h-3';
 }
 
 /** Minimum horizontal travel before a day-header drag counts as a page swipe. */

@@ -393,21 +393,29 @@ describe('rangeLabel', () => {
 describe('resizeHandleClass', () => {
   const pct = (min: number) => (min / (WINDOW_END_MIN - WINDOW_START_MIN)) * 100;
 
-  it('a fine pointer always gets the 6px bar', () => {
-    expect(resizeHandleClass(pct(60), false)).toBe('h-1.5');
-    expect(resizeHandleClass(pct(15), false)).toBe('h-1.5');
+  it('a fine pointer gets the design\'s 10px handle on tiles of 30 minutes or more', () => {
+    expect(resizeHandleClass(pct(30), false)).toBe('h-2.5');
+    expect(resizeHandleClass(pct(60), false)).toBe('h-2.5');
   });
 
-  it('a coarse pointer gets the 24px target on tiles of 30 minutes or more', () => {
-    expect(resizeHandleClass(pct(30), true)).toBe('h-6');
-    expect(resizeHandleClass(pct(60), true)).toBe('h-6');
-    expect(resizeHandleClass(pct(480), true)).toBe('h-6');
+  it('a coarse pointer gets a bigger target that never covers the lower half of a tile', () => {
+    // P3 note: a 24px handle covered the bottom half of a 45-min tile, so a long-press move
+    // started there resized instead. 12px on 30–59 min (≤ 40%), 16px from an hour (≤ 27%).
+    expect(resizeHandleClass(pct(30), true)).toBe('h-3');
+    expect(resizeHandleClass(pct(45), true)).toBe('h-3');
+    expect(resizeHandleClass(pct(60), true)).toBe('h-4');
+    expect(resizeHandleClass(pct(480), true)).toBe('h-4');
   });
 
-  it('keeps the small target on short tiles a 24px handle would swallow', () => {
+  it('keeps a 6px bar on short tiles on any pointer, so the tile body stays grabbable', () => {
     expect(resizeHandleClass(pct(15), true)).toBe('h-1.5');
     expect(resizeHandleClass(pct(29), true)).toBe('h-1.5');
+    expect(resizeHandleClass(pct(15), false)).toBe('h-1.5');
     expect(COARSE_RESIZE_MIN_SPAN_MIN).toBe(30);
+  });
+
+  it('treats an exactly-30-minute tile as 30 (lossy percent round-trip)', () => {
+    expect(resizeHandleClass((30 / 1440) * 100, true)).toBe('h-3');
   });
 });
 
