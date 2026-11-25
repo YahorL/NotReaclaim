@@ -146,16 +146,16 @@ export function TaskDrawer({ task, zone, onSave, onCancel, saving = false, error
           </select>
         </FormField>
 
-        {/* Row: Due by | Schedule after (dates together). Due by keeps its own markup: its hint
-            sits between the box and the error line. */}
-        <div>
+        {/* Dates, one per row: a 440px drawer's half column (~160px) clipped "06/10/2026, 12:0".
+            Due by keeps its own markup: its hint sits between the box and the error line. */}
+        <div data-testid="due-by-field" className={FULL_ROW}>
           <FieldBox label="Due by">
             <input type="datetime-local" data-testid="due-by" className={FIELD_CONTROL} value={form.dueByLocal} onChange={(e) => set('dueByLocal', e.target.value)} />
           </FieldBox>
           <p className="mt-1 text-[11px] text-fg-2">Leave empty for no deadline</p>
           {errors.dueByLocal && <p data-testid="err-dueByLocal" className={FIELD_ERROR}>{errors.dueByLocal}</p>}
         </div>
-        <FormField label="Schedule after" error={errors.notBeforeLocal} errorTestId="err-notBeforeLocal">
+        <FormField className={FULL_ROW} label="Schedule after" error={errors.notBeforeLocal} errorTestId="err-notBeforeLocal">
           <input type="datetime-local" data-testid="schedule-after" className={FIELD_CONTROL} value={form.notBeforeLocal} onChange={(e) => set('notBeforeLocal', e.target.value)} />
         </FormField>
 
