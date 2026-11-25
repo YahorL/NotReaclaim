@@ -28,19 +28,21 @@ export function bucketToPriority(bucket: BucketKey): 1 | 2 | 3 | 4 {
   }
 }
 
-export interface ColumnMeta { label: string; dot: string; leftBorder: string }
+/** `dot`: the priority's fill; `glow`: the soft halo the glass column header gives its dot. */
+export interface ColumnMeta { label: string; dot: string; glow: string }
 
 // Tailwind needs these literal class strings present in source to generate them.
 export const BUCKET_META: Record<BucketKey, ColumnMeta> = {
-  critical: { label: 'Critical', dot: 'bg-crit', leftBorder: 'border-l-crit' },
-  high: { label: 'High priority', dot: 'bg-high', leftBorder: 'border-l-high' },
-  medium: { label: 'Medium priority', dot: 'bg-med', leftBorder: 'border-l-med' },
-  low: { label: 'Low priority', dot: 'bg-low', leftBorder: 'border-l-low' },
+  critical: { label: 'Critical', dot: 'bg-pri-crit', glow: 'shadow-[0_0_12px_rgb(var(--c-pri-crit))]' },
+  high: { label: 'High priority', dot: 'bg-pri-high', glow: 'shadow-[0_0_12px_rgb(var(--c-pri-high))]' },
+  medium: { label: 'Medium priority', dot: 'bg-pri-med', glow: 'shadow-[0_0_12px_rgb(var(--c-pri-med))]' },
+  low: { label: 'Low priority', dot: 'bg-pri-low', glow: 'shadow-[0_0_12px_rgb(var(--c-pri-low))]' },
 };
 
 const EXTRA_COLUMN_META: Record<'backlog' | 'completed', ColumnMeta> = {
-  backlog: { label: 'Backlog', dot: 'bg-[#aeb2c0]', leftBorder: 'border-l-[#aeb2c0]' },
-  completed: { label: 'Completed', dot: 'bg-low', leftBorder: 'border-l-low' },
+  // Backlog is "no priority yet": a neutral dot with no halo.
+  backlog: { label: 'Backlog', dot: 'bg-fg-3', glow: '' },
+  completed: { label: 'Completed', dot: 'bg-pri-low', glow: 'shadow-[0_0_12px_rgb(var(--c-pri-low))]' },
 };
 
 export function columnMeta(key: BoardColumnKey): ColumnMeta {

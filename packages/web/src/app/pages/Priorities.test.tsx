@@ -76,8 +76,15 @@ describe('Priorities board', () => {
     renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
     await waitFor(() => expect(screen.getByText('Critical thing')).toBeInTheDocument());
     const col = screen.getByTestId('column-critical');
-    fireEvent.click(within(col).getByRole('button', { name: 'Collapse' }));
+    const toggle = within(col).getByRole('button', { name: 'Collapse Critical' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(toggle);
     expect(within(col).queryByText('Critical thing')).toBeNull();
+    // Collapsed = header only: name and count stay visible, the chevron now expands.
+    expect(within(col).getByRole('heading', { name: 'Critical' })).toBeInTheDocument();
+    expect(within(col).getByRole('button', { name: 'Expand Critical' })).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(within(col).getByRole('button', { name: 'Expand Critical' }));
+    expect(within(col).getByText('Critical thing')).toBeInTheDocument();
   });
 
   it('opens the edit drawer from the row menu and deletes', async () => {
@@ -174,22 +181,39 @@ describe('Priorities board', () => {
     expect(screen.queryByTestId('task-drawer')).not.toBeInTheDocument();
   });
 
-  it('board cards are dnd-kit sortables, except in the Completed column', async () => {
+  it('board cards are dnd-kit sortables via their grip, except in the Completed column', async () => {
     renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
     await waitFor(() => expect(screen.getByText('Low thing')).toBeInTheDocument());
-    const active = screen.getByText('Low thing').closest('[data-testid="task-row"]')!;
-    expect(active).toHaveAttribute('aria-roledescription', 'sortable');
+    expect(screen.getByRole('button', { name: 'Drag Low thing' })).toHaveAttribute('aria-roledescription', 'sortable');
     const doneRow = within(screen.getByTestId('column-completed')).getByTestId('task-row');
-    expect(doneRow).not.toHaveAttribute('aria-roledescription');
+    expect(within(doneRow).queryByRole('button', { name: /^Drag / })).toBeNull();
     expect(doneRow).not.toHaveAttribute('draggable');
+    expect(doneRow).toHaveAttribute('data-done', 'true');
+  });
+
+  it('heads each column with its name and task count, and says "Drop tasks here" when empty', async () => {
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
+    await waitFor(() => expect(screen.getByTestId('column-critical')).toBeInTheDocument());
+    expect(screen.getByRole('region', { name: 'High priority' })).toBeInTheDocument();
+    expect(screen.getByTestId('column-count-critical')).toHaveTextContent('1');
+    expect(screen.getByTestId('column-count-high')).toHaveTextContent('0');
+    expect(screen.getByTestId('column-empty-high')).toHaveTextContent('Drop tasks here');
+    expect(screen.getByTestId('column-empty-backlog')).toHaveTextContent('Drop tasks here');
+    // While searching, an empty column says why it is empty instead.
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search tasks' }), { target: { value: 'low' } });
+    expect(screen.getByTestId('column-empty-critical')).toHaveTextContent('No matching tasks');
   });
 
   it('sizes the columns to a phone and snaps the pane to them', async () => {
     renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
     await waitFor(() => expect(screen.getByTestId('column-critical')).toBeInTheDocument());
     const column = screen.getByTestId('column-critical');
-    // min(): 372px on any viewport wider than ~438px, so desktop is unchanged.
-    expect(column.className).toContain('w-[min(372px,85vw)]');
+    const board = screen.getByTestId('board');
+    // Below md each grid column is min(372px, 85vw): about one column per phone screen.
+    expect(board.classList.contains('auto-cols-[min(372px,85vw)]')).toBe(true);
+    // md+: columns share the width at ≥260px (prototype auto-fit minimum), scrolling when they can't.
+    expect(board.classList.contains('md:auto-cols-[minmax(260px,1fr)]')).toBe(true);
+    expect(board.classList.contains('grid-flow-col')).toBe(true);
     expect(column.className).toContain('snap-start');
     const pane = column.closest('.overflow-auto') as HTMLElement;
     expect(pane.className).toContain('snap-x');
@@ -197,7 +221,8 @@ describe('Priorities board', () => {
     expect(pane.className).toContain('md:snap-none');  // no snapping under a mouse
     expect(pane.className).toContain('overscroll-contain');
     // The snap gutter matches the pane's own padding, so column 1 keeps its inset after a snap.
-    expect(pane.className).toContain('scroll-pl-[30px]');
+    expect(pane.classList.contains('scroll-pl-4')).toBe(true);
+    expect(pane.classList.contains('px-4')).toBe(true);
   });
 });
 

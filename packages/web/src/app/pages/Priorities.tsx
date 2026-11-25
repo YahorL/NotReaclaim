@@ -103,6 +103,7 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
             onMove={onMove} onComplete={onComplete} onEdit={(t) => setEditingId(t.id)} onDelete={onDelete}
             onToggleSubtask={onToggleSubtask} onReorderSubtask={onReorderSubtask}
             onDragActiveChange={setDragging}
+            filtered={query.trim() !== ''}
           />
         )}
       </div>

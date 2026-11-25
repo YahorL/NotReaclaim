@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { DndContext, DragOverlay, type DragEndEvent, type DragOverEvent, type DragStartEvent } from '@dnd-kit/core';
 import type { Task } from '../../api/types';
-import { type BoardColumnKey, BUCKET_META, priorityToBucket } from './priorityBucket';
+import { type BoardColumnKey } from './priorityBucket';
 import { makeAnnouncements } from '../dnd/announcements';
 import { useAppSensors, pointerFirstCollision } from '../dnd/sensors';
 import { boardDropTargetName, boardKeyboardCoordinates, overColumnKey, resolveBoardDrop } from './boardDnd';
@@ -26,10 +26,17 @@ export interface BoardProps {
    * board has to drop CSS scroll-snapping for the duration — see `boardPane.ts`.
    */
   onDragActiveChange?: (active: boolean) => void;
+  /** A search is narrowing the board: empty columns say "No matching tasks". */
+  filtered?: boolean;
+}
+
+function emptyTextFor(key: BoardColumnKey, filtered: boolean): string {
+  if (filtered) return 'No matching tasks';
+  return key === 'completed' ? 'No completed tasks' : 'Drop tasks here';
 }
 
 export function Board({
-  columns, now, zone, nextMsFor, onMove, onComplete, onEdit, onDelete, onToggleSubtask, onReorderSubtask, onDragActiveChange,
+  columns, now, zone, nextMsFor, onMove, onComplete, onEdit, onDelete, onToggleSubtask, onReorderSubtask, onDragActiveChange, filtered = false,
 }: BoardProps) {
   // The board registers container droppables (`col:*`) alongside the cards, so it needs the
   // container-blind arrow getter — see `boardKeyboardCoordinates`.
@@ -38,7 +45,13 @@ export function Board({
   const [overColumn, setOverColumn] = useState<BoardColumnKey | null>(null);
   const tasksById = useMemo(() => new Map(columns.flatMap((c) => c.tasks).map((t) => [t.id, t])), [columns]);
   const activeTask = activeId !== null ? tasksById.get(activeId) ?? null : null;
-  const overlayBorder = activeTask ? BUCKET_META[priorityToBucket(activeTask.priority)].leftBorder : '';
+  // Lifted out of Column so a drop (or a keyboard move) into a collapsed column can expand it.
+  const [collapsed, setCollapsed] = useState<ReadonlySet<BoardColumnKey>>(() => new Set());
+  const toggleCollapsed = (key: BoardColumnKey) => setCollapsed((prev) => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
 
   // Every drag leaves through here — end AND cancel — so the "drag is over" signal belongs here
   // rather than on `onDragEnd`, which a cancelled drag never reaches.
@@ -70,11 +83,17 @@ export function Board({
       onDragEnd={onDragEnd}
       onDragCancel={clear}
     >
-      <div className="flex items-start gap-[26px]" style={{ minWidth: 'min-content' }}>
-        {columns.map((c) => (
+      {/* One grid column per board column. Phones: ~one column per screen, snapped by the pane.
+          md+: columns share the width at ≥260px each and the pane scrolls sideways only when they
+          cannot all fit (6 × 260 + gaps needs ~1640px) — the prototype's auto-fit grid, minus the
+          wrapping onto a second row. */}
+      <div data-testid="board" className="grid min-h-full auto-cols-[min(372px,85vw)] grid-flow-col gap-4 md:auto-cols-[minmax(260px,1fr)]">
+        {columns.map((c, i) => (
           <Column
-            key={c.key} columnKey={c.key} tasks={c.tasks} now={now} zone={zone} nextMsFor={nextMsFor}
+            key={c.key} columnKey={c.key} tasks={c.tasks} index={i} now={now} zone={zone} nextMsFor={nextMsFor}
             isTarget={overColumn === c.key && activeId !== null && c.key !== 'completed'}
+            collapsed={collapsed.has(c.key)} onToggleCollapsed={() => toggleCollapsed(c.key)}
+            emptyText={emptyTextFor(c.key, filtered)}
             onComplete={onComplete} onEdit={onEdit} onDelete={onDelete} onToggleSubtask={onToggleSubtask}
             onReorderSubtask={onReorderSubtask}
           />
@@ -90,7 +109,7 @@ export function Board({
         {activeTask ? (
           <div
             data-testid="board-drag-overlay"
-            className={`w-[340px] rounded-xl border border-l-4 border-line ${overlayBorder} bg-card px-4 py-3.5 text-[16px] font-semibold text-ink shadow-pop`}
+            className="glass-card w-[300px] rounded-card px-4 py-3 text-[14px] font-medium text-fg shadow-lift"
           >
             {activeTask.title}
           </div>

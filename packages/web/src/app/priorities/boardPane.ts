@@ -11,13 +11,14 @@
  *
  * So snapping is dropped for the duration of a drag and restored on drop/cancel — the pane
  * re-settles onto the nearest column, which reads as a gentle correction rather than a jump.
- * `scroll-pl-[30px]` keeps the pane's own left padding as the snap gutter, so the first column
+ * `scroll-pl-4` keeps the pane's own left padding (`px-4` below md) as the snap gutter, so the first column
  * lands with its inset intact instead of flush against the viewport edge.
  *
  * Desktop (`md+`) is unchanged: it never snapped (`md:snap-none`) and keeps native overscroll
  * chaining (`md:overscroll-auto`); the containment is a phone rubber-band fix.
  */
 export function boardPaneClass(dragging: boolean): string {
-  const base = 'min-h-0 flex-1 overflow-auto overscroll-contain scroll-pl-[30px] px-[30px] pb-10 md:overscroll-auto';
+  // md+: `px-1` lines the columns up with the header and toolbar (the shell frame pads the page).
+  const base = 'min-h-0 flex-1 overflow-auto overscroll-contain scroll-pl-4 px-4 pb-10 md:px-1 md:pb-1 md:overscroll-auto';
   return dragging ? `${base} snap-none` : `${base} snap-x snap-mandatory md:snap-none`;
 }
