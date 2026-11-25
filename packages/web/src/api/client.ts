@@ -6,6 +6,9 @@ import type {
   CreateCalendarEventInput, UpdateCalendarEventInput, CreateScheduledBlockInput, GoogleStatus,
 } from './types';
 
+/** An ApiError's `code` when the response body was not the server's JSON error shape (e.g. a proxy's HTML page). */
+export const NO_SERVER_CODE = 'error';
+
 export class ApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string) {
     super(message);
@@ -81,7 +84,7 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
     });
 
     if (!res.ok) {
-      let code = 'error';
+      let code = NO_SERVER_CODE;
       let message = `Request failed with status ${res.status}`;
       try {
         const parsed = (await res.json()) as { code?: string; message?: string };

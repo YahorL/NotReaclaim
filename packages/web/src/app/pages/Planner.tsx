@@ -8,6 +8,7 @@ import { toIso } from '../lib/time';
 import { useTimezone } from '../settings/useTimezone';
 import { useElementWidth } from '../planner/useElementWidth';
 import { useCompactWidth, usePointerCoarse } from '../lib/useMediaQuery';
+import { saveErrorText } from '../lib/saveError';
 import { useDragToScheduleSensors, pointerFirstCollision } from '../dnd/sensors';
 import { makeAnnouncements, POINTER_ONLY_DRAG_INSTRUCTIONS } from '../dnd/announcements';
 import { useLivePointerY } from '../dnd/useLivePointerY';
@@ -273,7 +274,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           <TaskDrawer
             key={editing.id}
             task={editing} zone={zone} compact={compact} saving={updateTask.isPending}
-            error={updateTask.error instanceof ApiError ? updateTask.error : null}
+            error={updateTask.error instanceof ApiError ? { message: saveErrorText(updateTask.error) } : null}
             onSave={(patch) => updateTask.mutate({ id: editing.id, patch }, { onSuccess: () => setEditingId(null) })}
             onCancel={() => setEditingId(null)}
           />

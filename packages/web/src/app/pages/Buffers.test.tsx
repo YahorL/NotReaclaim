@@ -3,7 +3,7 @@ import { screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { Settings } from '../../api/types';
 import { ApiError } from '../../api/client';
-import { renderWithProviders, fakeApiClient } from '../../test/fakes';
+import { renderWithProviders, fakeApiClient, gatewayError } from '../../test/fakes';
 import { Buffers } from './Buffers';
 
 const settings = (over: Partial<Settings> = {}): Settings => ({
@@ -220,6 +220,17 @@ describe('Buffers page', () => {
     fireEvent.click(screen.getByTestId('save'));
     await waitFor(() => expect(screen.getByTestId('form-error')).toHaveTextContent(/couldn't save/i));
     expect(screen.queryByTestId('saved')).not.toBeInTheDocument();
+  });
+
+  it('a save the proxy answers with 502 (API down or restarting) shows the connection line, not "Request failed with status 502"', async () => {
+    const failure = await gatewayError(502);
+    const patchSettings = vi.fn(async () => { throw failure; });
+    const api = fakeApiClient({ getSettings: async () => settings(), patchSettings } as never);
+    renderWithProviders(<Buffers />, { api });
+    await waitFor(() => expect((screen.getByTestId('task-buffer') as HTMLInputElement).value).toBe('10'));
+    fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '15' } });
+    fireEvent.click(screen.getByTestId('save'));
+    await waitFor(() => expect(screen.getByTestId('form-error')).toHaveTextContent("Couldn't save buffers. Check your connection and try again."));
   });
 
   describe('typed values are validated as typed', () => {

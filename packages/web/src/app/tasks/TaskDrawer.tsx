@@ -3,7 +3,6 @@ import { DndContext, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { Task, Subtask, UpdateTaskInput } from '../../api/types';
-import type { ApiError } from '../../api/client';
 import { FieldBox } from '../components/FieldBox';
 import { DurationStepper } from '../components/DurationStepper';
 import { DrawerPanel } from '../components/DrawerPanel';
@@ -59,7 +58,8 @@ export interface TaskDrawerProps {
   onSave: (patch: UpdateTaskInput) => void;
   onCancel: () => void;
   saving?: boolean;
-  error?: ApiError | null;
+  /** The failed save's text (see saveErrorText). */
+  error?: { message: string } | null;
   /** Hosted in a full-screen Sheet below md: drop the 440px panel chrome and the self-dismiss. */
   compact?: boolean;
 }

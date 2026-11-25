@@ -4,6 +4,7 @@ import { useCreateTaskMutation, useCreateCalendarEventMutation, useCreateSchedul
 import { DurationStepper } from '../components/DurationStepper';
 import { WINDOW_END_MIN, SLOT_MIN, formatHm } from './weekModel';
 import { MS_PER_MIN, toIso } from '../lib/time';
+import { saveErrorText } from '../lib/saveError';
 import { dateFieldToIso, defaultDueLocal } from '../tasks/taskForm';
 import { useZoneChange } from '../settings/useTimezone';
 import { isActiveTask } from '../priorities/priorityBucket';
@@ -210,7 +211,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
         <DurationStepper label="slot" size={22} valueMs={durationMs} onChange={(ms) => setDurationMs(Math.max(SLOT_MIN * MS_PER_MIN, Math.min(ms, maxDurationMs)))} />
       </div>
       <p data-testid="slot-label" className="mb-2 text-[13px] font-semibold text-inkSoft">{formatHm(startMs, zone)} – {formatHm(endMs, zone)}</p>
-      {apiError && <p data-testid="create-error" className="mb-2 text-[11px] text-crit">{apiError.message}</p>}
+      {apiError && <p data-testid="create-error" className="mb-2 text-[11px] text-crit">{saveErrorText(apiError)}</p>}
       <button
         type="button"
         data-testid="create-submit"

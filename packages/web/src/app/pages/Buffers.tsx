@@ -3,6 +3,7 @@ import { ApiError } from '../../api/client';
 import { useSettingsQuery, useSaveBuffersMutation, type BufferValues } from '../../api/queries';
 import { toFormState, defaultFormState, toSettingsInput, browserTimezone, validateBufferMinutesText, type SettingsFormState } from '../settings/settingsForm';
 import { FIELD_ERROR } from '../components/formStyles';
+import { isServerUnreachable, saveErrorText } from '../lib/saveError';
 import { useValueChange } from '../components/useValueChange';
 
 const labelCls = 'mb-0.5 block text-[10px] uppercase tracking-wide text-inkSoft';
@@ -28,9 +29,10 @@ export function Buffers() {
 
   const initial = settingsQ.data ? toFormState(settingsQ.data) : defaultFormState(browserTimezone());
 
-  // Any thrown error counts, not just ApiError: a network failure rejects with a TypeError.
+  // Any thrown error counts, not just ApiError: a network failure rejects with a TypeError, and a
+  // proxy's 502/503/504 page means the API never answered either (see isServerUnreachable).
   const saveError = updateM.isError
-    ? (updateM.error instanceof ApiError ? updateM.error.message : "Couldn't save buffers. Check your connection and try again.")
+    ? (isServerUnreachable(updateM.error) ? "Couldn't save buffers. Check your connection and try again." : saveErrorText(updateM.error))
     : null;
 
   return (

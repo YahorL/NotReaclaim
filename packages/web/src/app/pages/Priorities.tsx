@@ -6,6 +6,7 @@ import { TaskDrawer } from '../tasks/TaskDrawer';
 import { useTimezone } from '../settings/useTimezone';
 import { DrawerHost } from '../components/DrawerHost';
 import { useCompactWidth } from '../lib/useMediaQuery';
+import { saveErrorText } from '../lib/saveError';
 import { Toolbar } from '../priorities/Toolbar';
 import { Board, type BoardColumn } from '../priorities/Board';
 import { type BoardColumnKey, BUCKETS, isActiveTask, priorityToBucket, nextBlockMsForTask, sortBucket, sortCompleted } from '../priorities/priorityBucket';
@@ -112,7 +113,7 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
           <TaskDrawer
             key={editing.id}
             task={editing} zone={zone} compact={compact} saving={updateM.isPending}
-            error={updateM.error instanceof ApiError ? updateM.error : null}
+            error={updateM.error instanceof ApiError ? { message: saveErrorText(updateM.error) } : null}
             onSave={(patch) => updateM.mutate({ id: editing.id, patch }, { onSuccess: () => setEditingId(null) })}
             onCancel={() => setEditingId(null)}
           />

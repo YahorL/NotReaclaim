@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { ApiError } from '../../api/client';
+import { saveErrorText } from '../lib/saveError';
 import { useCreateTaskMutation, useSettingsQuery, useCategoriesQuery, useCreateCategoryMutation } from '../../api/queries';
 import { Icons } from './icons';
 import {
@@ -179,7 +180,7 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
           </FieldBox>
         </div>
 
-        {error && <p data-testid="modal-error" className="mb-2 text-[12px] text-crit">{error.message}</p>}
+        {error && <p data-testid="modal-error" className="mb-2 text-[12px] text-crit">{saveErrorText(error)}</p>}
 
         <div className="flex items-center justify-end">
           <PrimaryButton large type="button" disabled={!ok || createM.isPending} onClick={submit}>

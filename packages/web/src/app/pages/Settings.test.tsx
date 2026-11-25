@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { Settings } from '../../api/types';
 import { ApiError } from '../../api/client';
-import { renderWithProviders, fakeApiClient } from '../../test/fakes';
+import { renderWithProviders, fakeApiClient, gatewayError } from '../../test/fakes';
 import { Settings as SettingsPage } from './Settings';
 import { tokenStore } from '../../auth/tokenStore';
 
@@ -110,6 +110,17 @@ describe('Settings page', () => {
     fireEvent.click(screen.getByTestId('save'));
     await waitFor(() => expect(screen.getByTestId('form-error')).toHaveTextContent("Couldn't save. Check your connection and try again."));
     expect(screen.queryByTestId('saved')).not.toBeInTheDocument();
+  });
+
+  it('says it could not save when the API is down behind its proxy (502 page), not "Request failed with status 502"', async () => {
+    const failure = await gatewayError(502);
+    const patchSettings = vi.fn(async () => { throw failure; });
+    const api = fakeApiClient({ getSettings: async () => settings(), patchSettings } as never);
+    renderWithProviders(<SettingsPage />, { api });
+    await waitFor(() => expect(screen.getByTestId('settings-form')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('save'));
+    await waitFor(() => expect(screen.getByTestId('form-error')).toHaveTextContent("Couldn't save. Check your connection and try again."));
+    expect(screen.getByTestId('form-error')).not.toHaveTextContent(/status 502/);
   });
 
   it('omits the build date when it is unknown', async () => {
