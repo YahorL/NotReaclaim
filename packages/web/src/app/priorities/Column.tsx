@@ -40,10 +40,13 @@ export function Column({
   const emptyTone = isTarget ? 'border-dashed border-indigo font-bold text-indigo' : 'border-transparent text-[#aeb2c0]';
 
   return (
+    // The Board row stretches each column to its height so the empty space below the cards accepts
+    // a drop. A collapsed column shows only its header, so it keeps to its own height (self-start):
+    // stretched, it would accept drops all the way down with nothing visible there.
     <div
       ref={setNodeRef}
       data-testid={`column-${columnKey}`}
-      className={`shrink-0 snap-start transition-[width] ${collapsed ? 'w-[250px]' : 'w-[min(372px,85vw)]'}`}
+      className={`shrink-0 snap-start transition-[width] ${collapsed ? 'w-[250px] self-start' : 'w-[min(372px,85vw)]'}`}
     >
       <div className="mb-3 flex items-center pr-1">
         <span className="flex-1 text-[16.5px] font-bold text-inkSoft">{meta.label}</span>

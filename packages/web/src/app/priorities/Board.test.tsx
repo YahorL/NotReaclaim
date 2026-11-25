@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { DndContext, useDndContext } from '@dnd-kit/core';
 import type { Task } from '../../api/types';
 import { Board, type BoardColumn } from './Board';
@@ -50,5 +50,40 @@ describe('Board columns as drop targets', () => {
     // min-, not fixed, height: a column taller than the pane still grows and the pane scrolls.
     expect(row).toHaveClass('min-h-full');
     expect(row).not.toHaveClass('h-full');
+  });
+
+  it('a collapsed column keeps to its header height (self-start), an expanded one stretches; Completed still rejects drops', () => {
+    let completedDisabled: boolean | undefined;
+    function Probe() {
+      completedDisabled = useDndContext().droppableContainers.get('col:completed')?.disabled;
+      return null;
+    }
+    const columns: BoardColumn[] = [
+      { key: 'high', tasks: [task()] },
+      { key: 'completed', tasks: [] },
+    ];
+    render(<Board columns={columns} now={0} zone="UTC" nextMsFor={() => null} onMove={vi.fn()} {...handlers} />);
+    const high = screen.getByTestId('column-high');
+    const completed = screen.getByTestId('column-completed');
+    expect(high).not.toHaveClass('self-start');
+    expect(completed).not.toHaveClass('self-start');
+
+    // Collapsed, a column renders only its header: stretched, its droppable would cover the whole
+    // board height below that header with nothing to show it.
+    fireEvent.click(within(high).getByRole('button', { name: 'Collapse' }));
+    expect(high).toHaveClass('self-start');
+    fireEvent.click(within(completed).getByRole('button', { name: 'Collapse' }));
+    expect(completed).toHaveClass('self-start');
+
+    fireEvent.click(within(high).getByRole('button', { name: 'Expand' }));
+    expect(high).not.toHaveClass('self-start');
+
+    render(
+      <DndContext>
+        <Column columnKey="completed" tasks={[]} now={0} zone="UTC" nextMsFor={() => null} isTarget={false} {...handlers} />
+        <Probe />
+      </DndContext>,
+    );
+    expect(completedDisabled).toBe(true);
   });
 });
