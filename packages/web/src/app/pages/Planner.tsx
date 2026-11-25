@@ -27,6 +27,7 @@ import { EventDrawer } from '../planner/EventDrawer';
 import { labelBlocksWithSubtasks } from '../planner/blockLabels';
 import { BlockDetailCard, type BlockDetail } from '../planner/BlockDetailCard';
 import { classifyBlock } from '../planner/weekModel';
+import { usePlannerFilters, isFilteredOut, ALL_SHOWN } from '../planner/usePlannerFilters';
 
 const DRAWER_DESKTOP_CLASS = `${DESKTOP_DRAWER_SLOT} z-50`;
 
@@ -186,6 +187,14 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
     return { key: selectedKey, kind: ev.kind === 'blocked' ? 'blocked' : 'meeting', source: ev.source, title: ev.title,
       startMs: Date.parse(ev.startsAt), endMs: Date.parse(ev.endsAt), pinned: false, started: false, running: false, taskId: null, event: ev };
   }, [selectedKey, labeledBlocks, calendar.data, nowMs]);
+  // Meetings / Movable toggles live in the md+ toolbar, so a phone always shows everything (a
+  // filter saved on the desktop must not strand hidden tiles where there is no toggle).
+  const { filters: savedFilters, toggle: toggleFilter } = usePlannerFilters();
+  const filters = compact ? ALL_SHOWN : savedFilters;
+  // A filtered-out tile cannot stay selected (its card would describe something invisible).
+  useEffect(() => {
+    if (selectedDetail && isFilteredOut(selectedDetail.kind, filters)) setSelectedKey(null);
+  }, [selectedDetail, filters]);
   // The selected block left the data (deleted, paged away, replanned out): drop the selection.
   useEffect(() => {
     if (selectedKey && !selectedDetail && !schedule.isFetching && !calendar.isFetching) setSelectedKey(null);
@@ -351,6 +360,8 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           taskDrop={taskDrop}
           selectedKey={selectedKey}
           onSelect={(key, { keyboard }) => { setSelectedKey(key); setSelectedByKeyboard(keyboard); }}
+          filters={filters}
+          onToggleFilter={toggleFilter}
           accents={accents}
           compact={compact}
           coarse={coarse}

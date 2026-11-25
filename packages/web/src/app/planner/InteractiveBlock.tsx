@@ -43,6 +43,8 @@ export interface InteractiveBlockProps {
   onPreview?: (startMs: number, endMs: number) => void;
   /** id of the shared, visually hidden keyboard instructions. */
   describedBy?: string;
+  /** Filtered out by the Meetings / Movable toggles (see CalendarBlock `hidden`). */
+  hidden?: boolean;
   onUnpin?: () => void;
   onDelete?: () => void;
   /** Fired on a press that did not drag — never alongside onCommit — and on keyboard activation
@@ -76,7 +78,7 @@ export interface InteractiveBlockProps {
  * - Resize: the height follows the pointer exactly; the ghost shows the snapped end.
  */
 export function InteractiveBlock(props: InteractiveBlockProps) {
-  const { blockKey, dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, leftPct = 0, widthPct = 100, lane = 0, lanes = 1, startLabel, title, kind, pinned, source = null, started = false, selected = false, onCommit, onPreview, describedBy, onUnpin, onDelete, onClick, deleteLabel = 'Delete block', dayCount = 7, accent, zone = 'UTC', coarse = false, getScrollContainer } = props;
+  const { blockKey, dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, leftPct = 0, widthPct = 100, lane = 0, lanes = 1, startLabel, title, kind, pinned, source = null, started = false, selected = false, onCommit, onPreview, describedBy, hidden = false, onUnpin, onDelete, onClick, deleteLabel = 'Delete block', dayCount = 7, accent, zone = 'UTC', coarse = false, getScrollContainer } = props;
   const startMin = (startMs - dayStartMs) / MS_PER_MIN;
   const endMin = (endMs - dayStartMs) / MS_PER_MIN;
   const durationMin = endMin - startMin;
@@ -233,6 +235,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
         {...drag.handlers}
         motion={motion}
         settling={settling}
+        hidden={hidden}
         onTransitionEnd={onTransitionEnd}
         className={`${live ? '' : 'cursor-grab'} select-none ${coarse ? 'touch-pan-y' : ''}`}
         style={style}

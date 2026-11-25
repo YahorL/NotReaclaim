@@ -574,6 +574,63 @@ describe('WeekGrid keyboard moves', () => {
   });
 });
 
+describe('WeekGrid Meetings / Movable filters', () => {
+  const tiles = () => screen.getAllByTestId('event-block');
+  const byKind = (k: string) => tiles().filter((t) => t.getAttribute('data-kind') === k);
+  const appEvent = event({ id: 'e9', title: 'Coffee', source: 'app', googleCalendarId: null, googleEventId: null, startsAt: '2026-01-08T10:00:00.000Z', endsAt: '2026-01-08T11:00:00.000Z' });
+  const blocked = event({ id: 'e8', title: 'Focus', source: 'app', kind: 'blocked', googleCalendarId: null, googleEventId: null, startsAt: '2026-01-09T10:00:00.000Z', endsAt: '2026-01-09T11:00:00.000Z' });
+
+  it('toolbar toggles report their state with aria-pressed and call back', () => {
+    const onToggleFilter = vi.fn();
+    renderGrid({ filters: { meetings: true, movable: false }, onToggleFilter });
+    expect(screen.getByRole('button', { name: 'Meetings' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Movable' })).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(screen.getByRole('button', { name: 'Meetings' }));
+    expect(onToggleFilter).toHaveBeenCalledWith('meetings');
+  });
+
+  it('without a toggle handler the legend stays a static key (no buttons)', () => {
+    renderGrid();
+    expect(screen.queryByRole('button', { name: 'Meetings' })).toBeNull();
+    expect(within(screen.getByTestId('grid-legend')).getByText('Meetings')).toBeInTheDocument();
+  });
+
+  it('Meetings off hides every calendar event — Google, app, blocked — and only those', () => {
+    renderGrid({ events: [event(), appEvent, blocked], filters: { meetings: false, movable: true }, onToggleFilter: vi.fn() });
+    for (const t of [...byKind('meeting'), ...byKind('blocked')]) {
+      expect(t).toHaveAttribute('data-hidden', 'true');
+      expect(t).toHaveAttribute('aria-hidden', 'true');
+      expect(t.className).toContain('pointer-events-none');
+      expect(t.className).toContain('opacity-0');
+    }
+    expect(byKind('meeting')).toHaveLength(2);
+    expect(byKind('task')[0]).not.toHaveAttribute('data-hidden');
+    expect(byKind('task')[0]!.className).toContain('pointer-events-auto');
+  });
+
+  it('hidden tiles leave the tab order (body and action buttons) but stay mounted', () => {
+    renderGrid({ blocks: [block({ pinned: true })], events: [appEvent], filters: { meetings: true, movable: false }, onToggleFilter: vi.fn(), onDeleteBlock: vi.fn() });
+    const task = byKind('task')[0]!;
+    expect(task).toHaveAttribute('data-hidden', 'true');
+    for (const btn of task.querySelectorAll('button')) expect(btn).toHaveAttribute('tabindex', '-1');
+    // The visible app event keeps its natural tab stop.
+    expect(within(byKind('meeting')[0]!).getByTestId('block-body')).not.toHaveAttribute('tabindex');
+    // Hidden = out of the accessibility tree too, so role queries skip it.
+    expect(screen.queryByRole('button', { name: /^Write spec/ })).toBeNull();
+  });
+
+  it('turning a filter back on restores the tiles (same nodes, no remount)', () => {
+    const { rerender } = renderGrid({ filters: { meetings: false, movable: true }, onToggleFilter: vi.fn() });
+    const node = byKind('meeting')[0]!;
+    rerender(
+      <WeekGrid days={days} nowMs={WED_NOON} weekLabel="Jan 5 – 11" blocks={[block()]} events={[event()]}
+        onPrev={vi.fn()} onToday={vi.fn()} onNext={vi.fn()} onCommit={vi.fn()} filters={{ meetings: true, movable: true }} onToggleFilter={vi.fn()} />,
+    );
+    expect(byKind('meeting')[0]).toBe(node);
+    expect(node).not.toHaveAttribute('data-hidden');
+  });
+});
+
 describe('WeekGrid app-created events', () => {
   const PX_PER_60MIN = minutesToPx(60);
   const appEvent = event({ id: 'e9', title: 'Coffee', source: 'app', googleCalendarId: null, googleEventId: null });
@@ -717,7 +774,7 @@ describe('WeekGrid compact (below md)', () => {
     const legend = screen.getByTestId('grid-legend');
     expect(legend.className).toContain('min-w-0');
     expect(legend.className).toContain('overflow-hidden');
-    expect(legend.className).toContain('max-h-[22px]');
+    expect(legend.className).toContain('max-h-[36px]');
   });
 
   it('hides the legend below md', () => {

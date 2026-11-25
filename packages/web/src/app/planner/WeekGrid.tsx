@@ -4,6 +4,7 @@ import type { ScheduledBlock, CalendarEvent } from '../../api/types';
 import type { BlockKind } from './blockStyle';
 import { InteractiveBlock } from './InteractiveBlock';
 import { LockedBlock } from './LockedBlock';
+import { ALL_SHOWN, isFilteredOut, type PlannerFilters, type PlannerFilterName } from './usePlannerFilters';
 import { nowLine, isToday, classifyBlock, snapClickToSlot, WINDOW_START_MIN, WINDOW_END_MIN, GRID_COLUMN_PX, dayAnchor, formatHm, weekdayLabel, dayOfMonth, hourRowLabel, timeGutterPx, popoverAlign, swipeDecision } from './weekModel';
 import { CreatePopover } from './CreatePopover';
 import { MS_PER_MIN } from '../lib/time';
@@ -92,15 +93,35 @@ const HOURS = Array.from({ length: 24 }, (_, i) => i); // 24 hour rows, counted 
 /** One hour row of grid line per 60px, drawn on the day columns (prototype `.col`). */
 const GRID_LINES = { backgroundImage: 'repeating-linear-gradient(to bottom, rgb(var(--c-line-rgb) / 0.065) 0 1px, transparent 1px 60px)' };
 
-/** Static key for the block looks (the Meetings / Movable filter toggles arrive in P4). */
-function Legend() {
-  const item = 'flex shrink-0 items-center gap-2 whitespace-nowrap text-[13px] text-fg-2';
+const FILTER_PILL = 'btn-glass inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-pill px-3.5 text-[13px] text-fg transition-opacity aria-[pressed=false]:opacity-50';
+const LEGEND_ITEM = 'inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap px-1.5 text-[13px] text-fg-2';
+
+/**
+ * Toolbar key + filters (spec §5.3): Meetings / Movable are toggle pills (`aria-pressed` = shown)
+ * when the planner wires them, plain legend chips otherwise; Locked / Blocked are static.
+ */
+function Legend({ filters, onToggle }: { filters: PlannerFilters; onToggle?: (name: PlannerFilterName) => void }) {
+  const meetingSwatch = <span aria-hidden="true" className="h-3 w-3 rounded-[4px] bg-meeting" />;
+  const movableSwatch = <span aria-hidden="true" className="h-2.5 w-2.5 rounded-[4px] border-[1.5px] border-dashed border-accent-fg" />;
   return (
-    <div data-testid="grid-legend" className="ml-1 hidden max-h-[22px] min-w-0 flex-wrap items-center gap-x-4 overflow-hidden md:flex">
-      <span className={item}><span aria-hidden="true" className="h-3 w-3 rounded-[4px] bg-meeting" /> Meetings</span>
-      <span className={item}><span aria-hidden="true" className="h-3 w-3 rounded-[4px] border-[1.5px] border-dashed border-accent-fg" /> Movable</span>
-      <span className={item}><Icons.lock size={14} /> Locked</span>
-      <span className={item}><span aria-hidden="true" className="block-blocked h-3 w-3 rounded-[4px]" /> Blocked</span>
+    <div data-testid="grid-legend" className="ml-1 hidden max-h-[36px] min-w-0 flex-wrap items-center gap-x-1.5 overflow-hidden md:flex">
+      {onToggle ? (
+        <>
+          <button type="button" data-testid="filter-meetings" aria-pressed={filters.meetings} onClick={() => onToggle('meetings')} title="Show or hide calendar events" className={FILTER_PILL}>
+            {meetingSwatch} Meetings
+          </button>
+          <button type="button" data-testid="filter-movable" aria-pressed={filters.movable} onClick={() => onToggle('movable')} title="Show or hide task and habit blocks" className={FILTER_PILL}>
+            {movableSwatch} Movable
+          </button>
+        </>
+      ) : (
+        <>
+          <span className={LEGEND_ITEM}>{meetingSwatch} Meetings</span>
+          <span className={LEGEND_ITEM}>{movableSwatch} Movable</span>
+        </>
+      )}
+      <span className={LEGEND_ITEM}><Icons.lock size={14} /> Locked</span>
+      <span className={LEGEND_ITEM}><span aria-hidden="true" className="block-blocked h-3 w-3 rounded-[4px]" /> Blocked</span>
     </div>
   );
 }
@@ -142,6 +163,10 @@ export interface WeekGridProps {
   /** md+: a click / tap / Enter on a block selects it (the Planner shows its detail card).
    *  `keyboard` = the selection came from the keyboard (focus moves to the card). */
   onSelect?: (key: string, opts: { keyboard: boolean }) => void;
+  /** Meetings / Movable visibility (spec §5.3). Hidden tiles stay mounted, faded out. */
+  filters?: PlannerFilters;
+  /** Wires the toolbar toggles; without it the legend is a static key. */
+  onToggleFilter?: (name: PlannerFilterName) => void;
 }
 
 interface Item {
@@ -203,7 +228,7 @@ function toItems(blocks: ScheduledBlock[], events: CalendarEvent[], zone: string
 }
 
 export function WeekGrid(props: WeekGridProps) {
-  const { days, nowMs, weekLabel, blocks, events, onPrev, onToday, onNext, onCommit, onCommitEvent, onEditEvent, onDeleteBlock, onDeleteEvent, taskDrop = null, accents = {}, zone = 'UTC', dayStartMinute = 0, panelHidden, onTogglePanel, compact = false, coarse = false, onEditTask, selectedKey = null, onSelect } = props;
+  const { days, nowMs, weekLabel, blocks, events, onPrev, onToday, onNext, onCommit, onCommitEvent, onEditEvent, onDeleteBlock, onDeleteEvent, taskDrop = null, accents = {}, zone = 'UTC', dayStartMinute = 0, panelHidden, onTogglePanel, compact = false, coarse = false, onEditTask, selectedKey = null, onSelect, filters = ALL_SHOWN, onToggleFilter } = props;
   const gridCols = `${timeGutterPx(compact)}px repeat(${days.length}, minmax(0, 1fr))`;
   const dataItems = toItems(blocks, events, zone);
   const [pending, setPending] = useState<Record<string, Pending>>({});
@@ -319,7 +344,7 @@ export function WeekGrid(props: WeekGridProps) {
         {/* The legend is dropped below md (spec §4). It is the one element that gives when the row
             cannot wrap: `min-w-0` lets it shrink, and wrapping inside a one-line-tall clip drops
             whole chips off the end rather than splitting a chip across two lines. */}
-        <Legend />
+        <Legend filters={filters} onToggle={onToggleFilter} />
         {onTogglePanel && (compact ? (
           <button
             type="button"
@@ -435,6 +460,7 @@ export function WeekGrid(props: WeekGridProps) {
                   const blockId = it.blockId;
                   const accent = it.taskId ? accents[it.taskId] : undefined;
                   const geometry = { topPct: g.topPct, heightPct: g.heightPct, leftPct: g.leftPct, widthPct: g.widthPct, lane: g.lane, lanes: g.lanes };
+                  const hidden = isFilteredOut(it.kind, filters);
                   if (it.kind !== 'meeting' && it.kind !== 'blocked' && blockId) {
                     return (
                       <InteractiveBlock
@@ -450,6 +476,7 @@ export function WeekGrid(props: WeekGridProps) {
                         onClick={(keyboard) => activate(it, keyboard)}
                         blockKey={it.key}
                         selected={selectedKey === it.key}
+                        hidden={hidden}
                         dayCount={n}
                         accent={accent}
                         zone={zone}
@@ -479,6 +506,7 @@ export function WeekGrid(props: WeekGridProps) {
                         onClick={(keyboard) => activate(it, keyboard)}
                         blockKey={it.key}
                         selected={selectedKey === it.key}
+                        hidden={hidden}
                         onDelete={onDeleteEvent ? () => onDeleteEvent(ev.id) : undefined}
                         deleteLabel="Delete event"
                         dayCount={n}
@@ -493,6 +521,7 @@ export function WeekGrid(props: WeekGridProps) {
                       key={it.key}
                       blockKey={it.key}
                       selected={selectedKey === it.key}
+                      hidden={hidden}
                       onBodyClick={(e) => activate(it, e.detail === 0)}
                       title={it.title}
                       kind={it.kind}

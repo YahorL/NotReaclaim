@@ -405,6 +405,30 @@ describe('Planner block selection', () => {
   });
 });
 
+describe('Planner filters', () => {
+  beforeEach(() => { localStorage.removeItem('nr.plannerFilters'); localStorage.removeItem('nr.plannerPanelHidden'); });
+  const tileOf = (title: string) => within(screen.getByTestId('block-layer')).getAllByTestId('event-block').find((b) => b.textContent?.includes(title))!;
+
+  it('Meetings hides the calendar events, persists, and drops a selection it hides', async () => {
+    renderWithProviders(<Planner now={() => NOW} />, { api: makeApi() });
+    await waitFor(() => expect(tileOf('Standup')).toBeTruthy());
+    fireEvent.click(within(tileOf('Standup')).getByTestId('block-body'), { detail: 1 });
+    expect(screen.getByTestId('block-detail-card')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Meetings' }));
+    expect(tileOf('Standup')).toHaveAttribute('data-hidden', 'true');
+    expect(tileOf('Write spec')).not.toHaveAttribute('data-hidden');
+    await waitFor(() => expect(screen.queryByTestId('block-detail-card')).toBeNull());
+    expect(JSON.parse(localStorage.getItem('nr.plannerFilters')!)).toEqual({ meetings: false, movable: true });
+  });
+
+  it('starts from the saved filters', async () => {
+    localStorage.setItem('nr.plannerFilters', '{"meetings":true,"movable":false}');
+    renderWithProviders(<Planner now={() => NOW} />, { api: makeApi() });
+    await waitFor(() => expect(tileOf('Write spec')).toHaveAttribute('data-hidden', 'true'));
+    expect(screen.getByRole('button', { name: 'Movable' })).toHaveAttribute('aria-pressed', 'false');
+  });
+});
+
 describe('Planner compact layout', () => {
   let mm: FakeMatchMedia | null = null;
   beforeEach(() => { mm = installMatchMedia({ '(max-width: 767.98px)': true }); });
@@ -416,6 +440,17 @@ describe('Planner compact layout', () => {
     categoryId: null, notBefore: null, status: 'pending', completedAt: null,
     createdAt: '', updatedAt: '', subtasks: [],
   } as unknown as Task;
+
+  it('ignores a filter saved on the desktop (the toggles are md+ only)', async () => {
+    localStorage.setItem('nr.plannerFilters', '{"meetings":false,"movable":false}');
+    try {
+      renderWithProviders(<Planner now={() => NOW} />, { api: makeApi() });
+      await waitFor(() => expect(within(screen.getByTestId('block-layer')).getAllByTestId('event-block')).toHaveLength(2));
+      for (const t of within(screen.getByTestId('block-layer')).getAllByTestId('event-block')) expect(t).not.toHaveAttribute('data-hidden');
+    } finally {
+      localStorage.removeItem('nr.plannerFilters');
+    }
+  });
 
   it('shows the compact summary card (with Re-plan) but no Next-up card', async () => {
     renderWithProviders(<Planner now={() => NOW} />, { api: makeApi() });
