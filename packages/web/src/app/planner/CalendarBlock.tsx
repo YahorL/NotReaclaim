@@ -47,6 +47,8 @@ export interface CalendarBlockProps {
   onPointerMove?: PointerHandler;
   onPointerUp?: PointerHandler;
   onPointerCancel?: PointerHandler;
+  /** Bubbles from the resize handle too (it captures for a resize). */
+  onLostPointerCapture?: PointerHandler;
   /** Bottom-edge resize hit area. Absent on locked tiles. */
   resize?: { onPointerDown: PointerHandler; className: string };
   /**
@@ -101,7 +103,7 @@ export function CalendarBlock(props: CalendarBlockProps) {
   const {
     blockKey, title, kind, source = null, pinned = false, started = false, accent, startLabel, whenLabel, durationMin,
     style, className = '', dayIndex, selected = false, coarse = false, onDelete, deleteLabel = 'Delete block',
-    onUnpin, onBodyClick, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, resize, children,
+    onUnpin, onBodyClick, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onLostPointerCapture, resize, children,
     motion = 'idle', pressed = false, settling = false, shake = false, hidden = false, landDelayMs, enterDelayMs, onTransitionEnd, onBodyKeyDown, onBodyBlur, describedBy,
   } = props;
   const v = blockVariant({ kind, source, pinned, started, accent });
@@ -146,6 +148,7 @@ export function CalendarBlock(props: CalendarBlockProps) {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
+      onLostPointerCapture={onLostPointerCapture}
       onTransitionEnd={onTransitionEnd}
       // A tile is never a native drag source: a browser drag (of a stray text selection that
       // covers the tile) would steal the pointer mid-gesture with a pointercancel.

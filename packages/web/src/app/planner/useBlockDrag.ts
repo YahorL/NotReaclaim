@@ -40,6 +40,7 @@ export interface BlockDrag {
     onPointerMove: (e: ReactPointerEvent<HTMLElement>) => void;
     onPointerUp: (e: ReactPointerEvent<HTMLElement>) => void;
     onPointerCancel: (e: ReactPointerEvent<HTMLElement>) => void;
+    onLostPointerCapture: (e: ReactPointerEvent<HTMLElement>) => void;
   };
   resizeHandlers: { onPointerDown: (e: ReactPointerEvent<HTMLElement>) => void };
 }
@@ -247,10 +248,21 @@ export function useBlockDrag({ dayCount, coarse, getScrollContainer, onTap, onRe
 
   const onPointerCancel = () => { reset(); };
 
+  // The capture can be taken away with no pointerup (the node re-inserted, a system gesture, an
+  // alert): without this the tile stayed lifted and the "first pointer wins" guard ignored every
+  // later press. Treated like a cancel — revert, commit nothing. Only OUR capture counts: `reset()`
+  // clears `captureRef` before releasing, so our own release never lands here, and a child losing
+  // the browser's implicit touch capture to the tile (target ≠ our element) is not a loss.
+  const onLostPointerCapture = (e: ReactPointerEvent<HTMLElement>) => {
+    const cap = captureRef.current;
+    if (!cap || !gestureRef.current || e.pointerId !== cap.pointerId || e.target !== cap.el) return;
+    reset();
+  };
+
   return {
     live,
     pressed,
-    handlers: { onPointerDown: begin('move'), onPointerMove, onPointerUp, onPointerCancel },
+    handlers: { onPointerDown: begin('move'), onPointerMove, onPointerUp, onPointerCancel, onLostPointerCapture },
     resizeHandlers: { onPointerDown: begin('resize') },
   };
 }
