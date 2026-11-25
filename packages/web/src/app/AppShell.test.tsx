@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { act } from '@testing-library/react';
 import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { renderWithProviders, fakeApiClient } from '../test/fakes';
 import { AppShell } from './AppShell';
@@ -191,5 +192,51 @@ describe('AppShell task search', () => {
     expect(screen.queryByRole('dialog', { name: 'Search tasks' })).toBeNull();
     const drawer = await screen.findByTestId('task-drawer');
     expect(within(drawer).getByDisplayValue('Write the quarterly report')).toBeInTheDocument();
+  });
+});
+
+describe('AppShell drawer slot', () => {
+  // The header wraps onto two rows below ~1150px; a fixed 120px slot then covered Search / New
+  // task / the avatar. The shell publishes the content area's measured top instead.
+  it('publishes the content top as --drawer-top and follows it when the header grows', () => {
+    const observers: Array<() => void> = [];
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(private cb: () => void) { observers.push(() => this.cb()); }
+      observe() {}
+      disconnect() {}
+    });
+    let top = 121;
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return { top: this.dataset.testid === 'shell-content' ? top : 0 } as DOMRect;
+    });
+    try {
+      renderWithProviders(<AppShell />, { api: makeApi() });
+      const root = screen.getByTestId('app-shell');
+      expect(root.style.getPropertyValue('--drawer-top')).toBe('121px');
+      top = 189; // header wrapped onto a second row
+      act(() => { for (const fire of observers) fire(); });
+      expect(root.style.getPropertyValue('--drawer-top')).toBe('189px');
+      top = 0; // hidden / not laid out: fall back to the slot's default, never y=0
+      act(() => { for (const fire of observers) fire(); });
+      expect(root.style.getPropertyValue('--drawer-top')).toBe('');
+    } finally {
+      rect.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('positions the shell task drawer from --drawer-top', async () => {
+    const tasks = [{
+      id: 'task-1', userId: 'u1', title: 'Write the quarterly report', priority: 2, sortOrder: 0,
+      durationMs: 3_600_000, dueBy: null, minChunkMs: 1_800_000, maxChunkMs: 3_600_000, categoryId: null,
+      status: 'pending', completedAt: null, subtasks: [], createdAt: '', updatedAt: '',
+    }];
+    renderWithProviders(<AppShell />, { api: makeApi({ listTasks: async () => tasks as never }) });
+    fireEvent.click(screen.getByRole('button', { name: 'Search tasks' }));
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'quarterly' } });
+    fireEvent.click(await screen.findByRole('option', { name: /Write the quarterly report/ }));
+    const host = (await screen.findByTestId('task-drawer')).parentElement!;
+    expect(host.className).toContain('top-[var(--drawer-top,120px)]');
+    expect(host.className).not.toContain('top-[120px]');
   });
 });

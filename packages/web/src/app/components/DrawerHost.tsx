@@ -1,6 +1,14 @@
 import type { ReactElement, ReactNode } from 'react';
 import { Sheet } from './Sheet';
 
+/**
+ * The desktop drawer slot: right edge, top aligned with the shell's content area. AppShell
+ * measures that top into `--drawer-top` (the header wraps onto two rows below ~1150px, and the
+ * Google banner can sit above the content too); 120px is the one-row header's value, used before
+ * the first measurement and wherever a page renders without the shell.
+ */
+export const DESKTOP_DRAWER_SLOT = 'fixed right-3 top-[var(--drawer-top,120px)]';
+
 export interface DrawerHostProps {
   /** Below md: host the drawer in a full-screen Sheet instead of the desktop panel slot. */
   compact: boolean;

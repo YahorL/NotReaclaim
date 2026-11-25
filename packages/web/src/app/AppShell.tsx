@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './shell/TopBar';
@@ -14,6 +14,30 @@ import { useTasksQuery } from '../api/queries';
 import { useTimezone } from './settings/useTimezone';
 import { ToastProvider } from './shell/ToastProvider';
 
+/**
+ * Publishes the content area's top edge as `--drawer-top` on the shell root, for the fixed desktop
+ * drawer slot (DESKTOP_DRAWER_SLOT). The header wraps below ~1150px and the Google banner can sit
+ * above the content, so a hard-coded offset let a drawer cover Search / New task / the avatar.
+ * Observing the content box is enough: its height changes whenever anything above it grows.
+ */
+function useDrawerTopVar(rootRef: RefObject<HTMLElement>, contentRef: RefObject<HTMLElement>): void {
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    const content = contentRef.current;
+    if (!root || !content || typeof ResizeObserver === 'undefined') return;
+    const measure = () => {
+      const top = Math.round(content.getBoundingClientRect().top);
+      // Never publish 0 (hidden/unlaid-out): the slot's own 120px fallback is better than y=0.
+      if (top > 0) root.style.setProperty('--drawer-top', `${top}px`);
+      else root.style.removeProperty('--drawer-top');
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(content);
+    return () => ro.disconnect();
+  }, [rootRef, contentRef]);
+}
+
 export function AppShell() {
   const { token } = useAuth();
   useWebSocket({ token });
@@ -24,6 +48,9 @@ export function AppShell() {
   const tasksQ = useTasksQuery();
   const zone = useTimezone();
   useTaskSearchShortcut(() => setSearchOpen(true));
+  const rootRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  useDrawerTopVar(rootRef, contentRef);
   const [sidebarHidden, setSidebarHidden] = useState(
     () => localStorage.getItem('nr.sidebarHidden') === 'true',
   );
@@ -40,7 +67,7 @@ export function AppShell() {
   // above the page. Phones keep the edge-to-edge chrome.
   return (
     <ToastProvider>
-      <div className="flex h-dvh overflow-hidden bg-page md:gap-5 md:p-5">
+      <div ref={rootRef} data-testid="app-shell" className="flex h-dvh overflow-hidden bg-page md:gap-5 md:p-5">
         {!sidebarHidden && <Sidebar />}
         <main className="flex min-w-0 flex-1 flex-col md:gap-5">
           <TopBar onNewTask={() => setNewTaskOpen(true)} onSearch={() => setSearchOpen(true)} sidebarHidden={sidebarHidden} onToggleSidebar={toggleSidebar} />
@@ -49,6 +76,7 @@ export function AppShell() {
           {/* The tab bar is `fixed`, so the scroll area reserves its height (56px) plus the
               home-indicator inset below md. Tailwind turns the `_` into a space in calc(). */}
           <div
+            ref={contentRef}
             data-testid="shell-content"
             className="min-h-0 flex-1 overflow-auto pb-[calc(56px_+_env(safe-area-inset-bottom))] md:pb-0"
           >

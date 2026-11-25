@@ -16,7 +16,7 @@ import { useLivePointerY } from '../dnd/useLivePointerY';
 import { dayDropFromOver, dayIndexFromDroppableId, draggedTaskId, panelTaskDraggableId, scheduleDropResult, type DayDropTarget } from '../planner/scheduleDrop';
 import { shouldCollapseSheet } from '../planner/dragSheet';
 import { Sheet } from '../components/Sheet';
-import { DrawerHost } from '../components/DrawerHost';
+import { DrawerHost, DESKTOP_DRAWER_SLOT } from '../components/DrawerHost';
 import { WeekGrid } from '../planner/WeekGrid';
 import { PlannerTaskPanel, type PanelTab } from '../planner/PlannerTaskPanel';
 import { UnscheduledCard } from '../planner/UnscheduledCard';
@@ -28,7 +28,7 @@ import { labelBlocksWithSubtasks } from '../planner/blockLabels';
 import { BlockDetailCard, type BlockDetail } from '../planner/BlockDetailCard';
 import { classifyBlock } from '../planner/weekModel';
 
-const DRAWER_DESKTOP_CLASS = 'fixed right-3 top-[120px] z-50';
+const DRAWER_DESKTOP_CLASS = `${DESKTOP_DRAWER_SLOT} z-50`;
 
 export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const nowMs = now();

@@ -4,7 +4,7 @@ import { ApiError } from '../../api/client';
 import { useTasksQuery, useSchedulePreviewQuery, useUpdateTaskMutation, useDeleteTaskMutation, useUpdateSubtaskMutation } from '../../api/queries';
 import { TaskDrawer } from '../tasks/TaskDrawer';
 import { useTimezone } from '../settings/useTimezone';
-import { DrawerHost } from '../components/DrawerHost';
+import { DrawerHost, DESKTOP_DRAWER_SLOT } from '../components/DrawerHost';
 import { useCompactWidth } from '../lib/useMediaQuery';
 import { Toolbar } from '../priorities/Toolbar';
 import { Board, type BoardColumn } from '../priorities/Board';
@@ -107,7 +107,7 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
         )}
       </div>
       {editing && (
-        <DrawerHost compact={compact} label="Edit task" onClose={() => setEditingId(null)} desktopClass="fixed right-3 top-[120px] z-50">
+        <DrawerHost compact={compact} label="Edit task" onClose={() => setEditingId(null)} desktopClass={`${DESKTOP_DRAWER_SLOT} z-50`}>
           {/* Keyed by id: the drawer seeds its form once at mount — see Planner. */}
           <TaskDrawer
             key={editing.id}

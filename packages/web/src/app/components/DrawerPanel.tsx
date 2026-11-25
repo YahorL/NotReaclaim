@@ -2,8 +2,8 @@ import { useRef, type ReactNode } from 'react';
 import { useClickOutside } from './useClickOutside';
 import { FIELD_ERROR } from './formStyles';
 
-// Desktop slot sits at top-[120px] under the redesign header; 140px = that offset + a 20px margin.
-const PANEL = 'glass-dialog w-[440px] shrink-0 space-y-2.5 rounded-panel p-5 max-h-[calc(100dvh-140px)] overflow-y-auto';
+// The desktop slot's top is --drawer-top (see DESKTOP_DRAWER_SLOT); the panel keeps a 20px bottom margin.
+const PANEL = 'glass-dialog w-[440px] shrink-0 space-y-2.5 rounded-panel p-5 max-h-[calc(100dvh_-_var(--drawer-top,120px)_-_20px)] overflow-y-auto';
 const PANEL_COMPACT = 'w-full space-y-2.5 p-2';
 const ACTIONS = 'flex gap-2 pt-1';
 const ACTIONS_CENTERED = 'flex items-center gap-2 pt-1';

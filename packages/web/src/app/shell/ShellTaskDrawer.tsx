@@ -1,6 +1,6 @@
 import { ApiError } from '../../api/client';
 import { useTasksQuery, useUpdateTaskMutation } from '../../api/queries';
-import { DrawerHost } from '../components/DrawerHost';
+import { DrawerHost, DESKTOP_DRAWER_SLOT } from '../components/DrawerHost';
 import { useCompactWidth } from '../lib/useMediaQuery';
 import { useTimezone } from '../settings/useTimezone';
 import { TaskDrawer } from '../tasks/TaskDrawer';
@@ -18,7 +18,7 @@ export function ShellTaskDrawer({ taskId, onClose }: { taskId: string; onClose: 
   const updateTask = useUpdateTaskMutation();
   if (!task) return null;
   return (
-    <DrawerHost compact={compact} label="Edit task" onClose={onClose} desktopClass="fixed right-3 top-[120px] z-[55]">
+    <DrawerHost compact={compact} label="Edit task" onClose={onClose} desktopClass={`${DESKTOP_DRAWER_SLOT} z-[55]`}>
       <TaskDrawer
         key={task.id}
         task={task} zone={zone} compact={compact} saving={updateTask.isPending}

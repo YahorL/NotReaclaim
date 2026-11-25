@@ -281,7 +281,7 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
   - The Stats eyebrow uses the Mon–Sun settings-zone week that the Stats page reports on (e.g. "Week 48 · Nov 23 – Nov 29"), not the screenshot's Tue–Mon.
   - The Priorities count is active (pending/scheduled) tasks. It reads "Tasks across…" while the count is unknown.
   - The right cluster is: sidebar toggle (D20, 46px glass) · Now/Next pill · Search · New task · avatar. The pill and the toggle are not in screenshots 01/02 (expected deviation, owner decisions).
-  - Header bottom is at 101px and content starts at 121px at md+, so drawer slots are now `top-[120px]` (measured live). `DrawerPanel` max-height is `calc(100dvh-140px)`.
+  - Header bottom is at 101px and content starts at 121px at md+ (one-row header). The header is `flex-wrap` and wraps below ~1150px, so the drawer slot is **not** a fixed offset: AppShell measures `shell-content`'s top (ResizeObserver, which also catches the Google banner) into `--drawer-top` on the shell root, and `DESKTOP_DRAWER_SLOT` (`DrawerHost.tsx`) is `fixed right-3 top-[var(--drawer-top,120px)]` for the Planner, Priorities and shell drawers. `DrawerPanel` max-height is `calc(100dvh - var(--drawer-top,120px) - 20px)`. The 120px fallback covers jsdom and pages rendered without the shell; 0 is never published.
 - **Now/Next pill.**
   - Only TopBar uses the structured label: "Now · title" or "Next · title · Today 2:00pm", with the title truncated by CSS `max-w-[24ch] truncate`. `useNowNextControls` now also returns `nextTime`. `nextLabel` (mobile) reads "Next · title · time".
   - The pill still renders on `/`. Task 3.5 owns the `pathname !== '/'` gate.
