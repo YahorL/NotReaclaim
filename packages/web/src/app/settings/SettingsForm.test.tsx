@@ -13,6 +13,13 @@ const initial = (over: Partial<SettingsFormState> = {}): SettingsFormState => ({
 });
 
 describe('SettingsForm', () => {
+  it('uses the full-size chunk steppers (screenshot 12), not the compact drawer variant', () => {
+    render(<SettingsForm initial={initial()} onSave={vi.fn()} timezones={['UTC']} />);
+    const steppers = screen.getAllByTestId('duration-stepper');
+    expect(steppers).toHaveLength(2);
+    for (const s of steppers) expect(s).not.toHaveAttribute('data-compact');
+  });
+
   it('saves the converted input with off days omitted', () => {
     const onSave = vi.fn();
     render(<SettingsForm initial={initial()} onSave={onSave} timezones={['UTC', 'America/New_York']} />);

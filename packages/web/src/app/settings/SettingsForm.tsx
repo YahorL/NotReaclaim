@@ -113,7 +113,6 @@ export function SettingsForm({ initial, onSave, saving = false, error = null, ju
                 valueMs={form.defaultMinChunkMs}
                 onChange={(ms) => setForm((f) => ({ ...f, defaultMinChunkMs: ms }))}
                 label="min"
-                size={22}
               />
               {errors.defaultMinChunkMs && <p data-testid="err-defaultMinChunkMs" className={errCls}>{errors.defaultMinChunkMs}</p>}
             </FieldBox>
@@ -124,7 +123,6 @@ export function SettingsForm({ initial, onSave, saving = false, error = null, ju
                 valueMs={form.defaultMaxChunkMs}
                 onChange={(ms) => setForm((f) => ({ ...f, defaultMaxChunkMs: ms }))}
                 label="max"
-                size={22}
               />
               {errors.defaultMaxChunkMs && <p data-testid="err-defaultMaxChunkMs" className={errCls}>{errors.defaultMaxChunkMs}</p>}
             </FieldBox>
