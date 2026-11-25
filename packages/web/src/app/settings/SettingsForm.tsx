@@ -89,8 +89,9 @@ export function SettingsForm({ initial, onSave, saving = false, error = null, ju
                 data-testid="day-start"
                 aria-label="Day starts at"
                 className={`${CTL} w-full max-w-[220px]`}
-                value={minutesToHHMM(form.dayStartMinute ?? 0)}
-                onChange={(e) => setForm((f) => ({ ...f, dayStartMinute: hhmmToMinutes(e.target.value) }))}
+                // Cleared → NaN (not 0): the validator then flags it instead of saving midnight.
+                value={Number.isFinite(form.dayStartMinute ?? 0) ? minutesToHHMM(form.dayStartMinute ?? 0) : ''}
+                onChange={(e) => setForm((f) => ({ ...f, dayStartMinute: e.target.value ? hhmmToMinutes(e.target.value) : Number.NaN }))}
               />
             </FieldBox>
             <p className="text-[13px] leading-relaxed text-fg-2">Each planner column runs from this time to the same time the next day. Set 03:00 and late-night work stays on the previous day.</p>

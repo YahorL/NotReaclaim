@@ -19,4 +19,13 @@ describe('categoryForm', () => {
     const noDays = windowsToDays([]);
     expect(validateCategoryForm('X', noDays).ok).toBe(false);
   });
+
+  it('a cleared start or end time is an error, never a silent 00:00', () => {
+    const days = windowsToDays([{ weekday: 1, startMinute: 540, endMinute: 1020 }]);
+    const cleared = (patch: { start?: string; end?: string }) => days.map((d) => (d.weekday === 1 ? { ...d, ...patch } : d));
+    expect(validateCategoryForm('X', cleared({ start: '' }))).toEqual({ ok: false, error: 'Enter a start and end time' });
+    expect(validateCategoryForm('X', cleared({ end: '' }))).toEqual({ ok: false, error: 'Enter a start and end time' });
+    // An off day's cleared times do not matter.
+    expect(validateCategoryForm('X', days.map((d) => (d.weekday === 2 ? { ...d, start: '' } : d))).ok).toBe(true);
+  });
 });

@@ -51,6 +51,18 @@ describe('settingsForm', () => {
     expect(validateSettingsForm(offBad).ok).toBe(true);
   });
 
+  it('a cleared start or end time on an enabled day is an error, never a silent 00:00', () => {
+    const s = validState();
+    const days = s.days.map((d) => (d.weekday === 1 ? { ...d, enabled: true, start: '' } : d));
+    expect(validateSettingsForm({ ...s, days }).errors.days?.[1]).toBe('Enter a start and end time');
+    const noEnd = s.days.map((d) => (d.weekday === 1 ? { ...d, enabled: true, end: '' } : d));
+    expect(validateSettingsForm({ ...s, days: noEnd }).ok).toBe(false);
+  });
+
+  it('a cleared day start (NaN) is an error, never midnight', () => {
+    expect(validateSettingsForm(validState({ dayStartMinute: Number.NaN })).errors.dayStartMinute).toBeDefined();
+  });
+
   it('toSettingsInput omits off days, sorts, converts to minutes', () => {
     const input = toSettingsInput(validState());
     expect(input.workingHours).toHaveLength(5);

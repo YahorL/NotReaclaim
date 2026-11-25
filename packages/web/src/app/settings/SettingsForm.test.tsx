@@ -103,6 +103,15 @@ describe('SettingsForm', () => {
     expect(screen.queryByTestId('unsaved')).toBeNull();
   });
 
+  it('clearing the day start shows an error and blocks Save instead of saving 00:00', () => {
+    const onSave = vi.fn();
+    render(<SettingsForm initial={initial({ dayStartMinute: 180 })} onSave={onSave} timezones={['UTC']} />);
+    fireEvent.change(screen.getByTestId('day-start'), { target: { value: '' } });
+    expect(screen.getByTestId('day-start')).toHaveValue('');
+    expect(screen.getByTestId('err-dayStartMinute')).toBeInTheDocument();
+    expect(screen.getByTestId('save')).toBeDisabled();
+  });
+
   it('grows the weekday checkboxes on a coarse pointer', () => {
     render(<SettingsForm initial={initial()} onSave={vi.fn()} timezones={['UTC']} />);
     // The custom checkbox is 20px (h-5) everywhere now; a coarse pointer grows it to 24px.
