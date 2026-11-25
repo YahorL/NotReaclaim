@@ -57,6 +57,8 @@ export interface CalendarBlockProps {
   motion?: BlockMotion;
   /** Springing into its slot after a release: stays above its neighbours until it lands. */
   settling?: boolean;
+  /** Locked tile refusing a move: one `animate-shake` run. */
+  shake?: boolean;
   onTransitionEnd?: (e: ReactTransitionEvent<HTMLDivElement>) => void;
   /** Overlays (the live drag label). */
   children?: ReactNode;
@@ -91,7 +93,7 @@ export function CalendarBlock(props: CalendarBlockProps) {
     blockKey, title, kind, source = null, pinned = false, started = false, accent, startLabel, whenLabel, durationMin,
     style, className = '', dayIndex, selected = false, coarse = false, onDelete, deleteLabel = 'Delete block',
     onUnpin, onBodyClick, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, resize, children,
-    motion = 'idle', settling = false, onTransitionEnd, onBodyKeyDown, onBodyBlur, describedBy,
+    motion = 'idle', settling = false, shake = false, onTransitionEnd, onBodyKeyDown, onBodyBlur, describedBy,
   } = props;
   const v = blockVariant({ kind, source, pinned, started, accent });
   const row = durationMin < ROW_LAYOUT_MAX_MIN;
@@ -117,13 +119,14 @@ export function CalendarBlock(props: CalendarBlockProps) {
       data-dragging={motion === 'dragging' ? 'true' : undefined}
       data-resizing={motion === 'resizing' ? 'true' : undefined}
       data-settling={settling ? 'true' : undefined}
+      data-shake={shake ? 'true' : undefined}
       title={`${startLabel} ${title}`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
       onTransitionEnd={onTransitionEnd}
-      className={`group pointer-events-auto absolute overflow-hidden rounded-event ${v.className} ${MOTION_CLASS[motion]} ${settling ? 'z-20' : ''} ${selected ? 'z-[3] outline outline-2 outline-offset-2 outline-fg' : ''} ${className}`}
+      className={`group pointer-events-auto absolute overflow-hidden rounded-event ${v.className} ${MOTION_CLASS[motion]} ${settling ? 'z-20' : ''} ${shake ? 'animate-shake' : ''} ${selected ? 'z-[3] outline outline-2 outline-offset-2 outline-fg' : ''} ${className}`}
       style={{ ...style, ...v.style }}
     >
       {started && <span aria-hidden="true" data-testid="started-bar" className="absolute inset-y-0 left-0 w-[3px] bg-accent" />}

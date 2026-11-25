@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import type { ScheduledBlock, CalendarEvent } from '../../api/types';
-import { CalendarBlock } from './CalendarBlock';
 import type { BlockKind } from './blockStyle';
 import { InteractiveBlock } from './InteractiveBlock';
+import { LockedBlock } from './LockedBlock';
 import { nowLine, isToday, classifyBlock, snapClickToSlot, WINDOW_START_MIN, WINDOW_END_MIN, GRID_COLUMN_PX, dayAnchor, formatHm, weekdayLabel, dayOfMonth, hourRowLabel, timeGutterPx, popoverAlign, swipeDecision } from './weekModel';
 import { CreatePopover } from './CreatePopover';
 import { MS_PER_MIN } from '../lib/time';
@@ -302,7 +302,7 @@ export function WeekGrid(props: WeekGridProps) {
   const navBtn = 'btn-glass flex h-11 w-11 shrink-0 items-center justify-center rounded-full';
 
   return (
-    <div className={`glass flex min-h-0 flex-1 flex-col rounded-panel ${compact ? 'p-2' : 'p-5'}`}>
+    <div className={`glass relative flex min-h-0 flex-1 flex-col rounded-panel ${compact ? 'p-2' : 'p-5'}`}>
       {/* Wraps to two rows on a phone by design; `md:flex-nowrap` keeps the desktop toolbar on one
           row. */}
       <div className="mb-3 flex shrink-0 flex-wrap items-center gap-2 md:mb-4 md:flex-nowrap md:gap-3">
@@ -489,7 +489,7 @@ export function WeekGrid(props: WeekGridProps) {
                     );
                   }
                   return (
-                    <CalendarBlock
+                    <LockedBlock
                       key={it.key}
                       blockKey={it.key}
                       selected={selectedKey === it.key}
@@ -558,6 +558,15 @@ export function WeekGrid(props: WeekGridProps) {
           </div>
         </div>
       </div>
+
+      {/* Planner toasts (locked tiles, keyboard edge hints, "Task created") float bottom-centre of
+          the calendar panel, absolutely — the toolbar never reflows. The live region stays in the
+          shell (ToastProvider), so screen readers hear them the same either way. */}
+      <div
+        ref={toast.setAnchor}
+        data-testid="planner-toast-anchor"
+        className="pointer-events-none absolute inset-x-0 bottom-[22px] z-40 flex justify-center px-4"
+      />
 
       {/* Compact: the create form is a viewport sheet, hoisted OUT of the day column on purpose.
           React events follow the DOM tree, so a backdrop rendered inside the column would bubble
