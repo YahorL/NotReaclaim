@@ -234,13 +234,25 @@ interface Pending {
   endMs: number;
   baseStartMs: number;
   baseEndMs: number;
+  /**
+   * The last target actually COMMITTED (a release, or a keyboard run's debounced commit), when a
+   * later keyboard preview has moved past it. Its optimistic write landing is not "the data moved
+   * elsewhere": the hold re-baselines onto it and keeps showing the newer preview.
+   */
+  committed?: { startMs: number; endMs: number };
 }
 
 /** How long a committed target is held when the data never changes (a failed write that rolled back). */
 export const HOLD_TIMEOUT_MS = 1500;
 
+/** The data shows the hold's previously committed target (its optimistic write landed). */
+function atCommitted(p: Pending, it: { startMs: number; endMs: number }): boolean {
+  return p.committed !== undefined && it.startMs === p.committed.startMs && it.endMs === p.committed.endMs;
+}
+
 function pendingApplies(p: Pending | undefined, it: { startMs: number; endMs: number }): p is Pending {
-  return p !== undefined && it.startMs === p.baseStartMs && it.endMs === p.baseEndMs
+  return p !== undefined
+    && ((it.startMs === p.baseStartMs && it.endMs === p.baseEndMs) || atCommitted(p, it))
     && !(it.startMs === p.startMs && it.endMs === p.endMs);
 }
 
@@ -300,20 +312,38 @@ export function WeekGrid(props: WeekGridProps) {
       const prev = p[key];
       // Keep the first baseline across a run of keyboard steps: the data has not moved yet.
       const keepBase = prev !== undefined && pendingApplies(prev, base);
-      return { ...p, [key]: { startMs, endMs, baseStartMs: keepBase ? prev.baseStartMs : base.startMs, baseEndMs: keepBase ? prev.baseEndMs : base.endMs } };
+      // A commit (`expire`) remembers its target; a preview after it carries that along.
+      const committed = expire ? { startMs, endMs } : keepBase ? prev.committed : undefined;
+      return { ...p, [key]: { startMs, endMs, baseStartMs: keepBase ? prev.baseStartMs : base.startMs, baseEndMs: keepBase ? prev.baseEndMs : base.endMs, committed } };
     });
     const t = holdTimers.current.get(key);
     if (t) clearTimeout(t);
     holdTimers.current.delete(key);
     if (expire) holdTimers.current.set(key, setTimeout(() => dropPending(key), HOLD_TIMEOUT_MS));
   };
-  // Forget holds the data has overtaken (landed, or moved elsewhere by the server).
+  // Forget holds the data has overtaken (landed, or moved elsewhere by the server). A hold whose
+  // earlier commit just landed while a newer keyboard preview is pending re-baselines onto it.
   useEffect(() => {
     const stale = Object.keys(pending).filter((k) => {
       const it = dataItems.find((x) => x.key === k);
       return !it || !pendingApplies(pending[k], it);
     });
     stale.forEach(dropPending);
+    const rebase = Object.keys(pending).filter((k) => {
+      const it = dataItems.find((x) => x.key === k);
+      const p = pending[k]!;
+      return it !== undefined && !stale.includes(k) && atCommitted(p, it);
+    });
+    if (rebase.length > 0) {
+      setPending((p) => {
+        const next = { ...p };
+        for (const k of rebase) {
+          const cur = next[k];
+          if (cur?.committed) next[k] = { startMs: cur.startMs, endMs: cur.endMs, baseStartMs: cur.committed.startMs, baseEndMs: cur.committed.endMs };
+        }
+        return next;
+      });
+    }
     // Deps: re-check only when the data changes (pending itself is read fresh each time).
   }, [blocks, events]);
   useEffect(() => () => { holdTimers.current.forEach(clearTimeout); }, []);

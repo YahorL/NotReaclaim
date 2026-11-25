@@ -537,6 +537,31 @@ describe('WeekGrid keyboard moves', () => {
     }
   });
 
+  it('a press right after a commit survives the optimistic write of that commit (re-baselined hold)', () => {
+    vi.useFakeTimers();
+    try {
+      const onCommit = vi.fn();
+      const { rerender } = render(<WeekGrid {...base} blocks={[block()]} onCommit={onCommit} />);
+      const body = screen.getByTestId('block-body');
+      body.focus();
+      fireEvent.keyDown(body, { key: 'ArrowDown' }); // 13:15
+      act(() => { vi.advanceTimersByTime(KEY_COMMIT_DEBOUNCE_MS); });
+      expect(onCommit).toHaveBeenCalledTimes(1); // T1 = 13:15 committed, data still at 13:00
+      fireEvent.keyDown(body, { key: 'ArrowDown' }); // 13:30 previewed before T1's write lands
+      expect(screen.getByTestId('event-block').style.top).toBe(top(13 * 60 + 30));
+      // T1's optimistic write lands: the 13:30 preview must not flick back to 13:15 …
+      rerender(<WeekGrid {...base} blocks={[block({ startsAt: '2026-01-05T13:15:00.000Z', endsAt: '2026-01-05T14:15:00.000Z', pinned: true })]} onCommit={onCommit} />);
+      expect(screen.getByTestId('event-block').style.top).toBe(top(13 * 60 + 30));
+      // … and the next press builds on it (13:45), not on the landed 13:15.
+      fireEvent.keyDown(body, { key: 'ArrowDown' });
+      expect(screen.getByTestId('event-block').style.top).toBe(top(13 * 60 + 45));
+      act(() => { vi.advanceTimersByTime(KEY_COMMIT_DEBOUNCE_MS); });
+      expect(onCommit).toHaveBeenLastCalledWith('b1', { startsAt: '2026-01-05T13:45:00.000Z', endsAt: '2026-01-05T14:45:00.000Z', pinned: true });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('ArrowRight moves the focused block to the next column', () => {
     vi.useFakeTimers();
     try {
