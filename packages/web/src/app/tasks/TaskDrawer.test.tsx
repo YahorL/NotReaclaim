@@ -191,6 +191,19 @@ describe('TaskDrawer subtask drag handles', () => {
     expect(rowEv.defaultPrevented).toBe(true);
   });
 
+  it('announces a keyboard drag by subtask title and position — never by id', async () => {
+    const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue([]) } as never);
+    renderWithProviders(<TaskDrawer zone="UTC" task={task({ id: 't', subtasks }) as never} onSave={() => {}} onCancel={() => {}} />, { api });
+    const row = screen.getByTestId('subtask-li-s2');
+    const liveText = () => Array.from(document.querySelectorAll('[id^="DndLiveRegion"]')).map((e) => e.textContent).join('|');
+    fireEvent.keyDown(row, { code: 'Space', key: ' ' });
+    // jsdom has no layout, so dnd-kit follows the pick-up with an over on whichever row its zero
+    // rects pick — either sentence proves the wiring; their wording is pinned in announcements.test.
+    await waitFor(() => expect(liveText()).toMatch(/^(Picked up Last, position 2 of 2 in Write spec|Last is over position [12] of 2)\.$/));
+    fireEvent.keyDown(row, { code: 'Escape', key: 'Escape' });
+    await waitFor(() => expect(liveText()).toBe('Moving Last was cancelled.'));
+  });
+
   it('no longer uses native HTML5 drag attributes or an insert line', () => {
     const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue([]) } as never);
     renderWithProviders(<TaskDrawer zone="UTC" task={task({ id: 't', subtasks }) as never} onSave={() => {}} onCancel={() => {}} />, { api });
