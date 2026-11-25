@@ -46,6 +46,11 @@ describe('TopBar (bare render)', () => {
     expect(within(actions).getByRole('button', { name: 'New task' })).toBeInTheDocument();
   });
 
+  it('keeps the visible New task label when there is no Now/Next pill (only the pill forces the icon)', () => {
+    renderTopBar(vi.fn(), '/');
+    expect(screen.getByText('New task')).not.toHaveClass('sr-only');
+  });
+
   it('counts open tasks in the Priorities eyebrow', async () => {
     const api = fakeApiClient({
       getSchedule: async () => [],
@@ -134,6 +139,8 @@ describe('TopBar Next-task indicator', () => {
     expect(title.className).toContain('truncate');
     expect(title.className).toContain('max-w-[24ch]');
     expect(screen.getByTestId('next-task-start')).toHaveTextContent('Start');
+    // With the pill, New task is a round icon below xl (its name stays for screen readers).
+    expect(screen.getByText('New task')).toHaveClass('sr-only', 'xl:not-sr-only');
   });
 
   it('is hidden when the schedule is empty', async () => {

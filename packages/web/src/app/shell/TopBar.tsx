@@ -30,6 +30,8 @@ export function TopBar({ onNewTask, onSearch, now = Date.now, sidebarHidden, onT
   const openTaskCount = tasksQ.data ? tasksQ.data.filter(isActiveTask).length : null;
   const { eyebrow, title: [before, bold, after] } = routeHeader(pathname, { nowMs: now(), zone, openTaskCount });
   const onPlanner = pathname === '/';
+  // Only the Now/Next pill makes the cluster too wide for tablets; without it New task keeps its label.
+  const hasPill = !onPlanner && Boolean(running || nextBlock);
 
   return (
     <header className="hidden shrink-0 flex-wrap items-end justify-between gap-4 px-1 pt-1.5 md:flex">
@@ -113,9 +115,9 @@ export function TopBar({ onNewTask, onSearch, now = Date.now, sidebarHidden, onT
           type="button"
           onClick={onNewTask}
           aria-haspopup="dialog"
-          className="btn-primary inline-flex h-[46px] w-[46px] shrink-0 items-center justify-center gap-2 rounded-pill text-[15px] font-medium xl:w-auto xl:pl-4 xl:pr-5 shadow-[inset_0_1px_0_#fff,0_10px_30px_-12px_rgba(255,255,255,0.5)] [[data-theme=light]_&]:shadow-[0_10px_30px_-12px_rgba(17,18,20,0.55)]"
+          className={`btn-primary inline-flex h-[46px] shrink-0 items-center justify-center gap-2 rounded-pill text-[15px] font-medium ${hasPill ? 'w-[46px] xl:w-auto xl:pl-4 xl:pr-5' : 'pl-4 pr-5'} shadow-[inset_0_1px_0_#fff,0_10px_30px_-12px_rgba(255,255,255,0.5)] [[data-theme=light]_&]:shadow-[0_10px_30px_-12px_rgba(17,18,20,0.55)]`}
         >
-          <Icons.plus size={18} className="shrink-0 [stroke-width:2]" /> <span className="sr-only xl:not-sr-only">New task</span>
+          <Icons.plus size={18} className="shrink-0 [stroke-width:2]" /> <span className={hasPill ? 'sr-only xl:not-sr-only' : ''}>New task</span>
         </button>
 
         <AccountMenu />
