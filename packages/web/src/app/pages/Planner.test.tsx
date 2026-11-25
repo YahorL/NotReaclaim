@@ -494,6 +494,18 @@ describe('Planner entrance motion', () => {
     expect(tileOf('Write spec')).not.toHaveAttribute('data-entering');
   });
 
+  it('tiles wait for BOTH ranged queries, then all pop in together', async () => {
+    let release: (v: CalendarEvent[]) => void = () => {};
+    const getCalendarEvents = vi.fn(() => new Promise<CalendarEvent[]>((r) => { release = r; }));
+    renderWithProviders(<Planner now={() => NOW} />, { api: makeApi({ getCalendarEvents }) });
+    await waitFor(() => expect(getCalendarEvents).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 50)); // the schedule has landed by now
+    expect(within(screen.getByTestId('block-layer')).queryAllByTestId('event-block')).toHaveLength(0);
+    release(events);
+    await waitFor(() => expect(tileOf('Standup')).toHaveAttribute('data-entering', 'true'));
+    expect(tileOf('Write spec')).toHaveAttribute('data-entering', 'true');
+  });
+
   it('the glass panels rise in on mount, then drop the animation', async () => {
     renderWithProviders(<Planner now={() => NOW} />, { api: makeApi() });
     await waitFor(() => expect(screen.getByTestId('planner-grid-pane')).toBeInTheDocument());

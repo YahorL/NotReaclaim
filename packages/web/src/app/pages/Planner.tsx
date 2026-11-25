@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { DndContext, DragOverlay, type DragEndEvent, type DragMoveEvent, type DragStartEvent } from '@dnd-kit/core';
-import type { CalendarEvent, Task } from '../../api/types';
+import type { CalendarEvent, ScheduledBlock, Task } from '../../api/types';
 import { ApiError } from '../../api/client';
 import { queryKeys, useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useHabitsQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation, useSettingsQuery, useStopBlockMutation } from '../../api/queries';
 import { dayColumns, daysThatFit, shiftDays, dayAnchor, rangeLabel, weekdayLabel } from '../planner/weekModel';
@@ -38,6 +38,8 @@ export const REPLAN_MIN_SPIN_MS = 600;
 /** Glass panels rise in on route mount, 60ms apart (spec §5.6). Literal classes for the JIT. */
 const RISE = ['animate-rise', 'animate-rise [animation-delay:60ms]', 'animate-rise [animation-delay:120ms]', 'animate-rise [animation-delay:180ms]'] as const;
 const RISE_TOTAL_MS = 600 + 180 + 100;
+const NO_BLOCKS: ScheduledBlock[] = [];
+const NO_EVENTS: CalendarEvent[] = [];
 
 const DRAWER_DESKTOP_CLASS = `${DESKTOP_DRAWER_SLOT} z-50`;
 
@@ -305,6 +307,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   );
 
   const isLoading = schedule.isLoading || calendar.isLoading || preview.isLoading;
+  const rangedLoading = schedule.isLoading || calendar.isLoading;
   const isError = schedule.isError || calendar.isError || preview.isError;
 
   if (isError) {
@@ -408,8 +411,10 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           days={days}
           nowMs={nowMs}
           weekLabel={rangeLabel(days, zone)}
-          blocks={labeledBlocks}
-          events={calendar.data ?? []}
+          // Tiles appear together once BOTH ranged queries have loaded: a set painted early would
+          // restart from opacity 0 when the entrance starts.
+          blocks={rangedLoading ? NO_BLOCKS : labeledBlocks}
+          events={rangedLoading ? NO_EVENTS : calendar.data ?? NO_EVENTS}
           onPrev={() => setViewStartMs((ms) => shiftDays(ms, -dayCount, zone))}
           onNext={() => setViewStartMs((ms) => shiftDays(ms, dayCount, zone))}
           onToday={() => setViewStartMs(dayAnchor(now(), zone, dayStartMinute))}
@@ -429,7 +434,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           landing={landing}
           // First load and each page of days pop in; a refetch of the same range does not.
           // (The tiles only depend on the two ranged queries, not on the unranged preview.)
-          entranceKey={schedule.isLoading || calendar.isLoading ? null : rangeKey}
+          entranceKey={rangedLoading ? null : rangeKey}
           accents={accents}
           compact={compact}
           coarse={coarse}
