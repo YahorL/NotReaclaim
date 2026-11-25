@@ -101,6 +101,9 @@ export function buildApp(input: Omit<AppDeps, 'now'> & { now?: () => number; log
     );
   };
 
+  // A new top-level path must also be routed in packages/web/vite.config.ts (dev proxy) and
+  // docker/Caddyfile (prod); if the SPA has a page at the same path, Caddy must
+  // content-negotiate it (see @apiData there).
   registerAuthRoutes(app, deps);
   registerTaskRoutes(app, deps, afterMutation);
   registerHabitRoutes(app, deps, afterMutation);
