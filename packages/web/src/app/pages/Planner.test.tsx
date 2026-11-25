@@ -175,7 +175,7 @@ describe('Planner', () => {
     expect(screen.getByTestId('day-header-0').dataset.today).toBe('true');
     expect(screen.getByTestId('day-header-0').textContent).toMatch(/6/);
     // and the hour gutter starts at the day-start hour
-    expect(screen.getByTestId('hour-gutter').textContent!.startsWith('3a')).toBe(true);
+    expect(screen.getByTestId('hour-gutter').textContent!.startsWith('3 AM')).toBe(true);
   });
 
   it('warns above the grid about what could not be scheduled, naming tasks and habits', async () => {
