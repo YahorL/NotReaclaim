@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import type { ScheduledBlock, CalendarEvent } from '../../api/types';
 import { startOfWeek, dayColumns, minutesToPx } from './weekModel';
+import { blockLeftCss, blockWidthCss } from './blockLayout';
 import { within } from '@testing-library/react';
 import { WeekGrid, type WeekGridProps } from './WeekGrid';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
@@ -9,6 +10,13 @@ import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 const MON = startOfWeek(Date.parse('2026-01-05T12:00:00.000Z'), 'UTC'); // 2026-01-05
 const days = dayColumns(MON, 7, 'UTC');
 const WED_NOON = Date.parse('2026-01-07T12:00:00.000Z');
+
+/** The value a browser (and jsdom) serialises a `calc()` string back as — percentages are rounded. */
+function cssCalc(value: string): string {
+  const el = document.createElement('div');
+  el.style.left = value;
+  return el.style.left;
+}
 
 const block = (over: Partial<ScheduledBlock> = {}): ScheduledBlock => ({
   id: 'b1', userId: 'u1', title: 'Write spec',
@@ -62,6 +70,17 @@ describe('WeekGrid click-to-create', () => {
     expect(screen.getByTestId('slot-label').textContent).toMatch(/12:00 AM|00:00/);
   });
 
+  it('the popover renders in the block layer, above the blocks', () => {
+    renderGridWithProviders();
+    fireEvent.click(screen.getByTestId('day-col-2'), { clientY: 0 });
+    const slot = within(screen.getByTestId('block-layer')).getByTestId('col-slot-2');
+    expect(slot.contains(screen.getByTestId('create-popover'))).toBe(true);
+    expect(slot.className).toContain('z-30');
+    // The slot passes clicks through; the popover itself takes them.
+    expect(slot.className).toContain('pointer-events-none');
+    expect(screen.getByTestId('create-popover').className).toContain('pointer-events-auto');
+  });
+
   it('clicking an existing block does not open the popover', () => {
     renderGridWithProviders();
     fireEvent.click(screen.getAllByTestId('event-block')[0]!);
@@ -92,7 +111,68 @@ describe('WeekGrid', () => {
 
   it('renders a now-line on today', () => {
     renderGrid();
-    expect(screen.getByTestId('now-line')).toBeInTheDocument();
+    const line = screen.getByTestId('now-line');
+    expect(line).toHaveAttribute('data-day-index', '2');
+    expect(line.style.top).toBe('50%'); // Wed 12:00
+    expect(line.style.left).toBe(`${(2 / 7) * 100}%`);
+  });
+
+  it('renders every block in ONE layer over the day columns', () => {
+    renderGrid();
+    const layer = screen.getByTestId('block-layer');
+    const tiles = screen.getAllByTestId('event-block');
+    expect(tiles).toHaveLength(2);
+    expect(tiles.every((t) => layer.contains(t))).toBe(true);
+    for (let i = 0; i < 7; i++) expect(within(screen.getByTestId(`day-col-${i}`)).queryByTestId('event-block')).toBeNull();
+    // Hit-testing contract: the layer lets clicks through to the columns; each block opts back in.
+    expect(layer.className).toContain('pointer-events-none');
+    expect(tiles.every((t) => t.className.includes('pointer-events-auto'))).toBe(true);
+  });
+
+  it('positions a block horizontally in its day column via blockLayout', () => {
+    renderGrid({ events: [] });
+    const tile = screen.getByTestId('event-block'); // Mon 13:00 → column 0 of 7
+    expect(tile).toHaveAttribute('data-day-index', '0');
+    expect(tile.style.top).toBe(`${(13 / 24) * 100}%`);
+    expect(tile.style.left).toBe(cssCalc(blockLeftCss(0, 0, 1)));
+    expect(tile.style.width).toBe(cssCalc(blockWidthCss(100 / 7, 0, 1)));
+  });
+
+  it('a Wednesday meeting sits in the third column of the layer', () => {
+    renderGrid({ blocks: [] });
+    const tile = screen.getByTestId('event-block');
+    expect(tile).toHaveAttribute('data-day-index', '2');
+    expect(tile.style.left).toBe(cssCalc(blockLeftCss((2 / 7) * 100, 0, 1)));
+  });
+
+  it('a Google meeting is locked: lock icon, no resize handle', () => {
+    renderGrid({ blocks: [] });
+    const tile = screen.getByTestId('event-block');
+    expect(tile).toHaveAttribute('data-locked', 'true');
+    expect(tile).toHaveAttribute('data-source', 'google');
+    expect(tile.querySelector('[data-icon="lock"]')).not.toBeNull();
+    expect(tile.querySelector('[data-testid="resize-handle"]')).toBeNull();
+  });
+
+  it('keeps a stable, day-independent child order in the layer', () => {
+    // A cross-day move must not reorder the layer's children (React would re-insert the node).
+    const a = block({ id: 'a', title: 'A', startsAt: '2026-01-09T09:00:00.000Z', endsAt: '2026-01-09T10:00:00.000Z' });
+    const b = block({ id: 'b', title: 'B', startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T10:00:00.000Z' });
+    const { rerender } = renderGrid({ blocks: [a, b], events: [] });
+    const names = () => screen.getAllByTestId('block-body').map((t) => t.getAttribute('aria-label')!.split(',')[0]);
+    const before = names();
+    rerender(
+      <WeekGrid days={days} nowMs={WED_NOON} weekLabel="Jan 5 – 11" replanPending={false} events={[]}
+        blocks={[{ ...a, startsAt: '2026-01-05T11:00:00.000Z', endsAt: '2026-01-05T12:00:00.000Z' }, b]}
+        onPrev={vi.fn()} onToday={vi.fn()} onNext={vi.fn()} onReplan={vi.fn()} onCommit={vi.fn()} />,
+    );
+    expect(names()).toEqual(before);
+  });
+
+  it('tints today\'s column', () => {
+    renderGrid();
+    expect(screen.getByTestId('day-col-2')).toHaveAttribute('data-today', 'true');
+    expect(screen.getByTestId('day-col-1')).not.toHaveAttribute('data-today');
   });
 
   it('fires onReplan when the button is clicked', () => {
@@ -161,8 +241,10 @@ describe('WeekGrid', () => {
     renderGrid({ taskDrop: { dayIndex: 1, startMin: 360 } });
     const indicator = screen.getByTestId('task-drop-indicator');
     expect(indicator.style.top).toBe('25%'); // 06:00 of a 24h column
-    expect(screen.getByTestId('day-col-1').className).toContain('bg-indigoSoft/60');
-    expect(screen.getByTestId('day-col-0').className).not.toContain('bg-indigoSoft/60');
+    expect(screen.getByTestId('day-col-1')).toHaveAttribute('data-drop-target', 'true');
+    expect(screen.getByTestId('day-col-0')).not.toHaveAttribute('data-drop-target');
+    // Drawn above the blocks: in the block layer's column-1 slot, not under it in the column.
+    expect(within(screen.getByTestId('block-layer')).getByTestId('col-slot-1').contains(indicator)).toBe(true);
   });
 
   it('puts the hour grid in a scroll container, below the day header', () => {
@@ -202,13 +284,14 @@ describe('WeekGrid', () => {
     expect(gutter.startsWith('3a4a5a')).toBe(true);
     expect(gutter.endsWith('1a2a')).toBe(true);
     // 01:00 on the 7th belongs to the 6th's column, 22h down
-    const tile = within(screen.getByTestId('day-col-1')).getByTestId('event-block');
+    const tile = within(screen.getByTestId('block-layer')).getByTestId('event-block');
     expect(tile.textContent).toMatch(/Late night/);
+    expect(tile).toHaveAttribute('data-day-index', '1');
     expect(tile.style.top).toBe(`${(22 * 60 / 1440) * 100}%`);
     // ...and that column is "today" at 01:30
     expect(screen.getByTestId('day-header-1').dataset.today).toBe('true');
     expect(screen.getByTestId('day-header-1').textContent).toMatch(/6/);
-    expect(within(screen.getByTestId('day-col-1')).getByTestId('now-line')).toBeInTheDocument();
+    expect(screen.getByTestId('now-line')).toHaveAttribute('data-day-index', '1');
   });
 
   it('labels a block in the provided timezone', () => {
@@ -324,8 +407,8 @@ describe('WeekGrid blocked time', () => {
     renderGrid({ events: [blockedEvent], blocks: [] });
     const tile = tileFor('Gym');
     expect(tile).toHaveAttribute('data-kind', 'blocked');
-    expect(tile.className).toContain('bg-slate-100');
-    expect(tile.className).not.toContain('bg-event');
+    expect(tile).toHaveAttribute('data-locked', 'false');
+    expect(tile.querySelector('[data-icon="lock"]')).toBeNull();
   });
 
   it('a blocked entry stays interactive: drag commits new times via onCommitEvent', () => {

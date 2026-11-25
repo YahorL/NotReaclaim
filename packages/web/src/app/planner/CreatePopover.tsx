@@ -137,7 +137,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
       onClick={(e) => e.stopPropagation()}
       className={compact
         ? 'p-2'
-        : `absolute z-40 w-[340px] animate-pop rounded-[14px] border border-line bg-card p-4 shadow-pop ${align === 'left' ? 'left-1' : 'right-1'}`}
+        : `pointer-events-auto absolute z-40 w-[340px] animate-pop rounded-[14px] border border-line bg-card p-4 shadow-pop ${align === 'left' ? 'left-1' : 'right-1'}`}
       style={compact ? undefined : { top: `${Math.min(topPct, 78)}%` }}
     >
       <div className="mb-2 flex gap-1 rounded-[10px] bg-bg p-1">

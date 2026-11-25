@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, useLayoutEffect, type PointerEvent as ReactPointerEvent } from 'react';
-import { BASE, DELETE_BTN_CLASS, accentStyle, variantClass, type BlockKind } from './EventBlock';
-import { WINDOW_END_MIN, SLOT_MIN, snapMinutes, pxToMinutes, minutesToPx, clampToWindow, shiftDays, clampDayDelta, formatHm, resizeHandleClass } from './weekModel';
+import { CalendarBlock } from './CalendarBlock';
+import type { BlockKind } from './blockStyle';
+import { blockLeftCss, blockWidthCss } from './blockLayout';
+import { WINDOW_END_MIN, SLOT_MIN, snapMinutes, pxToMinutes, minutesToPx, clampToWindow, shiftDays, clampDayDelta, formatHm, weekdayLabel, resizeHandleClass } from './weekModel';
 import { IDLE, beginPress, pressMove, pressArm, endPress, isArmed, isTap, LONG_PRESS_MS, type PressState } from './longPress';
 import { useEdgeAutoScroll } from './edgeScroll';
 import { MS_PER_MIN, toIso } from '../lib/time';
@@ -24,18 +26,27 @@ export interface InteractiveBlockProps {
   endMs: number;
   topPct: number;
   heightPct: number;
+  /** Horizontal lane position, in percent of the whole block layer (see blockLayout). */
   leftPct?: number;
   widthPct?: number;
+  lane?: number;
+  lanes?: number;
   startLabel: string;
   title: string;
   kind: BlockKind;
   pinned: boolean;
+  /** Calendar events only ('app' — Google events never reach this component). */
+  source?: 'app' | 'google' | null;
+  started?: boolean;
+  selected?: boolean;
   onCommit: (patch: { startsAt: string; endsAt: string; pinned: boolean }) => void;
   onUnpin?: () => void;
   onDelete?: () => void;
-  /** Fired on a press that moved nothing (a click, not a drag) — never alongside onCommit. */
+  /** Fired on a press that moved nothing (a click, not a drag) — never alongside onCommit — and on
+   *  keyboard activation of the block body. */
   onClick?: () => void;
   deleteLabel?: string;
+  /** Rendered day columns: the block layer spans all of them, so one column = layer width / dayCount. */
   dayCount?: number;
   accent?: string;
   zone?: string;
@@ -48,7 +59,7 @@ export interface InteractiveBlockProps {
 type DragMode = 'move' | 'resize';
 
 export function InteractiveBlock(props: InteractiveBlockProps) {
-  const { dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, leftPct = 0, widthPct = 100, startLabel, title, kind, pinned, onCommit, onUnpin, onDelete, onClick, deleteLabel = 'Delete block', dayCount = 7, accent, zone = 'UTC', coarse = false, getScrollContainer } = props;
+  const { dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, leftPct = 0, widthPct = 100, lane = 0, lanes = 1, startLabel, title, kind, pinned, source = null, started = false, selected = false, onCommit, onUnpin, onDelete, onClick, deleteLabel = 'Delete block', dayCount = 7, accent, zone = 'UTC', coarse = false, getScrollContainer } = props;
   // Refs hold the authoritative drag state; mutated directly so pointer handlers always
   // see the latest values regardless of React's batching/commit schedule.
   const modeRef = useRef<DragMode | null>(null);
@@ -206,7 +217,9 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
     modeRef.current = mode;
     startYRef.current = finite(e.clientY);
     startXRef.current = finite(e.clientX);
-    colWidthRef.current = mode === 'move' ? (el.parentElement?.getBoundingClientRect().width ?? 0) : 0;
+    // The block layer spans every rendered day, so a column is the layer's width over the day count.
+    const layer = el.closest<HTMLElement>('[data-testid="block-layer"]') ?? el.parentElement;
+    colWidthRef.current = mode === 'move' ? (layer?.getBoundingClientRect().width ?? 0) / Math.max(1, dayCount) : 0;
     scrollStartRef.current = getScrollContainer?.()?.scrollTop ?? 0;
     clearPressTimer();
     if (isArmed(pressRef.current)) { armDrag(el, pointerId); return; }
@@ -322,8 +335,6 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
   const previewStart = startMs + effectiveMoveMin * MS_PER_MIN;
   const previewEnd = effectiveGrowMin !== 0 ? endMs + effectiveGrowMin * MS_PER_MIN : endMs + effectiveMoveMin * MS_PER_MIN;
 
-  const accentStyles = accentStyle(accent, kind, pinned);
-
   const transformX = effectiveDayDelta * effectiveColWidth;
   const transformY = minutesToPx(effectiveMoveMin);
   const heightDelta = minutesToPx(effectiveGrowMin);
@@ -344,61 +355,47 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
       : 'transition-[top,height] duration-300 ease-out';
 
   return (
-    <div
-      data-testid="event-block"
-      data-kind={kind}
-      data-pinned={pinned}
-      title={`${startLabel} ${title}`}
+    <CalendarBlock
+      title={title}
+      kind={kind}
+      source={source}
+      pinned={pinned}
+      started={started}
+      accent={accent}
+      startLabel={startLabel}
+      whenLabel={`${weekdayLabel(startMs, zone)} ${formatHm(startMs, zone)} – ${formatHm(endMs, zone)}`}
+      durationMin={(endMs - startMs) / MS_PER_MIN}
+      dayIndex={dayIndex}
+      selected={selected}
+      coarse={coarse}
+      onDelete={activeDrag ? undefined : onDelete}
+      deleteLabel={deleteLabel}
+      onUnpin={onUnpin}
+      // Pointer presses are discriminated by the drag machinery (a zero-delta press → onClick), so
+      // the body's own click only counts when the keyboard produced it (detail 0). A real mouse
+      // click after a short drag must never select.
+      onBodyClick={(e) => { if (e.detail === 0) onClick?.(); }}
       onPointerDown={begin('move')}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
-      className={`group ${BASE} ${activeDrag ? 'cursor-grabbing' : 'cursor-grab'} select-none ${coarse ? 'touch-pan-y' : ''} ${lifted ? 'shadow-pop' : ''} ${variantClass(kind, pinned, accent)} ${transitionClass}`}
-      style={{ top: `${topPct}%`, height: `calc(${heightPct}% + ${heightDelta}px)`, left: `calc(${leftPct}% + 2px)`, width: `calc(${widthPct}% - 4px)`, transform: `translate(${transformX}px, ${transformY}px)${lifted ? ' scale(1.02)' : ''}`, ...accentStyles }}
+      className={`${activeDrag ? 'z-20 cursor-grabbing' : 'cursor-grab'} select-none ${coarse ? 'touch-pan-y' : ''} ${lifted ? 'shadow-pop' : ''} ${transitionClass}`}
+      style={{
+        top: `${topPct}%`,
+        height: `calc(${heightPct}% + ${heightDelta}px)`,
+        left: blockLeftCss(leftPct, lane, lanes),
+        width: blockWidthCss(widthPct, lane, lanes),
+        transform: `translate(${transformX}px, ${transformY}px)${lifted ? ' scale(1.02)' : ''}`,
+      }}
+      // The tile's appearance is unchanged by the handle (a pure hit area plus a hover grip).
+      // `touch-none` on it means a finger that lands here is a resize from the first pixel.
+      resize={{ onPointerDown: begin('resize'), className: `${resizeHandleClass(heightPct, coarse)} ${coarse ? 'touch-none' : ''}` }}
     >
-      {onDelete && !activeDrag && (
-        <button
-          type="button"
-          aria-label={deleteLabel}
-          title="Delete"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className={`${DELETE_BTN_CLASS} ${coarse ? 'flex' : 'hidden group-hover:flex'}`}
-        >
-          ×
-        </button>
-      )}
-      {pinned && (
-        onUnpin
-          ? (
-            <button
-              type="button"
-              aria-label="Unpin"
-              title="Unpin — let the scheduler move this"
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => { e.stopPropagation(); onUnpin(); }}
-              // `relative z-10` keeps this in-flow button above the absolutely-positioned resize
-              // hit area, which on a coarse pointer covers the bottom 24px of a short tile.
-              className="relative z-10 mr-0.5 cursor-pointer border-0 bg-transparent p-0 leading-none"
-            >
-              🔒
-            </button>
-          )
-          : <span aria-hidden="true">🔒 </span>
-      )}
-      <span className="font-medium">{startLabel}</span> {title}
       {showDragLabel && (
-        <span data-testid="drag-label" className="absolute right-1 top-0.5 rounded bg-ink/70 px-1 text-[10px] font-semibold text-white">
+        <span data-testid="drag-label" className="absolute right-1 top-0.5 z-10 rounded-pill bg-accent px-1.5 text-[10px] font-semibold text-on-accent">
           {formatHm(previewStart, zone)} – {formatHm(previewEnd, zone)}
         </span>
       )}
-      {/* The tile's appearance is unchanged (the handle is a pure hit area). `touch-none` on it
-          means a finger that lands here is a resize from the first pixel — no long press. */}
-      <span
-        data-testid="resize-handle"
-        onPointerDown={begin('resize')}
-        className={`absolute inset-x-0 bottom-0 cursor-ns-resize ${resizeHandleClass(heightPct, coarse)} ${coarse ? 'touch-none' : ''}`}
-      />
-    </div>
+    </CalendarBlock>
   );
 }
