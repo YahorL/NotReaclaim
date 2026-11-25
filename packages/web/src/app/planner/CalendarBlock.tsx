@@ -124,19 +124,6 @@ export function CalendarBlock(props: CalendarBlockProps) {
       </button>
       {hasCluster && (
         <span className={`absolute right-1.5 z-10 flex items-center gap-1 ${row ? 'top-1/2 -translate-y-1/2' : 'top-1.5'}`}>
-          {onDelete && (
-            <button
-              type="button"
-              aria-label={deleteLabel}
-              title="Delete"
-              data-always-visible={coarse}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => { e.stopPropagation(); onDelete(); }}
-              className={`${DELETE_BTN} ${coarse ? 'flex' : 'hidden group-hover:flex group-focus-within:flex'}`}
-            >
-              ×
-            </button>
-          )}
           {v.icon === 'lock' && <span data-icon="lock" aria-hidden="true" className="opacity-80"><Icons.lock size={12} /></span>}
           {v.icon === 'pin' && (onUnpin ? (
             <button
@@ -153,6 +140,21 @@ export function CalendarBlock(props: CalendarBlockProps) {
               <Icons.pin size={12} />
             </button>
           ) : <span data-icon="pin" aria-hidden="true" className="opacity-80"><Icons.pin size={12} /></span>)}
+          {/* Rightmost: in a narrow overlap lane the cluster overflows to the LEFT, and a ×
+              pushed outside the tile would vanish (hover lost) before it could be clicked. */}
+          {onDelete && (
+            <button
+              type="button"
+              aria-label={deleteLabel}
+              title="Delete"
+              data-always-visible={coarse}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              className={`${DELETE_BTN} ${coarse ? 'flex' : 'hidden group-hover:flex group-focus-within:flex'}`}
+            >
+              ×
+            </button>
+          )}
         </span>
       )}
       {children}

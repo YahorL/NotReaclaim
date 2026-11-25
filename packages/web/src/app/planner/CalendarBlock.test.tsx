@@ -102,6 +102,14 @@ describe('CalendarBlock', () => {
     expect(screen.getByRole('button', { name: /delete block/i, hidden: true })).toBeInTheDocument();
   });
 
+  it('the delete × is the rightmost action, so a narrow lane never pushes it out of the tile', () => {
+    renderBlock({ kind: 'task', source: null, pinned: true, onUnpin: vi.fn(), onDelete: vi.fn() });
+    const unpin = screen.getByRole('button', { name: 'Unpin' });
+    const del = screen.getByRole('button', { name: /delete block/i, hidden: true });
+    expect(unpin.parentElement).toBe(del.parentElement);
+    expect(del.parentElement!.lastElementChild).toBe(del);
+  });
+
   it('body click calls onBodyClick', () => {
     const onBodyClick = vi.fn();
     renderBlock({ onBodyClick });
