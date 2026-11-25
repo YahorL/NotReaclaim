@@ -855,6 +855,9 @@ describe('WeekGrid compact (below md)', () => {
     // Hoisted: a backdrop rendered inside the column would bubble its dismissing click straight
     // back into the column's click-to-create handler.
     expect(within(screen.getByTestId('day-col-0')).queryByTestId('create-popover')).toBeNull();
+    // Portalled out of the (glass) grid root: in light its backdrop-filter would otherwise be the
+    // containing block of the sheet's `fixed` backdrop and shrink it to the panel.
+    expect(screen.getByTestId('sheet-backdrop').parentElement).toBe(document.body);
   });
 
   it('a backdrop tap dismisses the create sheet without re-opening it at another slot', () => {

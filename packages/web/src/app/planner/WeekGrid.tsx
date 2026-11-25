@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { usePrefersReducedMotion } from '../../theme/usePrefersReducedMotion';
 import { useDroppable } from '@dnd-kit/core';
@@ -643,7 +644,9 @@ export function WeekGrid(props: WeekGridProps) {
           its dismissing click into the column's click-to-create handler and re-open the form at
           another slot — the "I can't close it" report. `days[dayIndex]` is re-read here because
           a resize can shrink `days` while the form is open. */}
-      {compact && creating && creatingDayMs !== undefined && (
+      {/* Portalled to <body>: this root is `.glass`, whose backdrop-filter (light theme) makes it the
+          containing block for `fixed` descendants, which shrank the sheet's backdrop to the panel. */}
+      {compact && creating && creatingDayMs !== undefined && createPortal(
         <Sheet label="New entry" onClose={() => setCreating(null)} scrollBody>
           <CreatePopover
             dayStartMs={creatingDayMs}
@@ -653,7 +656,8 @@ export function WeekGrid(props: WeekGridProps) {
             zone={zone}
             compact
           />
-        </Sheet>
+        </Sheet>,
+        document.body,
       )}
     </div>
   );
