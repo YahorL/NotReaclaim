@@ -37,6 +37,14 @@ describe('tokenStore', () => {
     expect(tokenStore.get()).toBeNull();
   });
 
+  it('reads back a session whose write alone failed (quota)', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('full', 'QuotaExceededError'); });
+    tokenStore.set({ token: 'jwt', userId: 'u3' });
+    expect(tokenStore.get()).toEqual({ token: 'jwt', userId: 'u3' });
+    tokenStore.clear();
+    expect(tokenStore.get()).toBeNull();
+  });
+
   it('survives storage methods that throw (quota / disabled)', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('nope'); });
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('nope'); });

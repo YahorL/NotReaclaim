@@ -9,6 +9,8 @@ export interface StoredAuth {
 // `window.localStorage` throws. Every access is guarded, and the session is mirrored in memory
 // so sign-in still works for the lifetime of the tab instead of white-screening the app.
 let memory: string | null = null;
+/** The last write did not reach storage (quota, disabled writes): memory is the truth until the next write. */
+let memoryOnly = false;
 
 function storage(): Storage | null {
   try {
@@ -21,7 +23,7 @@ function storage(): Storage | null {
 function readRaw(): string | null {
   try {
     const s = storage();
-    if (s) return s.getItem(KEY);
+    if (s && !memoryOnly) return s.getItem(KEY);
   } catch {
     /* fall through to memory */
   }
@@ -41,17 +43,21 @@ export const tokenStore = {
   set(auth: StoredAuth): void {
     memory = JSON.stringify(auth);
     try {
-      storage()?.setItem(KEY, memory);
+      const s = storage();
+      if (!s) throw new Error('no storage');
+      s.setItem(KEY, memory);
+      memoryOnly = false;
     } catch {
-      /* memory only */
+      memoryOnly = true;
     }
   },
   clear(): void {
     memory = null;
+    memoryOnly = false;
     try {
       storage()?.removeItem(KEY);
     } catch {
-      /* memory only */
+      /* nothing stored to remove */
     }
   },
 };
