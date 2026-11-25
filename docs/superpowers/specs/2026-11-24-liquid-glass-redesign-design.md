@@ -675,10 +675,10 @@ Verified findings from the final review. Each item was checked in the code first
 
 - **Planner:**
   - **P1, blocks running past the column end** (`43ba7f8`). An overnight blocked event (23:00–07:00), or anything crossing a `dayStartMinute` column, used to jump or get cut down. Two new pure helpers in `weekModel.ts` now drive both the keyboard (`blockKeyboard.ts`) and the pointer (`dragModel.ts`):
-    - `moveStartMin` clamps only the **start**, to `[0, 1440−15]`. The block keeps its length, so its end may run past the column.
+    - `moveStartMin` clamps only the **start**, to `[0, 1440−15]`. The block keeps its length, so its end may run past the column. *(Narrowed by `P1 narrowed` below: this now applies only to blocks that already overflow.)*
     - `resizeEndMin` treats a zero snapped delta as a no-op before any clamping. It never grows a block past the column end, and never cuts it back to the column end either.
     - Neither helper moves against the key or drag direction. An off-grid start in the last slot stays put on ↓.
-    - **Deliberate behaviour change:** an ordinary 23:00–24:00 block pressed ↓ (or dragged to the bottom) now becomes 23:15–00:15 instead of being clamped inside the column. The old clamp tests were rewritten for this.
+    - ~~**Deliberate behaviour change:** an ordinary 23:00–24:00 block pressed ↓ (or dragged to the bottom) now becomes 23:15–00:15 instead of being clamped inside the column.~~ **Superseded** by `P1 narrowed` below: the owner never chose this, and it contradicted interactions.md §1.
     - The move and resize ghosts clip their height at the column end, as the tile does. `clampToWindow` is unchanged, because `scheduleDrop` still uses it.
   - **P2, focus origin** (`543783e`):
     - `InteractiveBlock` records whether the body was focused by a pointer: a ref set on press (body or resize handle) and cleared on blur.
@@ -751,6 +751,11 @@ Verified findings from the final review. Each item was checked in the code first
   - **B3:** Escape after clicking the category `select` open keeps the dialog and the typed name. Headless browsers do not expose whether the native popup really opened, so the open-dropdown case is still for the owner on a real browser.
   - The P1 keyboard checks focused the tile programmatically, not with Tab.
 - **Suite:** web 1436 / 110 → **1481 / 111**. Root build green.
+- **P1 narrowed** (job 1 of the follow-up round):
+  - `moveStartMin(startMin, durationMin, deltaMin)` now takes the duration. A block that **fits** the column (`end ≤ 1440`) is clamped as interactions.md §1 and `main` do: `start ≤ 1440 − duration`. So 23:00–24:00 ↓ is a no-op, and a 4h task dragged to the bottom lands 20:00–24:00, never 23:45–03:45. This applies to both the keyboard and the pointer.
+  - Only a block that **already** runs past the column end (overnight 23:00–07:00, or one crossing a `dayStartMinute` boundary) keeps the start-only clamp `[0, 1440−15]`, so it keeps its length. **Assumption:** ↓ on such a block still moves it (23:00–07:00 → 23:15–07:15). "Don't push it further" was read as "don't squeeze it back in", not as "↓ is a no-op".
+  - The resize parts are unchanged: a zero delta is a no-op, and a block is never shortened because it overflows.
+  - Both cases are pinned in `blockKeyboard`, `dragModel` and `InteractiveBlock` tests.
 - **Follow-ups (ledger, not fixed):**
   - **B4 covers one direction only:** the palette will not open a second drawer on a task a page drawer already holds. A page can still open its own drawer on a task the shell's searched-task drawer holds (e.g. clicking that card on Priorities).
     - **Fix direction:** have pages consult `OpenTaskDrawers`, or close the shell drawer on a page open.

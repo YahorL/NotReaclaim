@@ -222,14 +222,21 @@ export function clampDayDelta(dayIndex: number, delta: number, lastIndex = 6): n
 }
 
 /**
- * Where a MOVED block starts: `startMin + deltaMin`, with only the START clamped to the column
- * ([WINDOW_START_MIN, WINDOW_END_MIN − SLOT_MIN]). The caller keeps the block's length, so its end
- * may run past the column (an overnight 23:00–07:00 block, or 23:15–00:15 after a ↓). Never moves
- * against the direction of `deltaMin`: an off-grid start already in the last slot stays put on ↓.
+ * Where a MOVED block starts: `startMin + deltaMin`; the caller keeps the block's length.
+ * - A block that FITS the column stays inside it (interactions.md §1:
+ *   `clamp(start, dayStart, dayEnd − duration)`): a 23:00–24:00 block pressed ↓ stays put, and a
+ *   4h block dragged to the bottom lands at 20:00–24:00, never across the column end.
+ * - A block that ALREADY runs past the column end (an overnight 23:00–07:00 block, or one crossing
+ *   a `dayStartMinute` column boundary) is never squeezed back in: only its start is clamped, to
+ *   [WINDOW_START_MIN, WINDOW_END_MIN − SLOT_MIN], so it keeps its hours.
+ * Never moves against the direction of `deltaMin`: an off-grid start already in the last slot stays
+ * put on ↓.
  */
-export function moveStartMin(startMin: number, deltaMin: number): number {
+export function moveStartMin(startMin: number, durationMin: number, deltaMin: number): number {
   if (deltaMin === 0) return startMin;
-  const clamped = Math.min(WINDOW_END_MIN - SLOT_MIN, Math.max(WINDOW_START_MIN, startMin + deltaMin));
+  const fits = startMin + durationMin <= WINDOW_END_MIN;
+  const maxStart = fits ? WINDOW_END_MIN - durationMin : WINDOW_END_MIN - SLOT_MIN;
+  const clamped = Math.min(maxStart, Math.max(WINDOW_START_MIN, startMin + deltaMin));
   return deltaMin > 0 ? Math.max(startMin, clamped) : Math.min(startMin, clamped);
 }
 

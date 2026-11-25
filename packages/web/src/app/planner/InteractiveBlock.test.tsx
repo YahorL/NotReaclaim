@@ -157,6 +157,15 @@ describe('InteractiveBlock', () => {
     expect(onCommit).not.toHaveBeenCalled();
   });
 
+  it('a 4h block dragged past the bottom of the column is clamped to end at the column end (no cross-midnight save)', () => {
+    const onCommit = renderBlock({ startMs: DAY + 18 * 3_600_000, endMs: DAY + 22 * 3_600_000, topPct: minuteToPct(18 * 60), heightPct: minuteToPct(4 * 60) - minuteToPct(0) });
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 100 + minutesToPx(6 * 60), pointerId: 1 });
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 100 + minutesToPx(6 * 60), pointerId: 1 });
+    expect(onCommit).toHaveBeenCalledWith({ startsAt: '2026-01-05T20:00:00.000Z', endsAt: '2026-01-06T00:00:00.000Z', pinned: true });
+  });
+
   it('dragging an overnight tile down 15 minutes keeps its length (no jump back into the column)', () => {
     const onCommit = renderBlock({ startMs: DAY + 23 * 3_600_000, endMs: DAY + 31 * 3_600_000, topPct: minuteToPct(23 * 60), heightPct: minuteToPct(24 * 60) - minuteToPct(23 * 60) });
     const el = screen.getByTestId('event-block');
@@ -940,6 +949,17 @@ describe('InteractiveBlock keyboard move / resize', () => {
     const tab = createEvent.keyDown(body(), { key: 'Tab' });
     fireEvent(body(), tab);
     expect(tab.defaultPrevented).toBe(false);
+  });
+
+  it('a 23:00–24:00 block: ↓ is clamped at the column end and commits nothing (never 23:15–00:15)', () => {
+    const onCommit = vi.fn();
+    const onPreview = vi.fn();
+    const late = { ...props, startMs: DAY + 23 * 3_600_000, endMs: DAY + 24 * 3_600_000, topPct: minuteToPct(23 * 60), heightPct: minuteToPct(24 * 60) - minuteToPct(23 * 60) };
+    render(<InteractiveBlock {...late} onCommit={onCommit} onPreview={onPreview} />);
+    fireEvent.keyDown(body(), { key: 'ArrowDown' });
+    act(() => { vi.advanceTimersByTime(KEY_COMMIT_DEBOUNCE_MS); });
+    expect(onPreview).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
   });
 
   it('an overnight block (23:00–07:00): ↓ moves it 15 minutes keeping all 8 hours; Shift+↓ never truncates it', () => {

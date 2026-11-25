@@ -55,9 +55,11 @@ describe('moveTarget', () => {
     expect(moveTarget({ ...base, origDay: 1, dayCount: 3, dx: 400 })).toEqual({ dayIndex: 2, startMin: 540 });
   });
 
-  it('clamps only the start to the column; the end may run past it (the block keeps its length)', () => {
+  it('clamps the start so a block that fits stays inside the 24h window (never saved across the column end)', () => {
     expect(moveTarget({ ...base, dy: -100 * PX_60 })).toEqual({ dayIndex: 2, startMin: 0 });
-    expect(moveTarget({ ...base, dy: 100 * PX_60 })).toEqual({ dayIndex: 2, startMin: WINDOW_END_MIN - 15 });
+    expect(moveTarget({ ...base, dy: 100 * PX_60 })).toEqual({ dayIndex: 2, startMin: WINDOW_END_MIN - 60 });
+    // A 4h task dragged to the very bottom lands 20:00–24:00, not 23:45–03:45.
+    expect(moveTarget({ ...base, durationMin: 240, dy: 100 * PX_60 })).toEqual({ dayIndex: 2, startMin: 20 * 60 });
   });
 
   it('an overnight block (23:00, 8h) dragged down 15 minutes moves 15 minutes, not back into the column', () => {

@@ -46,13 +46,14 @@ export interface MoveInput {
  * Where a moved block lands. The DELTA snaps to 15 minutes (not the absolute start), so an
  * off-grid block keeps its offset and a pure cross-day move keeps its exact time — the same rule
  * the arrow keys follow (±15). The day is rounded from the horizontal travel and clamped to the
- * rendered columns. Only the START is clamped to the 24h column (`moveStartMin`): the block keeps
- * its length, so its end may run past the column — an overnight block is never squeezed back in.
+ * rendered columns. The block keeps its length (`moveStartMin`): one that fits the 24h column is
+ * clamped so it stays inside it; one that already runs past the column end (overnight) has only
+ * its start clamped — it is never squeezed back in.
  */
-export function moveTarget({ origDay, origStartMin, dx, dy, colWidth, dayCount, scale }: MoveInput): { dayIndex: number; startMin: number } {
+export function moveTarget({ origDay, origStartMin, durationMin, dx, dy, colWidth, dayCount, scale }: MoveInput): { dayIndex: number; startMin: number } {
   const days = colWidth > 0 ? Math.round(dx / colWidth) : 0;
   const dayIndex = Math.max(0, Math.min(Math.max(0, dayCount - 1), origDay + days));
-  return { dayIndex, startMin: moveStartMin(origStartMin, snappedMinutes(dy, scale)) };
+  return { dayIndex, startMin: moveStartMin(origStartMin, durationMin, snappedMinutes(dy, scale)) };
 }
 
 /**

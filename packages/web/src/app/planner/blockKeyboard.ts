@@ -13,8 +13,9 @@ export type KeyChange = KeyInterval | { edge: 'left' | 'right' };
  * What an arrow key does to a focused movable block (spec §5.2 Keyboard). Pure: the block applies
  * the result as an instant preview and commits it (debounced) through the same path as a drag.
  *
- * - ↑/↓: move by one 15-min slot, keeping the length. Only the START is clamped to the column; the
- *   end may run past it (an overnight block keeps its hours — `moveStartMin`).
+ * - ↑/↓: move by one 15-min slot, keeping the length. A block that fits the column stays inside it
+ *   (23:00–24:00 ↓ is a no-op); one already running past the column end keeps its hours and only
+ *   its start is clamped (an overnight block — `moveStartMin`).
  * - Shift+↑/↓: shorten / lengthen by 15 min (at least one slot, never grown past the column end,
  *   never cut back to it either — `resizeEndMin`).
  * - ←/→: one day, keeping the time; at the edge of the rendered days → `{ edge }` (the caller
@@ -30,7 +31,7 @@ export function keyboardChange(key: string, shift: boolean, cur: KeyInterval, da
     case 'ArrowDown': {
       const dir = key === 'ArrowUp' ? -1 : 1;
       if (shift) return { ...cur, endMin: resizeEndMin(cur.startMin, cur.endMin, dir * SLOT_MIN) };
-      const startMin = moveStartMin(cur.startMin, dir * SLOT_MIN);
+      const startMin = moveStartMin(cur.startMin, length, dir * SLOT_MIN);
       return { dayIndex: cur.dayIndex, startMin, endMin: startMin + length };
     }
     case 'ArrowLeft':

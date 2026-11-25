@@ -30,16 +30,20 @@ describe('keyboardChange', () => {
     expect(keyboardChange('ArrowDown', true, late, 7)).toEqual(late);
   });
 
-  it('clamps only the START of a move: the first slot cannot go up, the last start slot cannot go down', () => {
+  it('clamps a move of a block that fits to the column: the first slot cannot go up, the last cannot go down', () => {
     const first = { dayIndex: 2, startMin: 0, endMin: 60 };
     expect(keyboardChange('ArrowUp', false, first, 7)).toEqual(first);
-    const lastStart = { dayIndex: 2, startMin: WINDOW_END_MIN - 15, endMin: WINDOW_END_MIN + 45 };
-    expect(keyboardChange('ArrowDown', false, lastStart, 7)).toEqual(lastStart);
+    // 23:00–24:00 ↓ stays put: a block that fits never crosses the column end (interactions.md §1).
+    const last = { dayIndex: 2, startMin: WINDOW_END_MIN - 60, endMin: WINDOW_END_MIN };
+    expect(keyboardChange('ArrowDown', false, last, 7)).toEqual(last);
+    // An off-grid block near the end is clamped flush to the column end, never past it.
+    const nearEnd = { dayIndex: 2, startMin: WINDOW_END_MIN - 65, endMin: WINDOW_END_MIN - 5 };
+    expect(keyboardChange('ArrowDown', false, nearEnd, 7)).toEqual(last);
   });
 
-  it('a move keeps the length and lets the end run past the column (23:00–24:00 ↓ → 23:15–00:15)', () => {
-    const last = { dayIndex: 2, startMin: WINDOW_END_MIN - 60, endMin: WINDOW_END_MIN };
-    expect(keyboardChange('ArrowDown', false, last, 7)).toEqual({ dayIndex: 2, startMin: WINDOW_END_MIN - 45, endMin: WINDOW_END_MIN + 15 });
+  it('an already-overflowing block in the last start slot cannot go down (only its start is clamped)', () => {
+    const lastStart = { dayIndex: 2, startMin: WINDOW_END_MIN - 15, endMin: WINDOW_END_MIN + 45 };
+    expect(keyboardChange('ArrowDown', false, lastStart, 7)).toEqual(lastStart);
   });
 
   it('an overnight block (23:00–07:00) moves by 15 minutes and keeps its 8 hours', () => {
