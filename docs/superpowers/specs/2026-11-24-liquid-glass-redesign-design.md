@@ -612,7 +612,8 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
 - **8.2 legacy palette:** removed `indigo`, `indigo600`, `indigoSoft`, `event`, `bg`, `ink`, `inkSoft`, `crit`, `high`, `med`, `low`, `sidebar*`, `kind.*` and the unused `.dark-scroll`. `card`/`line` stay as real tokens, and so do `shadow-card/pop/modal`. Evidence: the scanner, checked against a positive control, finds 0 utility usages in `src` (tests included), and the built CSS is byte-identical before and after (72545 bytes, no rule added or removed).
 - **8.3 accessibility:**
   - **axe 4.10:** `wcag2a/aa/21aa` on every route plus the dialog and palette, both themes, 1440. The fixes:
-    - Meeting tile time labels are at full strength (white @ .8 on violet was 3.9:1).
+    - Meeting tile time labels, and the Buffers preview meeting minutes, are at full strength (white @ .8 on violet was 3.9:1).
+    - Re-run after the fixes: 0 violations at 1440 (routes, dialog, palette) and at 390 (routes), both themes.
     - The card checklist checkboxes are named after their subtask.
     - The ✓ button is "Complete <title>" (the P6 follow-up).
   - **Contrast on glass and gradients:** axe reports these as "incomplete", so contrast was measured on 2× screenshots instead, with glyph-versus-background pixels per text node. After the fixes, the only flags are tiles clipped in narrow overlap lanes, which are false positives.
