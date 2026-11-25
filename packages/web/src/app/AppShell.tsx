@@ -44,6 +44,14 @@ export function AppShell() {
   const { token } = useAuth();
   useWebSocket({ token });
   const [newTaskOpen, setNewTaskOpen] = useState(false);
+  // The control that opened the dialog, so focus can return there. Taken from the click itself:
+  // a click does not focus a <button> in Safari, so document.activeElement would be <body>.
+  const newTaskOpenerRef = useRef<HTMLElement | null>(null);
+  const openNewTask = (e?: { currentTarget: EventTarget | null }) => {
+    const target = e?.currentTarget ?? document.activeElement;
+    newTaskOpenerRef.current = target instanceof HTMLElement ? target : null;
+    setNewTaskOpen(true);
+  };
   const [searchOpen, setSearchOpen] = useState(false);
   // The task the palette opened, edited in the shell-hosted drawer.
   const [searchedTaskId, setSearchedTaskId] = useState<string | null>(null);
@@ -73,8 +81,8 @@ export function AppShell() {
       <div ref={rootRef} data-testid="app-shell" className="flex h-dvh overflow-hidden bg-page md:gap-5 md:p-5">
         {!sidebarHidden && <Sidebar />}
         <main className="flex min-w-0 flex-1 flex-col md:gap-5">
-          <TopBar onNewTask={() => setNewTaskOpen(true)} onSearch={() => setSearchOpen(true)} sidebarHidden={sidebarHidden} onToggleSidebar={toggleSidebar} />
-          <MobileTopBar onNewTask={() => setNewTaskOpen(true)} />
+          <TopBar onNewTask={openNewTask} onSearch={() => setSearchOpen(true)} sidebarHidden={sidebarHidden} onToggleSidebar={toggleSidebar} />
+          <MobileTopBar onNewTask={openNewTask} />
           <GoogleBrokenBanner />
           {/* The tab bar is `fixed`, so the scroll area reserves its height (56px) plus the
               home-indicator inset below md. Tailwind turns the `_` into a space in calc(). */}
@@ -87,7 +95,7 @@ export function AppShell() {
           </div>
         </main>
         <MobileTabBar />
-        {newTaskOpen && <NewTaskModal onClose={() => setNewTaskOpen(false)} />}
+        {newTaskOpen && <NewTaskModal opener={newTaskOpenerRef} onClose={() => setNewTaskOpen(false)} />}
         {searchedTaskId && <ShellTaskDrawer taskId={searchedTaskId} onClose={() => setSearchedTaskId(null)} />}
         {searchOpen && (
           <TaskSearchPalette

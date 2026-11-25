@@ -281,3 +281,27 @@ describe('AppShell drawer slot', () => {
     expect(host.className).not.toContain('top-[120px]');
   });
 });
+
+describe('AppShell new task dialog', () => {
+  it('returns focus to the header New task button after Escape, even though a click did not focus it', async () => {
+    renderWithProviders(<AppShell />, { api: makeApi() });
+    const opener = screen.getAllByRole('button', { name: 'New task' }).find((b) => b.getAttribute('data-testid') !== 'mobile-new-task')!;
+    // jsdom (like Safari) does not focus a clicked button: the shell must remember the clicked one.
+    document.body.focus();
+    fireEvent.click(opener);
+    const name = await screen.findByRole('textbox', { name: 'Task name' });
+    await waitFor(() => expect(name).toHaveFocus());
+    fireEvent.keyDown(name, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New task' })).toBeNull());
+    expect(opener).toHaveFocus();
+  });
+
+  it('returns focus to the mobile + when that opened it', async () => {
+    renderWithProviders(<AppShell />, { api: makeApi() });
+    const plus = screen.getByTestId('mobile-new-task');
+    fireEvent.click(plus);
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New task' })).toBeNull());
+    expect(plus).toHaveFocus();
+  });
+});

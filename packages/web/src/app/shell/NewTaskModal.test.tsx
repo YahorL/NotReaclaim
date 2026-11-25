@@ -3,6 +3,8 @@ import { screen, fireEvent, waitFor } from '@testing-library/react';
 import type { Task } from '../../api/types';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 import { NewTaskModal } from './NewTaskModal';
+import { installMatchMedia } from '../../test/matchMedia';
+import { REDUCED_MOTION_QUERY } from '../../theme/usePrefersReducedMotion';
 
 const NOW = Date.parse('2026-01-05T00:00:00.000Z');
 const task = (over: Partial<Task> = {}): Task => ({
@@ -47,7 +49,7 @@ describe('NewTaskModal', () => {
     const createTask = vi.fn(async () => task());
     renderWithProviders(<NewTaskModal now={() => NOW} onClose={vi.fn()} />, { api: fakeApiClient(api(createTask) as never) });
     fireEvent.change(screen.getByPlaceholderText(/task name/i), { target: { value: 'Solid block' } });
-    fireEvent.click(screen.getByRole('button', { name: /split up/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /split up/i }));
     fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
     await waitFor(() => expect(createTask).toHaveBeenCalledWith(expect.objectContaining({ minChunkMs: 3_600_000, maxChunkMs: 3_600_000 })));
   });
@@ -104,52 +106,191 @@ describe('NewTaskModal', () => {
 
   it('sizes the dialog fluidly so it fits narrow viewports', () => {
     renderWithProviders(<NewTaskModal now={() => NOW} onClose={vi.fn()} />, { api: fakeApiClient(api() as never) });
-    const dialog = screen.getByLabelText('Close').closest('div.animate-pop') as HTMLElement;
-    const wrapper = dialog.parentElement as HTMLElement;
-
-    // Fluid up to 500px, never a fixed 500px that overflows a 390px viewport.
+    const dialog = screen.getByRole('dialog', { name: 'New task' });
+    const backdrop = screen.getByTestId('new-task-backdrop');
+    // Fluid up to 600px (prototype `.modal`), never a fixed width that overflows a 390px viewport.
     expect(dialog.classList.contains('w-full')).toBe(true);
-    expect(dialog.classList.contains('max-w-[500px]')).toBe(true);
-    expect(dialog.classList.contains('w-[500px]')).toBe(false);
-    // Overlay padding keeps the dialog off the viewport edges.
-    expect(wrapper.classList.contains('px-4')).toBe(true);
-    // …and the overlay scrolls, so Create/Cancel stay reachable on short viewports.
-    expect(wrapper.classList.contains('overflow-y-auto')).toBe(true);
+    expect(dialog.classList.contains('max-w-[600px]')).toBe(true);
+    expect(dialog.classList.contains('w-[600px]')).toBe(false);
+    // Backdrop padding keeps the dialog off the viewport edges…
+    expect(backdrop.classList.contains('px-4')).toBe(true);
+    // …and the backdrop scrolls, so Create/Cancel stay reachable on short viewports.
+    expect(backdrop.classList.contains('overflow-y-auto')).toBe(true);
   });
 
   it('reserves the mobile bar height below md and the desktop bar at md+', () => {
     renderWithProviders(<NewTaskModal now={() => NOW} onClose={vi.fn()} />, { api: fakeApiClient(api() as never) });
-    const wrapper = (screen.getByLabelText('Close').closest('div.animate-pop') as HTMLElement).parentElement!;
+    const backdrop = screen.getByTestId('new-task-backdrop');
     // MobileTopBar is h-14 (56px); pt-[70px] was a desktop-TopBar constant, ~14px too tall here.
-    expect(wrapper.classList.contains('pt-14')).toBe(true);
-    expect(wrapper.classList.contains('md:pt-[70px]')).toBe(true);
-    expect(wrapper.classList.contains('pt-[70px]')).toBe(false);
+    expect(backdrop.classList.contains('pt-14')).toBe(true);
+    expect(backdrop.classList.contains('md:pt-[70px]')).toBe(true);
+    expect(backdrop.classList.contains('pt-[70px]')).toBe(false);
   });
 
   it('goes near-full-screen below md and keeps its natural height at md+', () => {
     renderWithProviders(<NewTaskModal now={() => NOW} onClose={vi.fn()} />, { api: fakeApiClient(api() as never) });
-    const dialog = screen.getByLabelText('Close').closest('div.animate-pop') as HTMLElement;
+    const dialog = screen.getByRole('dialog', { name: 'New task' });
     expect(dialog.classList.contains('min-h-[calc(100dvh_-_88px)]')).toBe(true);
     expect(dialog.classList.contains('md:min-h-0')).toBe(true);
   });
 
-  it('wraps the duration/priority/split row below md', () => {
+  it('stacks the Duration | Priority pair on a phone and puts them side by side from sm', () => {
     renderWithProviders(<NewTaskModal now={() => NOW} onClose={vi.fn()} />, { api: fakeApiClient(api() as never) });
-    // basis-[195px] + a shrink-0 2x2 picker + a shrink-0 Split toggle = ~429px of children in a
-    // 358px content box at 390: the row must be allowed to break instead of clipping.
-    const row = screen.getByRole('radiogroup', { name: 'Priority' }).closest('div.flex.flex-wrap') as HTMLElement;
+    // A 2×2 picker beside a stepper needs ~480px; the content box at 390 is ~314px. The prototype
+    // stacks at ≤560px; from sm (640) the dialog is 600px wide and both halves fit.
+    const row = screen.getByRole('radiogroup', { name: 'Priority' }).closest('[data-testid="duration-priority-row"]') as HTMLElement;
     expect(row).not.toBeNull();
-    expect(row.classList.contains('md:flex-nowrap')).toBe(true);
+    expect(row.classList.contains('grid-cols-1')).toBe(true);
+    expect(row.classList.contains('sm:grid-cols-2')).toBe(true);
   });
 
-  it('stacks the Min/Max duration pair below md and keeps the desktop row at md+', () => {
+  it('stacks the Min/Max duration pair on a phone and puts them side by side from sm', () => {
     renderWithProviders(<NewTaskModal now={() => NOW} onClose={vi.fn()} />, { api: fakeApiClient(api() as never) });
-    // Two steppers with a 195px min in a 358px content box at 390: side by side they clip.
-    const row = screen.getByText('Min duration').closest('div.mb-3\\.5') as HTMLElement;
-    expect(row).not.toBeNull();
-    expect(row.classList.contains('flex-col')).toBe(true);
-    expect(row.classList.contains('md:flex-row')).toBe(true);
-    expect(row.classList.contains('md:gap-4')).toBe(true);
+    const row = screen.getByTestId('chunk-row');
+    expect(row).toContainElement(screen.getByText('Min duration'));
+    expect(row.classList.contains('grid-cols-1')).toBe(true);
+    expect(row.classList.contains('sm:grid-cols-2')).toBe(true);
+  });
+});
+
+describe('NewTaskModal dialog structure and closing', () => {
+  const render = (onClose = vi.fn(), createTask = vi.fn(async () => task())) => {
+    renderWithProviders(<NewTaskModal now={() => NOW} onClose={onClose} />, { api: fakeApiClient(api(createTask) as never) });
+    return { onClose, createTask };
+  };
+
+  it('is a modal dialog labelled by its "New task" heading', () => {
+    render();
+    const dialog = screen.getByRole('dialog', { name: 'New task' });
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    const heading = screen.getByRole('heading', { level: 2, name: 'New task' });
+    expect(dialog).toHaveAttribute('aria-labelledby', heading.id);
+  });
+
+  it('focuses the task name field on open and names it', () => {
+    render();
+    const name = screen.getByRole('textbox', { name: 'Task name' });
+    expect(name).toHaveFocus();
+    expect(name).toHaveAttribute('placeholder', 'Task name…');
+  });
+
+  it.each([
+    ['Escape', () => fireEvent.keyDown(screen.getByRole('textbox', { name: 'Task name' }), { key: 'Escape' })],
+    ['✕', () => fireEvent.click(screen.getByRole('button', { name: 'Close' }))],
+    ['Cancel', () => fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))],
+    ['the backdrop', () => fireEvent.click(screen.getByTestId('new-task-backdrop'))],
+  ])('%s plays the exit animation, then closes once', async (_how, act) => {
+    const { onClose, createTask } = render();
+    act();
+    // Exit first: the dialog stays mounted (data-closing) for the 220ms modal-out.
+    expect(screen.getByRole('dialog', { name: 'New task' })).toHaveAttribute('data-closing', 'true');
+    expect(screen.getByTestId('new-task-backdrop')).toHaveAttribute('data-closing', 'true');
+    expect(onClose).not.toHaveBeenCalled();
+    // A second close request during the exit is ignored.
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(createTask).not.toHaveBeenCalled();
+  });
+
+  it('a click inside the dialog does not close it', async () => {
+    const { onClose } = render();
+    fireEvent.click(screen.getByRole('dialog', { name: 'New task' }));
+    fireEvent.click(screen.getByText('Hours'));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: 'New task' })).not.toHaveAttribute('data-closing');
+  });
+
+  it('closes at once under reduced motion', () => {
+    const mm = installMatchMedia({ [REDUCED_MOTION_QUERY]: true });
+    try {
+      const { onClose } = render();
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(onClose).toHaveBeenCalledTimes(1);
+    } finally { mm.restore(); }
+  });
+
+  it('Enter in the name field creates the task when valid', async () => {
+    const { onClose, createTask } = render();
+    const name = screen.getByRole('textbox', { name: 'Task name' });
+    fireEvent.keyDown(name, { key: 'Enter' }); // empty: nothing
+    expect(createTask).not.toHaveBeenCalled();
+    fireEvent.change(name, { target: { value: 'Write spec' } });
+    fireEvent.keyDown(name, { key: 'Enter' });
+    fireEvent.keyDown(name, { key: 'Enter' }); // a repeat while the create is in flight is ignored
+    await waitFor(() => expect(createTask).toHaveBeenCalledTimes(1));
+    expect(createTask).toHaveBeenCalledWith(expect.objectContaining({ title: 'Write spec' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it('Enter while an IME composition is open does not submit', () => {
+    const { createTask } = render();
+    const name = screen.getByRole('textbox', { name: 'Task name' });
+    fireEvent.change(name, { target: { value: 'にほん' } });
+    fireEvent.keyDown(name, { key: 'Enter', isComposing: true });
+    expect(createTask).not.toHaveBeenCalled();
+  });
+
+  it('Enter in the new-category field adds the category instead of creating the task', async () => {
+    const createCategory = vi.fn().mockResolvedValue({ id: 'cat-new', userId: 'u', name: 'Deep', windows: [], isDefault: false });
+    const createTask = vi.fn(async () => task());
+    renderWithProviders(<NewTaskModal now={() => NOW} onClose={vi.fn()} />, {
+      api: fakeApiClient({ ...api(createTask), listCategories: vi.fn().mockResolvedValue([]), createCategory } as never),
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Task name' }), { target: { value: 'Write' } });
+    fireEvent.click(screen.getByTestId('new-category-btn'));
+    fireEvent.change(screen.getByTestId('new-category-name'), { target: { value: 'Deep' } });
+    fireEvent.keyDown(screen.getByTestId('new-category-name'), { key: 'Enter' });
+    await waitFor(() => expect(createCategory).toHaveBeenCalledTimes(1));
+    expect(createTask).not.toHaveBeenCalled();
+  });
+
+  it('Create stays disabled until the name has non-blank text', () => {
+    render();
+    const create = screen.getByRole('button', { name: /^create$/i });
+    expect(create).toBeDisabled();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Task name' }), { target: { value: '   ' } });
+    expect(create).toBeDisabled();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Task name' }), { target: { value: 'x' } });
+    expect(create).toBeEnabled();
+  });
+
+  it('Split up is a checkbox (on by default) that reveals Min/Max; off removes them', () => {
+    render();
+    const split = screen.getByRole('checkbox', { name: 'Split up' });
+    expect(split).toBeChecked();
+    expect(split).toHaveAccessibleDescription(/spread this task over several blocks/i);
+    expect(screen.getByTestId('chunk-row')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'increase min' })).toBeEnabled();
+    fireEvent.click(split);
+    expect(split).not.toBeChecked();
+    expect(screen.queryByTestId('chunk-row')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'increase min' })).toBeNull();
+    fireEvent.click(split);
+    expect(screen.getByRole('button', { name: 'increase max' })).toBeInTheDocument();
+  });
+
+  it('traps Tab inside the dialog', () => {
+    render();
+    const dialog = screen.getByRole('dialog', { name: 'New task' });
+    const close = screen.getByRole('button', { name: 'Close' });
+    close.focus();
+    fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
+    expect(dialog).toContainElement(document.activeElement as HTMLElement);
+    expect(document.activeElement).not.toBe(close);
+  });
+
+  it('returns focus to the opener passed by the shell once closed', async () => {
+    const opener = document.createElement('button');
+    opener.textContent = 'New task';
+    document.body.appendChild(opener);
+    const ref = { current: opener };
+    const onClose = vi.fn();
+    const { unmount } = renderWithProviders(<NewTaskModal now={() => NOW} onClose={onClose} opener={ref} />, { api: fakeApiClient(api() as never) });
+    expect(screen.getByRole('textbox', { name: 'Task name' })).toHaveFocus();
+    unmount();
+    expect(opener).toHaveFocus();
+    opener.remove();
   });
 });
 
@@ -255,12 +396,16 @@ describe('NewTaskModal chunk defaults when settings land late', () => {
 
   it('Split off: still sends min=max=duration after settings land, and toggling Split back on shows the settings defaults', async () => {
     const { createTask, resolve } = renderPending();
-    fireEvent.click(screen.getByRole('button', { name: /split up/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /split up/i }));
     resolve();
+    // Split off renders no chunk steppers, so peek (on, then off again) to know settings landed.
+    fireEvent.click(screen.getByRole('checkbox', { name: /split up/i }));
     await waitFor(() => expect(screen.getByText('45 mins')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('checkbox', { name: /split up/i }));
+    expect(screen.queryByText('45 mins')).toBeNull();
     create();
     await waitFor(() => expect(createTask).toHaveBeenCalledWith(expect.objectContaining({ minChunkMs: 3_600_000, maxChunkMs: 3_600_000 })));
-    fireEvent.click(screen.getByRole('button', { name: /split up/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /split up/i }));
     expect(screen.getByRole('button', { name: 'increase min' })).not.toBeDisabled();
     expect(screen.getByText('45 mins')).toBeInTheDocument();
     expect(screen.getByText('1 hr 30 min')).toBeInTheDocument();
