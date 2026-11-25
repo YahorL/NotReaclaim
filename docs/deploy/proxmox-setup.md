@@ -132,7 +132,8 @@ The CLI also has:
   (`--yes` skips that and is required when not on a terminal). It refuses to delete the last
   admin. It removes only NotReclaim's data: events already in the user's Google Calendar are
   NOT deleted and the Google grant is NOT revoked (the user can remove it at
-  https://myaccount.google.com/permissions).
+  https://myaccount.google.com/permissions). Sessions the user is already signed in with are
+  not ended: their requests fail until the session token expires.
 - `create-invite [--email <invitee>] [--by <issuer email>] [--max-uses <n>] [--expires <date>]` —
   `--email` binds the code to that invitee, `--by` names the issuing user (default: the oldest
   admin).

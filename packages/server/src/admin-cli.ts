@@ -27,6 +27,7 @@ export const ADMIN_USAGE = [
   '                (--email binds the code to that invitee; the issuer defaults to the first admin)',
   `  Passwords need at least ${MIN_PASSWORD_LENGTH} characters. --password <p> is still accepted by create-user`,
   '  and set-password, but it is visible in shell history and the process list.',
+  '  Every flag value can also be given as --flag=value.',
 ].join('\n');
 
 export type ParsedAdminArgs =
@@ -80,20 +81,28 @@ export function parseAdminArgs(argv: readonly string[]): ParsedAdminArgs {
   try {
     const values = new Map<string, string>();
     const switches = new Set<string>();
+    // Messages never quote an argument's value: it may be a password (`--pasword=…`, or the
+    // rest of an unquoted one), and the message is printed to the terminal and logs.
     for (let i = 0; i < rest.length; i += 1) {
       const token = rest[i]!;
-      if (!token.startsWith('--')) throw new UsageError(`unexpected argument: ${token}`);
-      const name = token.slice(2);
+      if (!token.startsWith('--')) throw new UsageError(`unexpected argument ${i + 1} (not a --flag; its value is not shown)`);
+      // `--flag=value` (split at the first `=`) or `--flag value`.
+      const eq = token.indexOf('=');
+      const name = eq === -1 ? token.slice(2) : token.slice(2, eq);
+      const inline = eq === -1 ? undefined : token.slice(eq + 1);
       if (!Object.hasOwn(allowed, name)) throw new UsageError(`unknown flag --${name} for ${command}`);
       if (values.has(name) || switches.has(name)) throw new UsageError(`--${name} given more than once`);
       if (!allowed[name]) {
+        if (inline !== undefined) throw new UsageError(`--${name} takes no value`);
         switches.add(name);
         continue;
       }
-      const value = rest[i + 1];
-      if (value === undefined || value === '' || value.startsWith('--')) throw new UsageError(`--${name} requires a value`);
+      const value = inline ?? rest[i + 1];
+      if (value === undefined || value === '' || (inline === undefined && value.startsWith('--'))) {
+        throw new UsageError(`--${name} requires a value`);
+      }
       values.set(name, value);
-      i += 1;
+      if (inline === undefined) i += 1;
     }
 
     switch (command) {
@@ -184,6 +193,10 @@ export function defaultAdminTimezone(processZone: string | undefined): string {
 export const ARGV_PASSWORD_WARNING =
   'admin: warning: --password is visible in shell history and the process list; omit it to be asked (or pipe it on stdin)';
 
+/** Printed before blocking on a non-terminal stdin (e.g. `docker compose exec -T` with no pipe). */
+export const STDIN_PASSWORD_NOTICE =
+  'admin: reading the password from standard input (its first line; end the input with Ctrl-D)…';
+
 /** Terminal / stdin access for resolvePassword (injected so the logic is testable). */
 export interface PasswordIO {
   /** stdin is an interactive terminal. */
@@ -212,7 +225,9 @@ export async function resolvePassword(argvPassword: string | undefined, io: Pass
     const again = await io.promptHidden('Repeat password: ');
     if (password !== again) throw new AdminInputError('the passwords do not match');
   } else {
-    password = (await io.readStdin()).split(/\r?\n/)[0] ?? '';
+    io.warn(STDIN_PASSWORD_NOTICE);
+    // The first line, without its line ending: LF, CRLF or a lone trailing CR.
+    password = ((await io.readStdin()).split('\n')[0] ?? '').replace(/\r$/, '');
     if (password === '') {
       throw new AdminInputError('no password given: run in a terminal to be asked, or pipe it on stdin');
     }
@@ -263,6 +278,7 @@ export async function runDeleteUser(args: { email: string; yes: boolean }, deps:
     + `${plural(c.events, 'calendar event')}, ${plural(c.invites, 'invite code')} it issued, its settings and categories.`);
   deps.print('  Its Google Calendar events (including blocks NotReclaim wrote there) are NOT deleted, and Google access is not revoked');
   deps.print('  (remove that at https://myaccount.google.com/permissions).');
+  deps.print('  Its signed-in sessions are not ended: their requests fail until their token expires.');
 
   if (!args.yes) {
     if (!deps.isTTY) throw new AdminInputError('not on a terminal: re-run with --yes to confirm the deletion');

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
-  parseAdminArgs, resolveInviter, ADMIN_USAGE, resolvePassword, AdminInputError, ARGV_PASSWORD_WARNING,
+  parseAdminArgs, resolveInviter, ADMIN_USAGE, resolvePassword, AdminInputError, ARGV_PASSWORD_WARNING, STDIN_PASSWORD_NOTICE,
   defaultAdminTimezone, pickFirstAdmin, runDeleteUser, MIN_PASSWORD_LENGTH, type PasswordIO, type DeleteUserDeps,
 } from '../src/admin-cli.js';
 import { registerSchema, setPasswordSchema } from '../src/schemas.js';
@@ -86,8 +86,38 @@ describe('parseAdminArgs — bad arguments become usage errors, never crashes', 
   });
 
   it('a stray positional argument or a repeated flag', () => {
-    expect(errorOf(['create-user', 'a@b.co'])).toMatch(/unexpected argument: a@b.co/);
+    expect(errorOf(['create-user', 'a@b.co'])).toMatch(/unexpected argument 1/);
     expect(errorOf(['create-user', '--email', 'a@b.co', '--email', 'c@d.co'])).toMatch(/--email given more than once/);
+  });
+
+  describe('--flag=value, and never echoing a value', () => {
+    it('accepts --flag=value like --flag value (split at the first =)', () => {
+      expect(parseAdminArgs(['create-user', '--email=A@b.co', '--password=pass=word=12', '--admin'])).toEqual({
+        kind: 'create-user', email: 'a@b.co', password: 'pass=word=12', admin: true,
+      });
+      expect(parseAdminArgs(['create-invite', '--max-uses=3'])).toMatchObject({ kind: 'create-invite', maxUses: 3 });
+    });
+
+    it('an error about a --flag=value token names the flag, never the value', () => {
+      const cases: Array<[string[], RegExp]> = [
+        [['create-user', '--email', 'a@b.co', '--pasword=s3cret-value'], /unknown flag --pasword for create-user/],
+        [['delete-user', '--email', 'a@b.co', '--password=s3cret-value'], /unknown flag --password for delete-user/],
+        [['create-user', '--email', 'a@b.co', '--admin=s3cret-value'], /--admin takes no value/],
+        [['create-user', '--email', 'a@b.co', '--password=s3cret-value', '--password=s3cret-value'], /--password given more than once/],
+      ];
+      for (const [argv, message] of cases) {
+        const error = errorOf(argv);
+        expect(error).toMatch(message);
+        expect(error).not.toContain('s3cret-value');
+      }
+      expect(errorOf(['create-user', '--email', 'a@b.co', '--password='])).toMatch(/--password requires a value/);
+    });
+
+    it('a stray argument (e.g. the rest of an unquoted password) is not echoed', () => {
+      const error = errorOf(['set-password', '--email', 'a@b.co', '--password', 'correct', 'horse-battery']);
+      expect(error).toMatch(/unexpected argument 5/);
+      expect(error).not.toContain('horse-battery');
+    });
   });
 
   it('a malformed email', () => {
@@ -197,6 +227,33 @@ describe('resolvePassword', () => {
     expect(await resolvePassword(undefined, io({ readStdin: async () => 'no-newline-pw' }))).toBe('no-newline-pw');
   });
 
+  it('strips a trailing CR as well as CRLF / LF, and nothing else', async () => {
+    for (const [input, expected] of [
+      ['windows-pw-1\r', 'windows-pw-1'],
+      ['windows-pw-1\r\n', 'windows-pw-1'],
+      ['unix-pass-1\n', 'unix-pass-1'],
+      ['in\rside-pw-1\n', 'in\rside-pw-1'],
+      [' padded-pw-1 \r\n', ' padded-pw-1 '],
+    ] as const) {
+      expect(await resolvePassword(undefined, io({ readStdin: async () => input }))).toBe(expected);
+    }
+    await expect(resolvePassword(undefined, io({ readStdin: async () => '\r\n' }))).rejects.toBeInstanceOf(AdminInputError);
+  });
+
+  it('says on stderr that it is reading stdin before it blocks on it (not on a terminal or for argv)', async () => {
+    const order: string[] = [];
+    const piped = io({ readStdin: async () => { order.push('read'); return 'piped-password\n'; } });
+    const warn = piped.warn;
+    piped.warn = (m) => { order.push(`warn:${m}`); warn(m); };
+    await resolvePassword(undefined, piped);
+    expect(order).toEqual([`warn:${STDIN_PASSWORD_NOTICE}`, 'read']);
+    expect(STDIN_PASSWORD_NOTICE).toMatch(/reading the password from standard input/i);
+
+    const tty = io({ isTTY: true, promptHidden: vi.fn().mockResolvedValue('typed-password') });
+    await resolvePassword(undefined, tty);
+    expect(tty.warnings).toEqual([]);
+  });
+
   it('a password starting with -- works when prompted or piped', async () => {
     expect(await resolvePassword(undefined, io({ readStdin: async () => '--dashes-first\n' }))).toBe('--dashes-first');
     const promptHidden = vi.fn().mockResolvedValue('--dashes-first');
@@ -294,6 +351,7 @@ describe('runDeleteUser', () => {
     expect(text).toMatch(/1 invite code/);
     expect(text).toMatch(/Google Calendar events.*not deleted/i);
     expect(text).toMatch(/Google access is not revoked/i);
+    expect(text).toMatch(/signed-in sessions are not ended.*fail until (its|their) token expires/i);
     expect(text).toMatch(/deleted user friend@x.io/);
   });
 
