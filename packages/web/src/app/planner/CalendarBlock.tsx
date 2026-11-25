@@ -68,6 +68,10 @@ export function CalendarBlock(props: CalendarBlockProps) {
   const state = v.locked ? 'locked, synced from Google' : 'movable, drag to reschedule';
   const ariaLabel = [title, whenLabel, state].filter(Boolean).join(', ');
   const hasCluster = v.icon !== null || onDelete !== undefined;
+  // Right padding for what is always visible in the corner cluster: the lock/pin, plus the ×
+  // on a coarse pointer (no hover there). A hover-only × may overlap the text for a moment.
+  const reserved = (v.icon ? 1 : 0) + (coarse && onDelete ? 1 : 0);
+  const reserve = reserved === 2 ? 'pr-11' : reserved === 1 ? 'pr-6' : '';
 
   return (
     <div
@@ -94,23 +98,29 @@ export function CalendarBlock(props: CalendarBlockProps) {
         data-testid="block-body"
         aria-label={ariaLabel}
         onClick={onBodyClick}
-        // Room on the right for a visible lock/pin; the hover-only × may overlap the time.
-        className={`flex h-full w-full min-w-0 cursor-[inherit] text-left focus-visible:outline-offset-[-3px] ${row
-          ? `flex-row items-center justify-between gap-1.5 px-[9px] ${v.icon ? 'pr-6' : ''}`
-          : `flex-col items-start gap-px px-[9px] py-1.5 ${v.icon ? 'pr-6' : ''}`}`}
+        // A button vertically CENTRES content taller than itself, which pushed the time label of a
+        // short tile above its top edge. The full-height inner wrapper never overflows the button,
+        // so long titles clip at the bottom instead.
+        className="block h-full w-full min-w-0 cursor-[inherit] overflow-hidden text-left focus-visible:outline-offset-[-3px]"
       >
-        {row ? (
-          <>
-            <span className="min-w-0 truncate text-[13px] font-medium leading-tight">{title}</span>
-            <span className="shrink-0 text-[11px] tabular-nums opacity-80">{startLabel}</span>
-          </>
-        ) : (
-          <>
-            <span className="max-w-full overflow-hidden whitespace-nowrap text-[11px] tabular-nums opacity-80">{startLabel}</span>
-            {/* Word-wrapped, never broken mid-word: a narrow overlap lane clips instead of stacking letters. */}
-            <span className="min-w-0 max-w-full overflow-hidden text-[13px] font-medium leading-tight">{title}</span>
-          </>
-        )}
+        {/* Room on the right for whatever sits in the corner cluster permanently (see `reserve`). */}
+        <span className={`flex h-full w-full min-w-0 overflow-hidden ${row
+          ? `flex-row items-center justify-between gap-1.5 px-[9px] ${reserve}`
+          : `flex-col items-start justify-start gap-px px-[9px] ${durationMin < 60 ? 'py-1' : 'py-1.5'} ${reserve}`}`}
+        >
+          {row ? (
+            <>
+              <span className="min-w-0 truncate text-[13px] font-medium leading-tight">{title}</span>
+              <span className="shrink-0 text-[11px] tabular-nums opacity-80">{startLabel}</span>
+            </>
+          ) : (
+            <>
+              <span className="max-w-full shrink-0 overflow-hidden whitespace-nowrap text-[11px] leading-[14px] tabular-nums opacity-80">{startLabel}</span>
+              {/* Word-wrapped, never broken mid-word: a narrow overlap lane clips instead of stacking letters. */}
+              <span className="min-w-0 max-w-full overflow-hidden text-[13px] font-medium leading-tight">{title}</span>
+            </>
+          )}
+        </span>
       </button>
       {hasCluster && (
         <span className={`absolute right-1.5 z-10 flex items-center gap-1 ${row ? 'top-1/2 -translate-y-1/2' : 'top-1.5'}`}>
