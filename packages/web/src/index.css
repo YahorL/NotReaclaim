@@ -1,3 +1,6 @@
+/* Tokens first: @import must precede every other statement. */
+@import './styles/tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -11,4 +14,14 @@
   .dark-scroll::-webkit-scrollbar { width: 8px; }
   .dark-scroll::-webkit-scrollbar-thumb { background: #2c3046; border-radius: 8px; }
   .dark-scroll::-webkit-scrollbar-track { background: transparent; }
+}
+
+/* Global reduced-motion kill switch (design tokens.css). Unlayered + !important so it beats
+   every utility; JS-driven motion checks usePrefersReducedMotion() instead. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-delay: 0s !important;
+    transition-duration: .01ms !important;
+  }
 }
