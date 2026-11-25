@@ -19,7 +19,8 @@ const CTL = `${INPUT} h-10 rounded-input px-3 text-[16px] tabular-nums`;
 
 export interface SettingsFormProps {
   initial: SettingsFormState;
-  onSave: (input: SettingsInput) => void;
+  /** `onSaved` once the server confirmed THIS input: it becomes the "Unsaved changes" baseline. */
+  onSave: (input: SettingsInput, onSaved: () => void) => void;
   saving?: boolean;
   error?: ApiError | null;
   justSaved?: boolean;
@@ -29,6 +30,17 @@ export interface SettingsFormProps {
 export function SettingsForm({ initial, onSave, saving = false, error = null, justSaved = false, timezones }: SettingsFormProps) {
   const [form, setForm] = useState<SettingsFormState>(() => initial);
   const { ok, errors } = validateSettingsForm(form);
+  // What the server holds: the loaded settings, then whatever a save confirmed (normalised through
+  // the payload, so equivalent forms compare equal). Like Buffers: "Saved" shows only while the
+  // form still matches it — a mutation that succeeded earlier says nothing about later edits.
+  const [baseline, setBaseline] = useState(() => JSON.stringify(toSettingsInput(initial)));
+  const dirty = JSON.stringify(toSettingsInput(form)) !== baseline;
+  const save = () => {
+    if (!ok) return;
+    const input = toSettingsInput(form);
+    const snap = JSON.stringify(input);
+    onSave(input, () => setBaseline(snap));
+  };
   const zones = useMemo(() => timezones ?? supportedTimezones(), [timezones]);
   const zoneOptions = zones.includes(form.timezone) ? zones : [form.timezone, ...zones];
 
@@ -144,11 +156,13 @@ export function SettingsForm({ initial, onSave, saving = false, error = null, ju
       {error && <p data-testid="form-error" className={errCls}>{error.message}</p>}
 
       <div className="flex items-center gap-3.5">
-        <PrimaryButton large data-testid="save" disabled={!ok || saving} onClick={() => { if (ok) onSave(toSettingsInput(form)); }}>
+        <PrimaryButton large data-testid="save" disabled={!ok || saving} onClick={save}>
           Save
         </PrimaryButton>
         <span role="status" className="text-[13px] text-fg-2">
-          {justSaved && <span data-testid="saved">Saved</span>}
+          {dirty
+            ? <span data-testid="unsaved">Unsaved changes</span>
+            : justSaved && <span data-testid="saved">Saved</span>}
         </span>
       </div>
     </div>

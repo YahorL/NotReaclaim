@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { act, render, screen, fireEvent } from '@testing-library/react';
 import type { SettingsInput } from '../../api/types';
 import { ApiError } from '../../api/client';
 import { SettingsForm } from './SettingsForm';
@@ -63,7 +63,7 @@ describe('SettingsForm', () => {
     render(<SettingsForm initial={{ ...initial(), requireStartToTrack: false }} onSave={onSave} timezones={['UTC']} />);
     fireEvent.click(screen.getByTestId('require-start'));
     fireEvent.click(screen.getByTestId('save'));
-    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ requireStartToTrack: true }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ requireStartToTrack: true }), expect.any(Function));
   });
 
   it('edits the planner day start and saves it as minutes past midnight', () => {
@@ -72,7 +72,7 @@ describe('SettingsForm', () => {
     expect(screen.getByTestId('day-start')).toHaveValue('00:00');
     fireEvent.change(screen.getByTestId('day-start'), { target: { value: '03:00' } });
     fireEvent.click(screen.getByTestId('save'));
-    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ dayStartMinute: 180 }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ dayStartMinute: 180 }), expect.any(Function));
   });
 
   it('shows ✓ Saved and surfaces an ApiError', () => {
@@ -80,6 +80,27 @@ describe('SettingsForm', () => {
     expect(screen.getByTestId('saved')).toBeInTheDocument();
     rerender(<SettingsForm initial={initial()} onSave={vi.fn()} timezones={['UTC']} error={new ApiError(409, 'conflict', 'Nope')} />);
     expect(screen.getByTestId('form-error')).toHaveTextContent('Nope');
+  });
+
+  it('an edit after a save shows "Unsaved changes", not a stale "Saved"; saving clears it', () => {
+    let saved: () => void = () => {};
+    const onSave = vi.fn((_input: SettingsInput, onSaved: () => void) => { saved = onSaved; });
+    const { rerender } = render(<SettingsForm initial={initial()} onSave={onSave} timezones={['UTC']} />);
+    expect(screen.queryByTestId('unsaved')).toBeNull();
+    fireEvent.change(screen.getByTestId('horizon'), { target: { value: '21' } });
+    expect(screen.getByTestId('unsaved')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('save'));
+    act(() => { saved(); });
+    rerender(<SettingsForm initial={initial()} onSave={onSave} timezones={['UTC']} justSaved />);
+    expect(screen.queryByTestId('unsaved')).toBeNull();
+    expect(screen.getByTestId('saved')).toBeInTheDocument();
+    // The mutation still reports success, but the form has moved on.
+    fireEvent.change(screen.getByTestId('horizon'), { target: { value: '28' } });
+    expect(screen.queryByTestId('saved')).toBeNull();
+    expect(screen.getByTestId('unsaved')).toBeInTheDocument();
+    // Editing back to what was saved is not a change.
+    fireEvent.change(screen.getByTestId('horizon'), { target: { value: '21' } });
+    expect(screen.queryByTestId('unsaved')).toBeNull();
   });
 
   it('grows the weekday checkboxes on a coarse pointer', () => {

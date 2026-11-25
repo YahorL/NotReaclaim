@@ -53,7 +53,7 @@ export function Settings({ version }: { version?: AppVersion } = {}) {
           saving={updateM.isPending}
           justSaved={updateM.isSuccess}
           error={updateM.error instanceof ApiError ? updateM.error : null}
-          onSave={(input) => updateM.mutate(input)}
+          onSave={(input, onSaved) => updateM.mutate(input, { onSuccess: onSaved })}
         />
         <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-2">
           <AppearanceSection />
