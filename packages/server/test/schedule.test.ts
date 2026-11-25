@@ -323,8 +323,10 @@ describe('GET /schedule discard sweep (manual mode)', () => {
 
   it('a concurrent GET sweeping the same rows never fails either request', async () => {
     // The planner can fire overlapping GET /schedule calls (range change + WS refetch). The
-    // Google round-trip inside the sweep widens the list-then-delete window, so the slower
-    // request must tolerate rows the other one already discarded.
+    // second one lists its candidates while the first is inside its Google round-trip, then
+    // waits for the user lock the first holds, and must tolerate rows the first discarded.
+    // (It is started, not awaited, from inside the Google call: awaiting it there would wait
+    // for a lock the caller itself holds.)
     const a = block({ id: 'a', engineKey: 'task:t1:0', startsAt: new Date('2026-01-04T09:00:00.000Z'), endsAt: new Date('2026-01-04T09:30:00.000Z'), googleEventId: 'g-a', googleCalendarId: 'cal-auto' });
     const b = block({ id: 'b', engineKey: 'task:t1:1', startsAt: new Date('2026-01-04T10:00:00.000Z'), endsAt: new Date('2026-01-04T10:30:00.000Z'), googleEventId: 'g-b', googleCalendarId: 'cal-auto' });
     let nested: Promise<{ statusCode: number }> | null = null;
@@ -334,7 +336,7 @@ describe('GET /schedule discard sweep (manual mode)', () => {
       deleteEvent: async () => {
         if (nested) return;
         nested = app.inject({ method: 'GET', url: `/schedule${wide}`, headers: { authorization: `Bearer ${token}` } });
-        await nested;
+        await new Promise<void>((resolve) => setImmediate(resolve)); // let it list its candidates now
       },
     });
     token = await tokenFor(app);

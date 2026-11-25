@@ -92,3 +92,48 @@ export async function removeMirroredEvent(
     (accessToken) => deps.google.client.deleteEvent(accessToken, googleCalendarId, googleEventId),
   );
 }
+
+/**
+ * An access token looked up BEFORE a section that holds the user lock, so a slow or hung token
+ * refresh never holds it. A failed lookup is kept (not thrown): it is logged per row, exactly
+ * as bestEffortGoogleWrite would have logged it, when a row actually needs Google.
+ */
+export type PrefetchedToken = { accessToken: string } | { error: unknown };
+
+export async function prefetchAccessToken(
+  deps: Pick<AppDeps, 'google' | 'now'>,
+  userId: string,
+): Promise<PrefetchedToken> {
+  try {
+    return { accessToken: await deps.google.tokens.getAccessToken(userId, deps.now()) };
+  } catch (error) {
+    return { error };
+  }
+}
+
+/** True when a row carries BOTH Google ids, i.e. removing it means a Google call. */
+export function isMirrored(row: { googleEventId: string | null; googleCalendarId: string | null }): boolean {
+  return Boolean(row.googleEventId && row.googleCalendarId);
+}
+
+/**
+ * removeMirroredEvent with a token fetched beforehand (see PrefetchedToken): safe to call while
+ * holding the user lock. Same contract otherwise — a row without both ids returns at once, and
+ * any failure, including the earlier token lookup's, is logged as a warning and swallowed.
+ */
+export async function removeMirroredEventWithToken(
+  app: FastifyInstance,
+  deps: Pick<AppDeps, 'google'>,
+  token: PrefetchedToken,
+  row: { googleEventId: string | null; googleCalendarId: string | null },
+  onFailure: { fields: Record<string, unknown>; message: string },
+): Promise<void> {
+  const { googleEventId, googleCalendarId } = row;
+  if (!googleEventId || !googleCalendarId) return;
+  try {
+    if ('error' in token) throw token.error;
+    await deps.google.client.deleteEvent(token.accessToken, googleCalendarId, googleEventId);
+  } catch (err) {
+    app.log.warn({ err, ...onFailure.fields }, onFailure.message);
+  }
+}

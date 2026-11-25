@@ -7,7 +7,9 @@ import { buildTestApp, tokenFor, type TestAppOptions } from './fakes.js';
  * Characterisation tests for the block and calendar routes: they pin TODAY's order of DB
  * writes, Google calls, `data.changed` announcements and replans, and which errors are
  * swallowed vs propagated — so moving this logic out of the handlers cannot silently reorder
- * it. Some of the orders pinned here are known open defects (the Google delete runs BEFORE
+ * it. The block routes' reads and writes run under the per-user lock (block-route-lock.test.ts
+ * pins that); the traces here show the unlocked steps around it: the DELETE peek and the token
+ * lookup, which both happen BEFORE the lock is taken. Some of the orders pinned here are known open defects (the Google delete runs BEFORE
  * the DB delete; Google is awaited before `data.changed`; the sweep is per row; the replan is
  * fire-and-forget). Those are fixed separately and on purpose: these tests change WITH that
  * fix, never in passing.
@@ -115,7 +117,7 @@ describe('GET /schedule manual-mode sweep: order', () => {
   const wide = '?from=2026-01-01T00:00:00.000Z&to=2026-01-10T00:00:00.000Z';
   const manual = settings({ requireStartToTrack: true });
 
-  it('deletes each discardable row, then awaits ITS Google delete, before touching the next row; announces once after the last Google call', async () => {
+  it('looks up the token once before the lock, re-reads under it, deletes each discardable row, then awaits ITS Google delete, before touching the next row; announces once after the last Google call', async () => {
     const h = harness({
       settings: manual,
       blocks: [
@@ -138,11 +140,11 @@ describe('GET /schedule manual-mode sweep: order', () => {
     expect((res.json() as ScheduledBlock[]).map((b) => b.id)).toEqual(['h', 'k', 'blank', 'p', 'f']);
     expect(h.trace).toEqual([
       'blocks.listByUserInRange',
-      'blocks.delete a',
       'token',
+      'blocks.listByUserInRange',
+      'blocks.delete a',
       'google.deleteEvent cal-auto/g-a | blocks=[h,k,blank,b,p,f] events=[] announced=0 replans=0',
       'blocks.delete b',
-      'token',
       'google.deleteEvent cal-auto/g-b | blocks=[h,k,blank,p,f] events=[] announced=0 replans=0',
       'emit data.changed [schedule] | replans=0',
       'blocks.listByUserInRange',
@@ -165,8 +167,9 @@ describe('GET /schedule manual-mode sweep: order', () => {
     expect(res.json()).toEqual([]);
     expect(h.trace).toEqual([
       'blocks.listByUserInRange',
-      'blocks.delete a',
       'token',
+      'blocks.listByUserInRange',
+      'blocks.delete a',
       'google.deleteEvent cal-auto/g-a | blocks=[] events=[] announced=0 replans=0',
       'blocks.delete b',
       'emit data.changed [schedule] | replans=0',
@@ -186,7 +189,7 @@ describe('GET /schedule manual-mode sweep: order', () => {
     };
     const res = await h.send('GET', `/schedule${wide}`);
     expect(res.statusCode).toBe(200);
-    expect(h.trace).toEqual(['blocks.listByUserInRange', 'blocks.delete a', 'blocks.listByUserInRange']);
+    expect(h.trace).toEqual(['blocks.listByUserInRange', 'token', 'blocks.listByUserInRange', 'blocks.delete a', 'blocks.listByUserInRange']);
     expect(h.dataChangedCount()).toBe(0);
   });
 
@@ -209,8 +212,9 @@ describe('GET /schedule manual-mode sweep: order', () => {
     expect(res.json()).toEqual({ code: 'internal_error', message: 'Internal Server Error' });
     expect(h.trace).toEqual([
       'blocks.listByUserInRange',
-      'blocks.delete a',
       'token',
+      'blocks.listByUserInRange',
+      'blocks.delete a',
       'google.deleteEvent cal-auto/g-a | blocks=[b] events=[] announced=0 replans=0',
       'blocks.delete b',
     ]);
@@ -227,6 +231,7 @@ describe('GET /schedule manual-mode sweep: order', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual([]);
     expect(h.trace).toEqual([
+      'blocks.listByUserInRange',
       'blocks.listByUserInRange',
       'blocks.delete a',
       'emit data.changed [schedule] | replans=0',
@@ -295,13 +300,14 @@ describe('POST /schedule/:id/start and /stop: time snapping', () => {
 describe('DELETE /schedule/:id: order', () => {
   const mirrored = block({ id: 'b1', pinned: true, googleEventId: 'g-1', googleCalendarId: 'cal-auto' });
 
-  it('awaits the Google delete while the row still exists, then deletes the row, then announces (no replan)', async () => {
+  it('peeks, looks up the token, then re-reads and awaits the Google delete while the row still exists, then deletes the row, then announces (no replan)', async () => {
     const h = harness({ settings: settings(), blocks: [mirrored] });
     const res = await h.send('DELETE', '/schedule/b1');
     expect(res.statusCode).toBe(204);
     expect(h.trace).toEqual([
       'blocks.findById b1',
       'token',
+      'blocks.findById b1',
       'google.deleteEvent cal-auto/g-1 | blocks=[b1] events=[] announced=0 replans=0',
       'blocks.delete b1',
       'emit data.changed [schedule,tasks] | replans=0',
@@ -309,15 +315,15 @@ describe('DELETE /schedule/:id: order', () => {
     expect(h.reconcileCalls).toEqual([]);
   });
 
-  it('an unknown id never reaches for a token: the delete itself 404s, nothing is announced', async () => {
+  it('an unknown id never reaches for a token: the peek 404s before any delete, nothing is announced', async () => {
     const h = harness({ settings: settings(), blocks: [mirrored] });
     const res = await h.send('DELETE', '/schedule/nope');
     expect(res.statusCode).toBe(404);
-    expect(h.trace).toEqual(['blocks.findById nope', 'blocks.delete nope']);
+    expect(h.trace).toEqual(['blocks.findById nope']);
     expect(h.dataChangedCount()).toBe(0);
   });
 
-  it('a row that vanishes during the Google call: Google delete already done, then 404 and nothing announced', async () => {
+  it('a row that vanishes during the Google call (drift): Google delete already done, the delete still succeeded — 204 and announced', async () => {
     const h = harness({ settings: settings(), blocks: [mirrored] });
     const traced = h.scheduledBlocks.delete;
     h.scheduledBlocks.delete = async (userId, id) => {
@@ -325,14 +331,16 @@ describe('DELETE /schedule/:id: order', () => {
       throw new NotFoundError(`ScheduledBlock ${id}`);
     };
     const res = await h.send('DELETE', '/schedule/b1');
-    expect(res.statusCode).toBe(404);
+    expect(res.statusCode).toBe(204);
     expect(h.trace).toEqual([
       'blocks.findById b1',
       'token',
+      'blocks.findById b1',
       'google.deleteEvent cal-auto/g-1 | blocks=[b1] events=[] announced=0 replans=0',
       'blocks.delete b1',
+      'emit data.changed [schedule,tasks] | replans=0',
     ]);
-    expect(h.dataChangedCount()).toBe(0);
+    expect(h.dataChangedCount()).toBe(1);
   });
 
   it('a row with a googleEventId but no googleCalendarId never reaches for a token: the row is deleted, then announced', async () => {
@@ -340,6 +348,7 @@ describe('DELETE /schedule/:id: order', () => {
     const res = await h.send('DELETE', '/schedule/b1');
     expect(res.statusCode).toBe(204);
     expect(h.trace).toEqual([
+      'blocks.findById b1',
       'blocks.findById b1',
       'blocks.delete b1',
       'emit data.changed [schedule,tasks] | replans=0',
