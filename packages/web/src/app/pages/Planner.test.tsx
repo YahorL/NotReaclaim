@@ -475,6 +475,47 @@ describe('Planner Re-plan drop-in', () => {
   });
 });
 
+describe('Planner entrance motion', () => {
+  beforeEach(() => { localStorage.removeItem('nr.plannerPanelHidden'); });
+  const tileOf = (title: string) => within(screen.getByTestId('block-layer')).getAllByTestId('event-block').find((b) => b.textContent?.includes(title));
+
+  it('blocks pop in on the first data and not after a refetch', async () => {
+    let calls = 0;
+    const getSchedule = vi.fn(async () => { calls++; return blocks; });
+    renderWithProviders(<Planner now={() => NOW} />, { api: makeApi({ getSchedule }) });
+    await waitFor(() => expect(tileOf('Write spec')).toHaveAttribute('data-entering', 'true'));
+    await waitFor(() => expect(tileOf('Write spec')).not.toHaveAttribute('data-entering'), { timeout: 2000 });
+    // A refetch (here: the one a drag's mutation triggers) keeps the tiles still.
+    const before = calls;
+    const tile = tileOf('Write spec')!;
+    fireEvent.pointerDown(tile, { clientX: 40, clientY: 80, pointerId: 1 });
+    fireEvent.pointerUp(tile, { clientX: 40, clientY: 200, pointerId: 1 });
+    await waitFor(() => expect(calls).toBeGreaterThan(before));
+    expect(tileOf('Write spec')).not.toHaveAttribute('data-entering');
+  });
+
+  it('the glass panels rise in on mount, then drop the animation', async () => {
+    renderWithProviders(<Planner now={() => NOW} />, { api: makeApi() });
+    await waitFor(() => expect(screen.getByTestId('planner-grid-pane')).toBeInTheDocument());
+    expect(screen.getByTestId('unscheduled-warning').className).toContain('animate-rise');
+    expect(screen.getByTestId('planner-grid-pane').className).toContain('animate-rise [animation-delay:120ms]');
+    expect(screen.getByTestId('planner-side-column').className).toContain('animate-rise [animation-delay:180ms]');
+    await waitFor(() => expect(screen.getByTestId('planner-grid-pane').className).not.toContain('animate-rise'), { timeout: 2000 });
+  });
+
+  it('under reduced motion nothing rises or pops in', async () => {
+    const mm = installMatchMedia({ '(prefers-reduced-motion: reduce)': true });
+    try {
+      renderWithProviders(<Planner now={() => NOW} />, { api: makeApi() });
+      await waitFor(() => expect(tileOf('Write spec')).toBeTruthy());
+      expect(tileOf('Write spec')).not.toHaveAttribute('data-entering');
+      expect(screen.getByTestId('planner-grid-pane').className).not.toContain('animate-rise');
+    } finally {
+      mm.restore();
+    }
+  });
+});
+
 describe('Planner filters', () => {
   beforeEach(() => { localStorage.removeItem('nr.plannerFilters'); localStorage.removeItem('nr.plannerPanelHidden'); });
   const tileOf = (title: string) => within(screen.getByTestId('block-layer')).getAllByTestId('event-block').find((b) => b.textContent?.includes(title))!;

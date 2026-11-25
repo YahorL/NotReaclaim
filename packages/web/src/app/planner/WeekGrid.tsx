@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { usePrefersReducedMotion } from '../../theme/usePrefersReducedMotion';
 import { useDroppable } from '@dnd-kit/core';
 import type { ScheduledBlock, CalendarEvent } from '../../api/types';
 import type { BlockKind } from './blockStyle';
@@ -85,6 +86,34 @@ function useCalmTimeOrder<T extends { key: string; startMs: number }>(
   return [...known, ...timeOrder.filter((it) => !rank.has(it.key))];
 }
 
+/** Per-day stagger of the blocks' entrance (prototype: 45ms × day). */
+export const ENTER_STAGGER_MS = 45;
+/** `animate-ev-in` length (tailwind.config: ev-in .55s). */
+const ENTER_MS = 550;
+
+/**
+ * True while the blocks' entrance plays: from the render where `key` first takes a new non-null
+ * value until the last column's staggered `animate-ev-in` has finished. Switched on in a layout
+ * effect, so the frame that first shows the blocks already carries the animation (no flash of
+ * the final state). Skipped entirely under reduced motion.
+ */
+function useEntrance(key: string | null, dayCount: number): boolean {
+  const reduced = usePrefersReducedMotion();
+  const [entering, setEntering] = useState(false);
+  const played = useRef<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useLayoutEffect(() => {
+    if (key == null || played.current === key) return;
+    played.current = key;
+    if (reduced) return;
+    setEntering(true);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => { timer.current = null; setEntering(false); }, ENTER_MS + ENTER_STAGGER_MS * Math.max(0, dayCount - 1) + 100);
+  }, [key, reduced, dayCount]);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  return entering;
+}
+
 /** Shared, visually hidden keyboard instructions every movable block body points at. */
 const BLOCK_HELP_ID = 'planner-block-keys';
 
@@ -169,6 +198,11 @@ export interface WeekGridProps {
   onToggleFilter?: (name: PlannerFilterName) => void;
   /** Blocks a Re-plan just placed (`b:<id>` → drop-in delay ms). */
   landing?: ReadonlyMap<string, number>;
+  /**
+   * Plays the blocks' entrance (spec §5.6) each time this changes to a new non-null value — the
+   * Planner passes the loaded range, so first load and paging pop in, a refetch does not.
+   */
+  entranceKey?: string | null;
 }
 
 interface Item {
@@ -230,7 +264,7 @@ function toItems(blocks: ScheduledBlock[], events: CalendarEvent[], zone: string
 }
 
 export function WeekGrid(props: WeekGridProps) {
-  const { days, nowMs, weekLabel, blocks, events, onPrev, onToday, onNext, onCommit, onCommitEvent, onEditEvent, onDeleteBlock, onDeleteEvent, taskDrop = null, accents = {}, zone = 'UTC', dayStartMinute = 0, panelHidden, onTogglePanel, compact = false, coarse = false, onEditTask, selectedKey = null, onSelect, filters = ALL_SHOWN, onToggleFilter, landing } = props;
+  const { days, nowMs, weekLabel, blocks, events, onPrev, onToday, onNext, onCommit, onCommitEvent, onEditEvent, onDeleteBlock, onDeleteEvent, taskDrop = null, accents = {}, zone = 'UTC', dayStartMinute = 0, panelHidden, onTogglePanel, compact = false, coarse = false, onEditTask, selectedKey = null, onSelect, filters = ALL_SHOWN, onToggleFilter, landing, entranceKey = null } = props;
   const gridCols = `${timeGutterPx(compact)}px repeat(${days.length}, minmax(0, 1fr))`;
   const dataItems = toItems(blocks, events, zone);
   const [pending, setPending] = useState<Record<string, Pending>>({});
@@ -240,6 +274,7 @@ export function WeekGrid(props: WeekGridProps) {
     return pendingApplies(p, it) ? { ...it, startMs: p.startMs, endMs: p.endMs, startLabel: formatHm(p.startMs, zone) } : it;
   });
   const layout = layoutWeek(items, days);
+  const entering = useEntrance(entranceKey, days.length);
   const layerRef = useRef<HTMLDivElement>(null);
   const pendingRef = useRef(pending);
   pendingRef.current = pending;
@@ -480,6 +515,7 @@ export function WeekGrid(props: WeekGridProps) {
                         selected={selectedKey === it.key}
                         hidden={hidden}
                         landDelayMs={landing?.get(it.key)}
+                        enterDelayMs={entering ? g.dayIndex * ENTER_STAGGER_MS : undefined}
                         dayCount={n}
                         accent={accent}
                         zone={zone}
@@ -510,6 +546,7 @@ export function WeekGrid(props: WeekGridProps) {
                         blockKey={it.key}
                         selected={selectedKey === it.key}
                         hidden={hidden}
+                        enterDelayMs={entering ? g.dayIndex * ENTER_STAGGER_MS : undefined}
                         onDelete={onDeleteEvent ? () => onDeleteEvent(ev.id) : undefined}
                         deleteLabel="Delete event"
                         dayCount={n}
@@ -525,6 +562,7 @@ export function WeekGrid(props: WeekGridProps) {
                       blockKey={it.key}
                       selected={selectedKey === it.key}
                       hidden={hidden}
+                      enterDelayMs={entering ? g.dayIndex * ENTER_STAGGER_MS : undefined}
                       onBodyClick={(e) => activate(it, e.detail === 0)}
                       title={it.title}
                       kind={it.kind}

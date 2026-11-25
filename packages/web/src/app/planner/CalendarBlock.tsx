@@ -61,6 +61,8 @@ export interface CalendarBlockProps {
   shake?: boolean;
   /** Newly placed by a Re-plan: drops in (`animate-land`) after this delay (spec §5.5). */
   landDelayMs?: number;
+  /** First load / paging: pops in (`animate-ev-in`) after this delay (spec §5.6). */
+  enterDelayMs?: number;
   /** Filtered out (Meetings / Movable toggles): faded and scaled away, inert, out of the tab
    *  order and the accessibility tree — but still mounted, so it can animate back. */
   hidden?: boolean;
@@ -98,11 +100,12 @@ export function CalendarBlock(props: CalendarBlockProps) {
     blockKey, title, kind, source = null, pinned = false, started = false, accent, startLabel, whenLabel, durationMin,
     style, className = '', dayIndex, selected = false, coarse = false, onDelete, deleteLabel = 'Delete block',
     onUnpin, onBodyClick, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, resize, children,
-    motion = 'idle', settling = false, shake = false, hidden = false, landDelayMs, onTransitionEnd, onBodyKeyDown, onBodyBlur, describedBy,
+    motion = 'idle', settling = false, shake = false, hidden = false, landDelayMs, enterDelayMs, onTransitionEnd, onBodyKeyDown, onBodyBlur, describedBy,
   } = props;
   const v = blockVariant({ kind, source, pinned, started, accent });
   // A drag owns the transform; a landing animation would fight it.
   const landing = landDelayMs !== undefined && motion === 'idle';
+  const entering = !landing && enterDelayMs !== undefined && motion === 'idle';
   const row = durationMin < ROW_LAYOUT_MAX_MIN;
   const state = v.locked ? 'locked, synced from Google' : 'movable: drag or use arrow keys, Shift+arrows to resize';
   const ariaLabel = [title, whenLabel, state].filter(Boolean).join(', ');
@@ -129,6 +132,7 @@ export function CalendarBlock(props: CalendarBlockProps) {
       data-shake={shake ? 'true' : undefined}
       data-hidden={hidden ? 'true' : undefined}
       data-new={landing ? 'true' : undefined}
+      data-entering={entering ? 'true' : undefined}
       aria-hidden={hidden ? true : undefined}
       title={`${startLabel} ${title}`}
       onPointerDown={onPointerDown}
@@ -136,8 +140,8 @@ export function CalendarBlock(props: CalendarBlockProps) {
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
       onTransitionEnd={onTransitionEnd}
-      className={`group ${hidden ? 'pointer-events-none scale-[.92] opacity-0' : 'pointer-events-auto'} absolute overflow-hidden rounded-event ${v.className} ${MOTION_CLASS[motion]} ${settling ? 'z-20' : ''} ${shake ? 'animate-shake' : landing ? 'animate-land' : ''} ${selected ? 'z-[3] outline outline-2 outline-offset-2 outline-fg' : ''} ${className}`}
-      style={{ ...style, ...v.style, ...(landing ? { animationDelay: `${landDelayMs}ms` } : null) }}
+      className={`group ${hidden ? 'pointer-events-none scale-[.92] opacity-0' : 'pointer-events-auto'} absolute overflow-hidden rounded-event ${v.className} ${MOTION_CLASS[motion]} ${settling ? 'z-20' : ''} ${shake ? 'animate-shake' : landing ? 'animate-land' : entering ? 'animate-ev-in' : ''} ${selected ? 'z-[3] outline outline-2 outline-offset-2 outline-fg' : ''} ${className}`}
+      style={{ ...style, ...v.style, ...(landing ? { animationDelay: `${landDelayMs}ms` } : entering ? { animationDelay: `${enterDelayMs}ms` } : null) }}
     >
       {started && <span aria-hidden="true" data-testid="started-bar" className="absolute inset-y-0 left-0 w-[3px] bg-accent" />}
       <button

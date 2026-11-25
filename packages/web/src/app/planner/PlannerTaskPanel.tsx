@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import type { Task, SchedulePreview } from '../../api/types';
 import { formatDurationShort } from '../lib/duration';
@@ -10,6 +10,9 @@ import {
 } from '../priorities/priorityBucket';
 
 export type PanelTab = 'priorities' | 'tasks';
+
+/** A ticked card still listed this long after the click (the save failed) un-ticks. */
+const UNTICK_AFTER_MS = 4000;
 
 export interface PlannerTaskPanelProps {
   tasks: Task[];
@@ -55,6 +58,18 @@ function TaskCard({ task, nowMs, zone, nextMs, atRisk, showPriority, coarse, onC
   const spent = task.spentMs ?? 0;
   const pct = task.durationMs > 0 ? Math.min(100, (spent / task.durationMs) * 100) : 0;
   const bucket = priorityToBucket(task.priority);
+  // Ticking it off pops the check and draws a strike through the title (spec §5.6) while the
+  // completion is saved; the card then leaves the active list. If it is still here a while later
+  // (the save failed), it un-ticks.
+  const [ticked, setTicked] = useState(false);
+  const tickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (tickTimer.current) clearTimeout(tickTimer.current); }, []);
+  const complete = () => {
+    setTicked(true);
+    if (tickTimer.current) clearTimeout(tickTimer.current);
+    tickTimer.current = setTimeout(() => { tickTimer.current = null; setTicked(false); }, UNTICK_AFTER_MS);
+    onComplete(task);
+  };
   // The overlay card follows the pointer, so this one stays put and only dims.
   // role=group: dnd-kit would otherwise default the card to role="button", nesting the
   // complete/edit/delete buttons inside a button.
@@ -85,16 +100,23 @@ function TaskCard({ task, nowMs, zone, nextMs, atRisk, showPriority, coarse, onC
       <button
         type="button"
         aria-label={`Complete ${task.title}`}
-        onClick={() => onComplete(task)}
+        data-ticked={ticked || undefined}
+        onClick={complete}
         // The 22px ring is the visual, so it keeps its size and grows an invisible hit box
         // instead. Safe here because nothing sits adjacent to it on the left.
-        className="relative grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full border-[1.5px] border-fg/30 text-transparent transition-colors hover:border-accent-fg hover:text-accent-fg coarse:before:absolute coarse:before:-inset-3 coarse:before:content-['']"
+        className={`relative grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full border-[1.5px] transition-colors coarse:before:absolute coarse:before:-inset-3 coarse:before:content-[''] ${ticked ? 'animate-pop-check border-accent bg-accent text-on-accent' : 'border-fg/30 text-transparent hover:border-accent-fg hover:text-accent-fg'}`}
       >
         <Icons.check size={14} />
       </button>
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-1.5">
-          <span className="truncate text-[14px] font-medium text-fg">{task.title}</span>
+          {/* Strike-draw: a 1.5px line grows left → right as a background (prototype .tk-title). */}
+          <span
+            data-testid="panel-task-title"
+            className={`truncate bg-[linear-gradient(currentColor,currentColor)] bg-[position:0_56%] bg-no-repeat text-[14px] font-medium transition-[background-size,color] duration-[350ms] ${ticked ? 'bg-[length:100%_1.5px] text-fg-2' : 'bg-[length:0_1.5px] text-fg'}`}
+          >
+            {task.title}
+          </span>
           {atRisk && (
             <span data-testid="panel-at-risk" role="img" aria-label="Not scheduled" title="Not scheduled" className="shrink-0 text-danger">
               <Icons.warning size={14} />

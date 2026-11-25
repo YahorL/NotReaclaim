@@ -4,7 +4,7 @@ import type { ScheduledBlock, CalendarEvent } from '../../api/types';
 import { startOfWeek, dayColumns, minutesToPx } from './weekModel';
 import { blockLeftCss, blockWidthCss } from './blockLayout';
 import { within } from '@testing-library/react';
-import { WeekGrid, HOLD_TIMEOUT_MS, REORDER_DELAY_MS, type WeekGridProps } from './WeekGrid';
+import { WeekGrid, HOLD_TIMEOUT_MS, REORDER_DELAY_MS, ENTER_STAGGER_MS, type WeekGridProps } from './WeekGrid';
 import { KEY_COMMIT_DEBOUNCE_MS } from './InteractiveBlock';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 
@@ -628,6 +628,42 @@ describe('WeekGrid Meetings / Movable filters', () => {
     );
     expect(byKind('meeting')[0]).toBe(node);
     expect(node).not.toHaveAttribute('data-hidden');
+  });
+});
+
+describe('WeekGrid entrance', () => {
+  const base = { days, nowMs: WED_NOON, weekLabel: 'Jan 5 – 11', onPrev: vi.fn(), onToday: vi.fn(), onNext: vi.fn(), onCommit: vi.fn() };
+  const tiles = () => screen.getAllByTestId('event-block');
+
+  it('pops the blocks in on the first loaded range, staggered 45ms per day', () => {
+    render(<WeekGrid {...base} blocks={[block()]} events={[event()]} entranceKey="r1" />);
+    const task = tiles().find((t) => t.getAttribute('data-kind') === 'task')!; // Monday
+    const meeting = tiles().find((t) => t.getAttribute('data-kind') === 'meeting')!; // Wednesday
+    expect(task).toHaveAttribute('data-entering', 'true');
+    expect(task.className).toContain('animate-ev-in');
+    expect(task.style.animationDelay).toBe('0ms');
+    expect(meeting.style.animationDelay).toBe(`${2 * ENTER_STAGGER_MS}ms`);
+  });
+
+  it('does not replay on a refetch of the same range, and replays on a new range', () => {
+    vi.useFakeTimers();
+    try {
+      const { rerender } = render(<WeekGrid {...base} blocks={[block()]} events={[]} entranceKey="r1" />);
+      act(() => { vi.advanceTimersByTime(2000); });
+      expect(tiles()[0]).not.toHaveAttribute('data-entering');
+      rerender(<WeekGrid {...base} blocks={[block({ title: 'Refetched' })]} events={[]} entranceKey="r1" />);
+      expect(tiles()[0]).not.toHaveAttribute('data-entering');
+      rerender(<WeekGrid {...base} blocks={[block()]} events={[]} entranceKey={null} />); // paging: loading
+      rerender(<WeekGrid {...base} blocks={[block()]} events={[]} entranceKey="r2" />);
+      expect(tiles()[0]).toHaveAttribute('data-entering', 'true');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('nothing pops in while the range is still loading (null key)', () => {
+    render(<WeekGrid {...base} blocks={[block()]} events={[]} entranceKey={null} />);
+    expect(tiles()[0]).not.toHaveAttribute('data-entering');
   });
 });
 

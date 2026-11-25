@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import type { Task, SchedulePreview } from '../../api/types';
 import { PlannerTaskPanel } from './PlannerTaskPanel';
 
@@ -229,5 +229,31 @@ describe('PlannerTaskPanel labels in the settings zone', () => {
     );
     expect(screen.getByText('Due Jan 11')).toBeInTheDocument();
     expect(screen.getByTestId('panel-next')).toHaveTextContent('Next: Tomorrow 2:00am');
+  });
+});
+
+describe('PlannerTaskPanel tick-off motion', () => {
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('ticking pops the check and draws the strike while the completion saves', () => {
+    const onComplete = vi.fn();
+    renderPanel([task({ id: 'a', title: 'Do it' })], undefined, { onComplete });
+    const check = screen.getByRole('button', { name: 'Complete Do it' });
+    expect(check).not.toHaveAttribute('data-ticked');
+    expect(screen.getByTestId('panel-task-title').className).toContain('bg-[length:0_1.5px]');
+    fireEvent.click(check);
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(check).toHaveAttribute('data-ticked', 'true');
+    expect(check.className).toContain('animate-pop-check');
+    expect(screen.getByTestId('panel-task-title').className).toContain('bg-[length:100%_1.5px]');
+  });
+
+  it('un-ticks if the task is still listed a while later (the save failed)', () => {
+    vi.useFakeTimers();
+    renderPanel([task({ id: 'a', title: 'Do it' })]);
+    const check = screen.getByRole('button', { name: 'Complete Do it' });
+    fireEvent.click(check);
+    act(() => { vi.advanceTimersByTime(4100); });
+    expect(check).not.toHaveAttribute('data-ticked');
   });
 });

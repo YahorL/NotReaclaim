@@ -35,6 +35,10 @@ import { usePrefersReducedMotion } from '../../theme/usePrefersReducedMotion';
 /** The Re-plan spinner shows at least this long, so a fast replan does not flicker the button. */
 export const REPLAN_MIN_SPIN_MS = 600;
 
+/** Glass panels rise in on route mount, 60ms apart (spec §5.6). Literal classes for the JIT. */
+const RISE = ['animate-rise', 'animate-rise [animation-delay:60ms]', 'animate-rise [animation-delay:120ms]', 'animate-rise [animation-delay:180ms]'] as const;
+const RISE_TOTAL_MS = 600 + 180 + 100;
+
 const DRAWER_DESKTOP_CLASS = `${DESKTOP_DRAWER_SLOT} z-50`;
 
 export function Planner({ now = () => Date.now() }: { now?: () => number }) {
@@ -214,6 +218,15 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
     landTimer.current = setTimeout(() => { landTimer.current = null; setLanding(undefined); }, dropInDuration(delays) + 100);
   }, [awaitingReplan, rangeKey, schedule.isFetching, schedule.dataUpdatedAt, schedule.data, reducedMotion]);
 
+  // Route-mount entrance only: the classes come off once it has played, so a panel that remounts
+  // later (the side panel toggled back) does not rise again.
+  const [rising, setRising] = useState(() => !reducedMotion);
+  useEffect(() => {
+    const t = setTimeout(() => setRising(false), RISE_TOTAL_MS);
+    return () => clearTimeout(t);
+  }, []);
+  const rise = (i: 0 | 1 | 2 | 3) => (rising ? RISE[i] : '');
+
   const labeledBlocks = useMemo(
     () => labelBlocksWithSubtasks(schedule.data ?? [], tasks),
     [schedule.data, tasks],
@@ -373,18 +386,18 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           Compact: the summary card only — the mobile top bar carries Now/Next. */}
       <div data-testid="planner-summary" className={`flex shrink-0 ${compact ? 'flex-col' : 'gap-5'}`}>
         <UnscheduledCard
-          className="min-w-0 flex-1"
+          className={`min-w-0 flex-1 ${rise(0)}`}
           entries={unscheduledEntries}
           compact={compact}
           onReplan={startReplan}
           replanPending={replan.isPending || minSpin}
           onShowAll={showAllTasks}
         />
-        {!compact && <NextUpCard now={now} className="w-[330px] shrink-0" />}
+        {!compact && <NextUpCard now={now} className={`w-[330px] shrink-0 ${rise(1)}`} />}
       </div>
       {replan.isError && <p className="-mt-2 shrink-0 px-1 text-[13px] text-danger">Re-plan failed. Try again.</p>}
     <div className={`flex min-h-0 flex-1 ${compact ? 'gap-2' : 'gap-5'}`}>
-      <div ref={gridRef} className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+      <div ref={gridRef} data-testid="planner-grid-pane" className={`relative flex min-h-0 min-w-0 flex-1 flex-col ${rise(2)}`}>
         {/* Panel hidden: the card floats over the grid instead of taking a column — narrowing the
             grid would change the day count and could page the selected block out of view. */}
         {!compact && panelHidden && detailCard && (
@@ -414,6 +427,9 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           filters={filters}
           onToggleFilter={toggleFilter}
           landing={landing}
+          // First load and each page of days pop in; a refetch of the same range does not.
+          // (The tiles only depend on the two ranged queries, not on the unranged preview.)
+          entranceKey={schedule.isLoading || calendar.isLoading ? null : rangeKey}
           accents={accents}
           compact={compact}
           coarse={coarse}
@@ -426,7 +442,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
       {/* Below md the panel never renders inline — it becomes the bottom sheet below. */}
       {/* Side column: the detail card atop the task panel. */}
       {!compact && !panelHidden && (
-        <div className="flex min-h-0 w-[330px] shrink-0 flex-col gap-5">
+        <div data-testid="planner-side-column" className={`flex min-h-0 w-[330px] shrink-0 flex-col gap-5 ${rise(3)}`}>
           {detailCard}
           <PlannerTaskPanel {...panelProps} />
         </div>
