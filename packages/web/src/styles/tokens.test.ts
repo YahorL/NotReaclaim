@@ -109,7 +109,7 @@ describe('tokens.css', () => {
 
   it('uses Manrope for both themes', () => {
     expect(css).toMatch(/--font-sans: "Manrope"/);
-    expect(css).not.toMatch(/Outfit|Mulish/);
+    expect(css.match(/--font-sans:/g)).toHaveLength(1); // one declaration, shared by both themes
   });
 
   it('stores flat colours as space-separated channel triplets', () => {

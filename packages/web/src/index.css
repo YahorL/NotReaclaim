@@ -7,7 +7,7 @@
 
 @layer base {
   html, body, #root { height: 100%; }
-  body { @apply bg-bg font-sans text-ink antialiased; }
+  body { @apply bg-page font-sans text-fg antialiased; }
 }
 
 @layer components {
