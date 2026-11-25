@@ -139,7 +139,7 @@ function TaskCard({ task, nowMs, zone, nextMs, atRisk, showPriority, coarse, onC
           <span className="shrink-0">{due}</span>
           <div data-testid="panel-progress" className="flex min-w-[64px] flex-1 items-center gap-1.5">
             <div className="h-[3px] min-w-[24px] flex-1 overflow-hidden rounded-full bg-fg/10">
-              <div className="h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />
+              <div className="h-full rounded-full bg-accent-fg" style={{ width: `${pct}%` }} />
             </div>
             <span className="shrink-0 tabular-nums">{formatDurationShort(spent)} / {formatDurationShort(task.durationMs)}</span>
           </div>

@@ -40,7 +40,7 @@ export function StatCard({ label, value, unit, sub, swatch, progressPct, delayMs
             aria-valuenow={progressPct}
             className="h-1 min-w-0 flex-1 overflow-hidden rounded-pill bg-fg/10"
           >
-            <div className="h-full rounded-pill bg-accent" style={{ width: `${progressPct}%` }} />
+            <div className="h-full rounded-pill bg-accent-fg" style={{ width: `${progressPct}%` }} />
           </div>
           <span className="shrink-0 text-[13px] text-fg-2">{sub}</span>
         </div>

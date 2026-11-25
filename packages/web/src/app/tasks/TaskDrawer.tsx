@@ -126,7 +126,7 @@ export function TaskDrawer({ task, zone, onSave, onCancel, saving = false, error
           <span data-testid="drawer-spent">{formatDurationShort(spent)} / {formatDurationShort(task.durationMs)} · {formatDurationShort(left)} left</span>
         </div>
         <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-line">
-          <div className="h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />
+          <div className="h-full rounded-full bg-accent-fg" style={{ width: `${pct}%` }} />
         </div>
       </div>
 
