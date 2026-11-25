@@ -8,6 +8,7 @@ import { useBlockDrag, type LiveDrag } from './useBlockDrag';
 import { keyboardChange } from './blockKeyboard';
 import { useToast } from '../shell/ToastProvider';
 import { MS_PER_MIN, toIso } from '../lib/time';
+import { trackInputModality, lastInputModality } from '../lib/inputModality';
 
 /** Fallback for `data-settling` when no transitionend arrives (nothing moved, hidden tab, jsdom). */
 const SETTLE_FALLBACK_MS = 900;
@@ -129,8 +130,11 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
   // How the body got focus. A mouse click / touch focuses the button too, and the arrow keys must
   // then keep scrolling the hours rather than move (and pin) the tile the user merely clicked —
   // nor may Delete remove it. Set on every press, cleared on blur, so a Tab back in is keyboard.
+  // Focus a script moves here (the detail card handing focus back as it closes) takes the last
+  // input's modality: after a click on the card's ✕ it is pointer focus, after Escape keyboard.
   // (Not `:focus-visible`: browsers may start matching it on the very keypress we are reading.)
   const pointerFocus = useRef(false);
+  useEffect(() => { trackInputModality(); }, []);
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>) => {
     if (pointerFocus.current) return;
@@ -244,6 +248,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
         onBodyClick={(e) => { if (e.detail === 0) onClick?.(true); }}
         onBodyKeyDown={onKeyDown}
         onBodyBlur={() => { pointerFocus.current = false; flushKeys(); }}
+        onBodyFocus={() => { if (lastInputModality() === 'pointer') pointerFocus.current = true; }}
         describedBy={describedBy}
         {...drag.handlers}
         onPointerDown={(e) => { pointerFocus.current = true; drag.handlers.onPointerDown(e); }}

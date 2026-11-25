@@ -40,6 +40,7 @@ export interface CalendarBlockProps {
   /** Keys on the focused body: arrows move / resize (spec §5.2), Delete deletes. */
   onBodyKeyDown?: (e: ReactKeyboardEvent<HTMLButtonElement>) => void;
   onBodyBlur?: (e: ReactFocusEvent<HTMLButtonElement>) => void;
+  onBodyFocus?: (e: ReactFocusEvent<HTMLButtonElement>) => void;
   /** id of the planner's shared, visually hidden keyboard instructions. */
   describedBy?: string;
   /** Pointer handlers for the drag machinery (InteractiveBlock) — on the wrapper. */
@@ -104,7 +105,7 @@ export function CalendarBlock(props: CalendarBlockProps) {
     blockKey, title, kind, source = null, pinned = false, started = false, accent, startLabel, whenLabel, durationMin,
     style, className = '', dayIndex, selected = false, coarse = false, onDelete, deleteLabel = 'Delete block',
     onUnpin, onBodyClick, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onLostPointerCapture, resize, children,
-    motion = 'idle', pressed = false, settling = false, shake = false, hidden = false, landDelayMs, enterDelayMs, onTransitionEnd, onBodyKeyDown, onBodyBlur, describedBy,
+    motion = 'idle', pressed = false, settling = false, shake = false, hidden = false, landDelayMs, enterDelayMs, onTransitionEnd, onBodyKeyDown, onBodyBlur, onBodyFocus, describedBy,
   } = props;
   const v = blockVariant({ kind, source, pinned, started, accent });
   // 11px time label: dimmed on the translucent tiles, full strength on the violet meeting fill
@@ -166,6 +167,7 @@ export function CalendarBlock(props: CalendarBlockProps) {
         onClick={onBodyClick}
         onKeyDown={onBodyKeyDown}
         onBlur={onBodyBlur}
+        onFocus={onBodyFocus}
         // A button vertically CENTRES content taller than itself, which pushed the time label of a
         // short tile above its top edge. The full-height inner wrapper never overflows the button,
         // so long titles clip at the bottom instead.

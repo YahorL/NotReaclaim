@@ -1000,12 +1000,32 @@ describe('InteractiveBlock keyboard move / resize', () => {
     expect(onPreview).not.toHaveBeenCalled();
   });
 
+  it('focus a script hands back right after a click elsewhere (the detail card\'s ✕) counts as pointer focus', () => {
+    const onPreview = vi.fn();
+    render(<InteractiveBlock {...props} onCommit={vi.fn()} onPreview={onPreview} />);
+    fireEvent.pointerDown(document.body, { pointerId: 1, pointerType: 'mouse' }); // the ✕ press
+    act(() => { body().focus(); }); // closeDetail's focus restore
+    fireEvent.keyDown(body(), { key: 'ArrowDown' });
+    expect(onPreview).not.toHaveBeenCalled();
+  });
+
+  it('focus a script hands back after a key (Escape on the card) is keyboard focus', () => {
+    const onPreview = vi.fn();
+    render(<InteractiveBlock {...props} onCommit={vi.fn()} onPreview={onPreview} />);
+    fireEvent.pointerDown(document.body, { pointerId: 1, pointerType: 'mouse' });
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    act(() => { body().focus(); });
+    fireEvent.keyDown(body(), { key: 'ArrowDown' });
+    expect(onPreview).toHaveBeenCalledTimes(1);
+  });
+
   it('once a pointer-focused block blurs, Tabbing back in makes the arrows move it again', () => {
     const onPreview = vi.fn();
     render(<InteractiveBlock {...props} onCommit={vi.fn()} onPreview={onPreview} />);
     fireEvent.pointerDown(body(), { clientX: 50, clientY: 100, pointerId: 1, pointerType: 'mouse' });
     fireEvent.pointerUp(screen.getByTestId('event-block'), { clientX: 50, clientY: 100, pointerId: 1, pointerType: 'mouse' });
     fireEvent.blur(body());
+    fireEvent.keyDown(document.body, { key: 'Tab' });
     fireEvent.focus(body());
     fireEvent.keyDown(body(), { key: 'ArrowDown' });
     expect(onPreview).toHaveBeenCalledWith(START + 15 * 60_000, END + 15 * 60_000);
@@ -1023,6 +1043,7 @@ describe('InteractiveBlock vs. stray text selections', () => {
     renderBlock();
     const range = document.createRange();
     range.selectNodeContents(screen.getByTestId('block-body'));
+    window.getSelection()!.removeAllRanges(); // jsdom ignores addRange while a (collapsed) range from an earlier focus() remains
     window.getSelection()!.addRange(range);
     expect(window.getSelection()!.isCollapsed).toBe(false);
     fireEvent.pointerDown(screen.getByTestId('event-block'), { clientX: 50, clientY: 100, pointerId: 1 });
