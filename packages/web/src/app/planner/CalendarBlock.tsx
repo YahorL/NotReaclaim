@@ -96,8 +96,8 @@ export function CalendarBlock(props: CalendarBlockProps) {
         onClick={onBodyClick}
         // Room on the right for a visible lock/pin; the hover-only × may overlap the time.
         className={`flex h-full w-full min-w-0 cursor-[inherit] text-left focus-visible:outline-offset-[-3px] ${row
-          ? `flex-row items-center justify-between gap-1.5 px-[9px] ${v.icon ? 'pr-7' : ''}`
-          : `flex-col items-start gap-px px-[9px] py-1.5 ${v.icon ? 'pr-7' : ''}`}`}
+          ? `flex-row items-center justify-between gap-1.5 px-[9px] ${v.icon ? 'pr-6' : ''}`
+          : `flex-col items-start gap-px px-[9px] py-1.5 ${v.icon ? 'pr-6' : ''}`}`}
       >
         {row ? (
           <>
@@ -106,8 +106,9 @@ export function CalendarBlock(props: CalendarBlockProps) {
           </>
         ) : (
           <>
-            <span className="whitespace-nowrap text-[11px] tabular-nums opacity-80">{startLabel}</span>
-            <span className="min-w-0 text-[13px] font-medium leading-tight [overflow-wrap:anywhere]">{title}</span>
+            <span className="max-w-full overflow-hidden whitespace-nowrap text-[11px] tabular-nums opacity-80">{startLabel}</span>
+            {/* Word-wrapped, never broken mid-word: a narrow overlap lane clips instead of stacking letters. */}
+            <span className="min-w-0 max-w-full overflow-hidden text-[13px] font-medium leading-tight">{title}</span>
           </>
         )}
       </button>

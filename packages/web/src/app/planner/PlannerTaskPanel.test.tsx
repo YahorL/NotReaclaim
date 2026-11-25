@@ -227,6 +227,7 @@ describe('PlannerTaskPanel labels in the settings zone', () => {
         onComplete={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()}
       />,
     );
-    expect(screen.getByText('Due Jan 11 · Next: Tomorrow 2:00am')).toBeInTheDocument();
+    expect(screen.getByText('Due Jan 11')).toBeInTheDocument();
+    expect(screen.getByTestId('panel-next')).toHaveTextContent('Next: Tomorrow 2:00am');
   });
 });

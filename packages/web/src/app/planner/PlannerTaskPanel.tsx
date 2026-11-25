@@ -52,7 +52,6 @@ function TaskCard({ task, nowMs, zone, nextMs, atRisk, showPriority, coarse, onC
 }) {
   const due = dueLabel(task.dueBy, zone) ?? 'No deadline';
   const next = nextMs != null ? `Next: ${relativeDayTimeLabel(nextMs, nowMs, zone)}` : null;
-  const meta = [due, next].filter(Boolean).join(' · ');
   const spent = task.spentMs ?? 0;
   const pct = task.durationMs > 0 ? Math.min(100, (spent / task.durationMs) * 100) : 0;
   const bucket = priorityToBucket(task.priority);
@@ -106,7 +105,7 @@ function TaskCard({ task, nowMs, zone, nextMs, atRisk, showPriority, coarse, onC
           {showPriority && (
             <span data-testid="panel-priority" className="flex shrink-0 items-center gap-1.5"><Dot bucket={bucket} />{GROUP_META[bucket].short}</span>
           )}
-          <span className="min-w-0 truncate">{meta}</span>
+          <span className="shrink-0">{due}</span>
           <div data-testid="panel-progress" className="flex min-w-[64px] flex-1 items-center gap-1.5">
             <div className="h-[3px] min-w-[24px] flex-1 overflow-hidden rounded-full bg-fg/10">
               <div className="h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />
@@ -114,6 +113,8 @@ function TaskCard({ task, nowMs, zone, nextMs, atRisk, showPriority, coarse, onC
             <span className="shrink-0 tabular-nums">{formatDurationShort(spent)} / {formatDurationShort(task.durationMs)}</span>
           </div>
         </div>
+        {/* Its own line: squeezed in beside the due date it starved the progress bar. */}
+        {next && <div data-testid="panel-next" className="mt-0.5 truncate text-[12px] text-fg-3">{next}</div>}
       </div>
       <span className="chip h-6 shrink-0 px-2 text-[11px]">{formatDurationShort(task.durationMs)}</span>
       {/* ✎ and × are adjacent, so they grow by padding, never by a pseudo box: overlapping
