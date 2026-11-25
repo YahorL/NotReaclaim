@@ -186,7 +186,7 @@ describe('useWebSocket: catching up after the connection comes back', () => {
     expect(invalidatedRoots(spy)).toEqual(ALL_ROOTS);
   });
 
-  it('flapping: each reopen refetches once', () => {
+  it('two reopens within 15 s: the first refreshes at once, the second at the end of the 15 s window', () => {
     const qc = new QueryClient();
     const spy = vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
     const { sockets, makeSocket } = socketFactory();
@@ -197,7 +197,95 @@ describe('useWebSocket: catching up after the connection comes back', () => {
       vi.advanceTimersByTime(2000);
       sockets[i]!.emit('open', {});
     }
+    expect(invalidatedRoots(spy)).toEqual(ALL_ROOTS);
+    vi.advanceTimersByTime(12_999);
+    expect(invalidatedRoots(spy)).toEqual(ALL_ROOTS);
+    vi.advanceTimersByTime(1); // 15 s after the first refresh
     expect(invalidatedRoots(spy)).toEqual([...ALL_ROOTS, ...ALL_ROOTS].sort());
+  });
+
+  it('a connection flapping every 2 s for 60 s refreshes about every 15 s, not on each of the 30 reopens', () => {
+    const qc = new QueryClient();
+    const spy = vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    const { sockets, makeSocket } = socketFactory();
+    renderHook(() => useWebSocket({ token: 'jwt', makeSocket }), { wrapper: wrapper(qc) });
+    sockets[0]!.emit('open', {});
+    for (let i = 1; i <= 30; i++) {
+      sockets[i - 1]!.emit('close', {}); // opened, then closed at once (idle timeout, flaky proxy)
+      vi.advanceTimersByTime(2000);
+      sockets[i]!.emit('open', {});
+    }
+    vi.advanceTimersByTime(15_000);
+    const refreshes = spy.mock.calls.length / ALL_ROOTS.length;
+    expect(refreshes).toBeGreaterThanOrEqual(4);
+    expect(refreshes).toBeLessThanOrEqual(5);
+  });
+
+  it('the trailing refresh runs once, and only if the socket is open when the window ends', () => {
+    const qc = new QueryClient();
+    const spy = vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    const { sockets, makeSocket } = socketFactory();
+    renderHook(() => useWebSocket({ token: 'jwt', makeSocket }), { wrapper: wrapper(qc) });
+    sockets[0]!.emit('open', {});
+    sockets[0]!.emit('close', {});
+    vi.advanceTimersByTime(2000);
+    sockets[1]!.emit('open', {}); // refresh #1, window opens
+    sockets[1]!.emit('close', {});
+    vi.advanceTimersByTime(2000);
+    sockets[2]!.emit('open', {}); // swallowed
+    sockets[2]!.emit('close', {});
+    vi.advanceTimersByTime(2000);
+    sockets[3]!.emit('open', {}); // swallowed again
+    expect(spy.mock.calls.length / ALL_ROOTS.length).toBe(1);
+    vi.advanceTimersByTime(11_000); // 15 s after refresh #1 (t = 2 s → 17 s)
+    expect(spy.mock.calls.length / ALL_ROOTS.length).toBe(2);
+    vi.advanceTimersByTime(60_000);
+    expect(spy.mock.calls.length / ALL_ROOTS.length).toBe(2);
+
+    // A swallowed reopen whose socket is down again when the window ends: no trailing refresh;
+    // the next reopen (outside any window) refreshes at once.
+    sockets[3]!.emit('close', {});
+    vi.advanceTimersByTime(2000);
+    sockets[4]!.emit('open', {}); // refresh #3, window opens
+    sockets[4]!.emit('close', {});
+    vi.advanceTimersByTime(2000);
+    sockets[5]!.emit('open', {}); // swallowed
+    sockets[5]!.emit('close', {});
+    vi.advanceTimersByTime(13_000); // window ends while the socket is down
+    expect(spy.mock.calls.length / ALL_ROOTS.length).toBe(3);
+    sockets[6]!.emit('open', {});
+    expect(spy.mock.calls.length / ALL_ROOTS.length).toBe(4);
+  });
+
+  it('a swallowed reopen never refreshes after unmount or a token change, and leaves no timer behind', () => {
+    for (const end of ['unmount', 'token'] as const) {
+      const qc = new QueryClient();
+      const spy = vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+      const { sockets, makeSocket } = socketFactory();
+      const { rerender, unmount } = renderHook(({ token }) => useWebSocket({ token, makeSocket }), {
+        wrapper: wrapper(qc), initialProps: { token: 'jwt-a' as string | null },
+      });
+      sockets[0]!.emit('open', {});
+      sockets[0]!.emit('close', {});
+      vi.advanceTimersByTime(2000);
+      sockets[1]!.emit('open', {}); // refresh, window opens
+      sockets[1]!.emit('close', {});
+      vi.advanceTimersByTime(2000);
+      sockets[2]!.emit('open', {}); // swallowed: a trailing refresh is due
+      spy.mockClear();
+      if (end === 'unmount') {
+        unmount();
+        expect(vi.getTimerCount()).toBe(0);
+      } else {
+        rerender({ token: 'jwt-b' });
+      }
+      vi.advanceTimersByTime(60_000);
+      expect(spy).not.toHaveBeenCalled();
+      if (end === 'token') {
+        unmount();
+        expect(vi.getTimerCount()).toBe(0);
+      }
+    }
   });
 
   it('StrictMode\'s mount → cleanup → remount is not a reconnect (nor is a late open on the discarded socket)', () => {
