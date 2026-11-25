@@ -395,6 +395,13 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
   - Blocks `animate-ev-in` with a 45ms × day stagger. WeekGrid's `entranceKey` drives it: the Planner passes the loaded range, from the ranged schedule and calendar queries only.
   - Side-panel ticks pop the check and draw the strike while the save runs, then un-tick after 4s if the task is still listed.
   - Reduced motion skips all of it in JS as well.
+- **Follow-up fixes after the review pass:**
+  - Filtered-out tiles skip the entrance and the drop-in. Both keyframes end at opacity 1, which overrode `opacity-0`; live-sampled max opacity is now 0 in both browsers.
+  - On touch, a Google tile refuses only after a long press, so a scroll that starts on it no longer shakes. A live swipe scrolls with no toast, and a long press shakes and toasts.
+  - A press still under the threshold (`data-pressed`) counts as busy for the calm reorder.
+  - The grid receives blocks and events only once both ranged queries have loaded, so the entrance never restarts tiles that already painted.
+  - Backspace deletes a focused block like Delete. The spec mentions only Delete.
+- **Also verified live (Chromium + Firefox):** 3-day cross-day drag (Chromium), edge auto-scroll whose commit equals the ghost label, panel-card → grid drop (`POST /schedule`), and drag/resize/keyboard/app-event persistence after reload. The live pass moved, pinned and deleted demo blocks in the dev DB. The seeded Google meeting and app event were removed afterwards.
 - **For P5:** "Task created" toasts on the planner render inside the calendar panel (the anchor is global while the Planner is mounted). `PlannerTaskPanel` now has local tick state, so P5's `data-fresh` should go on the same card root.
 - **For P8:**
   - Headless Firefox samples sparse frames (34/101/217ms) during the release spring. Positions follow the curve, but it is worth a look on a real Firefox.
