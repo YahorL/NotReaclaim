@@ -3,7 +3,7 @@ import { renderHook } from '@testing-library/react';
 import { MouseSensor, TouchSensor, KeyboardSensor, type ClientRect, type KeyboardCoordinateGetter } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import {
-  useAppSensors, useDragToScheduleSensors, pointerFirstCollision,
+  useAppSensors, useDragToScheduleSensors, usePointerSensors, pointerFirstCollision,
   FINE_DRAG_ACTIVATION, COARSE_DRAG_ACTIVATION,
 } from './sensors';
 
@@ -74,6 +74,15 @@ describe('useDragToScheduleSensors', () => {
   it('omits the keyboard sensor — day columns have no keyboard coordinate story', () => {
     const { result } = renderHook(() => useDragToScheduleSensors());
     expect(result.current.map((s) => s.sensor)).toEqual([MouseSensor, TouchSensor]);
+  });
+});
+
+describe('usePointerSensors', () => {
+  it('registers mouse and touch with the shared constraints and no keyboard sensor (board: grip arrows)', () => {
+    const { result } = renderHook(() => usePointerSensors());
+    expect(result.current.map((s) => s.sensor)).toEqual([MouseSensor, TouchSensor]);
+    expect(result.current[0]!.options).toEqual({ activationConstraint: FINE_DRAG_ACTIVATION });
+    expect(result.current[1]!.options).toEqual({ activationConstraint: COARSE_DRAG_ACTIVATION });
   });
 });
 

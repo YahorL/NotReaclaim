@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import type { Task } from '../../api/types';
 import { ApiError } from '../../api/client';
-import { useTasksQuery, useSchedulePreviewQuery, useUpdateTaskMutation, useDeleteTaskMutation, useUpdateSubtaskMutation } from '../../api/queries';
+import { queryKeys, useTasksQuery, useSchedulePreviewQuery, useUpdateTaskMutation, useDeleteTaskMutation, useUpdateSubtaskMutation } from '../../api/queries';
 import { TaskDrawer } from '../tasks/TaskDrawer';
 import { useTimezone } from '../settings/useTimezone';
 import { DrawerHost, DESKTOP_DRAWER_SLOT } from '../components/DrawerHost';
@@ -18,6 +19,7 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
   const updateM = useUpdateTaskMutation();
   const deleteM = useDeleteTaskMutation();
   const subtaskM = useUpdateSubtaskMutation();
+  const qc = useQueryClient();
   const compact = useCompactWidth();
   const zone = useTimezone();
   const onToggleSubtask = (subtaskId: string, done: boolean) => subtaskM.mutate({ id: subtaskId, patch: { done } });
@@ -79,7 +81,18 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
       taskId, task: t, to, index,
       columnTasks: columns.find((c) => c.key === to)?.tasks ?? [],
     });
-    if (patch) updateM.mutate({ id: taskId, patch });
+    if (!patch) return;
+    // Optimistic: the board shows the move at once (Board holds it for the render in between), so a
+    // second arrow press computes from the moved state and focus can follow the card. Synchronous —
+    // nothing may be awaited before this write. Rolled back if the PATCH fails; the success path's
+    // invalidation refetches the server's order.
+    const snapshots = qc.getQueriesData<unknown>({ queryKey: queryKeys.tasksRoot });
+    qc.setQueriesData<unknown>({ queryKey: queryKeys.tasksRoot }, (old: unknown) => (Array.isArray(old)
+      ? (old as Task[]).map((x) => (x.id === taskId ? { ...x, ...patch } as Task : x))
+      : old));
+    updateM.mutate({ id: taskId, patch }, {
+      onError: () => { for (const [key, data] of snapshots) qc.setQueryData(key, data); },
+    });
   };
 
   return (

@@ -3,7 +3,7 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import type { Task } from '../../api/types';
 import { Icons } from '../shell/icons';
 import { type BoardColumnKey, columnMeta } from './priorityBucket';
-import { columnDroppableId } from './boardDnd';
+import { columnDroppableId, type BoardArrowKey } from './boardDnd';
 import { TaskRow } from './TaskRow';
 import { useFlip } from './useFlip';
 
@@ -18,6 +18,15 @@ export interface ColumnProps {
   nextMsFor: (taskId: string) => number | null;
   /** True while a drag is hovering this column (Board resolves it once for the whole board). */
   isTarget: boolean;
+  /**
+   * A pointer drag from another column would land here: before this card id, or at the end (null).
+   * Undefined when no such drag hovers this column. Drawn as a line that takes no space, so the
+   * cards under the pointer never shift (which would flip the hovered card back and forth).
+   */
+  insertBefore?: string | null;
+  /** Record the new card positions without animating (see `useFlip`). */
+  suppressFlip?: boolean;
+  onKeyboardMove?: (taskId: string, key: BoardArrowKey) => void;
   collapsed: boolean;
   onToggleCollapsed: () => void;
   /** Empty-state copy: "Drop tasks here", or "No matching tasks" while a search is active. */
@@ -30,14 +39,14 @@ export interface ColumnProps {
 }
 
 export function Column({
-  columnKey, tasks, index, now, zone, nextMsFor, isTarget, collapsed, onToggleCollapsed, emptyText,
-  onComplete, onEdit, onDelete, onToggleSubtask, onReorderSubtask,
+  columnKey, tasks, index, now, zone, nextMsFor, isTarget, insertBefore, suppressFlip = false, onKeyboardMove,
+  collapsed, onToggleCollapsed, emptyText, onComplete, onEdit, onDelete, onToggleSubtask, onReorderSubtask,
 }: ColumnProps) {
   const isCompleted = columnKey === 'completed';
   const meta = columnMeta(columnKey);
   // `useFlip` does not animate the drag itself (dnd-kit's sorting strategy does). It owns movement
   // the user did not drag: a keyboard move, a refetch, a WS-driven re-sort, a filter.
-  const setFlipRef = useFlip(tasks.map((t) => t.id).join('|'));
+  const setFlipRef = useFlip(tasks.map((t) => t.id).join('|'), suppressFlip);
   // The whole grid cell is a drop target (it stretches to the row's height), so a card can land in
   // a column's empty area or on a collapsed column. Completed rejects drops.
   const { setNodeRef } = useDroppable({ id: columnDroppableId(columnKey), disabled: isCompleted });
@@ -66,20 +75,23 @@ export function Column({
           </button>
         </div>
         {!collapsed && (
-          <div className="flex min-h-[52px] flex-col gap-1.5">
+          // `relative`: the cards' offset parent, which `useFlip` measures against.
+          <div className="relative flex min-h-[52px] flex-col gap-1.5">
             <SortableContext id={columnKey} items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
               {tasks.map((t) => (
                 <div key={t.id} ref={setFlipRef(t.id)} className="relative">
+                  {insertBefore === t.id && <DropLine className="-top-1" />}
                   <TaskRow
                     task={t} columnKey={columnKey} now={now} zone={zone} nextMs={nextMsFor(t.id)}
                     draggable={!isCompleted}
                     muted={columnKey === 'backlog'}
                     onComplete={onComplete} onEdit={onEdit} onDelete={onDelete} onToggleSubtask={onToggleSubtask}
-                    onReorderSubtask={onReorderSubtask}
+                    onReorderSubtask={onReorderSubtask} onKeyboardMove={onKeyboardMove}
                   />
                 </div>
               ))}
             </SortableContext>
+            {insertBefore === null && tasks.length > 0 && <DropLine className="-bottom-1" />}
             {tasks.length === 0 && (
               <div
                 data-testid={`column-empty-${columnKey}`}
@@ -92,5 +104,16 @@ export function Column({
         )}
       </section>
     </div>
+  );
+}
+
+/** The landing line for a drag from another column (3px accent, centred in the 6px card gap). */
+function DropLine({ className }: { className: string }) {
+  return (
+    <span
+      data-testid="drop-indicator"
+      aria-hidden="true"
+      className={`pointer-events-none absolute inset-x-2 z-10 h-[3px] -translate-y-px rounded-full bg-accent shadow-[0_0_10px_rgb(var(--c-accent-glow)/0.7)] ${className}`}
+    />
   );
 }

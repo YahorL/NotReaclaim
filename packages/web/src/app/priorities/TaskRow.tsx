@@ -9,6 +9,7 @@ import { useClickOutside } from '../components/useClickOutside';
 import { subtaskDropSortOrder } from '../tasks/subtaskDnd';
 import { formatDurationShort } from '../lib/duration';
 import { type BoardColumnKey, relativeDayTimeLabel, dueShort } from './priorityBucket';
+import { isBoardArrowKey, type BoardArrowKey } from './boardDnd';
 
 const MENU_ITEM = 'block w-full rounded-input px-3 py-1.5 text-left text-[14px] font-medium hover:bg-fg/[.07] focus-visible:bg-fg/[.07] focus-visible:outline-offset-[-2px]';
 
@@ -78,9 +79,11 @@ export interface TaskRowProps {
   onDelete: (task: Task) => void;
   onToggleSubtask: (subtaskId: string, done: boolean) => void;
   onReorderSubtask: (subtaskId: string, sortOrder: number) => void;
+  /** Grip arrow keys: ↑/↓ reorder, ←/→ neighbouring column (Board resolves and announces it). */
+  onKeyboardMove?: (taskId: string, key: BoardArrowKey) => void;
 }
 
-export function TaskRow({ task, columnKey, nextMs, now, zone, draggable = true, muted = false, onComplete, onEdit, onDelete, onToggleSubtask, onReorderSubtask }: TaskRowProps) {
+export function TaskRow({ task, columnKey, nextMs, now, zone, draggable = true, muted = false, onComplete, onEdit, onDelete, onToggleSubtask, onReorderSubtask, onKeyboardMove }: TaskRowProps) {
   const {
     attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging,
   } = useSortable({
@@ -115,6 +118,8 @@ export function TaskRow({ task, columnKey, nextMs, now, zone, draggable = true, 
       ref={setNodeRef}
       data-testid="task-row" data-task-id={task.id} data-bucket={columnKey}
       data-muted={muted || undefined} data-done={done || undefined}
+      // While its clone is in the air the card stays as a dashed placeholder of its own height.
+      data-dragging={isDragging || undefined} data-placeholder={isDragging || undefined}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       // The prototype starts a mouse drag from the card body or the grip, never from its other
       // controls (✓, kebab, checklist).
@@ -123,7 +128,7 @@ export function TaskRow({ task, columnKey, nextMs, now, zone, draggable = true, 
         if (!hit || hit.hasAttribute('data-grip')) onMouseDown?.(e);
       }}
       onClick={() => onEdit(task)}
-      className={`group/card glass-card glass-card-hover relative flex flex-col gap-1.5 rounded-card py-2.5 pl-2.5 pr-2 select-none touch-pan-y ${draggable ? 'cursor-grab' : 'cursor-default'} ${menuOpen ? 'z-20' : ''} data-[muted]:opacity-70 data-[done]:opacity-60`}
+      className={`group/card glass-card glass-card-hover relative flex flex-col gap-1.5 rounded-card py-2.5 pl-2.5 pr-2 select-none touch-pan-y ${draggable ? 'cursor-grab' : 'cursor-default'} ${menuOpen ? 'z-20' : ''} data-[muted]:opacity-70 data-[done]:opacity-60 data-[placeholder]:border-dashed data-[placeholder]:border-accent/70 data-[placeholder]:bg-accent/[.06] data-[placeholder]:bg-none data-[placeholder]:opacity-100 data-[placeholder]:shadow-none [&[data-placeholder]>*]:invisible`}
     >
       <div className="flex items-center gap-2">
         {draggable ? (
@@ -136,6 +141,11 @@ export function TaskRow({ task, columnKey, nextMs, now, zone, draggable = true, 
             aria-describedby={attributes['aria-describedby']}
             onTouchStart={onTouchStart}
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (!isBoardArrowKey(e.key) || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+              e.preventDefault(); // no page scroll
+              onKeyboardMove?.(task.id, e.key);
+            }}
             className="-ml-1 flex h-[30px] w-[18px] shrink-0 cursor-grab touch-none items-center justify-center rounded-lg text-fg/45 opacity-60 transition hover:bg-fg/[.08] focus-visible:text-fg focus-visible:opacity-100 group-hover/card:text-fg group-hover/card:opacity-100 coarse:-my-1.5 coarse:-ml-2.5 coarse:h-11 coarse:w-9 coarse:opacity-100"
           >
             <GripDots />

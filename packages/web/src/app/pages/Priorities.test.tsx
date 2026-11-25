@@ -226,6 +226,99 @@ describe('Priorities board', () => {
   });
 });
 
+describe('Priorities board moves', () => {
+  const gripOf = (title: string) => screen.getByRole('button', { name: `Drag ${title}` });
+
+  it('ArrowRight on a grip moves the card to the next priority, persists it, announces it and keeps focus', async () => {
+    const updateTask = vi.fn(async () => task());
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ updateTask }) });
+    await waitFor(() => expect(screen.getByText('Critical thing')).toBeInTheDocument());
+    gripOf('Critical thing').focus();
+    fireEvent.keyDown(gripOf('Critical thing'), { key: 'ArrowRight' });
+    // Shown at once (held + optimistic), not after the PATCH and its refetch. (The fake server
+    // does not persist, so the post-success refetch would move it back — assert before that.)
+    expect(within(screen.getByTestId('column-high')).getByText('Critical thing')).toBeInTheDocument();
+    expect(within(screen.getByTestId('column-critical')).queryByText('Critical thing')).toBeNull();
+    expect(screen.getByTestId('board-announcer')).toHaveTextContent('Moved Critical thing to High priority, position 1.');
+    // The card remounted in another column; focus followed it to its new grip.
+    expect(document.activeElement).toBe(gripOf('Critical thing'));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith('c1', { priority: 2, sortOrder: 0 }));
+  });
+
+  it('ArrowDown / ArrowUp reorder within a column through sortOrder', async () => {
+    const updateTask = vi.fn(async () => task());
+    const listTasks = vi.fn(async () => [
+      task({ id: 'a', title: 'First', priority: 2, sortOrder: 0 }),
+      task({ id: 'b', title: 'Second', priority: 2, sortOrder: 10 }),
+      task({ id: 'c', title: 'Third', priority: 2, sortOrder: 20 }),
+    ]);
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateTask }) });
+    await waitFor(() => expect(screen.getByText('First')).toBeInTheDocument());
+    fireEvent.keyDown(gripOf('First'), { key: 'ArrowDown' });
+    const order = () => within(screen.getByTestId('column-high')).getAllByTestId('task-row').map((r) => r.getAttribute('data-task-id'));
+    expect(order()).toEqual(['b', 'a', 'c']);
+    expect(screen.getByTestId('board-announcer')).toHaveTextContent('Moved First to High priority, position 2.');
+    expect(document.activeElement).toBe(gripOf('First'));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith('a', { sortOrder: 15 }));
+  });
+
+  it('ArrowUp on the top card and ArrowLeft from the first column do nothing', async () => {
+    const updateTask = vi.fn(async () => task());
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ updateTask }) });
+    await waitFor(() => expect(screen.getByText('Critical thing')).toBeInTheDocument());
+    fireEvent.keyDown(gripOf('Critical thing'), { key: 'ArrowUp' });
+    fireEvent.keyDown(gripOf('Critical thing'), { key: 'ArrowLeft' });
+    expect(updateTask).not.toHaveBeenCalled();
+  });
+
+  it('a move into a collapsed column expands it', async () => {
+    const updateTask = vi.fn(async () => task());
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ updateTask }) });
+    await waitFor(() => expect(screen.getByText('Critical thing')).toBeInTheDocument());
+    fireEvent.click(within(screen.getByTestId('column-high')).getByRole('button', { name: 'Collapse High priority' }));
+    fireEvent.keyDown(gripOf('Critical thing'), { key: 'ArrowRight' });
+    const high = screen.getByTestId('column-high');
+    expect(within(high).getByRole('button', { name: 'Collapse High priority' })).toHaveAttribute('aria-expanded', 'true');
+    expect(within(high).getByText('Critical thing')).toBeInTheDocument();
+  });
+
+  it('rolls the move back when the PATCH fails', async () => {
+    const updateTask = vi.fn(async () => { throw new Error('boom'); });
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ updateTask }) });
+    await waitFor(() => expect(screen.getByText('Critical thing')).toBeInTheDocument());
+    fireEvent.keyDown(gripOf('Critical thing'), { key: 'ArrowRight' });
+    await waitFor(() => expect(updateTask).toHaveBeenCalled());
+    await waitFor(() => expect(within(screen.getByTestId('column-critical')).getByText('Critical thing')).toBeInTheDocument());
+  });
+
+  it('a mouse drag lifts a tilted clone and leaves a placeholder; releasing on nothing moves nothing', async () => {
+    const updateTask = vi.fn(async () => task());
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ updateTask }) });
+    await waitFor(() => expect(screen.getByText('Low thing')).toBeInTheDocument());
+    const card = screen.getByText('Low thing').closest('[data-testid="task-row"]') as HTMLElement;
+    fireEvent.mouseDown(card, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.mouseMove(document, { clientX: 40, clientY: 40 });
+    await waitFor(() => expect(screen.getByTestId('board-drag-overlay')).toBeInTheDocument());
+    expect(screen.getByTestId('board-drag-overlay')).toHaveTextContent('Low thing');
+    expect(screen.getByTestId('board-drag-overlay').style.transform).toBe('rotate(-1.5deg) scale(1.03)');
+    expect(card).toHaveAttribute('data-placeholder', 'true');
+    expect(card).toHaveAttribute('data-dragging', 'true');
+    fireEvent.mouseUp(document, { clientX: 40, clientY: 40 });
+    await waitFor(() => expect(card).not.toHaveAttribute('data-placeholder'));
+    expect(updateTask).not.toHaveBeenCalled();
+  });
+
+  it('a mouse press on the card\'s ✓ button never starts a drag', async () => {
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
+    await waitFor(() => expect(screen.getByText('Low thing')).toBeInTheDocument());
+    const card = screen.getByText('Low thing').closest('[data-testid="task-row"]') as HTMLElement;
+    fireEvent.mouseDown(within(card).getByRole('button', { name: 'complete' }), { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.mouseMove(document, { clientX: 40, clientY: 40 });
+    expect(screen.queryByTestId('board-drag-overlay')).toBeNull();
+    fireEvent.mouseUp(document);
+  });
+});
+
 describe('Priorities compact layout', () => {
   let mm: FakeMatchMedia | null = null;
   beforeEach(() => { mm = installMatchMedia({ '(max-width: 767.98px)': true }); });
