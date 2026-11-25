@@ -1,6 +1,6 @@
 import type { ScheduledBlock, ScheduledBlockRepository } from '@notreclaim/db';
 import type { MirrorEventState, MirrorSnapshot } from '@notreclaim/core';
-import type { GoogleClient, GoogleEvent } from './client.js';
+import type { GoogleClient } from './client.js';
 import { collectPages } from './pagination.js';
 
 export interface DriftDeps {
@@ -28,10 +28,9 @@ export interface DriftResult {
  * than the row. When Google reports no stamp at all we keep the app copy, which is the
  * conservative choice for the case this exists to fix (a block the app just moved).
  */
-function googleWins(event: GoogleEvent, block: ScheduledBlock): boolean {
+function googleWins(googleUpdatedAt: number | undefined, block: ScheduledBlock): boolean {
   if (!block.pinned) return true;
-  const googleUpdated = event.updated ? Date.parse(event.updated) : NaN;
-  return Number.isFinite(googleUpdated) && googleUpdated > block.updatedAt.getTime();
+  return googleUpdatedAt !== undefined && googleUpdatedAt > block.updatedAt.getTime();
 }
 
 /** Reconcile user edits to our Auto-scheduled events: moves -> pin, deletes -> remove. */
@@ -83,16 +82,15 @@ export async function detectDrift(
       removed += 1;
       continue;
     }
-    if (!event.start?.dateTime || !event.end?.dateTime) continue;
+    const state = observed.get(block.googleEventId);
+    if (!state) continue; // all-day: no timed span to compare
 
-    const eventStart = new Date(event.start.dateTime).getTime();
-    const eventEnd = new Date(event.end.dateTime).getTime();
-    if (eventStart === block.startsAt.getTime() && eventEnd === block.endsAt.getTime()) continue;
-    if (!googleWins(event, block)) continue; // app-authoritative: the pinned pass pushes it outbound
+    if (state.start === block.startsAt.getTime() && state.end === block.endsAt.getTime()) continue;
+    if (!googleWins(state.updatedAt, block)) continue; // app-authoritative: the pinned pass pushes it outbound
 
     await deps.scheduledBlocks.update(userId, block.id, {
-      startsAt: new Date(eventStart),
-      endsAt: new Date(eventEnd),
+      startsAt: new Date(state.start),
+      endsAt: new Date(state.end),
       pinned: true,
       engineKey: null,
     });
