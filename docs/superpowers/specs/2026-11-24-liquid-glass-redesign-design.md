@@ -330,7 +330,7 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
 - **Legend:** four static items (Meetings swatch, Movable dashed swatch, Locked icon, Blocked hatch). P4 turns the first two into the filter toggles.
 - **Selection (§5.4, Q6 default applied):**
   - **md+, any pointer:** a click, tap or Enter selects. Behaviour changes: an iPad tap no longer opens the TaskDrawer, and a desktop click on an app event no longer opens the EventDrawer. The card's Open buttons do both.
-  - **Below md:** a tap opens the TaskDrawer or EventDrawer as before. Habit and Google tiles toast "Edit habits on the Habits page" / "Synced from Google Calendar" (they have no drawer).
+  - **Below md:** a tap opens the TaskDrawer or EventDrawer. Habit and Google tiles toast "Edit habits on the Habits page" / "Synced from Google Calendar" (they have no drawer). One change: before P3, a task tile opened its drawer only on a coarse pointer, so a mouse click below md did nothing. Now any pointer below md opens it.
   - Escape deselects unless an `[aria-modal="true"]` surface or the create popover is open.
   - Keyboard selection moves focus to the card heading. Closing the card hands focus back to the tile's body.
   - **Known:** the desktop TaskDrawer does not close on Esc (pre-existing). Esc with a drawer open deselects the card underneath.
@@ -352,7 +352,7 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
   - The "Next: …" time moved to its own line (`panel-next`). Beside the due date it starved the progress bar.
   - The panel is `min-h-0 flex-1` inside a 330px side column, under the detail card.
 - **Planner padding** is `px-1 pb-1` at md+ (was `md:p-4`), so the panels line up with the header.
-  - **P8:** in light theme the panel shadows are clipped by AppShell's `shell-content` `overflow-auto` box, which shows as a faint rectangle around the content area. The fix belongs in AppShell's padding/overflow contract (P2-owned, `AppShell.test` pins the padding).
+  - **P8:** in light theme the panel shadows are clipped by AppShell's `shell-content` `overflow-auto` box, which shows as a faint hard-edged rectangle around the content area. Confirmed live: forcing `overflow: visible` on `shell-content` makes the edge disappear. The fix belongs in AppShell's padding/overflow contract (P2-owned, `AppShell.test` pins the padding).
 - **Coarse resize target** (pre-existing): on tiles of 30 minutes or more the 24px handle covers the lower part, so on touch a press in the bottom half of a 45-minute tile resizes instead of long-press-moving. P4's resize task may want a smaller hit area plus a visible grip.
 - **Suite:** 1042 → 1137 (`EventBlock.test` and `UnscheduledWarning.test` were replaced by `CalendarBlock`/`blockStyle` and `UnscheduledCard` tests).
 
