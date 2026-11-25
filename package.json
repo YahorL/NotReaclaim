@@ -4,7 +4,7 @@
   "workspaces": ["packages/*"],
   "scripts": {
     "test": "npm run test --workspaces --if-present",
-    "build": "npm run build --workspaces --if-present",
+    "build": "npm run prisma:generate -w @notreclaim/db && npm run build -w @notreclaim/scheduler && npm run build -w @notreclaim/db && npm run build -w @notreclaim/core && npm run build -w @notreclaim/google && npm run build -w @notreclaim/server && npm run build -w @notreclaim/web",
     "typecheck": "npm run typecheck --workspaces --if-present"
   }
 }
