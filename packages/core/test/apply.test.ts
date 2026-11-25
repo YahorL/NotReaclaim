@@ -846,6 +846,59 @@ describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', ()
     });
   });
 
+  it.each([
+    ['a foreign-key violation (its task was just deleted)', prisma('P2003')],
+    ['a unique-key conflict', named('ConflictError')],
+  ])('a create rejected by %s after its Google insert deletes the just-inserted event again', async (_name, err) => {
+    // The DB rejected the row outright, so nothing will ever reference the event: remove it.
+    const { repo } = failingRepo([], 'create', 'task:t2:0', err);
+    const { mirror, calls } = failingMirror({});
+
+    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10), want('t3', 11)]), { now: NOW, horizonEnd: HORIZON, mirror, isRowScoped });
+
+    expect(res).toMatchObject({ created: 2, createFailed: 1 });
+    expect(calls).toEqual(['create task:t1:0', 'create task:t2:0', 'delete ', 'create task:t3:0']);
+    expect(mirror.delete).toHaveBeenCalledWith(expect.objectContaining({ googleEventId: 'g-new-2', googleCalendarId: 'cal1' }));
+  });
+
+  it('a failing compensating delete after a rejected create is swallowed: still one createFailed, the apply goes on', async () => {
+    const { repo } = failingRepo([], 'create', 'task:t1:0', prisma('P2003'));
+    const { mirror } = failingMirror({});
+    mirror.delete.mockImplementation(async () => { throw new TypeError('fetch failed'); });
+
+    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10)]), { now: NOW, horizonEnd: HORIZON, mirror, isRowScoped });
+
+    expect(res).toMatchObject({ created: 1, createFailed: 1 });
+  });
+
+  it('a create that fails for any other reason after its Google insert does NOT delete the event (the row may have committed)', async () => {
+    const lost = new Error('connection reset'); // aborts the apply; the event is not touched
+    const { repo } = failingRepo([], 'create', 'task:t1:0', lost);
+    const { mirror } = failingMirror({});
+    await expect(applyDesiredSchedule(repo, 'u1', desired([want('t1', 9)]), { now: NOW, horizonEnd: HORIZON, mirror, isRowScoped }))
+      .rejects.toBe(lost);
+    expect(mirror.delete).not.toHaveBeenCalled();
+  });
+
+  it('a mirrored row whose Google move succeeded but whose row is gone (NotFound) gets its event deleted', async () => {
+    const { repo } = failingRepo([mirrored('t1', 14), mirrored('t2', 15)], 'update', 'b-t1', named('NotFoundError'));
+    const { mirror, calls } = failingMirror({});
+
+    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10)]), { now: NOW, horizonEnd: HORIZON, mirror, isRowScoped });
+
+    expect(res).toMatchObject({ updated: 1, updateFailed: 1 });
+    expect(calls).toEqual(['update b-t1', 'delete b-t1', 'update b-t2']);
+    expect(mirror.delete).toHaveBeenCalledWith(expect.objectContaining({ id: 'b-t1', googleEventId: 'g-t1' }));
+  });
+
+  it('a mirrored row whose move failed for another row-scoped reason keeps its event', async () => {
+    const { repo } = failingRepo([mirrored('t1', 14)], 'update', 'b-t1', named('ConflictError'));
+    const { mirror } = failingMirror({});
+    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9)]), { now: NOW, horizonEnd: HORIZON, mirror, isRowScoped });
+    expect(res).toMatchObject({ updateFailed: 1 });
+    expect(mirror.delete).not.toHaveBeenCalled();
+  });
+
   it('a row-scoped Google update failure leaves that row untouched in the DB and is counted; later rows still move', async () => {
     const repo = fakeRepo([mirrored('t1', 14), mirrored('t2', 15), mirrored('t3', 16)]);
     const { mirror, calls } = failingMirror({ update: 'b-t2' });

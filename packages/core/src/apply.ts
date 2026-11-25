@@ -1,4 +1,4 @@
-import type { ScheduledBlock as DbScheduledBlock, ScheduledBlockRepository } from '@notreclaim/db';
+import type { ScheduledBlock as DbScheduledBlock, ScheduledBlockRepository, CreateScheduledBlockInput } from '@notreclaim/db';
 import { toScheduledBlock } from '@notreclaim/db/mappers';
 import type { ScheduledBlock as EngineScheduledBlock, ScheduleResult } from '@notreclaim/scheduler';
 import { toScheduledBlockInput } from './bridge.js';
@@ -196,7 +196,14 @@ export async function applyDesiredSchedule(
             }
             continue;
           }
-          await scheduledBlocks.update(userId, match.id, fields);
+          try {
+            await scheduledBlocks.update(userId, match.id, fields);
+          } catch (err) {
+            // The row is gone (a cascade from its deleted task/habit) but Google was just
+            // moved: nothing references that event any more, so remove it (best effort).
+            if (mirror && !unmirrored && isNotFoundError(err)) await deleteQuietly(mirror, match);
+            throw err;
+          }
           updated += 1;
           if (insertFailed) attachFailed += 1;
         } catch (err) {
@@ -234,14 +241,21 @@ export async function applyDesiredSchedule(
         await scheduledBlocks.update(userId, holder.id, { engineKey: null });
       }
       const ids = mirror ? await mirror.create(block) : null;
-      // If this create fails after a successful insert, the event is left behind: the create
-      // may have committed anyway (a lost reply), so it is not deleted blind.
-      await scheduledBlocks.create(userId, {
+      const input = {
         ...toScheduledBlockInput(block),
         engineKey: block.id,
         googleEventId: ids?.googleEventId ?? null,
         googleCalendarId: ids?.googleCalendarId ?? null,
-      });
+      };
+      try {
+        await scheduledBlocks.create(userId, input);
+      } catch (err) {
+        // A foreign-key or unique-key rejection proves the row was never stored, so nothing
+        // will ever reference the just-inserted event: remove it (best effort). Any other
+        // failure may have committed anyway (a lost reply), so that event is left alone.
+        if (mirror && ids && isRejectedCreate(err)) await deleteQuietly(mirror, unsavedRow(userId, input, now));
+        throw err;
+      }
       created += 1;
     } catch (err) {
       skipIfRowScoped(err);
@@ -385,6 +399,31 @@ async function storeInsertedIds(
     return 'gone';
   } catch {
     return 'orphaned';
+  }
+}
+
+/** A create the database refused outright: the row provably does not exist. */
+function isRejectedCreate(err: unknown): boolean {
+  return err instanceof Error && (err.name === 'ConflictError' || (err as { code?: unknown }).code === 'P2003');
+}
+
+/** The shape mirror.delete expects, for an event whose row was never stored (it reads only the ids). */
+function unsavedRow(userId: string, input: CreateScheduledBlockInput, now: number): DbScheduledBlock {
+  const at = new Date(now);
+  return {
+    id: '', userId, taskId: input.taskId ?? null, habitId: input.habitId ?? null, title: input.title,
+    startsAt: input.startsAt, endsAt: input.endsAt, pinned: false, engineKey: input.engineKey ?? null,
+    googleEventId: input.googleEventId ?? null, googleCalendarId: input.googleCalendarId ?? null,
+    startedAt: null, createdAt: at, updatedAt: at,
+  };
+}
+
+/** Best-effort compensating event delete: its failure leaves an orphan event, never fails the row. */
+async function deleteQuietly(mirror: ScheduleMirror, row: DbScheduledBlock): Promise<void> {
+  try {
+    await mirror.delete(row);
+  } catch {
+    // orphaned on the external calendar; the row's own failure is what gets counted
   }
 }
 
