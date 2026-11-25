@@ -1,16 +1,12 @@
 import { useState, useRef } from 'react';
 import type { Category, UpdateCategoryInput } from '../../api/types';
-import { ApiError } from '../../api/client';
+import { saveErrorText } from '../lib/saveError';
 import { FIELD_ERROR } from '../components/formStyles';
 import { useCategoriesQuery, useCreateCategoryMutation, useUpdateCategoryMutation, useDeleteCategoryMutation } from '../../api/queries';
 import { WeeklyHoursEditor } from './WeeklyHoursEditor';
 import { validateCategoryForm } from './categoryForm';
 import { type DayState, windowsToDays, daysToWindows, patchDay } from './weeklyHours';
 
-/** A mutation failure as text. Anything but an ApiError (e.g. a network TypeError) gets a generic line. */
-function saveErrorText(error: unknown): string {
-  return error instanceof ApiError ? error.message : "Couldn't save. Check your connection and try again.";
-}
 
 const COLOR_PALETTE = ['#5b62e3', '#4285f4', '#0f9d58', '#f4b400', '#db4437', '#9c27b0', '#00acc1', '#795548'];
 

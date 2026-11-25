@@ -3,6 +3,7 @@ import { useSettingsQuery, useUpdateSettingsMutation } from '../../api/queries';
 import { SettingsForm } from '../settings/SettingsForm';
 import { AccountSection } from '../settings/AccountSection';
 import { toFormState, defaultFormState, browserTimezone } from '../settings/settingsForm';
+import { saveErrorText } from '../lib/saveError';
 import { appVersion, formatAppVersion, type AppVersion } from '../lib/appVersion';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
@@ -49,7 +50,7 @@ export function Settings({ version }: { version?: AppVersion } = {}) {
           initial={initial}
           saving={updateM.isPending}
           justSaved={updateM.isSuccess}
-          error={updateM.error instanceof ApiError ? updateM.error : null}
+          error={updateM.isError ? { message: saveErrorText(updateM.error) } : null}
           onSave={(input) => updateM.mutate(input)}
         />
         <AccountSection />

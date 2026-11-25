@@ -58,6 +58,25 @@ describe('Settings page', () => {
     expect(screen.getByTestId('app-version')).toHaveTextContent('NotReclaim a1b2c3d · built 2026-08-12');
   });
 
+  it('shows the server\'s message when a save is rejected', async () => {
+    const putSettings = vi.fn(async () => { throw new ApiError(400, 'validation_error', 'timezone: must be a valid IANA time zone'); });
+    const api = fakeApiClient({ getSettings: async () => settings(), putSettings } as never);
+    renderWithProviders(<SettingsPage />, { api });
+    await waitFor(() => expect(screen.getByTestId('settings-form')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('save'));
+    await waitFor(() => expect(screen.getByTestId('form-error')).toHaveTextContent('timezone: must be a valid IANA time zone'));
+  });
+
+  it('says it could not save when the request never reached the server (network failure)', async () => {
+    const putSettings = vi.fn(async () => { throw new TypeError('Failed to fetch'); });
+    const api = fakeApiClient({ getSettings: async () => settings(), putSettings } as never);
+    renderWithProviders(<SettingsPage />, { api });
+    await waitFor(() => expect(screen.getByTestId('settings-form')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('save'));
+    await waitFor(() => expect(screen.getByTestId('form-error')).toHaveTextContent("Couldn't save. Check your connection and try again."));
+    expect(screen.queryByTestId('saved')).not.toBeInTheDocument();
+  });
+
   it('omits the build date when it is unknown', async () => {
     const api = fakeApiClient({ getSettings: async () => settings() } as never);
     renderWithProviders(<SettingsPage version={{ version: 'dev', buildDate: null }} />, { api });

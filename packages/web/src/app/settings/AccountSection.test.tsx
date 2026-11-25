@@ -16,6 +16,14 @@ describe('AccountSection', () => {
     await waitFor(() => expect(setPassword).toHaveBeenCalledWith('longenough1'));
   });
 
+  it('says it could not save the password when the request fails without a server answer', async () => {
+    const setPassword = vi.fn(async () => { throw new TypeError('Failed to fetch'); });
+    renderWithProviders(<AccountSection />, { api: fakeApiClient({ setPassword, getGoogleStatus: disconnected }) });
+    fireEvent.change(screen.getByLabelText(/new password/i), { target: { value: 'longenough1' } });
+    fireEvent.click(screen.getByRole('button', { name: /save password/i }));
+    await waitFor(() => expect(screen.getByText("Couldn't save. Check your connection and try again.")).toBeInTheDocument());
+  });
+
   it('starts the Connect Google flow when not connected', async () => {
     const getLinkGoogleUrl = vi.fn(async () => ({ url: 'https://consent.example/x' }));
     const assign = vi.fn();

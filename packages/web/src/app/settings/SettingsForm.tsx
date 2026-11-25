@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import type { SettingsInput } from '../../api/types';
-import type { ApiError } from '../../api/client';
 import { DurationStepper } from '../components/DurationStepper';
 import { FieldBox } from '../components/FieldBox';
 import { minutesToHHMM, hhmmToMinutes } from '../lib/duration';
@@ -14,7 +13,8 @@ export interface SettingsFormProps {
   initial: SettingsFormState;
   onSave: (input: SettingsInput) => void;
   saving?: boolean;
-  error?: ApiError | null;
+  /** The failed save's text (server message, or the no-response line — see saveErrorText). */
+  error?: { message: string } | null;
   justSaved?: boolean;
   timezones?: string[];
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useApi } from '../../api/ApiProvider';
-import { ApiError } from '../../api/client';
+import { saveErrorText } from '../lib/saveError';
 import { useGoogleStatusQuery } from '../../api/queries';
 import { GOOGLE_LINK_FAILED, startGoogleLink } from '../lib/googleLink';
 
@@ -16,7 +16,7 @@ export function AccountSection() {
     e.preventDefault();
     setMsg(null); setErr(null);
     try { await api.setPassword(password); setPassword(''); setMsg('Password saved'); }
-    catch (e2) { setErr(e2 instanceof ApiError ? e2.message : 'Failed'); }
+    catch (e2) { setErr(saveErrorText(e2)); }
   };
   const linkGoogle = () => {
     void (async () => {
