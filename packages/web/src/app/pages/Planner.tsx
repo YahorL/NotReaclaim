@@ -23,7 +23,7 @@ import { TaskDrawer } from '../tasks/TaskDrawer';
 import { EventDrawer } from '../planner/EventDrawer';
 import { labelBlocksWithSubtasks } from '../planner/blockLabels';
 
-const DRAWER_DESKTOP_CLASS = 'fixed right-3 top-[84px] z-50';
+const DRAWER_DESKTOP_CLASS = 'fixed right-3 top-[120px] z-50';
 
 export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const nowMs = now();

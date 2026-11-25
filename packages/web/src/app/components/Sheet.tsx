@@ -9,8 +9,11 @@ const FOCUSABLE =
   'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
 /** Everything the two variants share. Split out only so each variant stays one literal string. */
+// The dialog surface WITHOUT `.glass-dialog`'s backdrop-filter: like a transform, a filter makes
+// the sheet the containing block for `fixed` descendants (see the no-transform note below), and
+// --x-dialog-bg is near-opaque anyway.
 const FRAME =
-  'pointer-events-auto absolute inset-x-0 bottom-0 flex flex-col border-t border-line bg-card pb-[env(safe-area-inset-bottom)] shadow-pop transition-transform duration-200';
+  'pointer-events-auto absolute inset-x-0 bottom-0 flex flex-col border-t border-line [background:var(--x-dialog-bg)] pb-[env(safe-area-inset-bottom)] shadow-modal transition-transform duration-200';
 
 export interface SheetProps {
   /** Accessible name; also used for the close button's label. */
@@ -117,7 +120,7 @@ export function Sheet({ label, onClose, children, fullScreen = false, scrollBody
   // the drag instead of closing the sheet: intended.
   const onKeyDown = useFocusTrap(dialogRef, { onEscape: onClose });
 
-  const frameClass = fullScreen ? `${FRAME} h-dvh` : `${FRAME} h-[70dvh] rounded-t-[18px]`;
+  const frameClass = fullScreen ? `${FRAME} h-dvh` : `${FRAME} h-[70dvh] rounded-t-[26px]`;
   const bodyClass = scrollBody
     ? 'flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-2 pb-2'
     : 'flex min-h-0 flex-1 flex-col overflow-hidden overscroll-contain px-2 pb-2';
@@ -126,11 +129,14 @@ export function Sheet({ label, onClose, children, fullScreen = false, scrollBody
     <div
       data-testid="sheet-backdrop"
       onClick={collapsed ? undefined : onClose}
-      className={collapsed ? 'pointer-events-none fixed inset-0 z-50' : 'fixed inset-0 z-50 bg-black/30'}
+      data-collapsed={collapsed || undefined}
+      className={collapsed ? 'pointer-events-none fixed inset-0 z-50' : 'fixed inset-0 z-50 bg-overlay backdrop-blur-[8px]'}
     >
       <div
         ref={dialogRef}
         data-testid="sheet"
+        data-full-screen={fullScreen || undefined}
+        data-collapsed={collapsed || undefined}
         role="dialog"
         // Collapsed, the sheet is a strip over a live grid the user is dragging on -- claiming the
         // rest of the page is inert would be a lie to assistive tech.
@@ -144,13 +150,13 @@ export function Sheet({ label, onClose, children, fullScreen = false, scrollBody
       >
         <div className="flex shrink-0 items-center justify-between px-3 pt-2">
           <span className="w-11" />
-          <span aria-hidden="true" className="h-1 w-10 rounded-full bg-line" />
+          <span aria-hidden="true" data-testid="sheet-grabber" className="h-1 w-10 rounded-full bg-fg/20" />
           <button
             type="button"
             data-testid="sheet-close"
             aria-label={`Close ${label}`}
             onClick={onClose}
-            className="flex h-11 w-11 items-center justify-center rounded-[9px] text-inkSoft"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-fg-2 hover:bg-fg/[.07] hover:text-fg"
           >
             ✕
           </button>

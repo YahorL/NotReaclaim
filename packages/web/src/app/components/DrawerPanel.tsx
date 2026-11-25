@@ -2,7 +2,8 @@ import { useRef, type ReactNode } from 'react';
 import { useClickOutside } from './useClickOutside';
 import { FIELD_ERROR } from './formStyles';
 
-const PANEL = 'w-[440px] shrink-0 space-y-2.5 rounded-[14px] border border-line bg-card p-4 shadow-pop max-h-[calc(100dvh-100px)] overflow-y-auto';
+// Desktop slot sits at top-[120px] under the redesign header; 140px = that offset + a 20px margin.
+const PANEL = 'glass-dialog w-[440px] shrink-0 space-y-2.5 rounded-panel p-5 max-h-[calc(100dvh-140px)] overflow-y-auto';
 const PANEL_COMPACT = 'w-full space-y-2.5 p-2';
 const ACTIONS = 'flex gap-2 pt-1';
 const ACTIONS_CENTERED = 'flex items-center gap-2 pt-1';
@@ -28,7 +29,7 @@ export function DrawerPanel({ testId, title, compact, onDismiss, error = null, a
   useClickOutside(rootRef, onDismiss, !compact);
   return (
     <aside ref={rootRef} data-testid={testId} className={compact ? PANEL_COMPACT : PANEL}>
-      <h4 className="text-[15px] font-bold text-ink">{title}</h4>
+      <h4 className="text-[17px] font-semibold text-fg">{title}</h4>
       {children}
       {error && <p data-testid="drawer-error" className={FIELD_ERROR}>{error.message}</p>}
       <div className={centerActions ? ACTIONS_CENTERED : ACTIONS}>{actions}</div>

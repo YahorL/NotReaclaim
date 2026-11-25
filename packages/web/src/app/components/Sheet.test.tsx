@@ -53,7 +53,9 @@ describe('Sheet collapsed for a drag', () => {
     render(<Sheet label="Tasks" onClose={onClose} collapsed><p>body</p></Sheet>);
     const backdrop = screen.getByTestId('sheet-backdrop');
     expect(backdrop.className).toContain('pointer-events-none');
-    expect(backdrop.className).not.toContain('bg-black/30');
+    // No dimming overlay while it is a strip over the live grid.
+    expect(backdrop).toHaveAttribute('data-collapsed', 'true');
+    expect(backdrop.className).not.toContain('bg-overlay');
     fireEvent.click(backdrop);
     expect(onClose).not.toHaveBeenCalled();
   });
@@ -158,7 +160,8 @@ describe('Sheet variants', () => {
     const sheet = screen.getByTestId('sheet');
     expect(sheet.className).toContain('h-dvh');
     expect(sheet.className).not.toContain('h-[70dvh]');
-    expect(sheet.className).not.toContain('rounded-t-[18px]');
+    expect(sheet.className).not.toContain('rounded-t-');
+    expect(sheet).toHaveAttribute('data-full-screen', 'true');
   });
 
   it('scrolls its body only when asked to', () => {
