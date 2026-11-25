@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { screen, within, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 import type { ScheduledBlock } from '../../api/types';
 import { TopBar } from './TopBar';
@@ -33,6 +33,17 @@ describe('TopBar (bare render)', () => {
     expect(h1).toHaveTextContent('Your priorities');
     expect(h1.querySelector('strong')).toHaveTextContent('priorities');
     expect(screen.getByTestId('route-eyebrow')).toHaveTextContent(/across 4 priority levels/);
+  });
+
+  it('keeps the action cluster on one row that wraps as a unit (no lone avatar at ~900px)', () => {
+    renderTopBar(vi.fn(), '/stats');
+    const actions = screen.getByTestId('header-actions');
+    // Layout guarantees: never wraps internally, may shrink, sits right when on its own row.
+    expect(actions).toHaveClass('flex-nowrap', 'min-w-0', 'ml-auto');
+    expect(actions.className).not.toMatch(/(^|\s)flex-wrap(\s|$)/);
+    expect(within(actions).getByRole('button', { name: 'Account menu' })).toBeInTheDocument();
+    // New task keeps its name when it collapses to an icon below xl.
+    expect(within(actions).getByRole('button', { name: 'New task' })).toBeInTheDocument();
   });
 
   it('counts open tasks in the Priorities eyebrow', async () => {

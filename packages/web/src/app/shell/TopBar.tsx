@@ -40,7 +40,12 @@ export function TopBar({ onNewTask, onSearch, now = Date.now, sidebarHidden, onT
         </h1>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2.5">
+      {/* The cluster never wraps internally (that once left the avatar alone on a row at ~900px).
+          When it does not fit beside the title, the header's flex-wrap moves it to its own row as
+          one unit, right-aligned (ml-auto), where the pill title can still truncate (min-w-0).
+          Below xl it also slims down: New task becomes a round icon button and the pill drops its
+          time, so most tablet widths keep a single row. */}
+      <div data-testid="header-actions" className="ml-auto flex min-w-0 max-w-full flex-nowrap items-center gap-2.5">
         {onToggleSidebar && (
           <button
             type="button"
@@ -65,7 +70,7 @@ export function TopBar({ onNewTask, onSearch, now = Date.now, sidebarHidden, onT
               <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-accent-fg" />
               <span className="font-medium text-fg">Now</span>
               <span aria-hidden="true">·</span>
-              <span className="max-w-[24ch] truncate text-fg">{running.title}</span>
+              <span className="min-w-0 max-w-[24ch] truncate text-fg">{running.title}</span>
             </button>
             <button type="button" data-testid="stop-task" onClick={stop} className={`btn-glass ${PILL_ACTION} text-danger`}>
               <Icons.stop size={14} /> Stop
@@ -82,9 +87,9 @@ export function TopBar({ onNewTask, onSearch, now = Date.now, sidebarHidden, onT
               <Icons.clock size={15} className="shrink-0" />
               <span className="font-medium text-fg">Next</span>
               <span aria-hidden="true">·</span>
-              <span className="max-w-[24ch] truncate text-fg">{nextBlock.title}</span>
-              <span aria-hidden="true">·</span>
-              <span className="shrink-0">{nextTime}</span>
+              <span className="min-w-0 max-w-[24ch] truncate text-fg">{nextBlock.title}</span>
+              <span aria-hidden="true" className="hidden xl:inline">·</span>
+              <span className="hidden shrink-0 xl:inline">{nextTime}</span>
             </button>
             <button type="button" data-testid="next-task-start" onClick={start} className={`btn-accent ${PILL_ACTION}`}>
               <Icons.play size={14} /> Start
@@ -108,9 +113,9 @@ export function TopBar({ onNewTask, onSearch, now = Date.now, sidebarHidden, onT
           type="button"
           onClick={onNewTask}
           aria-haspopup="dialog"
-          className="btn-primary inline-flex h-[46px] shrink-0 items-center gap-2 rounded-pill pl-4 pr-5 text-[15px] font-medium shadow-[inset_0_1px_0_#fff,0_10px_30px_-12px_rgba(255,255,255,0.5)] [[data-theme=light]_&]:shadow-[0_10px_30px_-12px_rgba(17,18,20,0.55)]"
+          className="btn-primary inline-flex h-[46px] w-[46px] shrink-0 items-center justify-center gap-2 rounded-pill text-[15px] font-medium xl:w-auto xl:pl-4 xl:pr-5 shadow-[inset_0_1px_0_#fff,0_10px_30px_-12px_rgba(255,255,255,0.5)] [[data-theme=light]_&]:shadow-[0_10px_30px_-12px_rgba(17,18,20,0.55)]"
         >
-          <Icons.plus size={18} className="[stroke-width:2]" /> New task
+          <Icons.plus size={18} className="shrink-0 [stroke-width:2]" /> <span className="sr-only xl:not-sr-only">New task</span>
         </button>
 
         <AccountMenu />
