@@ -75,6 +75,30 @@ describe('makeReplan logs the rows a replan skipped', () => {
     expect(logged.failures[0]!.error.message.length).toBeLessThanOrEqual(301);
   });
 
+  it('logs a Prisma error by its last line (the informative one), whitespace collapsed', async () => {
+    const prismaMessage = '\nInvalid `prisma.scheduledBlock.create()` invocation in\n/app/packages/db/dist/x.js:12:3\n\n  11 \n→ 12   return prisma.scheduledBlock.create(\nForeign key constraint violated:   `ScheduledBlock_taskId_fkey (index)`\n';
+    const { replan, warn } = setup((report) => {
+      report({ kind: 'create', blockId: null, engineKey: 'task:t1:0', error: Object.assign(new Error(prismaMessage), { code: 'P2003' }) });
+      return { createFailed: 1 };
+    });
+    await replan('u1', NOW);
+    const logged = warn.mock.calls[0]![0] as { failures: Array<{ error: { message: string } }> };
+    expect(logged.failures[0]!.error.message).toBe('Foreign key constraint violated: `ScheduledBlock_taskId_fkey (index)`');
+  });
+
+  it('collapses the whitespace of a pretty-printed Google error body before capping it', async () => {
+    const body = JSON.stringify({ error: { code: 403, message: 'Forbidden', errors: [{ reason: 'forbidden' }] } }, null, 2);
+    const { replan, warn } = setup((report) => {
+      report({ kind: 'update', blockId: 'b1', engineKey: null, error: Object.assign(new Error(`Google API error 403: ${body}`), { status: 403 }) });
+      return { updateFailed: 1 };
+    });
+    await replan('u1', NOW);
+    const logged = warn.mock.calls[0]![0] as { failures: Array<{ error: { message: string } }> };
+    expect(logged.failures[0]!.error.message).toBe(
+      'Google API error 403: { "error": { "code": 403, "message": "Forbidden", "errors": [ { "reason": "forbidden" } ] } }',
+    );
+  });
+
   it('stays silent on a clean run', async () => {
     const { replan, warn } = setup(() => ({ attachFailed: 0 }));
     await replan('u1', NOW);

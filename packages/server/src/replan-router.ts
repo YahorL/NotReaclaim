@@ -19,13 +19,25 @@ export interface ReplanRouterDeps {
 const FAILED_COUNTS = ['createFailed', 'updateFailed', 'deleteFailed', 'attachFailed', 'pinnedFailed'] as const;
 const MAX_MESSAGE = 300;
 
+/**
+ * One log-friendly line: a Prisma known-request error (code `P####`) keeps only its last
+ * non-empty line — the rest is an invocation header and a code frame — and all whitespace
+ * runs (pretty-printed Google JSON bodies) collapse to one space before the cap.
+ */
+function logMessage(message: string, code: unknown): string {
+  const lines = message.split('\n').filter((line) => line.trim() !== '');
+  const text = typeof code === 'string' && /^P\d{4}$/.test(code) && lines.length > 1 ? lines[lines.length - 1]! : message;
+  const oneLine = text.replace(/\s+/g, ' ').trim();
+  return oneLine.length > MAX_MESSAGE ? `${oneLine.slice(0, MAX_MESSAGE)}…` : oneLine;
+}
+
 /** What is safe to log of an error: its name, a capped message, and an HTTP status / DB code. No tokens, no bodies beyond that. */
 function describeError(error: unknown): Record<string, unknown> {
-  if (!(error instanceof Error)) return { message: String(error).slice(0, MAX_MESSAGE) };
+  if (!(error instanceof Error)) return { message: logMessage(String(error), undefined) };
   const { status, code } = error as { status?: unknown; code?: unknown };
   return {
     name: error.name,
-    message: error.message.length > MAX_MESSAGE ? `${error.message.slice(0, MAX_MESSAGE)}…` : error.message,
+    message: logMessage(error.message, code),
     ...(typeof status === 'number' ? { status } : {}),
     ...(typeof code === 'string' ? { code } : {}),
   };
