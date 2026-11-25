@@ -63,7 +63,8 @@ const BUFFER_TOO_LONG = 'Buffer must be at most 24 hours (1440 min)';
 /**
  * The rule for `meetingBufferMs` / `taskBufferMs` as stored (ms), used by the Settings form.
  * No 24 h cap here: that form has no buffer fields to show it on, so a larger value stored
- * before the server capped it would silently disable Save — the server's 400 names it instead.
+ * before the server capped it would silently disable Save. Its save leaves the buffers out
+ * (useSaveSettingsMutation), so such a value no longer reaches the server from there either.
  */
 export function validateBufferMs(ms: number): string | undefined {
   if (!Number.isInteger(ms) || ms < 0) return BUFFER_NOT_WHOLE;

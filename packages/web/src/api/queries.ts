@@ -294,8 +294,34 @@ export function useSettingsQuery() {
   return useQuery({ queryKey: queryKeys.settings(), queryFn: () => api.getSettings() });
 }
 
-export function useUpdateSettingsMutation() {
-  return useApiMutation((api, body: SettingsInput) => api.putSettings(body), [queryKeys.settingsRoot, queryKeys.scheduleRoot]);
+const SETTINGS_ROOTS = [queryKeys.settingsRoot, queryKeys.scheduleRoot] as const;
+
+/**
+ * The Settings page's save: a PATCH of the fields that page owns, i.e. everything but the two
+ * buffers (the Buffers page's), so it cannot revert a buffer change saved there meanwhile nor fail
+ * on a stored buffer it does not show. `configured` false = no settings row yet (GET was 404, and
+ * PATCH would be too): the whole input is PUT instead, its buffers being the form's defaults.
+ */
+export function useSaveSettingsMutation(configured: boolean) {
+  return useApiMutation((api, input: SettingsInput) => {
+    if (!configured) return api.putSettings(input);
+    const { meetingBufferMs: _meeting, taskBufferMs: _task, ...owned } = input;
+    return api.patchSettings(owned);
+  }, SETTINGS_ROOTS);
+}
+
+export type BufferValues = { meetingBufferMs: number; taskBufferMs: number };
+
+/**
+ * The Buffers page's save: a PATCH of just the buffers given, so it cannot revert a settings
+ * change made elsewhere since it loaded. With no settings row yet (`firstTime`, the defaults that
+ * page shows) there is nothing to patch, so it PUTs those defaults plus the buffers instead.
+ */
+export function useSaveBuffersMutation(firstTime: SettingsInput | null) {
+  return useApiMutation(
+    (api, buffers: Partial<BufferValues>) => firstTime ? api.putSettings({ ...firstTime, ...buffers }) : api.patchSettings(buffers),
+    SETTINGS_ROOTS,
+  );
 }
 
 export function useCategoriesQuery() {

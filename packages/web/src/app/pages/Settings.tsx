@@ -1,5 +1,5 @@
 import { ApiError } from '../../api/client';
-import { useSettingsQuery, useUpdateSettingsMutation } from '../../api/queries';
+import { useSettingsQuery, useSaveSettingsMutation } from '../../api/queries';
 import { SettingsForm } from '../settings/SettingsForm';
 import { AccountSection } from '../settings/AccountSection';
 import { toFormState, defaultFormState, browserTimezone } from '../settings/settingsForm';
@@ -12,7 +12,7 @@ import { Icons } from '../shell/icons';
 /** `version` is injectable so tests don't depend on build-time env injection. */
 export function Settings({ version }: { version?: AppVersion } = {}) {
   const settingsQ = useSettingsQuery();
-  const updateM = useUpdateSettingsMutation();
+  const updateM = useSaveSettingsMutation(settingsQ.data !== undefined);
   const { signOut } = useAuth();
 
   if (settingsQ.isLoading) {

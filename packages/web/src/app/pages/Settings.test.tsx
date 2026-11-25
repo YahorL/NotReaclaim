@@ -28,17 +28,52 @@ describe('Settings page', () => {
     expect((screen.getByTestId('day-0-toggle') as HTMLInputElement).checked).toBe(false);
   });
 
-  it('prefills from existing settings and saves the converted input', async () => {
+  it('prefills from existing settings and saves the converted input with a PATCH that leaves the buffers out', async () => {
+    const patchSettings = vi.fn(async () => settings());
     const putSettings = vi.fn(async () => settings());
-    const api = fakeApiClient({ getSettings: async () => settings(), putSettings } as never);
+    const api = fakeApiClient({ getSettings: async () => settings({ meetingBufferMs: 300_000, taskBufferMs: 600_000 }), patchSettings, putSettings } as never);
     renderWithProviders(<SettingsPage />, { api });
     await waitFor(() => expect(screen.getByTestId('settings-form')).toBeInTheDocument());
     expect((screen.getByTestId('horizon') as HTMLInputElement).value).toBe('7');
     fireEvent.click(screen.getByTestId('save'));
-    await waitFor(() => expect(putSettings).toHaveBeenCalled());
-    const input = (putSettings.mock.calls[0] as unknown[])[0] as { timezone: string; workingHours: unknown[] };
+    await waitFor(() => expect(patchSettings).toHaveBeenCalled());
+    const input = (patchSettings.mock.calls[0] as unknown[])[0] as Record<string, unknown>;
     expect(input.timezone).toBe('UTC');
     expect(input.workingHours).toHaveLength(1);
+    // The buffers belong to the Buffers page: sending the values loaded here would revert a
+    // buffer change saved there meanwhile.
+    expect(input).not.toHaveProperty('meetingBufferMs');
+    expect(input).not.toHaveProperty('taskBufferMs');
+    expect(Object.keys(input).sort()).toEqual(
+      ['dayStartMinute', 'defaultMaxChunkMs', 'defaultMinChunkMs', 'horizonDays', 'requireStartToTrack', 'timezone', 'workingHours'],
+    );
+    expect(putSettings).not.toHaveBeenCalled();
+  });
+
+  it('a stored buffer above 24 h (from before the cap) no longer blocks a Settings save', async () => {
+    const patchSettings = vi.fn(async () => settings());
+    const api = fakeApiClient({ getSettings: async () => settings({ meetingBufferMs: 30 * 3_600_000 }), patchSettings } as never);
+    renderWithProviders(<SettingsPage />, { api });
+    await waitFor(() => expect(screen.getByTestId('settings-form')).toBeInTheDocument());
+    expect(screen.getByTestId('save')).toBeEnabled();
+    fireEvent.click(screen.getByTestId('save'));
+    await waitFor(() => expect(screen.getByTestId('saved')).toBeInTheDocument());
+    expect((patchSettings.mock.calls[0] as unknown[])[0]).not.toHaveProperty('meetingBufferMs');
+    expect(screen.queryByTestId('form-error')).not.toBeInTheDocument();
+  });
+
+  it('first-time setup (no settings yet, so nothing to PATCH) creates them with a PUT whose buffers are the defaults', async () => {
+    const patchSettings = vi.fn(async () => settings());
+    const putSettings = vi.fn(async () => settings());
+    const api = fakeApiClient({
+      getSettings: () => Promise.reject(new ApiError(404, 'not_found', 'Settings not configured')), patchSettings, putSettings,
+    } as never);
+    renderWithProviders(<SettingsPage />, { api });
+    await waitFor(() => expect(screen.getByTestId('settings-form')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('save'));
+    await waitFor(() => expect(putSettings).toHaveBeenCalledTimes(1));
+    expect((putSettings.mock.calls[0] as unknown[])[0]).toMatchObject({ meetingBufferMs: 0, taskBufferMs: 0, horizonDays: 14 });
+    expect(patchSettings).not.toHaveBeenCalled();
   });
 
   // Item 8: centered layout
@@ -59,8 +94,8 @@ describe('Settings page', () => {
   });
 
   it('shows the server\'s message when a save is rejected', async () => {
-    const putSettings = vi.fn(async () => { throw new ApiError(400, 'validation_error', 'timezone: must be a valid IANA time zone'); });
-    const api = fakeApiClient({ getSettings: async () => settings(), putSettings } as never);
+    const patchSettings = vi.fn(async () => { throw new ApiError(400, 'validation_error', 'timezone: must be a valid IANA time zone'); });
+    const api = fakeApiClient({ getSettings: async () => settings(), patchSettings } as never);
     renderWithProviders(<SettingsPage />, { api });
     await waitFor(() => expect(screen.getByTestId('settings-form')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('save'));
@@ -68,8 +103,8 @@ describe('Settings page', () => {
   });
 
   it('says it could not save when the request never reached the server (network failure)', async () => {
-    const putSettings = vi.fn(async () => { throw new TypeError('Failed to fetch'); });
-    const api = fakeApiClient({ getSettings: async () => settings(), putSettings } as never);
+    const patchSettings = vi.fn(async () => { throw new TypeError('Failed to fetch'); });
+    const api = fakeApiClient({ getSettings: async () => settings(), patchSettings } as never);
     renderWithProviders(<SettingsPage />, { api });
     await waitFor(() => expect(screen.getByTestId('settings-form')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('save'));
