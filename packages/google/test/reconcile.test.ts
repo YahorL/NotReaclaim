@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { planLocally } from '@notreclaim/core';
 import { reconcile } from '../src/reconcile.js';
-import { GoogleApiError } from '../src/errors.js';
+import { GoogleApiError, GoogleAuthError, GoogleGrantRevokedError, GoogleTimeoutError } from '../src/errors.js';
 import type { GoogleEventWrite } from '../src/client.js';
 import {
   FakeGoogleClient,
@@ -502,5 +502,53 @@ describe('reconcile: never-mirrored blocks when a Google insert fails or the row
     expect(client.deletedEvents).toEqual([{ calendarId: 'cal-auto', googleEventId: twoEvent }]);
     expect(result).toEqual(counts({ attached: 2 }));
     expect(store.all().map((b) => b.title).sort()).toEqual(['One', 'Three']);
+  });
+});
+
+describe('reconcile: one failing row does not abort the cycle, a dead connection does', () => {
+  // Three mirrored auto rows the engine moves (it places the tasks from 09:00): three PUTs.
+  function seeded() {
+    const store = fakeScheduledBlockStore([
+      makeScheduledBlock({ id: 'a', taskId: 't1', engineKey: 'task:t1:0', googleEventId: 'g-a', googleCalendarId: 'cal-auto',
+        startsAt: new Date('2026-01-05T13:00:00Z'), endsAt: new Date('2026-01-05T13:30:00Z') }),
+      makeScheduledBlock({ id: 'b', taskId: 't2', engineKey: 'task:t2:0', googleEventId: 'g-b', googleCalendarId: 'cal-auto',
+        startsAt: new Date('2026-01-05T14:00:00Z'), endsAt: new Date('2026-01-05T14:30:00Z') }),
+      makeScheduledBlock({ id: 'c', taskId: 't3', engineKey: 'task:t3:0', googleEventId: 'g-c', googleCalendarId: 'cal-auto',
+        startsAt: new Date('2026-01-05T15:00:00Z'), endsAt: new Date('2026-01-05T15:30:00Z') }),
+    ]);
+    const client = new FakeGoogleClient();
+    client.listQueue = [{ events: googleEventsFromStore(store) }];
+    const tasks = [makeTask({ id: 't1', priority: 1 }), makeTask({ id: 't2', priority: 2 }), makeTask({ id: 't3', priority: 3 })];
+    return { store, client, deps: buildDeps({ store, tasks, client }) };
+  }
+  const failOn = (client: FakeGoogleClient, googleEventId: string, err: Error) => {
+    client.onUpdateEvent = (id) => { if (id === googleEventId) throw err; };
+  };
+  const startOf = (store: ReturnType<typeof fakeScheduledBlockStore>, id: string) => store.all().find((b) => b.id === id)!.startsAt.toISOString();
+
+  it('a Google error on one row is isolated: the other rows move, the failure is counted in the result', async () => {
+    const { store, client, deps } = seeded();
+    failOn(client, 'g-b', new GoogleApiError(500, 'backend error'));
+
+    const result = await reconcile(deps, 'u1', NOW);
+
+    expect(result).toMatchObject({ updated: 2, updateFailed: 1 });
+    expect(client.updatedEvents.map((u) => u.googleEventId)).toEqual(['g-a', 'g-c']);
+    expect(startOf(store, 'b')).toBe('2026-01-05T14:00:00.000Z'); // untouched: Google first, then DB
+    expect(startOf(store, 'c')).not.toBe('2026-01-05T15:00:00.000Z');
+  });
+
+  it.each([
+    ['a request timeout (Google unreachable: every later call would wait 15 s too)', new GoogleTimeoutError(15000)],
+    ['a 401 (the access token itself was rejected)', new GoogleApiError(401, 'invalid credentials')],
+    ['a revoked grant', new GoogleGrantRevokedError()],
+    ['any other auth failure', new GoogleAuthError('token endpoint down')],
+  ])('%s still aborts the whole cycle', async (_name, err) => {
+    const { store, client, deps } = seeded();
+    failOn(client, 'g-b', err);
+
+    await expect(reconcile(deps, 'u1', NOW)).rejects.toBe(err);
+    expect(client.updatedEvents.map((u) => u.googleEventId)).toEqual(['g-a']);
+    expect(startOf(store, 'c')).toBe('2026-01-05T15:00:00.000Z'); // nothing after the fatal row
   });
 });

@@ -49,6 +49,13 @@ export interface ApplyScheduleOptions {
   horizonEnd: number;
   mirror?: ScheduleMirror;
   mirrorSnapshot?: MirrorSnapshot;
+  /**
+   * Errors that must still abort the whole apply instead of being isolated to their row (see
+   * the diff loop): ones that say every later write would fail too, or that must reach the
+   * caller. Google's reconcile passes its own (auth failures, request timeouts). Default:
+   * none — every row failure is isolated.
+   */
+  isFatal?: (err: unknown) => boolean;
 }
 
 export interface ApplyCounts {
@@ -72,6 +79,15 @@ export interface ApplyCounts {
    * removed again. Always set by applyDesiredSchedule; optional for the same reason.
    */
   attachFailed?: number;
+  /**
+   * Rows of the main diff whose write threw and was skipped (retried next cycle): a desired
+   * block that could not be created, an existing engine row that could not be moved/renamed,
+   * a stale engine row that could not be swept. Unlike the counts above these are present
+   * only when non-zero, so the result of a clean run keeps its long-standing shape.
+   */
+  createFailed?: number;
+  updateFailed?: number;
+  deleteFailed?: number;
 }
 
 /** Apply a desired schedule to the DB as a keyed (engineKey) in-place diff. With a mirror, also writes the external calendar. Without one, blocks persist with null google fields. */
@@ -82,6 +98,11 @@ export async function applyDesiredSchedule(
   opts: ApplyScheduleOptions,
 ): Promise<ApplyCounts> {
   const { now, horizonEnd, mirror, mirrorSnapshot } = opts;
+  // Per-row isolation: a row whose write throws is skipped and counted, and the loop goes on;
+  // only an error `isFatal` claims is rethrown (aborting the apply, as every error used to).
+  const skipUnlessFatal = (err: unknown): void => {
+    if (opts.isFatal?.(err)) throw err;
+  };
   // The keyed map must span ALL prior placements, not just [now, horizonEnd]: engine keys
   // (task:<id>:<chunk>, habit:<id>:<occurrence>) are horizon-relative and recur over time,
   // so a reissued key must MOVE its old (possibly past) row — unique (userId, engineKey) —
@@ -108,14 +129,19 @@ export async function applyDesiredSchedule(
   let deleted = 0;
   let attached = 0;
   let attachFailed = 0;
+  let createFailed = 0;
+  let updateFailed = 0;
+  let deleteFailed = 0;
   const seenKeys = new Set<string>();
 
-  // Inserting the event of a never-mirrored row is isolated per row, like the pinned pass
-  // (see mirrorPinnedBlocks): the first reconcile after linking Google makes one insert per
-  // planned block, and a single rejected one (rate limit, transient 5xx) must not abort the
-  // apply — later blocks, the sweep, the pinned pass and the schedule.updated event would all
-  // be skipped, on every cycle, for as long as that row keeps failing. A row whose insert
-  // failed stays unmirrored and is retried next cycle by the unchanged-row branch below.
+  // Every row's writes are isolated, like the pinned pass (see mirrorPinnedBlocks): one row
+  // that fails (a rejected Google call — rate limit, transient 5xx — or a DB write whose task
+  // was deleted a moment ago) must not abort the apply, or later blocks, the sweep, the pinned
+  // pass and the schedule.updated event would all be skipped, on every cycle, for as long as
+  // that row keeps failing. A failed row is counted (createFailed / updateFailed /
+  // deleteFailed, or attachFailed for a failed first insert) and retried next cycle; a row
+  // whose insert failed stays unmirrored and is retried by the unchanged-row branch below.
+  // Only errors `isFatal` claims still abort. The order of writes is unchanged.
   for (const block of desiredNew) {
     seenKeys.add(block.id);
     const match = existingByKey.get(block.id);
@@ -125,57 +151,81 @@ export async function applyDesiredSchedule(
       // in time, so a times-only diff would let the stale title persist here and on Google forever.
       const changed = timesDiffer || match.title !== block.title;
       if (changed) {
-        const fields = { startsAt: new Date(block.start), endsAt: new Date(block.end), title: block.title };
-        // A never-mirrored row makes the mirror INSERT here (ScheduleMirror.update).
-        const unmirrored = mirror != null && match.googleEventId == null;
-        let ids: MirrorIds | undefined;
+        // Isolated per row: a failed Google push skips the DB write too (Google goes first),
+        // and a failed DB write (e.g. the row went with its deleted task) leaves the row as
+        // it was. Either way the next cycle retries it.
         try {
-          ids = await mirror?.update(block, match);
-        } catch (err) {
-          if (!unmirrored) throw err; // an in-place update of a mirrored row is not isolated
-          attachFailed += 1; // the plan still applies below; the row is retried next cycle
-        }
-        if (ids && mirror) {
-          const outcome = await storeInsertedIds(scheduledBlocks, mirror, userId, match, ids, fields);
-          if (outcome === 'stored') {
-            updated += 1;
-            attached += 1;
-          } else if (outcome === 'orphaned') {
-            attachFailed += 1;
+          const fields = { startsAt: new Date(block.start), endsAt: new Date(block.end), title: block.title };
+          // A never-mirrored row makes the mirror INSERT here (ScheduleMirror.update).
+          const unmirrored = mirror != null && match.googleEventId == null;
+          let ids: MirrorIds | undefined;
+          try {
+            ids = await mirror?.update(block, match);
+          } catch (err) {
+            if (!unmirrored) throw err; // an in-place update of a mirrored row fails the row
+            skipUnlessFatal(err);
+            attachFailed += 1; // the plan still applies below; the row is retried next cycle
           }
-          continue;
+          if (ids && mirror) {
+            const outcome = await storeInsertedIds(scheduledBlocks, mirror, userId, match, ids, fields);
+            if (outcome === 'stored') {
+              updated += 1;
+              attached += 1;
+            } else if (outcome === 'orphaned') {
+              attachFailed += 1;
+            }
+            continue;
+          }
+          await scheduledBlocks.update(userId, match.id, fields);
+          updated += 1;
+        } catch (err) {
+          skipUnlessFatal(err);
+          updateFailed += 1;
         }
-        await scheduledBlocks.update(userId, match.id, fields);
-        updated += 1;
       } else if (mirror && match.googleEventId == null) {
         // Planned locally before the calendar was linked and unchanged since: the diff alone
         // would never mirror it, so the block would stay missing from the calendar for good.
         let ids: MirrorIds;
         try {
           ids = await mirror.create(block);
-        } catch {
+        } catch (err) {
+          skipUnlessFatal(err);
           attachFailed += 1;
           continue;
         }
-        const outcome = await storeInsertedIds(scheduledBlocks, mirror, userId, match, ids);
-        if (outcome === 'stored') attached += 1;
-        else if (outcome === 'orphaned') attachFailed += 1;
+        try {
+          const outcome = await storeInsertedIds(scheduledBlocks, mirror, userId, match, ids);
+          if (outcome === 'stored') attached += 1;
+          else if (outcome === 'orphaned') attachFailed += 1;
+        } catch (err) {
+          // Storing the ids failed for another reason than a vanished row: the row may still
+          // exist (and may even hold the ids), so the event is not deleted blind.
+          skipUnlessFatal(err);
+          attachFailed += 1;
+        }
       }
       continue;
     }
-    const holder = pinnedKeyHolders.get(block.id);
-    if (holder) {
-      // Release the key from the pinned holder so the reissued placement can be created.
-      await scheduledBlocks.update(userId, holder.id, { engineKey: null });
+    try {
+      const holder = pinnedKeyHolders.get(block.id);
+      if (holder) {
+        // Release the key from the pinned holder so the reissued placement can be created.
+        await scheduledBlocks.update(userId, holder.id, { engineKey: null });
+      }
+      const ids = mirror ? await mirror.create(block) : null;
+      // If this create fails after a successful insert, the event is left behind: the create
+      // may have committed anyway (a lost reply), so it is not deleted blind.
+      await scheduledBlocks.create(userId, {
+        ...toScheduledBlockInput(block),
+        engineKey: block.id,
+        googleEventId: ids?.googleEventId ?? null,
+        googleCalendarId: ids?.googleCalendarId ?? null,
+      });
+      created += 1;
+    } catch (err) {
+      skipUnlessFatal(err);
+      createFailed += 1;
     }
-    const ids = mirror ? await mirror.create(block) : null;
-    await scheduledBlocks.create(userId, {
-      ...toScheduledBlockInput(block),
-      engineKey: block.id,
-      googleEventId: ids?.googleEventId ?? null,
-      googleCalendarId: ids?.googleCalendarId ?? null,
-    });
-    created += 1;
   }
 
   for (const [key, block] of existingByKey) {
@@ -186,16 +236,27 @@ export async function applyDesiredSchedule(
     // when the engine stops emitting its (now consumed) day. Tasks keep the old sweep:
     // an in-progress task placement superseded by a replan must still be removable.
     if (block.habitId != null && block.startsAt.getTime() <= now) continue;
-    await mirror?.delete(block);
-    await scheduledBlocks.delete(userId, block.id);
-    deleted += 1;
+    try {
+      // Google first: a failed event delete keeps the row, so the next cycle retries both.
+      await mirror?.delete(block);
+      await scheduledBlocks.delete(userId, block.id);
+      deleted += 1;
+    } catch (err) {
+      skipUnlessFatal(err);
+      deleteFailed += 1;
+    }
   }
 
   const { synced: pinnedSynced, failed: pinnedFailed } = mirror
     ? await mirrorPinnedBlocks(scheduledBlocks, userId, existing, { now, mirror, mirrorSnapshot })
     : { synced: 0, failed: 0 };
 
-  return { created, updated, deleted, pinnedSynced, pinnedFailed, attached, attachFailed };
+  return {
+    created, updated, deleted, pinnedSynced, pinnedFailed, attached, attachFailed,
+    ...(createFailed ? { createFailed } : {}),
+    ...(updateFailed ? { updateFailed } : {}),
+    ...(deleteFailed ? { deleteFailed } : {}),
+  };
 }
 
 /**
@@ -273,11 +334,12 @@ type StoreOutcome = 'stored' | 'gone' | 'orphaned';
  * row), together with any other `fields` changed in the same write.
  *
  * The event is inserted first and the ids written after, and the row can disappear in
- * between: DELETE /schedule/:id and GET /schedule's manual-mode sweep run outside the
- * per-user replan queue. The write then fails with the repository's NotFoundError and nothing
+ * between: deleting a task or habit cascades to its blocks, and none of that is serialised
+ * with the replan (the block routes are, via the server's per-user lock, but only when the
+ * caller runs apply inside it). The write then fails with the repository's NotFoundError and nothing
  * would ever reference the new event again (drift detection only walks rows), so the event is
- * deleted again and the row treated as gone. Any other DB failure propagates unchanged — the
- * row may still exist, so its event is never deleted blind.
+ * deleted again and the row treated as gone. Any other DB failure propagates unchanged (to
+ * the caller's per-row isolation) — the row may still exist, so its event is never deleted blind.
  */
 async function storeInsertedIds(
   scheduledBlocks: BlocksRepo,

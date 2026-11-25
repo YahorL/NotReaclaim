@@ -15,6 +15,24 @@ import type { AccessTokenProvider } from './sync.js';
 import { ensureAutoScheduledCalendar } from './ensure-calendar.js';
 import { detectDrift } from './detect-drift.js';
 import { toGoogleEventWrite } from './writeback.js';
+import { GoogleApiError, GoogleAuthError, GoogleTimeoutError } from './errors.js';
+
+/**
+ * The errors that still abort a reconcile's apply instead of being isolated to their row:
+ * they say the connection itself is unusable, so every later Google call would fail too.
+ * - Any auth failure, a revoked grant included. The token is refreshed before apply starts,
+ *   so none is expected from a mirror call today; if one ever is, it must reach the caller
+ *   (the token service flags a revoked grant as a broken connection) instead of being counted.
+ * - A 401: Google rejected the access token itself.
+ * - A request timeout: Google is unreachable, and isolating it would make every remaining row
+ *   wait out its own 15 s timeout while the user's lock is held (edits wait for apply).
+ * Everything else (a 4xx/5xx/429 on one event, a DB error on one row) is isolated and counted.
+ */
+function abortsApply(err: unknown): boolean {
+  return err instanceof GoogleAuthError
+    || err instanceof GoogleTimeoutError
+    || (err instanceof GoogleApiError && err.status === 401);
+}
 
 export interface ReconcileDeps {
   client: GoogleClient;
@@ -77,12 +95,16 @@ export async function reconcile(deps: ReconcileDeps, userId: string, now: number
   // writes), so both run inside `exclusive`: a block route's write can then never land
   // between them and be overwritten, swept, or pushed stale to Google.
   const exclusive = deps.exclusive ?? ((fn) => fn());
-  const { created, updated, deleted, pinnedSynced, pinnedFailed, attached, attachFailed } = await exclusive(async () => {
+  const counts = await exclusive(async () => {
     const desired = await computeDesiredSchedule(deps.schedulingRepos, userId, now);
     // `observed` is Google's pre-apply state: it lets the pinned pass push exactly the blocks
     // the app moved, once, instead of re-writing every pinned event on every poll cycle.
-    return applyDesiredSchedule(deps.scheduledBlocks, userId, desired, { now, horizonEnd, mirror, mirrorSnapshot: observed });
+    return applyDesiredSchedule(deps.scheduledBlocks, userId, desired, {
+      now, horizonEnd, mirror, mirrorSnapshot: observed, isFatal: abortsApply,
+    });
   });
 
-  return { created, updated, deleted, pinned, removed, pinnedSynced, pinnedFailed, attached, attachFailed };
+  // Every apply count (including the per-row failure counts, present only when non-zero) plus
+  // drift's pulls from Google.
+  return { ...counts, pinned, removed };
 }

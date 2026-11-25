@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import type { ScheduledBlock, Settings } from '@notreclaim/db';
 import { GoogleApiError } from '@notreclaim/google';
+import { planLocally } from '@notreclaim/core';
+import { makeReplan } from '../src/replan-router.js';
 import { buildTestApp, tokenFor } from './fakes.js';
 
 function block(over: Partial<ScheduledBlock> = {}): ScheduledBlock {
@@ -395,5 +397,43 @@ describe('POST /schedule/replan realtime', () => {
     expect(res.statusCode).toBe(502);
     expect(res.json().code).toBe('google_api_error');
     expect(emitted).toEqual([]);
+  });
+});
+
+describe('POST /schedule/replan with a row that fails to save', () => {
+  it('still answers 200, and the per-row failure count reaches the reply and schedule.updated', async () => {
+    let ctx!: ReturnType<typeof buildTestApp>;
+    const task = (id: string) => ({
+      id, userId: 'u1', title: id, priority: 1, sortOrder: 0, durationMs: 1800000, dueBy: null, notBefore: null,
+      minChunkMs: 1800000, maxChunkMs: 1800000, categoryId: null, status: 'pending' as const, completedAt: null,
+      createdAt: new Date(0), updatedAt: new Date(0),
+    });
+    const replan = makeReplan({
+      reconcile: async () => { throw new Error('not connected'); },
+      planLocally: (userId, now) => planLocally({
+        settings: ctx.settings,
+        calendarEvents: ctx.calendarEvents,
+        tasks: { listByUser: async () => [task('t1'), task('t2')] },
+        habits: { listByUser: async () => [] },
+        scheduledBlocks: ctx.scheduledBlocks,
+        categories: { listByUser: async () => [] },
+      }, ctx.scheduledBlocks, userId, now),
+      isConnected: async () => false,
+    });
+    ctx = buildTestApp({ settings: settings(), replan });
+    // t1's task was deleted a moment ago: inserting its block hits the foreign key.
+    const create = ctx.scheduledBlocks.create;
+    ctx.scheduledBlocks.create = async (userId, data) => {
+      if (data.taskId === 't1') throw new Error('Foreign key constraint violated: ScheduledBlock_taskId_fkey');
+      return create(userId, data);
+    };
+    const token = await tokenFor(ctx.app);
+
+    const res = await ctx.app.inject({ method: 'POST', url: '/schedule/replan', headers: { authorization: `Bearer ${token}` } });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ created: 1, createFailed: 1 });
+    expect(ctx.emitted).toContainEqual({ type: 'schedule.updated', userId: 'u1', counts: expect.objectContaining({ created: 1, createFailed: 1 }) });
+    expect((await ctx.scheduledBlocks.listByUserInRange('u1', new Date(0), new Date(8.64e15))).map((b) => b.taskId)).toEqual(['t2']);
   });
 });
