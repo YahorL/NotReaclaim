@@ -22,3 +22,14 @@ export function formatDurationShort(ms: number): string {
   if (hours) return `${hours}h`;
   return `${minutes}m`;
 }
+
+/**
+ * "in 1h 29m" / "in 5m" / "in 2d" — how long until `ms`, for the Next-up chip. Minutes round up
+ * so a block a few seconds out never reads "in 0m"; anything at or before `now` is "now".
+ */
+export function untilLabel(ms: number, now: number): string {
+  const min = Math.ceil((ms - now) / MS_PER_MIN);
+  if (min <= 0) return 'now';
+  if (min >= 24 * 60) return `in ${Math.floor(min / (24 * 60))}d`;
+  return `in ${formatDurationShort(min * MS_PER_MIN)}`;
+}

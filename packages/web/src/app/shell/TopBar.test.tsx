@@ -89,13 +89,22 @@ describe('TopBar (bare render)', () => {
 });
 
 describe('TopBar Next-task indicator', () => {
+  // The pill lives on every route except the planner, whose Next-up card carries Start/Stop.
+  it('is absent on the planner route even with a next task', async () => {
+    const getSchedule = vi.fn(async () => [block()]);
+    renderWithProviders(<TopBar onNewTask={() => {}} now={nowFn} />, { api: fakeApiClient({ getSchedule }), initialEntries: ['/'] });
+    await waitFor(() => expect(getSchedule).toHaveBeenCalled());
+    expect(screen.queryByTestId('now-next-pill')).toBeNull();
+    expect(screen.queryByTestId('next-task-start')).toBeNull();
+  });
+
   it('shows next upcoming task title and time', async () => {
     const api = fakeApiClient({
       getSchedule: async () => [block()],
     });
     renderWithProviders(
       <TopBar onNewTask={() => {}} now={nowFn} />,
-      { api },
+      { api, initialEntries: ['/priorities'] },
     );
     await waitFor(() =>
       expect(screen.getByTestId('next-task')).toBeInTheDocument(),
@@ -107,7 +116,7 @@ describe('TopBar Next-task indicator', () => {
 
   it('reads "Next · <title> · <time>" with a truncating title', async () => {
     const api = fakeApiClient({ getSchedule: async () => [block({ title: 'A very long task title that must not stretch the header' })] });
-    renderWithProviders(<TopBar onNewTask={() => {}} now={nowFn} />, { api });
+    renderWithProviders(<TopBar onNewTask={() => {}} now={nowFn} />, { api, initialEntries: ['/priorities'] });
     const el = await screen.findByTestId('next-task');
     expect(el.textContent).toMatch(/^Next·A very long.*·Today 2:00pm$/);
     const title = screen.getByText(/^A very long/);
@@ -122,7 +131,7 @@ describe('TopBar Next-task indicator', () => {
     });
     renderWithProviders(
       <TopBar onNewTask={() => {}} now={nowFn} />,
-      { api },
+      { api, initialEntries: ['/priorities'] },
     );
     // Allow query to settle
     await waitFor(() => expect(screen.queryByTestId('next-task')).toBeNull());
@@ -134,7 +143,7 @@ describe('TopBar Next-task indicator', () => {
     });
     renderWithProviders(
       <TopBar onNewTask={() => {}} now={nowFn} />,
-      { api },
+      { api, initialEntries: ['/priorities'] },
     );
     await waitFor(() => expect(screen.queryByTestId('next-task')).toBeNull());
   });
@@ -145,7 +154,7 @@ describe('TopBar Next-task indicator', () => {
     });
     renderWithProviders(
       <TopBar onNewTask={() => {}} now={nowFn} />,
-      { api },
+      { api, initialEntries: ['/priorities'] },
     );
     await waitFor(() => expect(screen.queryByTestId('next-task')).toBeNull());
   });
@@ -160,7 +169,7 @@ describe('TopBar Next-task indicator', () => {
       }]),
       startBlock,
     });
-    renderWithProviders(<TopBar onNewTask={() => {}} now={() => Date.parse('2026-01-05T14:00:00.000Z')} />, { api });
+    renderWithProviders(<TopBar onNewTask={() => {}} now={() => Date.parse('2026-01-05T14:00:00.000Z')} />, { api, initialEntries: ['/priorities'] });
     await waitFor(() => expect(screen.getByTestId('next-task')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('next-task-start'));
     await waitFor(() => expect(startBlock).toHaveBeenCalledWith('nb'));
@@ -173,7 +182,7 @@ describe('TopBar Next-task indicator', () => {
         id: 'r2', startsAt: '2026-06-11T12:15:00Z', endsAt: '2026-06-11T13:00:00Z', startedAt: '2026-06-11T12:10:00Z',
       })],
     });
-    renderWithProviders(<TopBar onNewTask={() => {}} now={nowFn} />, { api });
+    renderWithProviders(<TopBar onNewTask={() => {}} now={nowFn} />, { api, initialEntries: ['/priorities'] });
     await waitFor(() => expect(screen.getByTestId('current-task')).toBeInTheDocument());
     expect(screen.queryByTestId('next-task')).toBeNull();
   });
@@ -217,7 +226,7 @@ describe('TopBar Next-task indicator', () => {
       })],
       stopBlock,
     });
-    renderWithProviders(<TopBar onNewTask={() => {}} now={nowFn} />, { api });
+    renderWithProviders(<TopBar onNewTask={() => {}} now={nowFn} />, { api, initialEntries: ['/priorities'] });
     await waitFor(() => expect(screen.getByTestId('current-task')).toBeInTheDocument());
     expect(screen.getByTestId('current-task').textContent).toContain('Deep work');
     expect(screen.queryByTestId('next-task')).toBeNull();
@@ -244,7 +253,7 @@ describe('TopBar Next label in the settings zone', () => {
       getSchedule: async () => [block({ startsAt: '2026-06-12T02:00:00Z', endsAt: '2026-06-12T03:00:00Z' })],
       getSettings: vi.fn().mockResolvedValue({ id: 's', userId: 'u', timezone: 'America/New_York', workingHours: [], horizonDays: 14, defaultMinChunkMs: 1800000, defaultMaxChunkMs: 7200000, createdAt: '', updatedAt: '' }),
     } as never);
-    renderWithProviders(<TopBar onNewTask={() => {}} now={nowFn} />, { api });
+    renderWithProviders(<TopBar onNewTask={() => {}} now={nowFn} />, { api, initialEntries: ['/priorities'] });
     await waitFor(() => expect(screen.getByTestId('next-task').textContent).toContain('Today 10:00pm'));
   });
 });

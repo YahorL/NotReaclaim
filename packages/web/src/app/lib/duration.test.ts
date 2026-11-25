@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   msToHM, minutesToHHMM, hhmmToMinutes,
-  formatDurationShort,
+  formatDurationShort, untilLabel,
 } from './duration';
 
 describe('duration', () => {
@@ -19,5 +19,19 @@ describe('duration', () => {
     expect(formatDurationShort(3_600_000)).toBe('1h');
     expect(formatDurationShort(5_400_000)).toBe('1h 30m');
     expect(formatDurationShort(1_800_000)).toBe('30m');
+  });
+
+  it('untilLabel: a compact "in …" for the Next-up chip', () => {
+    const now = Date.parse('2026-01-05T12:00:00.000Z');
+    const at = (min: number) => now + min * 60_000;
+    expect(untilLabel(at(0), now)).toBe('now');
+    expect(untilLabel(at(-5), now)).toBe('now');
+    expect(untilLabel(at(0.5), now)).toBe('in 1m'); // rounds up: never "in 0m"
+    expect(untilLabel(at(5), now)).toBe('in 5m');
+    expect(untilLabel(at(60), now)).toBe('in 1h');
+    expect(untilLabel(at(89), now)).toBe('in 1h 29m');
+    expect(untilLabel(at(23 * 60 + 59), now)).toBe('in 23h 59m');
+    expect(untilLabel(at(24 * 60), now)).toBe('in 1d');
+    expect(untilLabel(at(3 * 24 * 60 + 600), now)).toBe('in 3d');
   });
 });

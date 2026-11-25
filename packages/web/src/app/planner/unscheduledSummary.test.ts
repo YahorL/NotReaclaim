@@ -41,6 +41,8 @@ describe('summarizeUnscheduled', () => {
   it('renders task remainders with the shared duration formatter', () => {
     const entries = summarizeUnscheduled([item({ remainingMs: 5_400_000 })], [task()], []);
     expect(entries.map((e) => e.label)).toEqual(['Write spec (1h 30m left)']);
+    // The chip renders title and detail separately ("Write spec · 1h 30m left").
+    expect(entries[0]).toMatchObject({ title: 'Write spec', detail: '1h 30m left' });
   });
 
   it('sums repeated task rows into one entry', () => {
@@ -58,6 +60,7 @@ describe('summarizeUnscheduled', () => {
       [], [habit()],
     );
     expect(entries.map((e) => e.label)).toEqual(['Run (2 missed)']);
+    expect(entries[0]).toMatchObject({ title: 'Run', detail: '2 missed' });
   });
 
   it('prefers the live query title over the stale snapshot title', () => {

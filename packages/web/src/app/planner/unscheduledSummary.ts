@@ -4,7 +4,12 @@ import { formatDurationShort } from '../lib/duration';
 export interface UnscheduledEntry {
   /** `task:<id>` / `habit:<id>` — stable React key and test handle. */
   key: string;
+  /** "Tax filing (1h left)" — one-line text form (tooltips, screen readers). */
   label: string;
+  /** The task / habit title alone. */
+  title: string;
+  /** "1h left" / "2 missed" — the chip's muted suffix. */
+  detail: string;
 }
 
 /**
@@ -63,9 +68,9 @@ export function summarizeUnscheduled(
   }
 
   return [...sources].map(([key, { kind, id, title }]) => {
-    const label = kind === 'task'
-      ? `${title} (${formatDurationShort(remainingByTask.get(id) ?? 0)} left)`
-      : `${title} (${missed.get(id) ?? 1} missed)`;
-    return { key, label };
+    const detail = kind === 'task'
+      ? `${formatDurationShort(remainingByTask.get(id) ?? 0)} left`
+      : `${missed.get(id) ?? 1} missed`;
+    return { key, label: `${title} (${detail})`, title, detail };
   });
 }

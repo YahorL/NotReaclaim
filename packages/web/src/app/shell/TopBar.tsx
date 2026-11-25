@@ -18,7 +18,7 @@ interface TopBarProps {
 
 /** 46px round glass icon button (prototype `.gbtn` header buttons). */
 const ROUND_GLASS = 'btn-glass flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full';
-/** The compact Now/Next pill (non-planner routes; the Planner gets its Next-up card in P3). */
+/** The compact Now/Next pill (non-planner routes; the Planner has its Next-up card). */
 const PILL_LABEL = 'flex h-[34px] min-w-0 items-center gap-1.5 rounded-pill px-3 text-[14px] text-fg-2 transition-colors hover:bg-fg/[.06]';
 const PILL_ACTION = 'inline-flex h-[34px] shrink-0 items-center gap-1.5 rounded-pill px-3.5 text-[13px] font-semibold';
 
@@ -29,6 +29,7 @@ export function TopBar({ onNewTask, onSearch, now = Date.now, sidebarHidden, onT
   const tasksQ = useTasksQuery();
   const openTaskCount = tasksQ.data ? tasksQ.data.filter(isActiveTask).length : null;
   const { eyebrow, title: [before, bold, after] } = routeHeader(pathname, { nowMs: now(), zone, openTaskCount });
+  const onPlanner = pathname === '/';
 
   return (
     <header className="hidden shrink-0 flex-wrap items-end justify-between gap-4 px-1 pt-1.5 md:flex">
@@ -52,7 +53,8 @@ export function TopBar({ onNewTask, onSearch, now = Date.now, sidebarHidden, onT
           </button>
         )}
 
-        {running ? (
+        {/* The planner shows its own Next-up card (with Start/Stop) instead of this pill. */}
+        {onPlanner ? null : running ? (
           <div data-testid="now-next-pill" className="glass-card flex h-[46px] min-w-0 items-center gap-1 rounded-pill p-1.5">
             <button
               type="button"

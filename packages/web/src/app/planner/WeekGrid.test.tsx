@@ -37,11 +37,9 @@ function renderGrid(props: Partial<WeekGridProps> = {}) {
       weekLabel="Jan 5 – 11"
       blocks={[block()]}
       events={[event()]}
-      replanPending={false}
       onPrev={vi.fn()}
       onToday={vi.fn()}
       onNext={vi.fn()}
-      onReplan={vi.fn()}
       onCommit={vi.fn()}
       {...props}
     />,
@@ -52,8 +50,8 @@ function renderGridWithProviders(props: Partial<WeekGridProps> = {}, api = fakeA
   return renderWithProviders(
     <WeekGrid
       days={days} nowMs={WED_NOON} weekLabel="Jan 5 – 11"
-      blocks={[block()]} events={[event()]} replanPending={false}
-      onPrev={vi.fn()} onToday={vi.fn()} onNext={vi.fn()} onReplan={vi.fn()} onCommit={vi.fn()}
+      blocks={[block()]} events={[event()]}
+      onPrev={vi.fn()} onToday={vi.fn()} onNext={vi.fn()} onCommit={vi.fn()}
       {...props}
     />,
     { api },
@@ -162,9 +160,9 @@ describe('WeekGrid', () => {
     const names = () => screen.getAllByTestId('block-body').map((t) => t.getAttribute('aria-label')!.split(',')[0]);
     const before = names();
     rerender(
-      <WeekGrid days={days} nowMs={WED_NOON} weekLabel="Jan 5 – 11" replanPending={false} events={[]}
+      <WeekGrid days={days} nowMs={WED_NOON} weekLabel="Jan 5 – 11" events={[]}
         blocks={[{ ...a, startsAt: '2026-01-05T11:00:00.000Z', endsAt: '2026-01-05T12:00:00.000Z' }, b]}
-        onPrev={vi.fn()} onToday={vi.fn()} onNext={vi.fn()} onReplan={vi.fn()} onCommit={vi.fn()} />,
+        onPrev={vi.fn()} onToday={vi.fn()} onNext={vi.fn()} onCommit={vi.fn()} />,
     );
     expect(names()).toEqual(before);
   });
@@ -173,13 +171,6 @@ describe('WeekGrid', () => {
     renderGrid();
     expect(screen.getByTestId('day-col-2')).toHaveAttribute('data-today', 'true');
     expect(screen.getByTestId('day-col-1')).not.toHaveAttribute('data-today');
-  });
-
-  it('fires onReplan when the button is clicked', () => {
-    const onReplan = vi.fn();
-    renderGrid({ onReplan });
-    fireEvent.click(screen.getByRole('button', { name: /re-plan/i }));
-    expect(onReplan).toHaveBeenCalledTimes(1);
   });
 
   it('fires nav callbacks', () => {
@@ -479,9 +470,11 @@ describe('WeekGrid compact (below md)', () => {
     // Compact is allowed to wrap; md must not (a wrapped desktop toolbar measured 86px/2 rows).
     expect(toolbar.className).toContain('flex-wrap');
     expect(toolbar.className).toContain('md:flex-nowrap');
-    // Nowrap makes the row's items shrinkable instead of wrappable, so the three that must keep
+    // Nowrap makes the row's items shrinkable instead of wrappable, so the ones that must keep
     // their geometry say so; the legend is the only element left to give (it clips to one line).
-    expect(screen.getByRole('button', { name: /re-plan/i }).className).toContain('shrink-0');
+    // (Re-plan moved to the summary card above the grid; UnscheduledCard pins its shrink-0.)
+    expect(screen.queryByRole('button', { name: /re-plan/i })).toBeNull();
+    expect(screen.getByText('Today').className).toContain('shrink-0');
     expect(screen.getByText('Jan 5 – 11').className).toContain('md:shrink-0');
     const legend = screen.getByTestId('grid-legend');
     expect(legend.className).toContain('min-w-0');

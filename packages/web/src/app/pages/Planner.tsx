@@ -17,7 +17,8 @@ import { Sheet } from '../components/Sheet';
 import { DrawerHost } from '../components/DrawerHost';
 import { WeekGrid } from '../planner/WeekGrid';
 import { PlannerTaskPanel } from '../planner/PlannerTaskPanel';
-import { UnscheduledWarning } from '../planner/UnscheduledWarning';
+import { UnscheduledCard } from '../planner/UnscheduledCard';
+import { NextUpCard } from '../planner/NextUpCard';
 import { summarizeUnscheduled } from '../planner/unscheduledSummary';
 import { TaskDrawer } from '../tasks/TaskDrawer';
 import { EventDrawer } from '../planner/EventDrawer';
@@ -178,10 +179,10 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   if (isError) {
     return (
       <div className="p-6">
-        <p className="mb-2 text-red-600">Couldn't load the schedule.</p>
+        <p className="mb-3 text-danger">Couldn't load the schedule.</p>
         <button
           onClick={() => { void schedule.refetch(); void calendar.refetch(); void preview.refetch(); }}
-          className="rounded border border-gray-300 px-3 py-1"
+          className="btn-glass h-10 rounded-pill px-4 text-[14px]"
         >
           Retry
         </button>
@@ -225,23 +226,35 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
       onDragEnd={onDragEnd}
       onDragCancel={endDrag}
     >
-    <div className="flex h-full min-h-0 gap-3 p-2 md:p-4">
+    <div className={`flex h-full min-h-0 flex-col ${compact ? 'gap-2 p-2' : 'gap-5 px-1 pb-1'}`}>
+      {/* Summary row: same split as the grid/panel row below (the Next-up card is the panel's width).
+          Compact: the summary card only — the mobile top bar carries Now/Next. */}
+      <div data-testid="planner-summary" className={`flex shrink-0 ${compact ? 'flex-col' : 'gap-5'}`}>
+        <UnscheduledCard
+          className="min-w-0 flex-1"
+          entries={unscheduledEntries}
+          compact={compact}
+          onReplan={() => replan.mutate()}
+          replanPending={replan.isPending}
+          onShowAll={() => (compact ? setTaskSheetOpen(true) : setPanelHidden(false))}
+        />
+        {!compact && <NextUpCard now={now} className="w-[330px] shrink-0" />}
+      </div>
+      {replan.isError && <p className="-mt-2 shrink-0 px-1 text-[13px] text-danger">Re-plan failed. Try again.</p>}
+    <div className={`flex min-h-0 flex-1 ${compact ? 'gap-2' : 'gap-5'}`}>
       <div ref={gridRef} className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {isLoading && <div className="shrink-0 p-2 text-sm text-gray-500">Loading your days…</div>}
-        <UnscheduledWarning entries={unscheduledEntries} />
+        {isLoading && <div className="shrink-0 p-2 text-sm text-fg-2">Loading your days…</div>}
         <WeekGrid
           days={days}
           nowMs={nowMs}
           weekLabel={rangeLabel(days, zone)}
           blocks={labeledBlocks}
           events={calendar.data ?? []}
-          replanPending={replan.isPending}
           onPrev={() => setViewStartMs((ms) => shiftDays(ms, -dayCount, zone))}
           onNext={() => setViewStartMs((ms) => shiftDays(ms, dayCount, zone))}
           onToday={() => setViewStartMs(dayAnchor(now(), zone, dayStartMinute))}
           zone={zone}
           dayStartMinute={dayStartMinute}
-          onReplan={() => replan.mutate()}
           onCommit={(id, patch) => updateBlock.mutate({ id, patch })}
           onDeleteBlock={(id) => deleteBlock.mutate(id)}
           onCommitEvent={(id, patch) => updateEvent.mutate({ id, ...patch })}
@@ -257,10 +270,10 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           panelHidden={compact ? !taskSheetOpen : panelHidden}
           onTogglePanel={() => (compact ? setTaskSheetOpen((o) => !o) : setPanelHidden((h) => !h))}
         />
-        {replan.isError && <p className="mt-2 shrink-0 text-sm text-red-600">Re-plan failed. Try again.</p>}
       </div>
       {/* Below md the panel never renders inline — it becomes the bottom sheet below. */}
       {!compact && !panelHidden && <PlannerTaskPanel {...panelProps} />}
+    </div>
       {compact && taskSheetOpen && (
         <Sheet label="Tasks" onClose={() => setTaskSheetOpen(false)} collapsed={sheetCollapsed}>
           <PlannerTaskPanel {...panelProps} compact />

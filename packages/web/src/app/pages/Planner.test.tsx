@@ -37,20 +37,26 @@ function makeApi(over = {}) {
 }
 
 describe('Planner', () => {
+  // The desktop panel-hide toggle is persisted; never let one test's hide leak into the next.
+  beforeEach(() => { localStorage.removeItem('nr.plannerPanelHidden'); });
+
   it('renders blocks and meetings', async () => {
     const api = makeApi(); // listTasks → [] so the task panel is empty (no duplicate titles)
     renderWithProviders(<Planner now={() => NOW} />, { api });
-    await waitFor(() => expect(screen.getByText('Write spec')).toBeInTheDocument());
-    expect(screen.getByText('Standup')).toBeInTheDocument();
+    // Scoped to the grid: the Next-up card names the next task block too.
+    await waitFor(() => expect(within(screen.getByTestId('block-layer')).getByText('Write spec')).toBeInTheDocument());
+    expect(within(screen.getByTestId('block-layer')).getByText('Standup')).toBeInTheDocument();
     expect(screen.getByTestId('planner-task-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('next-up-card')).toBeInTheDocument();
   });
 
   it('clicking Re-plan calls api.replan', async () => {
     const replan = vi.fn(async () => ({ created: 0, updated: 0, deleted: 0, pinned: 0, removed: 0 }));
     const api = makeApi({ replan });
     renderWithProviders(<Planner now={() => NOW} />, { api });
-    await waitFor(() => expect(screen.getByText('Write spec')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /re-plan/i }));
+    await waitFor(() => expect(within(screen.getByTestId('block-layer')).getByText('Write spec')).toBeInTheDocument());
+    // Re-plan lives on the summary card above the grid.
+    fireEvent.click(within(screen.getByTestId('unscheduled-warning')).getByRole('button', { name: /re-plan/i }));
     await waitFor(() => expect(replan).toHaveBeenCalledTimes(1));
   });
 
@@ -62,13 +68,15 @@ describe('Planner', () => {
     const getSchedule = vi.fn(async () => blocks);
     const api = makeApi({ getSchedule });
     renderWithProviders(<Planner now={() => NOW} />, { api });
-    await waitFor(() => expect(getSchedule).toHaveBeenCalledTimes(1));
-    expect((getSchedule.mock.calls[0]! as unknown[])[0]).toBe('2026-01-07T00:00:00.000Z');
-    expect((getSchedule.mock.calls[0]! as unknown[])[1]).toBe('2026-01-14T00:00:00.000Z');
+    // Only the grid's ranged fetches: the Next-up card also reads the unranged schedule.
+    const ranged = () => (getSchedule.mock.calls as unknown[][]).filter((c) => c[0] !== undefined);
+    await waitFor(() => expect(ranged()).toHaveLength(1));
+    expect(ranged()[0]![0]).toBe('2026-01-07T00:00:00.000Z');
+    expect(ranged()[0]![1]).toBe('2026-01-14T00:00:00.000Z');
     fireEvent.click(screen.getByRole('button', { name: /^next$/i }));
-    await waitFor(() => expect(getSchedule).toHaveBeenCalledTimes(2));
-    expect((getSchedule.mock.calls[1]! as unknown[])[0]).toBe('2026-01-14T00:00:00.000Z');
-    expect((getSchedule.mock.calls[1]! as unknown[])[1]).toBe('2026-01-21T00:00:00.000Z');
+    await waitFor(() => expect(ranged()).toHaveLength(2));
+    expect(ranged()[1]![0]).toBe('2026-01-14T00:00:00.000Z');
+    expect(ranged()[1]![1]).toBe('2026-01-21T00:00:00.000Z');
   });
 
   it('block label shows "Task: subtask" when task has an open subtask', async () => {
@@ -183,17 +191,49 @@ describe('Planner', () => {
       })),
     });
     renderWithProviders(<Planner now={() => NOW} />, { api });
-    const banner = await screen.findByTestId('unscheduled-warning');
-    expect(banner).toHaveTextContent("Couldn't schedule everything:");
-    expect(banner).toHaveTextContent('Tax filing (1h left)');
-    expect(banner).toHaveTextContent('Run (2 missed)'); // 1h remaining / 30m chunk
+    const card = await screen.findByTestId('unscheduled-warning');
+    await waitFor(() => expect(within(card).getByTestId('unscheduled-count')).toHaveTextContent('2'));
+    expect(card).toHaveTextContent("Couldn't schedule everything");
+    const chips = within(card).getAllByTestId('unscheduled-chip');
+    expect(chips.map((c) => c.textContent)).toEqual(['Tax filing1h left', 'Run2 missed']); // 1h remaining / 30m chunk
   });
 
-  it('shows no warning when the preview schedules everything', async () => {
+  it('shows the "everything fits" state when the preview schedules everything', async () => {
     const api = makeApi({ getSchedulePreview: vi.fn(async (): Promise<SchedulePreview> => ({ blocks: [], unscheduled: [] })) });
     renderWithProviders(<Planner now={() => NOW} />, { api });
-    await waitFor(() => expect(screen.getByText('Write spec')).toBeInTheDocument());
-    expect(screen.queryByTestId('unscheduled-warning')).toBeNull();
+    await waitFor(() => expect(within(screen.getByTestId('block-layer')).getByText('Write spec')).toBeInTheDocument());
+    const card = screen.getByTestId('unscheduled-warning');
+    expect(within(card).getByTestId('unscheduled-count')).toHaveTextContent('0');
+    expect(card).toHaveTextContent(/Everything fits/);
+    expect(within(card).queryByTestId('unscheduled-chip')).toBeNull();
+    // Re-plan keeps its home in the card.
+    expect(within(card).getByTestId('replan-button')).toBeInTheDocument();
+  });
+
+  it('shows the Next-up card with Start for the next task block', async () => {
+    const startBlock = vi.fn(async () => ({} as never));
+    const api = makeApi({ startBlock });
+    renderWithProviders(<Planner now={() => NOW} />, { api });
+    const card = await screen.findByTestId('next-up-card');
+    await waitFor(() => expect(within(card).getByTestId('next-task')).toHaveTextContent('Write spec'));
+    fireEvent.click(within(card).getByTestId('next-task-start'));
+    await waitFor(() => expect(startBlock).toHaveBeenCalledWith('b1'));
+  });
+
+  it('keeps the Next-up card when the task panel is hidden', async () => {
+    renderWithProviders(<Planner now={() => NOW} />, { api: makeApi() });
+    await waitFor(() => expect(screen.getByTestId('planner-task-panel')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('panel-hide'));
+    expect(screen.getByTestId('next-up-card')).toBeInTheDocument();
+  });
+
+  it('+N more on the summary card brings the hidden task panel back', async () => {
+    const many: SchedulePreview = { blocks: [], unscheduled: ['a', 'b', 'c', 'd'].map((id) => ({ sourceType: 'task' as const, sourceId: id, title: id, reason: 'x', remainingMs: 3_600_000 })) };
+    renderWithProviders(<Planner now={() => NOW} />, { api: makeApi({ getSchedulePreview: vi.fn(async () => many) }) });
+    await waitFor(() => expect(screen.getByTestId('planner-task-panel')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('panel-hide'));
+    fireEvent.click(await screen.findByTestId('unscheduled-more'));
+    expect(screen.getByTestId('planner-task-panel')).toBeInTheDocument();
   });
 
   it('task block is tinted when its category has a color', async () => {
@@ -272,6 +312,14 @@ describe('Planner compact layout', () => {
     categoryId: null, notBefore: null, status: 'pending', completedAt: null,
     createdAt: '', updatedAt: '', subtasks: [],
   } as unknown as Task;
+
+  it('shows the compact summary card (with Re-plan) but no Next-up card', async () => {
+    renderWithProviders(<Planner now={() => NOW} />, { api: makeApi() });
+    await waitFor(() => expect(screen.getByTestId('day-col-0')).toBeInTheDocument());
+    expect(screen.getByTestId('unscheduled-warning')).toBeInTheDocument();
+    expect(screen.getByTestId('replan-button')).toBeInTheDocument();
+    expect(screen.queryByTestId('next-up-card')).toBeNull();
+  });
 
   it('does not render the task panel inline; the Tasks button opens it as a sheet', async () => {
     const api = makeApi();

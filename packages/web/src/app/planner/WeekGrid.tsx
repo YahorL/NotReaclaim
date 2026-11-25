@@ -57,11 +57,9 @@ export interface WeekGridProps {
   weekLabel: string;
   blocks: ScheduledBlock[];
   events: CalendarEvent[];
-  replanPending: boolean;
   onPrev: () => void;
   onToday: () => void;
   onNext: () => void;
-  onReplan: () => void;
   onCommit: (id: string, patch: { startsAt?: string; endsAt?: string; pinned?: boolean }) => void;
   /** Drag/resize commit for app-created calendar events (Google-owned events are read-only). */
   onCommitEvent?: (id: string, patch: { startsAt: string; endsAt: string }) => void;
@@ -123,7 +121,7 @@ function toItems(blocks: ScheduledBlock[], events: CalendarEvent[], zone: string
 }
 
 export function WeekGrid(props: WeekGridProps) {
-  const { days, nowMs, weekLabel, blocks, events, replanPending, onPrev, onToday, onNext, onReplan, onCommit, onCommitEvent, onEditEvent, onDeleteBlock, onDeleteEvent, taskDrop = null, accents = {}, zone = 'UTC', dayStartMinute = 0, panelHidden, onTogglePanel, compact = false, coarse = false, onEditTask } = props;
+  const { days, nowMs, weekLabel, blocks, events, onPrev, onToday, onNext, onCommit, onCommitEvent, onEditEvent, onDeleteBlock, onDeleteEvent, taskDrop = null, accents = {}, zone = 'UTC', dayStartMinute = 0, panelHidden, onTogglePanel, compact = false, coarse = false, onEditTask } = props;
   const gridCols = `${timeGutterPx(compact)}px repeat(${days.length}, minmax(0, 1fr))`;
   const items = toItems(blocks, events, zone);
   const layout = layoutWeek(items, days);
@@ -173,16 +171,6 @@ export function WeekGrid(props: WeekGridProps) {
         <span className={`min-w-0 truncate font-medium tracking-[-0.01em] text-fg md:shrink-0 ${compact ? 'text-[16px]' : 'text-[20px]'}`}>{weekLabel}</span>
         <button onClick={onToday} className="btn-glass h-9 shrink-0 rounded-pill px-4 text-[14px] text-fg">Today</button>
         <span className="flex-1" />
-        {/* `shrink-0 whitespace-nowrap`: with the row no longer wrapping on md, a narrow grid pane
-            otherwise squeezes this button and wraps its label. The legend is the one element allowed
-            to give. */}
-        <button
-          onClick={onReplan}
-          disabled={replanPending}
-          className="btn-accent inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-pill px-3.5 text-[14px] font-semibold"
-        >
-          <Icons.refresh size={15} /> {replanPending ? 'Re-planning…' : 'Re-plan'}
-        </button>
         {/* The legend is dropped below md (spec §4). It is the one element that gives when the row
             cannot wrap: `min-w-0` lets it shrink, and wrapping inside a one-line-tall clip drops
             whole chips off the end rather than splitting a chip across two lines. */}
