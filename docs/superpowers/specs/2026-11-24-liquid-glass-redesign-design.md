@@ -382,8 +382,10 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
   - Droppables use `MeasuringStrategy.Always`.
   - The column droppable is the whole grid cell, which stretches to the row height. Its empty area therefore works as a "drop at end" target, including on a collapsed column, which then expands.
 - **No snap-back.**
-  - `Priorities.onMove` writes the patch into every cached `['tasks', …]` list **synchronously** before `mutate` (nothing awaited, no `cancelQueries`), and restores the snapshots if the mutation fails.
-  - TanStack notifies observers on a `setTimeout`, so Board also renders `applyBoardDrop(...)` for the commit in between (`Held`, keyed on the `columns` identity it came from; ignored once new columns arrive).
+  - Board paints a move synchronously by rendering `applyBoardDrop(...)` (`Held`, keyed on the `columns` identity it came from; ignored once new columns arrive).
+  - `Priorities.onMove` then makes the move optimistic: `await cancelQueries(['tasks'])`, snapshot, write the patch into every cached `['tasks', …]` list, then `mutate`. On error it restores the snapshots and invalidates.
+  - The cancel is load-bearing. The previous move's post-success refetch may still be in flight, and its pre-move response would land on top of the write and step the card back. A test pins this.
+  - Residual (follow-up): a refetch that *starts* after the write but is served before the server applies the PATCH depends on server ordering.
 - **Motion.**
   - `DragOverlay`: a clone with grip, check, title, "Due m/d" and duration chip, `rotate(-1.5deg) scale(1.03)` (`data-tilt`), `ring-accent/65`, `shadow-lift`, opaque `bg-card`.
   - Drop animation: 520ms on the literal `cubic-bezier(.34,1.4,.5,1)`. The source slot stays hidden while the clone flies into it, and a WAAPI animation straightens the tilt on the way. It is `null` under reduced motion.
@@ -414,9 +416,11 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
   - The tilt straightens on drop.
   - The drop line and hovered-column border.
   - Drop on an empty column and on a collapsed column (expands).
+  - Rapid keyboard moves: ↓ ↓ ↓ and → → in quick succession, with focus kept on the grip throughout.
+  - Drag cues use `accent-fg` (olive in light) for the drop line, placeholder, hovered-column border and overlay ring; the light lime fill is ~1.1:1. Check that they read in both themes.
   - Touch drag via the grip with body scroll intact (390px, snap pane).
   - Kebab menu stacking above the next card and next column in light theme (`.glass` has `backdrop-filter` there).
   - The overlay is not clipped by the pane.
   - Both themes vs `07`.
   - The 6-column horizontal scroll at 1440.
-- **Suite:** 1155 → 1191 (97 files).
+- **Suite:** 1155 → 1192 (97 files).

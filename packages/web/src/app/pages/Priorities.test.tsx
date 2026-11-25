@@ -272,6 +272,40 @@ describe('Priorities board moves', () => {
     await waitFor(() => expect(updateTask).toHaveBeenCalledWith('a', { sortOrder: 15 }));
   });
 
+  it('a refetch already in flight cannot undo the next move (it is cancelled before the write)', async () => {
+    const initial = [
+      task({ id: 'a', title: 'First', priority: 2, sortOrder: 0 }),
+      task({ id: 'b', title: 'Second', priority: 2, sortOrder: 10 }),
+      task({ id: 'c', title: 'Third', priority: 2, sortOrder: 20 }),
+    ];
+    // The server's state after move 1 only (a between b and c).
+    const afterMove1 = [initial[1]!, { ...initial[0]!, sortOrder: 15 }, initial[2]!];
+    let resolveRefetch: (v: Task[]) => void = () => {};
+    const listTasks = vi.fn()
+      .mockResolvedValueOnce(initial)
+      .mockImplementation(() => new Promise<Task[]>((r) => { resolveRefetch = r; }));
+    // PATCH 1 succeeds (its invalidation starts a refetch); PATCH 2 stays in flight.
+    const updateTask = vi.fn()
+      .mockResolvedValueOnce(task())
+      .mockImplementation(() => new Promise(() => {}));
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateTask }) });
+    await waitFor(() => expect(screen.getByText('First')).toBeInTheDocument());
+    const order = () => within(screen.getByTestId('column-high')).getAllByTestId('task-row').map((r) => r.getAttribute('data-task-id'));
+
+    fireEvent.keyDown(gripOf('First'), { key: 'ArrowDown' });
+    await waitFor(() => expect(listTasks).toHaveBeenCalledTimes(2)); // refetch after PATCH 1, pending
+    fireEvent.keyDown(gripOf('First'), { key: 'ArrowDown' });
+    expect(order()).toEqual(['b', 'c', 'a']);
+    await waitFor(() => expect(updateTask).toHaveBeenCalledTimes(2));
+    expect(updateTask).toHaveBeenLastCalledWith('a', { sortOrder: 21 });
+
+    // The stale response (pre-move-2) arrives: it must not move the card back.
+    await act(async () => { resolveRefetch(afterMove1); await Promise.resolve(); });
+    await act(() => new Promise((r) => { setTimeout(r, 20); }));
+    expect(order()).toEqual(['b', 'c', 'a']);
+    expect(document.activeElement).toBe(gripOf('First'));
+  });
+
   it('ArrowUp on the top card and ArrowLeft from the first column do nothing', async () => {
     const updateTask = vi.fn(async () => task());
     renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ updateTask }) });

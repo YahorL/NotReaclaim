@@ -221,7 +221,7 @@ export function Board({
               data-tilt=""
               aria-hidden="true"
               style={{ transform: TILT }}
-              className="glass-card flex cursor-grabbing items-center gap-2 rounded-card bg-card py-2.5 pl-2.5 pr-3 shadow-lift ring-[1.5px] ring-accent/65"
+              className="glass-card flex cursor-grabbing items-center gap-2 rounded-card bg-card py-2.5 pl-2.5 pr-3 shadow-lift ring-[1.5px] ring-accent-fg/65"
             >
               <span className="-ml-1 flex h-[30px] w-[18px] shrink-0 items-center justify-center text-accent-fg"><GripDots /></span>
               <span className="h-[22px] w-[22px] shrink-0 rounded-full border-[1.5px] border-fg/30" />

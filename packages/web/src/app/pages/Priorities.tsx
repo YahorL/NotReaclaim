@@ -82,17 +82,24 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
       columnTasks: columns.find((c) => c.key === to)?.tasks ?? [],
     });
     if (!patch) return;
-    // Optimistic: the board shows the move at once (Board holds it for the render in between), so a
-    // second arrow press computes from the moved state and focus can follow the card. Synchronous —
-    // nothing may be awaited before this write. Rolled back if the PATCH fails; the success path's
-    // invalidation refetches the server's order.
-    const snapshots = qc.getQueriesData<unknown>({ queryKey: queryKeys.tasksRoot });
-    qc.setQueriesData<unknown>({ queryKey: queryKeys.tasksRoot }, (old: unknown) => (Array.isArray(old)
-      ? (old as Task[]).map((x) => (x.id === taskId ? { ...x, ...patch } as Task : x))
-      : old));
-    updateM.mutate({ id: taskId, patch }, {
-      onError: () => { for (const [key, data] of snapshots) qc.setQueryData(key, data); },
-    });
+    // Optimistic, so a second arrow press computes from the moved state and focus can follow the
+    // card. Board already paints the move synchronously (its held arrangement), so the write can
+    // wait for `cancelQueries`: the previous move's post-success refetch may still be in flight,
+    // and its (pre-this-move) response would otherwise land on top of this write and step the card
+    // back. Rolled back and re-fetched if the PATCH fails.
+    void (async () => {
+      await qc.cancelQueries({ queryKey: queryKeys.tasksRoot });
+      const snapshots = qc.getQueriesData<unknown>({ queryKey: queryKeys.tasksRoot });
+      qc.setQueriesData<unknown>({ queryKey: queryKeys.tasksRoot }, (old: unknown) => (Array.isArray(old)
+        ? (old as Task[]).map((x) => (x.id === taskId ? { ...x, ...patch } as Task : x))
+        : old));
+      updateM.mutate({ id: taskId, patch }, {
+        onError: () => {
+          for (const [key, data] of snapshots) qc.setQueryData(key, data);
+          void qc.invalidateQueries({ queryKey: queryKeys.tasksRoot });
+        },
+      });
+    })();
   };
 
   return (

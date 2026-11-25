@@ -128,7 +128,7 @@ export function TaskRow({ task, columnKey, nextMs, now, zone, draggable = true, 
         if (!hit || hit.hasAttribute('data-grip')) onMouseDown?.(e);
       }}
       onClick={() => onEdit(task)}
-      className={`group/card glass-card glass-card-hover relative flex flex-col gap-1.5 rounded-card py-2.5 pl-2.5 pr-2 select-none touch-pan-y ${draggable ? 'cursor-grab' : 'cursor-default'} ${menuOpen ? 'z-20' : ''} data-[muted]:opacity-70 data-[done]:opacity-60 data-[placeholder]:border-dashed data-[placeholder]:border-accent/70 data-[placeholder]:bg-accent/[.06] data-[placeholder]:bg-none data-[placeholder]:opacity-100 data-[placeholder]:shadow-none [&[data-placeholder]>*]:invisible`}
+      className={`group/card glass-card glass-card-hover relative flex flex-col gap-1.5 rounded-card py-2.5 pl-2.5 pr-2 select-none touch-pan-y ${draggable ? 'cursor-grab' : 'cursor-default'} ${menuOpen ? 'z-20' : ''} data-[muted]:opacity-70 data-[done]:opacity-60 data-[placeholder]:border-dashed data-[placeholder]:border-accent-fg/70 data-[placeholder]:bg-accent-fg/[.06] data-[placeholder]:bg-none data-[placeholder]:opacity-100 data-[placeholder]:shadow-none [&[data-placeholder]>*]:invisible`}
     >
       <div className="flex items-center gap-2">
         {draggable ? (
@@ -156,7 +156,7 @@ export function TaskRow({ task, columnKey, nextMs, now, zone, draggable = true, 
         <button
           type="button" aria-label="complete" aria-pressed={done}
           onClick={(e) => { e.stopPropagation(); onComplete(task); }}
-          className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border-[1.5px] transition-colors duration-200 ${done ? 'animate-pop-check border-accent bg-accent text-on-accent' : 'border-fg/30 hover:border-accent'}`}
+          className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border-[1.5px] transition-colors duration-200 ${done ? 'animate-pop-check border-accent bg-accent text-on-accent' : 'border-fg/30 hover:border-accent-fg'}`}
         >
           {done && (
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10" /></svg>

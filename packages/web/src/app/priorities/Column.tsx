@@ -58,7 +58,7 @@ export function Column({
         data-drop-target={isTarget || undefined}
         data-collapsed={collapsed || undefined}
         style={{ animationDelay: `${index * 60}ms` }}
-        className="glass flex animate-rise flex-col gap-1.5 rounded-panel p-3 transition-[border-color,box-shadow] duration-200 data-[drop-target]:border-accent/45 data-[drop-target]:shadow-[0_0_0_1px_rgb(var(--c-accent)/0.2),0_30px_70px_-30px_rgba(0,0,0,0.8)]"
+        className="glass flex animate-rise flex-col gap-1.5 rounded-panel p-3 transition-[border-color,box-shadow] duration-200 data-[drop-target]:border-accent-fg/45 data-[drop-target]:shadow-[0_0_0_1px_rgb(var(--c-accent-text)/0.2),var(--x-panel-shadow)]"
       >
         <div className="flex items-center gap-2.5 pb-1.5 pl-2 pr-1 pt-1">
           <span aria-hidden="true" className={`h-2.5 w-2.5 shrink-0 rounded-full ${meta.dot} ${meta.glow}`} />
@@ -95,7 +95,7 @@ export function Column({
             {tasks.length === 0 && (
               <div
                 data-testid={`column-empty-${columnKey}`}
-                className={`rounded-[14px] border border-dashed px-2.5 py-3.5 text-center text-[13px] transition-colors ${isTarget ? 'border-accent/70 bg-accent/[.06] text-fg' : 'border-fg/[.12] text-fg-2'}`}
+                className={`rounded-[14px] border border-dashed px-2.5 py-3.5 text-center text-[13px] transition-colors ${isTarget ? 'border-accent-fg/70 bg-accent-fg/[.06] text-fg' : 'border-fg/[.12] text-fg-2'}`}
               >
                 {emptyText}
               </div>
@@ -107,13 +107,16 @@ export function Column({
   );
 }
 
-/** The landing line for a drag from another column (3px accent, centred in the 6px card gap). */
+/**
+ * The landing line for a drag from another column (3px, centred in the 6px card gap). Drawn in
+ * `accent-fg` (lime in dark, olive in light): the light lime fill is ~1.1:1 on light cards.
+ */
 function DropLine({ className }: { className: string }) {
   return (
     <span
       data-testid="drop-indicator"
       aria-hidden="true"
-      className={`pointer-events-none absolute inset-x-2 z-10 h-[3px] -translate-y-px rounded-full bg-accent shadow-[0_0_10px_rgb(var(--c-accent-glow)/0.7)] ${className}`}
+      className={`pointer-events-none absolute inset-x-2 z-10 h-[3px] -translate-y-px rounded-full bg-accent-fg shadow-[0_0_10px_rgb(var(--c-accent-glow)/0.7)] ${className}`}
     />
   );
 }
