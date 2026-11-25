@@ -352,6 +352,100 @@ describe('Buffers page', () => {
       expect(screen.getByTestId('save')).toBeDisabled();
     });
 
+    it('an edited field is measured against what the server has now: typing the old value back after a refetch can be saved', async () => {
+      const server = { current: settings() }; // 5 / 10
+      const { patchSettings, refetch } = await mountWithServer(server);
+      fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '15' } });
+      // Another tab: task 30 (meeting 20 too, so the test can see the refetch land).
+      server.current = settings({ meetingBufferMs: 1_200_000, taskBufferMs: 1_800_000, updatedAt: '2026-01-02T00:00:00.000Z' });
+      await refetch();
+      await waitFor(() => expect(valueOf('meeting-buffer')).toBe('20'));
+      expect(valueOf('task-buffer')).toBe('15'); // the edit is kept
+      fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '10' } });
+      expect(screen.getByTestId('save')).toBeEnabled(); // 10 is not what the server has (30)
+      fireEvent.click(screen.getByTestId('save'));
+      await waitFor(() => expect(patchSettings).toHaveBeenCalledTimes(1));
+      expect(patchSettings).toHaveBeenCalledWith({ taskBufferMs: 600_000 });
+    });
+
+    it('an edited field that now equals what the server has is no longer dirty and is not sent', async () => {
+      const server = { current: settings() };
+      const { patchSettings, refetch } = await mountWithServer(server);
+      fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '30' } });
+      server.current = settings({ taskBufferMs: 1_800_000, updatedAt: '2026-01-02T00:00:00.000Z' });
+      await refetch();
+      await waitFor(() => expect(screen.getByTestId('save')).toBeDisabled());
+      expect(valueOf('task-buffer')).toBe('30');
+      fireEvent.change(screen.getByTestId('meeting-buffer'), { target: { value: '7' } });
+      fireEvent.click(screen.getByTestId('save'));
+      await waitFor(() => expect(patchSettings).toHaveBeenCalledTimes(1));
+      expect(patchSettings).toHaveBeenCalledWith({ meetingBufferMs: 420_000 });
+    });
+
+    describe('a save racing another tab\'s write converges to what the server has', () => {
+      const at = (n: number) => `2026-01-0${n}T00:00:00.000Z`;
+      // meeting 5 / task 10 on load; the user saves task 15. The other tab's write also sets meeting
+      // to 20, so a test can wait for its refetch to land (the edited task field shows no change).
+      const race = async () => {
+        let server = settings();
+        let landSave!: (serverAfter: Settings) => void;
+        const patchSettings = vi.fn((patch: Partial<Settings>) => new Promise<Settings>((resolve) => {
+          landSave = (serverAfter) => { const response = { ...server, ...patch, updatedAt: at(3) }; server = serverAfter; resolve(response); };
+        }));
+        const api = fakeApiClient({ getSettings: async () => server, patchSettings } as never);
+        let client!: QueryClient;
+        renderWithProviders(<><Buffers /><GrabClient onClient={(c) => { client = c; }} /></>, { api });
+        await waitFor(() => expect(valueOf('task-buffer')).toBe('10'));
+        fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '15' } });
+        fireEvent.click(screen.getByTestId('save'));
+        await waitFor(() => expect(patchSettings).toHaveBeenCalledTimes(1));
+        return {
+          otherTabWrites: async (taskMs: number, n: number) => {
+            server = settings({ meetingBufferMs: 1_200_000, taskBufferMs: taskMs, updatedAt: at(n) });
+            await act(async () => { await client.invalidateQueries(); });
+            await waitFor(() => expect(valueOf('meeting-buffer')).toBe('20'));
+          },
+          land: async (serverAfter: Settings) => {
+            await act(async () => { landSave(serverAfter); });
+            await waitFor(() => expect(screen.getByTestId('saved')).toBeInTheDocument());
+          },
+        };
+      };
+
+      it('their 30 arrives first, then our 15 lands last on the server → shows 15, clean', async () => {
+        const r = await race();
+        await r.otherTabWrites(1_800_000, 2);
+        expect(valueOf('task-buffer')).toBe('15');
+        await r.land(settings({ meetingBufferMs: 1_200_000, taskBufferMs: 900_000, updatedAt: at(3) }));
+        await waitFor(() => expect(valueOf('task-buffer')).toBe('15'));
+        expect(screen.getByTestId('save')).toBeDisabled();
+      });
+
+      it('their 30 arrives first and also lands last on the server → shows 30, clean', async () => {
+        const r = await race();
+        await r.otherTabWrites(1_800_000, 2);
+        await r.land(settings({ meetingBufferMs: 1_200_000, taskBufferMs: 1_800_000, updatedAt: at(2) }));
+        await waitFor(() => expect(valueOf('task-buffer')).toBe('30'));
+        expect(screen.getByTestId('save')).toBeDisabled();
+      });
+
+      it('our save lands first, their 30 is written after it → shows 30, clean', async () => {
+        const r = await race();
+        await r.land(settings({ meetingBufferMs: 1_200_000, taskBufferMs: 1_800_000, updatedAt: at(4) }));
+        await waitFor(() => expect(valueOf('task-buffer')).toBe('30'));
+        expect(screen.getByTestId('save')).toBeDisabled();
+      });
+
+      // The refetch brings the same buffer values as on load (10) but a newer row: the page must still
+      // notice, or it keeps showing 15 as saved.
+      it('our save lands first, then the other tab sets the old value (10) back before our refetch → shows 10, clean', async () => {
+        const r = await race();
+        await r.land(settings({ taskBufferMs: 600_000, updatedAt: at(4) }));
+        await waitFor(() => expect(valueOf('task-buffer')).toBe('10'));
+        expect(screen.getByTestId('save')).toBeDisabled();
+      });
+    });
+
     it('a refetch with identical data changes nothing', async () => {
       const server = { current: settings() };
       const { patchSettings, refetch } = await mountWithServer(server);

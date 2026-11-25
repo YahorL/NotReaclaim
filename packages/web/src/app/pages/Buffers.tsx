@@ -36,6 +36,7 @@ export function Buffers() {
   return (
     <BuffersForm
       initial={initial}
+      version={settingsQ.data?.updatedAt}
       firstTime={!settingsQ.data}
       onSave={(buffers, onSaved) => updateM.mutate(buffers, { onSuccess: onSaved })}
       saving={updateM.isPending} justSaved={updateM.isSuccess} saveError={saveError}
@@ -45,8 +46,46 @@ export function Buffers() {
 
 const minutesText = (ms: number) => String(Math.round(ms / 60000));
 
-function BuffersForm({ initial, firstTime, onSave, saving, justSaved, saveError }: {
+type BufferField = 'meeting' | 'task';
+type BufferTexts = Record<BufferField, string>;
+/** `text`: the fields as typed. `baseline`: what the server has now, as shown in a field. */
+type BufferFormState = { text: BufferTexts; baseline: BufferTexts };
+const FIELDS = ['meeting', 'task'] as const;
+const KEYS = { meeting: 'meetingBufferMs', task: 'taskBufferMs' } as const;
+
+/**
+ * The server's settings changed (another tab, then the realtime refetch; or this page's own save):
+ * a field still equal to its old baseline was not edited and takes the server's value; an edited
+ * field keeps its text. Either way the baseline becomes the server's value, so a field is sent
+ * exactly when its text differs from what the server has now.
+ */
+function followServer(form: BufferFormState, server: BufferTexts): BufferFormState {
+  const text = { ...form.text };
+  for (const f of FIELDS) if (form.text[f] === form.baseline[f]) text[f] = server[f];
+  return { text, baseline: server };
+}
+
+/**
+ * A save landed. For each sent field: if no newer server value arrived while it was in flight, the
+ * server now has the sent text, which becomes the baseline. If one did (the baseline moved since
+ * sending), the order of the two writes is unknown here, so the baseline is not moved back; a field
+ * still showing the sent text counts as not edited and shows that newer value, and the refetch this
+ * save triggers settles it (it brings whichever write the server kept).
+ */
+function afterSave(form: BufferFormState, sent: ReadonlyArray<{ field: BufferField; text: string; over: string }>): BufferFormState {
+  const text = { ...form.text };
+  const baseline = { ...form.baseline };
+  for (const s of sent) {
+    if (form.baseline[s.field] === s.over) baseline[s.field] = s.text;
+    else if (form.text[s.field] === s.text) text[s.field] = form.baseline[s.field];
+  }
+  return { text, baseline };
+}
+
+function BuffersForm({ initial, version, firstTime, onSave, saving, justSaved, saveError }: {
   initial: SettingsFormState;
+  /** The settings row's `updatedAt`: a refetch that brings back the same buffer values from a newer row still re-seeds. */
+  version: string | undefined;
   /** No settings row yet: saving creates it, so Save is useful even with nothing edited. */
   firstTime: boolean;
   onSave: (buffers: Partial<BufferValues>, onSaved: () => void) => void;
@@ -56,26 +95,19 @@ function BuffersForm({ initial, firstTime, onSave, saving, justSaved, saveError 
 }) {
   // The fields hold the text as typed, so '', '-5' or '1.5' reach the validator (and stay on
   // screen with their error) instead of being coerced to a number first.
-  const [meetingText, setMeetingText] = useState(() => minutesText(initial.meetingBufferMs));
-  const [taskText, setTaskText] = useState(() => minutesText(initial.taskBufferMs));
-  // The text as loaded / last saved. Only a field that differs from it is sent: an untouched one
-  // could revert a change saved elsewhere, or round a stored 90 000 ms (shown as 2) to 120 000.
-  const [baseline, setBaseline] = useState(() => ({ meeting: meetingText, task: taskText }));
-  // Settings changed while the page is open (another tab, then the realtime refetch): a field the
-  // user has not edited (still its baseline) takes the new value, and that becomes its baseline,
-  // so the page never shows a value the server no longer has. An edited field keeps its text and
-  // its baseline. Memoised on the two numbers so useValueChange sees a stable seed in between.
   const seed = useMemo(
     () => ({ meeting: minutesText(initial.meetingBufferMs), task: minutesText(initial.taskBufferMs) }),
-    [initial.meetingBufferMs, initial.taskBufferMs],
+    // `version` is not read: a newer row with the same numbers is still a change to follow.
+    [initial.meetingBufferMs, initial.taskBufferMs, version],
   );
-  useValueChange(seed, (_prev, next) => {
-    const meetingUntouched = meetingText === baseline.meeting;
-    const taskUntouched = taskText === baseline.task;
-    if (meetingUntouched) setMeetingText(next.meeting);
-    if (taskUntouched) setTaskText(next.task);
-    setBaseline({ meeting: meetingUntouched ? next.meeting : baseline.meeting, task: taskUntouched ? next.task : baseline.task });
-  });
+  // Only a field whose text differs from its baseline is sent: an untouched one could revert a
+  // change saved elsewhere, or round a stored 90 000 ms (shown as 2) to 120 000.
+  const [form, setForm] = useState<BufferFormState>(() => ({ text: seed, baseline: seed }));
+  useValueChange(seed, (_prev, next) => setForm((f) => followServer(f, next)));
+  const { text: { meeting: meetingText, task: taskText }, baseline } = form;
+  const setText = (field: BufferField) => (value: string) => setForm((f) => ({ ...f, text: { ...f.text, [field]: value } }));
+  const setMeetingText = setText('meeting');
+  const setTaskText = setText('task');
   // A "Saved" left over from the previous save must not sit next to an edited (maybe invalid) form.
   const [editedSinceSave, setEditedSinceSave] = useState(false);
   const meetingBufferError = validateBufferMinutesText(meetingText);
@@ -100,10 +132,8 @@ function BuffersForm({ initial, firstTime, onSave, saving, justSaved, saveError 
   const save = () => {
     if (!canSave) return;
     setEditedSinceSave(false);
-    // Only the sent fields' baselines move: one re-seeded while the save was in flight keeps its new one.
-    const sentMeeting = 'meetingBufferMs' in toSend ? meetingText : null;
-    const sentTask = 'taskBufferMs' in toSend ? taskText : null;
-    onSave(toSend, () => setBaseline((b) => ({ meeting: sentMeeting ?? b.meeting, task: sentTask ?? b.task })));
+    const sent = FIELDS.filter((f) => KEYS[f] in toSend).map((f) => ({ field: f, text: form.text[f], over: form.baseline[f] }));
+    onSave(toSend, () => setForm((f) => afterSave(f, sent)));
   };
 
   return (
