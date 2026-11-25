@@ -77,9 +77,30 @@ describe('SettingsForm', () => {
 
   it('grows the weekday checkboxes on a coarse pointer', () => {
     render(<SettingsForm initial={initial()} onSave={vi.fn()} timezones={['UTC']} />);
+    // The custom checkbox is 20px (h-5) everywhere now; a coarse pointer grows it to 24px.
     const toggle = screen.getByTestId('day-1-toggle');
-    expect(toggle.className).toContain('coarse:h-5');
+    expect(toggle.className).toContain('coarse:h-6');
+    expect(toggle.className).toContain('coarse:w-6');
     expect(toggle.parentElement!.className).toContain('coarse:py-2');
   });
 
+  it('shows the weekly working-hours total and follows edits', () => {
+    render(<SettingsForm initial={initial()} onSave={vi.fn()} timezones={['UTC']} />);
+    expect(screen.getByTestId('weekly-total')).toHaveTextContent('40h per week'); // Mon–Fri 09:00–17:00
+    fireEvent.click(screen.getByTestId('day-5-toggle'));
+    expect(screen.getByTestId('weekly-total')).toHaveTextContent('32h per week');
+    fireEvent.change(screen.getByTestId('day-1-end'), { target: { value: '17:30' } });
+    expect(screen.getByTestId('weekly-total')).toHaveTextContent('32.5h per week');
+  });
+
+  it('groups the form into labelled cards with named controls', () => {
+    render(<SettingsForm initial={initial()} onSave={vi.fn()} timezones={['UTC']} />);
+    for (const name of ['Working hours', 'Timezone', 'Planner', 'Scheduling']) {
+      expect(screen.getByRole('region', { name })).toBeInTheDocument();
+    }
+    expect(screen.getByRole('combobox', { name: 'Timezone' })).toBe(screen.getByTestId('timezone'));
+    expect(screen.getByLabelText('Day starts at')).toBe(screen.getByTestId('day-start'));
+    expect(screen.getByRole('spinbutton', { name: 'Planning horizon (days)' })).toBe(screen.getByTestId('horizon'));
+    expect(screen.getByRole('checkbox', { name: 'Only count time after I press Start' })).toBe(screen.getByTestId('require-start'));
+  });
 });

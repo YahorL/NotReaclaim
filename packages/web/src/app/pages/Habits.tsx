@@ -9,6 +9,7 @@ import { HabitDrawer } from '../habits/HabitDrawer';
 import { DrawerHost } from '../components/DrawerHost';
 import { useCompactWidth } from '../lib/useMediaQuery';
 import { defaultQuickAddInput } from '../habits/habitForm';
+import { habitSummary } from '../habits/habitSummary';
 
 export function Habits() {
   const habitsQ = useHabitsQuery();
@@ -27,21 +28,33 @@ export function Habits() {
     [previewQ.data, habitsQ.data],
   );
 
+  const summary = habitSummary(habits);
+  const loaded = !habitsQ.isLoading && !habitsQ.isError;
+
   return (
-    <div className="p-4">
-      <div className="mx-auto w-full max-w-[720px]">
-        <QuickAdd placeholder="+ Add a habit…" onAdd={(title) => createM.mutate(defaultQuickAddInput(title))} />
-        {habitsQ.isLoading && <div className="text-sm text-gray-500">Loading habits…</div>}
+    <div className="px-4 pb-6 pt-4 md:px-1 md:pt-0">
+      <div className="mx-auto flex w-full max-w-[900px] flex-col gap-4">
+        {loaded && (
+          <section data-testid="habit-summary" aria-label="Habit summary" className="glass flex animate-rise flex-wrap items-center gap-6 rounded-panel px-6 py-[22px]">
+            <Stat value={String(summary.active)} label={summary.active === 1 ? 'active habit' : 'active habits'} />
+            <span aria-hidden="true" className="h-12 w-px bg-fg/10" />
+            <Stat value={summary.weeklyLabel} label="booked per week" />
+            <span aria-hidden="true" className="h-12 w-px bg-fg/10" />
+            <Stat value={String(summary.paused)} label="paused" />
+          </section>
+        )}
+        <QuickAdd placeholder="Add a habit…" label="New habit name" onAdd={(title) => createM.mutate(defaultQuickAddInput(title))} />
+        {habitsQ.isLoading && <div className="text-sm text-fg-2">Loading habits…</div>}
         {habitsQ.isError && (
-          <div className="text-sm">
-            <span className="text-red-600">Couldn't load habits.</span>{' '}
-            <button onClick={() => void habitsQ.refetch()} className="rounded border border-gray-300 px-2">Retry</button>
+          <div className="flex items-center gap-3 text-sm">
+            <span className="text-danger">Couldn't load habits.</span>
+            <button onClick={() => void habitsQ.refetch()} className="btn-glass rounded-pill px-3 py-1.5">Retry</button>
           </div>
         )}
-        {!habitsQ.isLoading && !habitsQ.isError && habits.length === 0 && (
-          <p className="text-sm text-gray-500">No habits yet — add one above.</p>
+        {loaded && habits.length === 0 && (
+          <p className="text-sm text-fg-2">No habits yet — add one above.</p>
         )}
-        <div>
+        <div className="flex flex-col gap-3">
           {habits.map((h) => (
             <HabitRow key={h.id} habit={h} unscheduledCount={missed.get(h.id) ?? 0}
               onEdit={setEditing}
@@ -55,7 +68,7 @@ export function Habits() {
           compact={compact}
           label="Edit habit"
           onClose={() => setEditing(null)}
-          desktopClass="fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-4"
+          desktopClass="fixed inset-0 z-50 flex animate-bd-in items-center justify-center bg-overlay p-4 backdrop-blur-[8px]"
         >
           {/* Keyed by id: the drawer seeds its form once at mount, and the overlay is no focus
               trap, so keyboard Edit on another row switches the habit under a mounted drawer. */}
@@ -65,6 +78,15 @@ export function Habits() {
             onCancel={() => setEditing(null)} />
         </DrawerHost>
       )}
+    </div>
+  );
+}
+
+function Stat({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[44px] font-light leading-none tracking-[-0.03em] tabular-nums">{value}</span>
+      <span className="text-[13px] text-fg-2">{label}</span>
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useApi } from '../api/ApiProvider';
 import { useAuth } from './AuthContext';
 import { ApiError } from '../api/client';
+import { AuthCard, AuthField, AUTH_LINK } from './AuthCard';
 
 export function Register() {
   const api = useApi();
@@ -28,19 +29,15 @@ export function Register() {
   };
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center gap-4">
-      <h1 className="text-2xl font-semibold">Create your account</h1>
-      <form onSubmit={onSubmit} className="flex w-72 flex-col gap-2">
-        <label className="text-sm" htmlFor="email">Email</label>
-        <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="rounded border px-3 py-2" required />
-        <label className="text-sm" htmlFor="password">Password</label>
-        <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="rounded border px-3 py-2" minLength={10} required />
-        <label className="text-sm" htmlFor="invite">Invite code (if required)</label>
-        <input id="invite" value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} className="rounded border px-3 py-2" />
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <button type="submit" disabled={busy} className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50">Create account</button>
+    <AuthCard title="Create your account">
+      <form onSubmit={onSubmit} className="flex flex-col gap-3">
+        <AuthField id="email" label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" required />
+        <AuthField id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete="new-password" minLength={10} required />
+        <AuthField id="invite" label="Invite code (if required)" value={inviteCode} onChange={setInviteCode} />
+        {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+        <button type="submit" disabled={busy} className="btn-accent mt-1 h-12 rounded-pill text-[15px] font-semibold">Create account</button>
       </form>
-      <p className="text-sm text-gray-500">Have an account? <Link to="/signin" className="text-blue-600">Sign in</Link></p>
-    </div>
+      <p className="text-center text-sm text-fg-2">Have an account? <Link to="/signin" className={AUTH_LINK}>Sign in</Link></p>
+    </AuthCard>
   );
 }

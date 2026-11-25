@@ -72,4 +72,12 @@ describe('HabitDrawer', () => {
     expect(monday.className).toContain('coarse:h-10');
     expect(monday.className).toContain('coarse:w-10');
   });
+
+  it('day toggles are named buttons whose pressed state is the eligible days', () => {
+    render(<HabitDrawer habit={habit()} onSave={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Monday' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Sunday' })).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(screen.getByRole('button', { name: 'Sunday' }));
+    expect(screen.getByRole('button', { name: 'Sunday' })).toHaveAttribute('aria-pressed', 'true');
+  });
 });

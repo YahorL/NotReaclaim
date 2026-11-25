@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useApi } from '../api/ApiProvider';
 import { useAuth } from './AuthContext';
 import { ApiError } from '../api/client';
+import { AuthCard, AuthField, AUTH_LINK } from './AuthCard';
 
 export function SignIn() {
   const api = useApi();
@@ -32,19 +33,15 @@ export function SignIn() {
   };
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center gap-4">
-      <h1 className="text-2xl font-semibold">NotReclaim</h1>
-      <p className="text-gray-500">Your calendar, auto-scheduled.</p>
-      <form onSubmit={onPasswordSignIn} className="flex w-72 flex-col gap-2">
-        <label className="text-sm" htmlFor="email">Email</label>
-        <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="rounded border px-3 py-2" required />
-        <label className="text-sm" htmlFor="password">Password</label>
-        <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="rounded border px-3 py-2" required />
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <button type="submit" disabled={busy} className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50">Sign in</button>
+    <AuthCard title="NotReclaim" subtitle="Your calendar, auto-scheduled.">
+      <form onSubmit={onPasswordSignIn} className="flex flex-col gap-3">
+        <AuthField id="email" label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" required />
+        <AuthField id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete="current-password" required />
+        {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+        <button type="submit" disabled={busy} className="btn-accent mt-1 h-12 rounded-pill text-[15px] font-semibold">Sign in</button>
       </form>
-      <button onClick={onGoogle} className="rounded border px-4 py-2">Sign in with Google</button>
-      <p className="text-sm text-gray-500">No account? <Link to="/register" className="text-blue-600">Create one</Link></p>
-    </div>
+      <button type="button" onClick={onGoogle} className="btn-glass h-12 rounded-pill text-[15px] font-medium">Sign in with Google</button>
+      <p className="text-center text-sm text-fg-2">No account? <Link to="/register" className={AUTH_LINK}>Create one</Link></p>
+    </AuthCard>
   );
 }

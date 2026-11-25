@@ -411,3 +411,64 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
 ### Survey notes for risky assumptions (checked 2026-11-24)
 - **Block id stability (D13).** `packages/core/src/apply.ts` applies the desired schedule as a keyed (`engineKey`) in-place diff: a block whose engine key survives a replan is **updated in place and keeps its id**, so moved blocks glide and only genuinely new chunks drop in. Caveat: when a task's chunk count changes, keys are reissued and some blocks are deleted/created — those will drop in. That is acceptable ("newly placed" is a fair reading).
 - **CSP vs the inline theme script (D3).** No `Content-Security-Policy` header is set in `packages/server` or the `docs/deploy` runbooks (Tailscale Serve, Docker Compose), so the inline pre-paint script is allowed. If a CSP is added later it needs a hash for that script.
+
+### P7 implementation notes (2026-11-25): Stats, Habits, Buffers, Hours, Settings, auth
+- **Branch.** Built on `feat/redesign-p7` from 5633409, so none of P4's planner work is in it. No planner, shell, config or `index.css` file was touched.
+- **Shared P7 modules (new files, P7-owned):**
+  - `app/forms/Segmented.tsx` is one glass pill switch with two roles. As `tablist` it is the Stats Chart | Table switch; as `radiogroup` it is the Settings Appearance choice. Both rove (←/→/↑/↓/Home/End move the selection and focus).
+  - `app/forms/controls.ts` holds class strings: `CAPS_LABEL`, `INPUT` (recessed surface, `outline-none` + `focus:border-focus` per §6), `CHECKBOX` (the prototype `.cb` built from Tailwind arbitrary variants: 20px, accent fill, `::before` clip-path tick, 24px on a coarse pointer), and `DANGER_TEXT_BTN`.
+  - `auth/AuthCard.tsx` provides `AuthCard` and `AuthField`.
+- **Stats:**
+  - **KPI number size.** 56px at md+ and 40px below. The plan said 64px and the prototype `.kpi-v` says 48px; the screenshot measures about 56px.
+  - **Task series kept.** It uses `chart-task`, so the legend, stack, table and donut show three series in one fixed order: meetings, habits, tasks. `donutSegments` was reordered to match.
+  - **Y axis.** `chartScaleMs` (an 8h floor) is replaced by `axisScale`: the smallest step from {1,2,3,4,6,8,12}h that needs at most 4 intervals.
+  - **One source for numbers.** The bar value labels and the Table view (day rows plus a totals row, `th scope=row` day cells) both read `dayTable`.
+  - **Donut.** `donutArcs` follows the P1 `donut-draw` contract. A 10-unit gap is taken off each arc, a lone segment is the full ring, and no arc length goes negative.
+  - **Not done here.** Light-theme chart colours are not validated; that is P8.
+- **Buffers:**
+  - **Stepper.** `stepBuffer` moves to the next multiple of 5 in the pressed direction (7 → 10 / 5). It floors at 0 and has no upper clamp. A negative or NaN field restarts from 0.
+  - **Preview widths.** Each segment's width is its share of the strip's total minutes, not px per minute, so unclamped buffers never overflow.
+  - **Preview task colour.** Preview tasks are dashed accent (lime, olive in light) as in screenshot 10, not the planner's neutral `.block-task`.
+  - **Status line.** "Unsaved changes" (`unsaved`) compares against the last value the server confirmed (seeded from the load, then updated by the mutation's `onSuccess`). It therefore clears on success without waiting for the settings refetch. "Saved" shows only when nothing is unsaved.
+  - **Heading removed.** The card heading that duplicated the headline is gone (P2 note).
+- **Hours:**
+  - **Colour swatches** are a `radiogroup` of named radios (Indigo … Brown, No color; testids keep the hex). **Deviation from the ARIA radio pattern:** each pick PATCHes, so arrows only move focus (roving tabindex) and Space/Enter/click selects.
+  - **Weekly chip.** It reads "Follows Settings" for an inheriting default, otherwise `weeklyHoursTotal`. It follows unsaved editor rows.
+  - **`WeeklyHoursEditor` changes:**
+    - Each row is a grid; the checkbox sits inside a `<label>` with the day name, so the name toggles too. This closes the old "make the whole row hittable" follow-up. `coarse:py-2` is now on that label.
+    - Time inputs are named ("Monday start time").
+    - `showCoverage` adds the 24h bar (`${idPrefix}-${wd}-bar`, category colour or accent, dimmed when the day is off) plus a ticks row. Both are hidden below `sm`.
+    - Settings does not pass `showCoverage` (matches screenshot 12).
+- **Settings:**
+  - **Layout.** The grid switches at `lg`, not `md`: the 7-row hours editor does not fit a half-width card at 768px. Order: Working hours (live `weekly-total`) | Timezone + Planner, then Scheduling full width, then Save (kept), then Appearance | Account on their own `lg:grid-cols-2` row, then the mobile rows and the version footer.
+  - **Appearance** sits outside `settings-form` because it applies instantly through `useTheme`; System clears `nr.theme`.
+  - **Steppers.** Min/Max chunk still use P5's `DurationStepper`; check them live after P5 merges.
+  - **Account.** The password field is named. "Password saved" is a `role=status` line and errors are a `role=alert` line. Reconnect is a glass pill with danger text, replacing the red fill (which has poor light contrast).
+- **Habits:**
+  - **Delete button** is now named "Delete <title>" (was "delete"). The tests were updated to match.
+  - **At-risk chip** reads "N missed" with a warning icon (title and testid kept). It uses `text-danger` because there is no warning-surface token.
+  - **Day pills** run Sunday first and are `aria-hidden`, with an sr-only "Days: Mon, Wed, Fri" / "Days: any day". The meta line also says "any day" when all 7 days are eligible.
+  - **Summary strip** (`habitSummary`) shows only once habits have loaded.
+  - **Edit overlay** uses `bg-overlay` + blur. HabitDrawer's day toggles get day names and `aria-pressed`.
+  - **QuickAdd** takes an optional `label` prop for its accessible name.
+- **Auth.** SignIn and Register use AuthCard. `ProtectedRoute` has no loading state (it redirects synchronously), so it is unchanged.
+- **Palette sweep: hits outside P7 files, left to their owners (P8 should check they are gone):**
+  - `NewTaskModal` (`indigo`/`ink*`/`crit`/`#c7cad6`), `PriorityPicker` and `DurationStepper` (`text-indigo`): P5.
+  - `priorities/*` (`TaskRow`, `Column`, `Dropdown`, `TasksCard`, `Toolbar`, `Board`, `priorityBucket` `#aeb2c0`) and `pages/Priorities.tsx`: P6.
+  - `AccountMenu`, `ThemeSwitch` and `NavItem` light-theme literals (deliberate, no token): P2/P8.
+  - The `CalendarBlock` delete button (`bg-black/30 text-white`): P3/P4.
+- **For P8's light pass: `rgb()` literals in P7 files the sweep regex cannot see.** The inset white highlight on the Segmented selected state, the inset black shadow on the QuickAdd input, and the inset white highlight on the colour swatches.
+- **Layout, tablet widths (768–1023px).** The KPI row wraps (`md:flex-wrap`, cards `md:basis-[220px]`, the prototype's `minmax(220px)`). The Settings Scheduling fields become 3 columns only at `lg`.
+- **Contrast.** Small text (under 12px) uses `fg-2`, not `fg-3` (§6): the y-axis ticks, the coverage ticks and the off-day habit pills.
+- **Still needs live verification:**
+  - Every P7 screen in both themes at 1440 and 390 against 08–12.
+  - The custom checkbox tick rendering in Firefox and Chromium.
+  - Native time/number/select pickers following `color-scheme`.
+  - Stats bar grow-in and donut draw-in, including under reduced motion.
+  - The Buffers preview width transition.
+  - The `lg` breakpoint wraps in Settings.
+  - Light-theme contrast of `accent-fg` day pills and of the dashed preview tasks.
+  - The Hours time inputs at 390px, where each is only about 83px wide.
+  - A week whose busiest day lands exactly on the top axis tick, where the bar's value label sits above the plot top.
+  - The KPI row and Settings at 768–1023px.
+- **Suite:** 1155 tests / 97 files → 1230 tests / 104 files.

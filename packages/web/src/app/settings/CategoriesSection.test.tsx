@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 import { ApiError } from '../../api/client';
 import { CategoriesSection } from './CategoriesSection';
@@ -171,5 +171,71 @@ describe('CategoriesSection', () => {
     expect(screen.queryByTestId('new-category-error')).not.toBeInTheDocument();
     await new Promise((r) => setTimeout(r, 0));
     expect(screen.queryByTestId('new-category-error')).not.toBeInTheDocument();
+  });
+
+  it('shows Default / Follows Settings chips for an inheriting default and an hours total for custom windows', async () => {
+    const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue(cats) } as never);
+    renderWithProviders(<CategoriesSection />, { api });
+    await screen.findByTestId('cat-row-cat-p');
+    expect(screen.getByTestId('cat-default-chip-cat-def')).toHaveTextContent('Default');
+    expect(screen.getByTestId('cat-weekly-cat-def')).toHaveTextContent('Follows Settings');
+    expect(screen.queryByTestId('cat-default-chip-cat-p')).toBeNull();
+    expect(screen.getByTestId('cat-weekly-cat-p')).toHaveTextContent('4h per week'); // Mon 18:00–22:00
+    // the inheriting default links to Settings for its hours
+    expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/settings');
+  });
+
+  it('the weekly total follows unsaved edits', async () => {
+    const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue(cats) } as never);
+    renderWithProviders(<CategoriesSection />, { api });
+    await screen.findByTestId('cat-row-cat-p');
+    fireEvent.click(screen.getByTestId('cat-cat-p-2-toggle')); // enable Tuesday (prefilled 09:00–17:00)
+    expect(screen.getByTestId('cat-weekly-cat-p')).toHaveTextContent('12h per week');
+  });
+
+  it('turning on custom hours for the default swaps "Follows Settings" for a total', async () => {
+    const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue(cats) } as never);
+    renderWithProviders(<CategoriesSection />, { api });
+    fireEvent.click(await screen.findByTestId('cat-default-custom'));
+    expect(screen.getByTestId('cat-weekly-cat-def')).toHaveTextContent('0h per week');
+    expect(screen.queryByRole('link', { name: 'Settings' })).toBeNull();
+  });
+
+  it('colour swatches are a radio group with the current colour checked', async () => {
+    const catWithColor = { ...cats[1], color: '#4285f4' };
+    const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue([cats[0], catWithColor]) } as never);
+    renderWithProviders(<CategoriesSection />, { api });
+    const group = await screen.findByRole('radiogroup', { name: 'Personal color' });
+    const radios = within(group).getAllByRole('radio');
+    expect(radios).toHaveLength(9);
+    expect(within(group).getByRole('radio', { name: 'Blue' })).toHaveAttribute('aria-checked', 'true');
+    expect(within(group).getByRole('radio', { name: 'Indigo' })).toHaveAttribute('aria-checked', 'false');
+    expect(within(screen.getByRole('radiogroup', { name: 'Working Hours color' })).getByRole('radio', { name: 'No color' }))
+      .toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('arrow keys move focus between swatches without changing the colour; Space/click selects', async () => {
+    const updateCategory = vi.fn().mockResolvedValue(cats[1]);
+    const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue(cats), updateCategory } as never);
+    renderWithProviders(<CategoriesSection />, { api });
+    const group = await screen.findByRole('radiogroup', { name: 'Personal color' });
+    const none = within(group).getByRole('radio', { name: 'No color' });
+    expect(none).toHaveAttribute('tabindex', '0');
+    expect(within(group).getByRole('radio', { name: 'Indigo' })).toHaveAttribute('tabindex', '-1');
+    none.focus();
+    fireEvent.keyDown(none, { key: 'ArrowRight' }); // wraps to the first swatch
+    expect(within(group).getByRole('radio', { name: 'Indigo' })).toHaveFocus();
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowLeft' });
+    expect(none).toHaveFocus();
+    expect(updateCategory).not.toHaveBeenCalled();
+  });
+
+  it('draws a coverage bar per day in each hours editor', async () => {
+    const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue(cats) } as never);
+    renderWithProviders(<CategoriesSection />, { api });
+    await screen.findByTestId('cat-row-cat-p');
+    const mon = screen.getByTestId('cat-cat-p-1-bar');
+    expect(mon.style.left).toBe('75%'); // 18:00
+    expect(mon.style.width).toBe(`${(4 / 24) * 100}%`);
   });
 });
