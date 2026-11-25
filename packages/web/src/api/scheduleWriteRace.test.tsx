@@ -13,6 +13,7 @@ import {
   useUpdateScheduledBlockMutation,
   useDeleteScheduledBlockMutation,
   useUpdateCalendarEventMutation,
+  useDeleteCalendarEventMutation,
   useUpdateTaskMutation,
   useCreateCalendarEventMutation,
 } from './queries';
@@ -53,6 +54,9 @@ function setup() {
   const moveEvent = heldWrite((id: string, patch: Partial<Item>) => {
     server.events = server.events.map((e) => (e.id === id ? { ...e, ...patch } : e));
   });
+  const deleteEvent = heldWrite((id: string) => {
+    server.events = server.events.filter((e) => e.id !== id);
+  });
   const api = {
     getSchedule: vi.fn(async () => server.blocks.map((b) => ({ ...b }))),
     getSchedulePreview: vi.fn(async () => ({ blocks: [], unscheduled: [] })),
@@ -61,6 +65,7 @@ function setup() {
     updateScheduledBlock: moveBlock.fn,
     deleteScheduledBlock: deleteBlock.fn,
     updateCalendarEvent: moveEvent.fn,
+    deleteCalendarEvent: deleteEvent.fn,
     updateTask: vi.fn(async () => ({})),
     createCalendarEvent: vi.fn(async () => {
       server.events = [...server.events, { id: 'e2', ...NEW }];
@@ -82,23 +87,28 @@ function setup() {
       moveBlock: useUpdateScheduledBlockMutation(),
       deleteBlock: useDeleteScheduledBlockMutation(),
       moveEvent: useUpdateCalendarEventMutation(),
+      deleteEvent: useDeleteCalendarEventMutation(),
       updateTask: useUpdateTaskMutation(),
       createEvent: useCreateCalendarEventMutation(),
     }),
     { wrapper: Wrapper },
   );
-  // Every value the schedule list cache ever held, in order.
+  // Every value the schedule / calendar-event list caches ever held, in order.
   const scheduleHistory: Item[][] = [];
-  qc.getQueryCache().subscribe((e) => {
-    if (e.type === 'updated' && e.query.queryHash === hashKey(queryKeys.schedule('a', 'b'))) {
-      const data = e.query.state.data as Item[] | undefined;
-      if (data && scheduleHistory[scheduleHistory.length - 1] !== data) scheduleHistory.push(data);
-    }
-  });
+  const eventsHistory: Item[][] = [];
+  const record = (history: Item[][], hash: string) =>
+    qc.getQueryCache().subscribe((e) => {
+      if (e.type === 'updated' && e.query.queryHash === hash) {
+        const data = e.query.state.data as Item[] | undefined;
+        if (data && history[history.length - 1] !== data) history.push(data);
+      }
+    });
+  record(scheduleHistory, hashKey(queryKeys.schedule('a', 'b')));
+  record(eventsHistory, hashKey(queryKeys.calendarEvents('a', 'b')));
   const fetchers = [api.getSchedule, api.getSchedulePreview, api.getCalendarEvents, api.listTasks];
   return {
-    qc, api, server, hook, scheduleHistory,
-    moveBlock: moveBlock.pending, deleteBlock: deleteBlock.pending, moveEvent: moveEvent.pending,
+    qc, api, server, hook, scheduleHistory, eventsHistory,
+    moveBlock: moveBlock.pending, deleteBlock: deleteBlock.pending, moveEvent: moveEvent.pending, deleteEvent: deleteEvent.pending,
     /** Wait for the initial fetches, then reset the fetch counters. */
     async ready() {
       await waitFor(() => {
@@ -107,6 +117,7 @@ function setup() {
       });
       fetchers.forEach((f) => f.mockClear());
       scheduleHistory.length = 0;
+      eventsHistory.length = 0;
     },
   };
 }
@@ -191,6 +202,26 @@ describe('a refresh signal during a pending planner write', () => {
     await flush();
     expect(t.api.getSchedule).toHaveBeenCalledTimes(1);
     expect(t.scheduleHistory.some((l) => b1(l))).toBe(false);
+  });
+
+  it('(b2) sync.completed during a calendar-event delete: the deleted event never reappears', async () => {
+    const t = setup();
+    await t.ready();
+    act(() => t.hook.result.current.deleteEvent.mutate('e1'));
+    await waitFor(() => expect(t.deleteEvent).toHaveLength(1));
+
+    act(() => invalidateForEvent(t.qc, { type: 'sync.completed', userId: 'u1', sync: {}, counts: {} }));
+    await flush();
+    expect(t.api.getCalendarEvents).not.toHaveBeenCalled();
+    expect(t.api.getSchedule).not.toHaveBeenCalled();
+
+    act(() => t.deleteEvent[0]!.ok());
+    await waitFor(() => expect(t.hook.result.current.deleteEvent.isSuccess).toBe(true));
+    await flush();
+    expect(t.api.getCalendarEvents).toHaveBeenCalledTimes(1);
+    expect(t.api.getSchedule).toHaveBeenCalledTimes(1);
+    expect(t.eventsHistory.length).toBeGreaterThan(0);
+    expect(t.eventsHistory.some((l) => l.some((e) => e.id === 'e1'))).toBe(false);
   });
 
   it('(c) two overlapping writes: the first to settle does not refetch, the last refetches each root once', async () => {
