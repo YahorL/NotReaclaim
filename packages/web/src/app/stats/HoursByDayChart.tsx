@@ -48,7 +48,7 @@ export function HoursByDayChart({ perDay, shortLabels, longLabels }: { perDay: K
         <div role="tabpanel" id={`${idBase}-panel-chart`} aria-labelledby={`${idBase}-tab-chart`} className="flex gap-2.5">
           <div data-testid="y-ticks" aria-hidden="true" className="relative w-7 shrink-0" style={{ height: PLOT_PX }}>
             {ticksMs.map((t) => (
-              <span key={t} className="absolute right-0 text-[11px] tabular-nums text-fg-3" style={{ bottom: px(t) - 7 }}>
+              <span key={t} className="absolute right-0 text-[11px] tabular-nums text-fg-2" style={{ bottom: px(t) - 7 }}>
                 {formatHours(t)}
               </span>
             ))}

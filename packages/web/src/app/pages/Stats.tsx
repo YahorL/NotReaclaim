@@ -63,7 +63,7 @@ export function Stats({ now = () => Date.now() }: { now?: () => number }) {
 
   return (
     <div className="flex flex-col gap-5 px-4 pb-6 pt-4 md:px-1 md:pt-0">
-      <section aria-label="Key numbers" className="grid grid-cols-2 gap-4 md:flex">
+      <section aria-label="Key numbers" className="grid grid-cols-2 gap-4 md:flex md:flex-wrap">
         <StatCard label="Total scheduled" value={formatHoursNumber(sum.totalMs)} unit="h" sub="this week" />
         <StatCard label="Task time" value={formatHoursNumber(sum.taskMs)} unit="h" sub="auto-scheduled" delayMs={60} />
         <StatCard label="In meetings" value={formatHoursNumber(sum.meetingMs)} unit="h" sub={`${mc} ${mc === 1 ? 'event' : 'events'}`} swatch="meeting" delayMs={120} />

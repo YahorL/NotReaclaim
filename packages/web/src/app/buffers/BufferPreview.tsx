@@ -1,18 +1,21 @@
 import { CAPS_LABEL } from '../forms/controls';
 import { bufferPreview, type PreviewSegment } from './bufferModel';
 
-const WIDTH_ANIM = 'transition-[width,margin] duration-reflow ease-out-soft';
+const WIDTH_ANIM = 'transition-[width] duration-reflow ease-out-soft';
 const BLOCK = 'flex min-w-0 shrink-0 flex-col justify-center overflow-hidden rounded-[12px] px-3 py-2';
 
 function Segment({ seg }: { seg: PreviewSegment }) {
   const style = { width: `${seg.pct}%` };
   if (seg.kind === 'buffer') {
-    // A zero buffer keeps its (zero-width) slot so it animates back in; no margin/border while empty.
+    // A zero buffer keeps its (zero-width) slot so it animates back in. The 2px inset is padding
+    // INSIDE the slot (border-box), so the segments still sum to exactly 100% of the strip.
     return (
       <div
         data-testid="preview-segment" data-kind="buffer" title="Meeting buffer" style={style}
-        className={`shrink-0 rounded-[8px] ${WIDTH_ANIM} ${seg.minutes > 0 ? 'hatch mx-[2px]' : 'mx-0'}`}
-      />
+        className={`shrink-0 ${WIDTH_ANIM} ${seg.minutes > 0 ? 'px-[2px]' : ''}`}
+      >
+        {seg.minutes > 0 && <div className="hatch h-full rounded-[8px]" />}
+      </div>
     );
   }
   if (seg.kind === 'gap') {

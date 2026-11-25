@@ -17,7 +17,7 @@ export function StatCard({ label, value, unit, sub, swatch, progressPct, delayMs
   return (
     <div
       data-testid="stat-card"
-      className="glass flex min-w-0 flex-1 animate-rise flex-col gap-1.5 rounded-panel px-[22px] py-5"
+      className="glass flex min-w-0 flex-1 animate-rise flex-col md:basis-[220px] gap-1.5 rounded-panel px-[22px] py-5"
       style={{ animationDelay: `${delayMs}ms` }}
     >
       <span className="flex items-center gap-2 text-[14px] text-fg-2">

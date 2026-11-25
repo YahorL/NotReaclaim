@@ -366,7 +366,7 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
 - **Branch.** Built on `feat/redesign-p7` from 5633409, so none of P4's planner work is in it. No planner, shell, config or `index.css` file was touched.
 - **Shared P7 modules (new files, P7-owned):**
   - `app/forms/Segmented.tsx` is one glass pill switch with two roles. As `tablist` it is the Stats Chart | Table switch; as `radiogroup` it is the Settings Appearance choice. Both rove (←/→/↑/↓/Home/End move the selection and focus).
-  - `app/forms/controls.ts` holds class strings: `CAPS_LABEL`, `INPUT` (recessed surface, `outline-none` + `focus:border-focus` per §6), `CHECKBOX` (the prototype `.cb` built from Tailwind arbitrary variants: 20px, accent fill, `::before` clip-path tick, 24px on a coarse pointer), `DANGER_TEXT_BTN` and `CARD`.
+  - `app/forms/controls.ts` holds class strings: `CAPS_LABEL`, `INPUT` (recessed surface, `outline-none` + `focus:border-focus` per §6), `CHECKBOX` (the prototype `.cb` built from Tailwind arbitrary variants: 20px, accent fill, `::before` clip-path tick, 24px on a coarse pointer), and `DANGER_TEXT_BTN`.
   - `auth/AuthCard.tsx` provides `AuthCard` and `AuthField`.
 - **Stats:**
   - **KPI number size.** 56px at md+ and 40px below. The plan said 64px and the prototype `.kpi-v` says 48px; the screenshot measures about 56px.
@@ -407,6 +407,9 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
   - `priorities/*` (`TaskRow`, `Column`, `Dropdown`, `TasksCard`, `Toolbar`, `Board`, `priorityBucket` `#aeb2c0`) and `pages/Priorities.tsx`: P6.
   - `AccountMenu`, `ThemeSwitch` and `NavItem` light-theme literals (deliberate, no token): P2/P8.
   - The `CalendarBlock` delete button (`bg-black/30 text-white`): P3/P4.
+- **For P8's light pass: `rgb()` literals in P7 files the sweep regex cannot see.** The inset white highlight on the Segmented selected state, the inset black shadow on the QuickAdd input, and the inset white highlight on the colour swatches.
+- **Layout, tablet widths (768–1023px).** The KPI row wraps (`md:flex-wrap`, cards `md:basis-[220px]`, the prototype's `minmax(220px)`). The Settings Scheduling fields become 3 columns only at `lg`.
+- **Contrast.** Small text (under 12px) uses `fg-2`, not `fg-3` (§6): the y-axis ticks, the coverage ticks and the off-day habit pills.
 - **Still needs live verification:**
   - Every P7 screen in both themes at 1440 and 390 against 08–12.
   - The custom checkbox tick rendering in Firefox and Chromium.
@@ -415,4 +418,7 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
   - The Buffers preview width transition.
   - The `lg` breakpoint wraps in Settings.
   - Light-theme contrast of `accent-fg` day pills and of the dashed preview tasks.
+  - The Hours time inputs at 390px, where each is only about 83px wide.
+  - A week whose busiest day lands exactly on the top axis tick, where the bar's value label sits above the plot top.
+  - The KPI row and Settings at 768–1023px.
 - **Suite:** 1155 tests / 97 files → 1230 tests / 104 files.

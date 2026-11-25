@@ -68,7 +68,7 @@ export function HabitRow({ habit, unscheduledCount = 0, onEdit, onToggleStatus, 
               aria-hidden="true"
               data-testid="habit-day"
               data-on={on}
-              className={`inline-flex h-[26px] w-[26px] items-center justify-center rounded-pill border text-[11px] font-medium ${on ? 'border-accent/30 bg-accent/[.14] text-accent-fg' : 'border-fg/10 text-fg-3'}`}
+              className={`inline-flex h-[26px] w-[26px] items-center justify-center rounded-pill border text-[11px] font-medium ${on ? 'border-accent/30 bg-accent/[.14] text-accent-fg' : 'border-fg/10 text-fg-2'}`}
             >
               {letter}
             </span>

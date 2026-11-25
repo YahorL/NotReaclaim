@@ -9,9 +9,6 @@ export const CAPS_LABEL = 'text-[12px] uppercase tracking-[0.08em] text-fg-2';
 /** Recessed input surface. It drops the outline, so the full-strength focus border is the cue (spec §6). */
 export const INPUT = 'rounded-input border border-fg/10 bg-fg/[.05] text-fg outline-none transition-colors placeholder:text-fg-3 focus:border-focus disabled:opacity-40';
 
-/** The glass panel every P7 card sits on. */
-export const CARD = 'glass rounded-panel';
-
 /**
  * Custom checkbox (prototype `.cb`): 20px rounded square, accent fill + on-accent tick when checked.
  * Still a native `<input type="checkbox">` (keyboard, label, form semantics); the tick is a

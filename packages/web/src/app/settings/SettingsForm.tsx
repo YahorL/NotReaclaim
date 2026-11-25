@@ -90,7 +90,7 @@ export function SettingsForm({ initial, onSave, saving = false, error = null, ju
       {/* Scheduling */}
       <section aria-labelledby="settings-scheduling" className={CARD_CLS}>
         <h2 id="settings-scheduling" className={CAPS_LABEL}>Scheduling</h2>
-        <div className="grid grid-cols-1 gap-3.5 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-3">
           <div className="flex min-w-0">
             <FieldBox label="Planning horizon">
               <div className="flex items-center gap-3.5">

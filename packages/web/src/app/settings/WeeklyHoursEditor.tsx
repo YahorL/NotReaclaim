@@ -64,7 +64,7 @@ export function WeeklyHoursEditor({ days, onChange, errors = {}, idPrefix = 'day
       {showCoverage && (
         <div data-testid={`${idPrefix}-ticks`} aria-hidden="true" className={`${row} hidden pt-0 sm:grid`}>
           <span /><span /><span /><span />
-          <div className="flex justify-between text-[10px] text-fg-3">
+          <div className="flex justify-between text-[10px] text-fg-2">
             {TICKS.map((t, i) => <span key={i}>{t}</span>)}
           </div>
         </div>
