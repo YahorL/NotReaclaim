@@ -42,10 +42,10 @@ function SortableSubtask({ subtask, onToggle, onDelete }: {
       <div className="flex items-center gap-2 text-[14px]">
         {/* Negative margin cancels the padding, so a 40px touch area costs no layout on desktop. */}
         <label className="flex items-center coarse:-m-2.5 coarse:p-2.5">
-          <input type="checkbox" data-testid={`subtask-toggle-${subtask.id}`} checked={subtask.done} onChange={onToggle} className="h-4 w-4 accent-indigo coarse:h-5 coarse:w-5" />
+          <input type="checkbox" data-testid={`subtask-toggle-${subtask.id}`} checked={subtask.done} onChange={onToggle} className="h-4 w-4 accent-[rgb(var(--c-accent))] coarse:h-5 coarse:w-5" />
         </label>
-        <span className={`flex-1 ${subtask.done ? 'text-inkSoft line-through' : 'text-ink'}`}>{subtask.title}</span>
-        <button type="button" data-testid={`subtask-delete-${subtask.id}`} aria-label="delete subtask" onClick={onDelete} className="text-[13px] font-bold text-crit coarse:p-3">×</button>
+        <span className={`flex-1 ${subtask.done ? 'text-fg-2 line-through' : 'text-fg'}`}>{subtask.title}</span>
+        <button type="button" data-testid={`subtask-delete-${subtask.id}`} aria-label="delete subtask" onClick={onDelete} className="text-[13px] font-bold text-danger coarse:p-3">×</button>
       </div>
     </li>
   );
@@ -120,13 +120,13 @@ export function TaskDrawer({ task, zone, onSave, onCancel, saving = false, error
         </>
       )}
     >
-      <div data-testid="drawer-time" className="rounded-[10px] border border-line bg-bg px-3 py-2">
-        <div className="flex items-center justify-between text-[12px] font-semibold text-inkSoft">
+      <div data-testid="drawer-time" className="glass-card rounded-field px-4 py-3">
+        <div className="flex items-center justify-between text-[12px] text-fg-2">
           <span>Time spent</span>
           <span data-testid="drawer-spent">{formatDurationShort(spent)} / {formatDurationShort(task.durationMs)} · {formatDurationShort(left)} left</span>
         </div>
         <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-line">
-          <div className="h-full rounded-full bg-indigo" style={{ width: `${pct}%` }} />
+          <div className="h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />
         </div>
       </div>
 
@@ -152,7 +152,7 @@ export function TaskDrawer({ task, zone, onSave, onCancel, saving = false, error
           <FieldBox label="Due by">
             <input type="datetime-local" data-testid="due-by" className={FIELD_CONTROL} value={form.dueByLocal} onChange={(e) => set('dueByLocal', e.target.value)} />
           </FieldBox>
-          <p className="mt-1 text-[11px] text-inkSoft">Leave empty for no deadline</p>
+          <p className="mt-1 text-[11px] text-fg-2">Leave empty for no deadline</p>
           {errors.dueByLocal && <p data-testid="err-dueByLocal" className={FIELD_ERROR}>{errors.dueByLocal}</p>}
         </div>
         <FormField label="Schedule after" error={errors.notBeforeLocal} errorTestId="err-notBeforeLocal">
@@ -169,7 +169,7 @@ export function TaskDrawer({ task, zone, onSave, onCancel, saving = false, error
       </div>
 
       <div>
-        <span className="mb-1 block text-[13px] font-semibold text-inkSoft">Subtasks</span>
+        <span className="mb-1 block text-[13px] text-fg-2">Subtasks</span>
         <DndContext sensors={sensors} collisionDetection={pointerFirstCollision} onDragEnd={onSubtaskDragEnd}>
           <SortableContext items={subtasks.map((s) => s.id)} strategy={verticalListSortingStrategy}>
             <ul className="mb-1.5 space-y-1.5">
@@ -190,14 +190,14 @@ export function TaskDrawer({ task, zone, onSave, onCancel, saving = false, error
             value={newSubtask}
             onChange={(e) => setNewSubtask(e.target.value)}
             placeholder="Add subtask…"
-            className="min-w-0 flex-1 rounded-[9px] border-[1.5px] border-line px-2.5 py-1.5 text-[14px] outline-none focus:border-indigo"
+            className="min-w-0 flex-1 rounded-input border border-fg/10 bg-fg/[.05] px-2.5 py-1.5 text-[14px] text-fg outline-none focus:border-accent-fg/60"
           />
           <button
             type="button"
             data-testid="subtask-add"
             disabled={!newSubtask.trim() || createSubtaskM.isPending}
             onClick={addSubtask}
-            className="rounded-[20px] bg-indigo px-3 text-[13px] font-bold text-white disabled:opacity-50"
+            className="btn-accent rounded-pill px-3 text-[13px] font-semibold"
           >Add</button>
         </div>
       </div>

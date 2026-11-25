@@ -401,7 +401,8 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
       {draggingTask ? (
         <div
           data-testid="schedule-drag-overlay"
-          className="rounded-[10px] border border-line bg-card px-3 py-2 text-[14px] font-bold text-ink shadow-pop"
+          // Glass card tilted like a picked-up tile; the accent ring says "drop me on the grid".
+          className="glass-dialog rotate-[-1.5deg] rounded-card px-3.5 py-2.5 text-[14px] font-medium text-fg shadow-lift ring-[1.5px] ring-accent/70"
         >
           {draggingTask.title}
         </div>

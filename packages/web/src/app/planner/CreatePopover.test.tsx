@@ -166,6 +166,16 @@ describe('CreatePopover', () => {
     expect(popover.className).not.toContain('left-1');
   });
 
+  it('the Event / Task / Blocked segments report which one is active', () => {
+    renderWithProviders(<CreatePopover {...baseProps} />, { api: fakeApiClient() });
+    expect(screen.getByRole('group', { name: 'Entry type' })).toBeInTheDocument();
+    expect(screen.getByTestId('mode-event')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('mode-task')).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(screen.getByTestId('mode-blocked'));
+    expect(screen.getByTestId('mode-blocked')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('mode-event')).toHaveAttribute('aria-pressed', 'false');
+  });
+
   it('popover has w-[340px] width class', () => {
     renderWithProviders(<CreatePopover {...baseProps} />, { api: fakeApiClient() });
     const popover = screen.getByTestId('create-popover');

@@ -87,7 +87,7 @@ export function EventDrawer({ event, onClose, zone, compact = false }: EventDraw
           <SecondaryButton type="button" data-testid="event-cancel" onClick={onClose}>Cancel</SecondaryButton>
           <button
             type="button" data-testid="event-delete" disabled={pending} onClick={remove}
-            className="ml-auto rounded-[30px] border border-line px-4 py-2 text-[14px] font-bold text-crit hover:bg-bg disabled:opacity-50"
+            className="btn-glass ml-auto h-10 rounded-pill px-4 text-[14px] font-medium text-danger"
           >Delete</button>
         </>
       )}
