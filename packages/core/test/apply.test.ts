@@ -3,7 +3,7 @@ import type { ScheduledBlock as DbScheduledBlock, CreateScheduledBlockInput, Upd
 import type { ScheduleResult } from '@notreclaim/scheduler';
 import { applyDesiredSchedule, planLocally, type ScheduleMirror } from '../src/apply.js';
 import { SettingsRequiredError } from '../src/errors.js';
-import { fakeRepos, makeSettings, makeHabit, makeEvent } from './fakes.js';
+import { fakeRepos, makeSettings, makeHabit, makeEvent, makeTask } from './fakes.js';
 
 const NOW = Date.parse('2026-01-05T00:00:00.000Z');
 const HORIZON = NOW + 24 * 60 * 60 * 1000;
@@ -975,5 +975,78 @@ describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', ()
     await expect(applyDesiredSchedule(repoC, 'u1', desired([want('t1', 9), want('t2', 10)]), {
       now: NOW, horizonEnd: HORIZON, mirror: failingMirror({}).mirror, isRowScoped,
     })).rejects.toBe(down);
+  });
+});
+
+/**
+ * Every failure apply isolates (counted, not thrown) is also REPORTED through `onRowFailure`,
+ * with the row and the error, so the caller can log it: a row that fails every cycle must not
+ * be invisible. The counts themselves never carry error objects.
+ */
+describe('applyDesiredSchedule reports isolated row failures', () => {
+  const at = (hh: number) => ({
+    startsAt: new Date(`2026-01-05T${String(hh).padStart(2, '0')}:00:00.000Z`),
+    endsAt: new Date(`2026-01-05T${String(hh).padStart(2, '0')}:30:00.000Z`),
+  });
+  const row = (t: string, hh: number, over: Partial<DbScheduledBlock> = {}) =>
+    dbBlock({ id: `b-${t}`, taskId: t, engineKey: `task:${t}:0`, title: t, ...at(hh), ...over });
+  const want = (t: string, hh: number) => eBlock({
+    id: `task:${t}:0`, sourceId: t, title: t, start: at(hh).startsAt.getTime(), end: at(hh).endsAt.getTime(),
+  });
+  class RowScoped extends Error {}
+  const isRowScoped = (err: unknown) => err instanceof RowScoped;
+
+  it('one report per isolated failure, with its kind, row and error; none on a clean run', async () => {
+    const repo = fakeRepo([
+      row('t1', 14, { googleEventId: 'g-t1', googleCalendarId: 'cal1' }), // move fails on Google
+      row('t2', 10), // unchanged, never mirrored: its first insert fails
+      row('t9', 15, { googleEventId: 'g-t9', googleCalendarId: 'cal1' }), // stale: its event delete fails
+      dbBlock({ id: 'p1', pinned: true, engineKey: null, ...at(16) }), // pinned, never mirrored: insert fails
+    ]);
+    const errors = {
+      update: new RowScoped('google 403'), attach: new RowScoped('google 429'), create: new RowScoped('google 400'),
+      delete: new RowScoped('google 410'), pinned: new Error('google 500'),
+    };
+    const mirror = {
+      create: vi.fn(async (block: { id: string }) => {
+        if (block.id === 'task:t2:0') throw errors.attach;
+        if (block.id === 'task:t3:0') throw errors.create;
+        if (block.id === 'p1') throw errors.pinned;
+        return { googleEventId: 'g-x', googleCalendarId: 'cal1' };
+      }),
+      update: vi.fn(async () => { throw errors.update; }),
+      delete: vi.fn(async () => { throw errors.delete; }),
+    } as unknown as ScheduleMirror;
+    const reports: unknown[] = [];
+
+    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10), want('t3', 11)]), {
+      now: NOW, horizonEnd: HORIZON, mirror, isRowScoped, onRowFailure: (f) => reports.push(f),
+    });
+
+    expect(res).toMatchObject({ updateFailed: 1, attachFailed: 1, createFailed: 1, deleteFailed: 1, pinnedFailed: 1 });
+    expect(reports).toEqual([
+      { kind: 'update', blockId: 'b-t1', engineKey: 'task:t1:0', error: errors.update },
+      { kind: 'attach', blockId: 'b-t2', engineKey: 'task:t2:0', error: errors.attach },
+      { kind: 'create', blockId: null, engineKey: 'task:t3:0', error: errors.create },
+      { kind: 'delete', blockId: 'b-t9', engineKey: 'task:t9:0', error: errors.delete },
+      { kind: 'pinned', blockId: 'p1', engineKey: null, error: errors.pinned },
+    ]);
+    expect(JSON.stringify(res)).not.toContain('google'); // the counts carry no error objects
+
+    const clean: unknown[] = [];
+    await applyDesiredSchedule(fakeRepo([]), 'u1', desired([want('t1', 9)]), { now: NOW, horizonEnd: HORIZON, onRowFailure: (f) => clean.push(f) });
+    expect(clean).toEqual([]);
+  });
+
+  it('planLocally forwards its onRowFailure to apply', async () => {
+    const repo = fakeRepo([]);
+    repo.create.mockImplementation(async () => { throw Object.assign(new Error('fk'), { code: 'P2003' }); });
+    const reports: unknown[] = [];
+    const repos = fakeRepos({ settings: makeSettings({ horizonDays: 1 }), tasks: [makeTask({ id: 't1' })] });
+
+    const res = await planLocally(repos, repo, 'u1', NOW, undefined, (f) => reports.push(f));
+
+    expect(res).toMatchObject({ createFailed: 1 });
+    expect(reports).toEqual([expect.objectContaining({ kind: 'create', engineKey: 'task:t1:0' })]);
   });
 });

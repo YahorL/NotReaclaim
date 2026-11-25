@@ -6,6 +6,7 @@ import {
   SettingsRequiredError,
   type BlocksRepo,
   type Exclusive,
+  type RowFailure,
   type ReplanCounts,
   type ScheduleMirror,
   type SchedulingRepositories,
@@ -45,6 +46,8 @@ export interface ReconcileDeps {
    * detection stay outside it. Default: no lock.
    */
   exclusive?: Exclusive;
+  /** Told about every row apply skips (see ApplyScheduleOptions.onRowFailure), for logging. */
+  onRowFailure?: (failure: RowFailure) => void;
 }
 
 /** Same counts as a local replan; `pinned`/`removed` here are detectDrift's pulls from Google. */
@@ -99,7 +102,7 @@ export async function reconcile(deps: ReconcileDeps, userId: string, now: number
     // `observed` is Google's pre-apply state: it lets the pinned pass push exactly the blocks
     // the app moved, once, instead of re-writing every pinned event on every poll cycle.
     return applyDesiredSchedule(deps.scheduledBlocks, userId, desired, {
-      now, horizonEnd, mirror, mirrorSnapshot: observed, isRowScoped: isRowScopedGoogleError,
+      now, horizonEnd, mirror, mirrorSnapshot: observed, isRowScoped: isRowScopedGoogleError, onRowFailure: deps.onRowFailure,
     });
   });
 

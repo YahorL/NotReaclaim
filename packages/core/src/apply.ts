@@ -55,6 +55,21 @@ export interface ApplyScheduleOptions {
    * answer about one event. Anything neither predicate claims aborts the apply.
    */
   isRowScoped?: (err: unknown) => boolean;
+  /**
+   * Told about every write failure the apply isolates, with the row and the error, so the
+   * caller can log them: the counts deliberately carry no error objects (they are sent to
+   * clients). Not reported (only counted): an event orphaned because its compensating delete
+   * failed too (storeInsertedIds' 'orphaned').
+   */
+  onRowFailure?: (failure: RowFailure) => void;
+}
+
+/** One row the apply skipped: what it was doing, which row (null for a not-yet-created one), and why. */
+export interface RowFailure {
+  kind: 'create' | 'update' | 'delete' | 'attach' | 'pinned';
+  blockId: string | null;
+  engineKey: string | null;
+  error: unknown;
 }
 
 /**
@@ -119,6 +134,8 @@ export async function applyDesiredSchedule(
   const skipIfRowScoped = (err: unknown): void => {
     if (!isRowScopedDbError(err) && !opts.isRowScoped?.(err)) throw err;
   };
+  const report = (kind: RowFailure['kind'], row: { id: string; engineKey: string | null } | null, engineKey: string | null, error: unknown) =>
+    opts.onRowFailure?.({ kind, blockId: row?.id ?? null, engineKey: row?.engineKey ?? engineKey, error });
   // The keyed map must span ALL prior placements, not just [now, horizonEnd]: engine keys
   // (task:<id>:<chunk>, habit:<id>:<occurrence>) are horizon-relative and recur over time,
   // so a reissued key must MOVE its old (possibly past) row — unique (userId, engineKey) —
@@ -178,13 +195,13 @@ export async function applyDesiredSchedule(
           let ids: MirrorIds | undefined;
           // A failed first insert is counted once the move below has landed: a row whose move
           // fails too counts once, as updateFailed (its plan did not apply at all).
-          let insertFailed = false;
+          let insertError: { error: unknown } | null = null;
           try {
             ids = await mirror?.update(block, match);
           } catch (err) {
             if (!unmirrored) throw err; // an in-place update of a mirrored row fails the row
             skipIfRowScoped(err);
-            insertFailed = true; // the plan still applies below; the row is retried next cycle
+            insertError = { error: err }; // the plan still applies below; the row is retried next cycle
           }
           if (ids && mirror) {
             const outcome = await storeInsertedIds(scheduledBlocks, mirror, userId, match, ids, fields);
@@ -205,10 +222,14 @@ export async function applyDesiredSchedule(
             throw err;
           }
           updated += 1;
-          if (insertFailed) attachFailed += 1;
+          if (insertError) {
+            attachFailed += 1;
+            report('attach', match, block.id, insertError.error);
+          }
         } catch (err) {
           skipIfRowScoped(err);
           updateFailed += 1;
+          report('update', match, block.id, err);
         }
       } else if (mirror && match.googleEventId == null) {
         // Planned locally before the calendar was linked and unchanged since: the diff alone
@@ -219,6 +240,7 @@ export async function applyDesiredSchedule(
         } catch (err) {
           skipIfRowScoped(err);
           attachFailed += 1;
+          report('attach', match, block.id, err);
           continue;
         }
         try {
@@ -230,6 +252,7 @@ export async function applyDesiredSchedule(
           // exist (and may even hold the ids), so the event is not deleted blind.
           skipIfRowScoped(err);
           attachFailed += 1;
+          report('attach', match, block.id, err);
         }
       }
       continue;
@@ -260,6 +283,7 @@ export async function applyDesiredSchedule(
     } catch (err) {
       skipIfRowScoped(err);
       createFailed += 1;
+      report('create', null, block.id, err);
     }
   }
 
@@ -279,11 +303,14 @@ export async function applyDesiredSchedule(
     } catch (err) {
       skipIfRowScoped(err);
       deleteFailed += 1;
+      report('delete', block, key, err);
     }
   }
 
   const { synced: pinnedSynced, failed: pinnedFailed } = mirror
-    ? await mirrorPinnedBlocks(scheduledBlocks, userId, existing, { now, mirror, mirrorSnapshot })
+    ? await mirrorPinnedBlocks(scheduledBlocks, userId, existing, {
+      now, mirror, mirrorSnapshot, onFailure: (row, err) => report('pinned', row, null, err),
+    })
     : { synced: 0, failed: 0 };
 
   return {
@@ -313,7 +340,12 @@ async function mirrorPinnedBlocks(
   scheduledBlocks: BlocksRepo,
   userId: string,
   existing: DbScheduledBlock[],
-  opts: { now: number; mirror: ScheduleMirror; mirrorSnapshot?: MirrorSnapshot },
+  opts: {
+    now: number;
+    mirror: ScheduleMirror;
+    mirrorSnapshot?: MirrorSnapshot;
+    onFailure?: (row: DbScheduledBlock, err: unknown) => void;
+  },
 ): Promise<{ synced: number; failed: number }> {
   const { now, mirror, mirrorSnapshot } = opts;
   let synced = 0;
@@ -349,8 +381,9 @@ async function mirrorPinnedBlocks(
       if (!timesDiffer && !titleDiffers) continue;
       await mirror.update(block, row);
       synced += 1;
-    } catch {
+    } catch (err) {
       failed += 1;
+      opts.onFailure?.(row, err);
     }
   }
 
@@ -466,6 +499,7 @@ export async function planLocally(
   userId: string,
   now: number,
   exclusive: Exclusive = runDirectly,
+  onRowFailure?: (failure: RowFailure) => void,
 ): Promise<ReplanCounts> {
   const settings = await repos.settings.getByUserId(userId);
   if (!settings) throw new SettingsRequiredError(userId);
@@ -474,7 +508,7 @@ export async function planLocally(
     const desired = await computeDesiredSchedule(repos, userId, now);
     // No mirror locally, so nothing to push for pinned rows either: apply reports
     // pinnedSynced/pinnedFailed as 0 on this path.
-    return applyDesiredSchedule(scheduledBlocks, userId, desired, { now, horizonEnd });
+    return applyDesiredSchedule(scheduledBlocks, userId, desired, { now, horizonEnd, onRowFailure });
   });
   return { ...counts, pinned: 0, removed: 0 };
 }

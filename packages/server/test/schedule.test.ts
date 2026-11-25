@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type { ScheduledBlock, Settings } from '@notreclaim/db';
 import { GoogleApiError } from '@notreclaim/google';
 import { planLocally } from '@notreclaim/core';
@@ -401,8 +401,9 @@ describe('POST /schedule/replan realtime', () => {
 });
 
 describe('POST /schedule/replan with a row that fails to save', () => {
-  it('still answers 200, and the per-row failure count reaches the reply and schedule.updated', async () => {
+  it('still answers 200, the per-row failure count reaches the reply and schedule.updated (counts only), and the error is logged', async () => {
     let ctx!: ReturnType<typeof buildTestApp>;
+    const warn = vi.fn();
     const task = (id: string) => ({
       id, userId: 'u1', title: id, priority: 1, sortOrder: 0, durationMs: 1800000, dueBy: null, notBefore: null,
       minChunkMs: 1800000, maxChunkMs: 1800000, categoryId: null, status: 'pending' as const, completedAt: null,
@@ -410,15 +411,16 @@ describe('POST /schedule/replan with a row that fails to save', () => {
     });
     const replan = makeReplan({
       reconcile: async () => { throw new Error('not connected'); },
-      planLocally: (userId, now) => planLocally({
+      planLocally: (userId, now, report) => planLocally({
         settings: ctx.settings,
         calendarEvents: ctx.calendarEvents,
         tasks: { listByUser: async () => [task('t1'), task('t2')] },
         habits: { listByUser: async () => [] },
         scheduledBlocks: ctx.scheduledBlocks,
         categories: { listByUser: async () => [] },
-      }, ctx.scheduledBlocks, userId, now),
+      }, ctx.scheduledBlocks, userId, now, undefined, report),
       isConnected: async () => false,
+      warn,
     });
     ctx = buildTestApp({ settings: settings(), replan });
     // t1's task was deleted a moment ago: inserting its block hits the foreign key.
@@ -435,5 +437,12 @@ describe('POST /schedule/replan with a row that fails to save', () => {
     expect(res.json()).toMatchObject({ created: 1, createFailed: 1 });
     expect(ctx.emitted).toContainEqual({ type: 'schedule.updated', userId: 'u1', counts: expect.objectContaining({ created: 1, createFailed: 1 }) });
     expect((await ctx.scheduledBlocks.listByUserInRange('u1', new Date(0), new Date(8.64e15))).map((b) => b.taskId)).toEqual(['t2']);
+    // Error objects stay in the log: neither the reply nor the realtime event carries them.
+    expect(res.body).not.toContain('Foreign key');
+    expect(JSON.stringify(ctx.emitted)).not.toContain('Foreign key');
+    expect(warn).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 'u1', failed: { createFailed: 1 },
+      failures: [expect.objectContaining({ kind: 'create', engineKey: 'task:t1:0', error: expect.objectContaining({ code: 'P2003' }) })],
+    }), expect.any(String));
   });
 });

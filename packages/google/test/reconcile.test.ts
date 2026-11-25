@@ -543,6 +543,17 @@ describe('reconcile: an error about one event is isolated to its row; anything e
     expect(startOf(store, 'c')).not.toBe('2026-01-05T15:00:00.000Z');
   });
 
+  it('reports the isolated failure (row and error) through onRowFailure', async () => {
+    const { client, deps } = seeded();
+    const err = new GoogleApiError(403, 'forbidden');
+    failOn(client, 'g-b', err);
+    const reports: unknown[] = [];
+
+    await reconcile({ ...deps, onRowFailure: (f) => reports.push(f) }, 'u1', NOW);
+
+    expect(reports).toEqual([{ kind: 'update', blockId: 'b', engineKey: 'task:t2:0', error: err }]);
+  });
+
   it.each([
     ['a request timeout', new GoogleTimeoutError(15000)],
     ['a 401 (the access token itself was rejected)', new GoogleApiError(401, 'invalid credentials')],

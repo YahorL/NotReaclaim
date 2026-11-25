@@ -21,7 +21,7 @@ import {
 import { planLocally, type Exclusive } from '@notreclaim/core';
 import { buildApp } from './app.js';
 import { createEventBus } from './events.js';
-import { makeReplan } from './replan-router.js';
+import { makeReplan, type ReplanPath } from './replan-router.js';
 import { pollAndReplan } from './replan.js';
 import { startPoller } from './poller.js';
 import { loadServerConfig } from './config.js';
@@ -61,17 +61,23 @@ async function main(): Promise<void> {
   const userLock = createUserLock();
   const exclusiveFor = (userId: string): Exclusive => (fn) => userLock(userId, fn);
 
-  const reconcileBound = (userId: string, now: number) =>
-    reconcile({ client, tokens, users, scheduledBlocks, schedulingRepos, exclusive: exclusiveFor(userId) }, userId, now);
+  const reconcileBound: ReplanPath = (userId, now, onRowFailure) =>
+    reconcile({ client, tokens, users, scheduledBlocks, schedulingRepos, exclusive: exclusiveFor(userId), onRowFailure }, userId, now);
   const syncBound = (userId: string, now: number) =>
     syncPrimaryCalendar({ client, tokens, syncState: calendarSyncState, events: calendarEvents }, userId, now);
 
-  const planLocallyBound = (userId: string, now: number) =>
-    planLocally(schedulingRepos, scheduledBlocks, userId, now, exclusiveFor(userId));
+  const planLocallyBound: ReplanPath = (userId, now, onRowFailure) =>
+    planLocally(schedulingRepos, scheduledBlocks, userId, now, exclusiveFor(userId), onRowFailure);
   const isConnected = async (userId: string): Promise<boolean> => isGoogleConnected(await users.findById(userId));
   // The ONE replan every entry point uses (routes via buildApp AND the poll below): it is
   // serialised per user, so a second instance or a direct reconcileBound call would bypass it.
-  const replan = makeReplan({ reconcile: reconcileBound, planLocally: planLocallyBound, isConnected });
+  const replan = makeReplan({
+    reconcile: reconcileBound,
+    planLocally: planLocallyBound,
+    isConnected,
+    // Called only once a replan has run, i.e. after `app` below exists.
+    warn: (fields, message) => app.log.warn(fields, message),
+  });
 
   const app = buildApp({
     logger: true,

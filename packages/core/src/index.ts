@@ -4,7 +4,7 @@ export type { SchedulingRepositories } from './assemble.js';
 export { computeDesiredSchedule } from './compute.js';
 export { applyDesiredSchedule, planLocally, isRowScopedDbError } from './apply.js';
 export type {
-  ScheduleMirror, BlocksRepo, ReplanCounts, MirrorSnapshot, MirrorEventState, Exclusive,
+  ScheduleMirror, BlocksRepo, ReplanCounts, MirrorSnapshot, MirrorEventState, Exclusive, RowFailure,
 } from './apply.js';
 export { computeSpentMs, isDiscardableUnstarted } from './spent.js';
 export { startBlockPatch, stopBlockEndMs } from './block-timer.js';
