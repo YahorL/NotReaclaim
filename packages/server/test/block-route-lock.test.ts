@@ -161,6 +161,25 @@ describe('block routes wait for a replan that holds the user lock, then apply on
     expect(h.reconcileCalls).toEqual([]);
   });
 
+  it.each([
+    ['PATCH', '/schedule/b1', { startsAt: '2026-01-05T14:00:00.000Z', endsAt: '2026-01-05T15:00:00.000Z', pinned: true }],
+    ['POST', '/schedule/b1/start', undefined],
+    ['POST', '/schedule/b1/stop', undefined],
+  ] as const)('%s %s on a row the replan removed while the request waited: 404, no write, no replan', async (method, url, payload) => {
+    // e.g. the engine dropped this chunk's key and swept the block. The edit cannot land on a
+    // row that is gone: it fails visibly (the optimistic UI rolls back) instead of silently.
+    const h = harness({ blocks: [block()] });
+    const held = h.holdLock();
+    const res = h.send(method, url, payload ? { ...payload } : undefined);
+    await untilQueued(h);
+    await held.release(() => h.raw.delete('u1', 'b1'));
+    const reply = await res;
+    expect(reply.statusCode).toBe(404);
+    expect(h.calls.filter((c) => c.startsWith('update') || c.startsWith('create'))).toEqual(method === 'PATCH' ? ['update b1'] : []);
+    expect(h.reconcileCalls).toEqual([]);
+    expect(h.emitted.filter((e) => e.type === 'data.changed')).toEqual([]);
+  });
+
   it('DELETE: the Google delete and the row delete both wait for the lock', async () => {
     const deleted: string[] = [];
     const h = harness({
