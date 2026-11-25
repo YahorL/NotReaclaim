@@ -15,23 +15,22 @@ import type { AccessTokenProvider } from './sync.js';
 import { ensureAutoScheduledCalendar } from './ensure-calendar.js';
 import { detectDrift } from './detect-drift.js';
 import { toGoogleEventWrite } from './writeback.js';
-import { GoogleApiError, GoogleAuthError, GoogleTimeoutError } from './errors.js';
+import { GoogleApiError, GoogleTimeoutError } from './errors.js';
 
 /**
- * The errors that still abort a reconcile's apply instead of being isolated to their row:
- * they say the connection itself is unusable, so every later Google call would fail too.
- * - Any auth failure, a revoked grant included. The token is refreshed before apply starts,
- *   so none is expected from a mirror call today; if one ever is, it must reach the caller
- *   (the token service flags a revoked grant as a broken connection) instead of being counted.
- * - A 401: Google rejected the access token itself.
- * - A request timeout: Google is unreachable, and isolating it would make every remaining row
- *   wait out its own 15 s timeout while the user's lock is held (edits wait for apply).
- * Everything else (a 4xx/5xx/429 on one event, a DB error on one row) is isolated and counted.
+ * A Google error that belongs to the one event being written, so apply may skip that row and
+ * carry on (on top of the row-scoped DB errors core already knows): Google ANSWERED, about
+ * this event — any 4xx/5xx GoogleApiError except a 401 and a timeout.
+ * - 429 and 5xx count as answers too. They come back fast (no lock-hold cost), the row is
+ *   retried next cycle either way, and isolating them is the long-standing rule for first
+ *   inserts (a rate-limited insert must not abort a first link's mass attach).
+ * - A 401 says the access token itself was rejected, so every later call would fail too.
+ * - A timeout, a network failure (`fetch failed` surfaces as a plain TypeError), any auth
+ *   error and anything unknown are not answers at all: they abort the apply, so a Google that
+ *   is unreachable is not called again row after row while the user's lock is held.
  */
-function abortsApply(err: unknown): boolean {
-  return err instanceof GoogleAuthError
-    || err instanceof GoogleTimeoutError
-    || (err instanceof GoogleApiError && err.status === 401);
+function isRowScopedGoogleError(err: unknown): boolean {
+  return err instanceof GoogleApiError && !(err instanceof GoogleTimeoutError) && err.status !== 401;
 }
 
 export interface ReconcileDeps {
@@ -100,7 +99,7 @@ export async function reconcile(deps: ReconcileDeps, userId: string, now: number
     // `observed` is Google's pre-apply state: it lets the pinned pass push exactly the blocks
     // the app moved, once, instead of re-writing every pinned event on every poll cycle.
     return applyDesiredSchedule(deps.scheduledBlocks, userId, desired, {
-      now, horizonEnd, mirror, mirrorSnapshot: observed, isFatal: abortsApply,
+      now, horizonEnd, mirror, mirrorSnapshot: observed, isRowScoped: isRowScopedGoogleError,
     });
   });
 

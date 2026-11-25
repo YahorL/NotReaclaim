@@ -50,12 +50,26 @@ export interface ApplyScheduleOptions {
   mirror?: ScheduleMirror;
   mirrorSnapshot?: MirrorSnapshot;
   /**
-   * Errors that must still abort the whole apply instead of being isolated to their row (see
-   * the diff loop): ones that say every later write would fail too, or that must reach the
-   * caller. Google's reconcile passes its own (auth failures, request timeouts). Default:
-   * none — every row failure is isolated.
+   * Further errors that belong to ONE row and may be isolated to it (see the diff loop), on
+   * top of the db layer's own (isRowScopedDbError). Google's reconcile passes its own: an API
+   * answer about one event. Anything neither predicate claims aborts the apply.
    */
-  isFatal?: (err: unknown) => boolean;
+  isRowScoped?: (err: unknown) => boolean;
+}
+
+/**
+ * A DB error that belongs to the one row being written, so the diff loop may skip that row
+ * and carry on: the repository's NotFoundError (the row is gone, e.g. cascaded with its
+ * deleted task) or ConflictError (a unique key), and a foreign-key violation (Prisma P2003,
+ * left untranslated by the repository: the row's task/habit was deleted meanwhile). Matched by
+ * name/code because core imports @notreclaim/db for types only. Anything else — the database
+ * unreachable, a reset connection, a pool timeout, an unknown error — would fail every later
+ * row too, so it must abort.
+ */
+export function isRowScopedDbError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  if (err.name === 'NotFoundError' || err.name === 'ConflictError') return true;
+  return (err as { code?: unknown }).code === 'P2003';
 }
 
 export interface ApplyCounts {
@@ -98,10 +112,12 @@ export async function applyDesiredSchedule(
   opts: ApplyScheduleOptions,
 ): Promise<ApplyCounts> {
   const { now, horizonEnd, mirror, mirrorSnapshot } = opts;
-  // Per-row isolation: a row whose write throws is skipped and counted, and the loop goes on;
-  // only an error `isFatal` claims is rethrown (aborting the apply, as every error used to).
-  const skipUnlessFatal = (err: unknown): void => {
-    if (opts.isFatal?.(err)) throw err;
+  // Per-row isolation: a row whose write throws an error that belongs to that row alone is
+  // skipped and counted, and the loop goes on. Every other error is rethrown, aborting the
+  // apply at that row exactly as before isolation existed — so a database or network outage
+  // stops at the first row instead of pushing every remaining row to Google with no DB write.
+  const skipIfRowScoped = (err: unknown): void => {
+    if (!isRowScopedDbError(err) && !opts.isRowScoped?.(err)) throw err;
   };
   // The keyed map must span ALL prior placements, not just [now, horizonEnd]: engine keys
   // (task:<id>:<chunk>, habit:<id>:<occurrence>) are horizon-relative and recur over time,
@@ -141,7 +157,8 @@ export async function applyDesiredSchedule(
   // that row keeps failing. A failed row is counted (createFailed / updateFailed /
   // deleteFailed, or attachFailed for a failed first insert) and retried next cycle; a row
   // whose insert failed stays unmirrored and is retried by the unchanged-row branch below.
-  // Only errors `isFatal` claims still abort. The order of writes is unchanged.
+  // Only errors that belong to the row are isolated (skipIfRowScoped); any other error
+  // aborts. The order of writes is unchanged.
   for (const block of desiredNew) {
     seenKeys.add(block.id);
     const match = existingByKey.get(block.id);
@@ -163,7 +180,7 @@ export async function applyDesiredSchedule(
             ids = await mirror?.update(block, match);
           } catch (err) {
             if (!unmirrored) throw err; // an in-place update of a mirrored row fails the row
-            skipUnlessFatal(err);
+            skipIfRowScoped(err);
             attachFailed += 1; // the plan still applies below; the row is retried next cycle
           }
           if (ids && mirror) {
@@ -179,7 +196,7 @@ export async function applyDesiredSchedule(
           await scheduledBlocks.update(userId, match.id, fields);
           updated += 1;
         } catch (err) {
-          skipUnlessFatal(err);
+          skipIfRowScoped(err);
           updateFailed += 1;
         }
       } else if (mirror && match.googleEventId == null) {
@@ -189,7 +206,7 @@ export async function applyDesiredSchedule(
         try {
           ids = await mirror.create(block);
         } catch (err) {
-          skipUnlessFatal(err);
+          skipIfRowScoped(err);
           attachFailed += 1;
           continue;
         }
@@ -200,7 +217,7 @@ export async function applyDesiredSchedule(
         } catch (err) {
           // Storing the ids failed for another reason than a vanished row: the row may still
           // exist (and may even hold the ids), so the event is not deleted blind.
-          skipUnlessFatal(err);
+          skipIfRowScoped(err);
           attachFailed += 1;
         }
       }
@@ -223,7 +240,7 @@ export async function applyDesiredSchedule(
       });
       created += 1;
     } catch (err) {
-      skipUnlessFatal(err);
+      skipIfRowScoped(err);
       createFailed += 1;
     }
   }
@@ -242,7 +259,7 @@ export async function applyDesiredSchedule(
       await scheduledBlocks.delete(userId, block.id);
       deleted += 1;
     } catch (err) {
-      skipUnlessFatal(err);
+      skipIfRowScoped(err);
       deleteFailed += 1;
     }
   }

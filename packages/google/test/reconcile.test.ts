@@ -505,7 +505,7 @@ describe('reconcile: never-mirrored blocks when a Google insert fails or the row
   });
 });
 
-describe('reconcile: one failing row does not abort the cycle, a dead connection does', () => {
+describe('reconcile: an error about one event is isolated to its row; anything else aborts the cycle', () => {
   // Three mirrored auto rows the engine moves (it places the tasks from 09:00): three PUTs.
   function seeded() {
     const store = fakeScheduledBlockStore([
@@ -526,9 +526,14 @@ describe('reconcile: one failing row does not abort the cycle, a dead connection
   };
   const startOf = (store: ReturnType<typeof fakeScheduledBlockStore>, id: string) => store.all().find((b) => b.id === id)!.startsAt.toISOString();
 
-  it('a Google error on one row is isolated: the other rows move, the failure is counted in the result', async () => {
+  it.each([
+    ['a 500', new GoogleApiError(500, 'backend error')],
+    ['a 429 (rate limited)', new GoogleApiError(429, 'Rate Limit Exceeded')],
+    ['a 403', new GoogleApiError(403, 'forbidden')],
+    ['a 404 (the event is gone)', new GoogleApiError(404, 'Not Found')],
+  ])('Google answering %s about one event is isolated: the other rows move, the failure is counted', async (_name, err) => {
     const { store, client, deps } = seeded();
-    failOn(client, 'g-b', new GoogleApiError(500, 'backend error'));
+    failOn(client, 'g-b', err);
 
     const result = await reconcile(deps, 'u1', NOW);
 
@@ -539,16 +544,39 @@ describe('reconcile: one failing row does not abort the cycle, a dead connection
   });
 
   it.each([
-    ['a request timeout (Google unreachable: every later call would wait 15 s too)', new GoogleTimeoutError(15000)],
+    ['a request timeout', new GoogleTimeoutError(15000)],
     ['a 401 (the access token itself was rejected)', new GoogleApiError(401, 'invalid credentials')],
     ['a revoked grant', new GoogleGrantRevokedError()],
     ['any other auth failure', new GoogleAuthError('token endpoint down')],
+    ['a network failure (no answer at all: fetch failed)', new TypeError('fetch failed')],
+    ['an unknown error', new Error('boom')],
   ])('%s still aborts the whole cycle', async (_name, err) => {
     const { store, client, deps } = seeded();
     failOn(client, 'g-b', err);
 
     await expect(reconcile(deps, 'u1', NOW)).rejects.toBe(err);
     expect(client.updatedEvents.map((u) => u.googleEventId)).toEqual(['g-a']);
-    expect(startOf(store, 'c')).toBe('2026-01-05T15:00:00.000Z'); // nothing after the fatal row
+    expect(startOf(store, 'c')).toBe('2026-01-05T15:00:00.000Z'); // nothing after the failing row
+  });
+
+  it('the database going away mid-apply aborts after the FIRST row: one Google push, and the next cycle pins only that row', async () => {
+    const { store, client, deps } = seeded();
+    const update = store.update.bind(store);
+    const down = Object.assign(new Error("Can't reach database server"), { code: 'P1001' });
+    store.update = async () => { throw down; };
+
+    await expect(reconcile(deps, 'u1', NOW)).rejects.toBe(down);
+    expect(client.updatedEvents.map((u) => u.googleEventId)).toEqual(['g-a']); // no Google push without its DB write for b, c
+
+    // The database is back. Google now holds a's engine slot, the DB still a's old time: drift
+    // takes Google's side for that one unpinned row (the pre-isolation behaviour), and only it.
+    store.update = update;
+    const pushed = client.updatedEvents[0]!.event;
+    client.listQueue = [{ events: googleEventsFromStore(store).map((e) => (e.id === 'g-a'
+      ? { ...e, start: { dateTime: pushed.startDateTime }, end: { dateTime: pushed.endDateTime } }
+      : e)) }];
+    const next = await reconcile(deps, 'u1', NOW);
+    expect(next.pinned).toBe(1);
+    expect(store.all().filter((b) => b.pinned).map((b) => b.id)).toEqual(['a']);
   });
 });

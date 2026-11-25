@@ -424,7 +424,7 @@ describe('POST /schedule/replan with a row that fails to save', () => {
     // t1's task was deleted a moment ago: inserting its block hits the foreign key.
     const create = ctx.scheduledBlocks.create;
     ctx.scheduledBlocks.create = async (userId, data) => {
-      if (data.taskId === 't1') throw new Error('Foreign key constraint violated: ScheduledBlock_taskId_fkey');
+      if (data.taskId === 't1') throw Object.assign(new Error('Foreign key constraint violated: ScheduledBlock_taskId_fkey'), { code: 'P2003' });
       return create(userId, data);
     };
     const token = await tokenFor(ctx.app);

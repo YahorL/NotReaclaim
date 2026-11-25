@@ -331,7 +331,7 @@ describe('applyDesiredSchedule (unmirrored engine rows)', () => {
     let n = 0;
     const inserted: string[] = [];
     const create = vi.fn(async (block: { id: string }) => {
-      if (opts.failing?.has(block.id)) throw new Error('google 429');
+      if (opts.failing?.has(block.id)) throw Object.assign(new Error('google 429'), { rowScoped: true });
       inserted.push(block.id);
       return { googleEventId: `g-${++n}`, googleCalendarId: 'cal1' };
     });
@@ -345,6 +345,9 @@ describe('applyDesiredSchedule (unmirrored engine rows)', () => {
     };
     return { mirror: mirror as unknown as ScheduleMirror & typeof mirror, inserted };
   }
+
+  /** The caller's row-scoped predicate for the errors insertingMirror throws (Google answered about one event). */
+  const googleAnswered = (err: unknown) => (err as { rowScoped?: boolean }).rowScoped === true;
 
   /** A repo whose `update` of `goneId` finds the row deleted by a concurrent writer. */
   function vanishingRepo(seed: DbScheduledBlock[], goneId: string) {
@@ -369,7 +372,7 @@ describe('applyDesiredSchedule (unmirrored engine rows)', () => {
     const plan = desired([want('t1', 9), want('t2', 10), want('t3', 11), want('t4', 12)]);
     const first = insertingMirror({ failing: new Set(['task:t2:0']) });
 
-    const res = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, mirror: first.mirror });
+    const res = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, mirror: first.mirror, isRowScoped: googleAnswered });
 
     expect(res).toEqual({
       created: 1, updated: 0, deleted: 1, pinnedSynced: 1, pinnedFailed: 0, attached: 2, attachFailed: 1,
@@ -403,7 +406,7 @@ describe('applyDesiredSchedule (unmirrored engine rows)', () => {
     const plan = desired([want('t1', 9), want('t2', 10), want('t3', 11), want('t4', 12)]);
     const first = insertingMirror({ failing: new Set(['task:t2:0']) });
 
-    const res = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, mirror: first.mirror });
+    const res = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, mirror: first.mirror, isRowScoped: googleAnswered });
 
     expect(res).toEqual({
       created: 1, updated: 1, deleted: 1, pinnedSynced: 1, pinnedFailed: 0, attached: 2, attachFailed: 1,
@@ -510,9 +513,8 @@ describe('applyDesiredSchedule (unmirrored engine rows)', () => {
   });
 
   it('a non-NotFound DB failure after an insert is not mistaken for a vanished row', async () => {
-    // The row may still exist (the write may even have committed), so its event must never be
-    // deleted blind. The failure is isolated to the row like any other: counted, and the rest
-    // of the apply carries on.
+    // Only the external insert is isolated: a DB failure propagates like every other DB
+    // write in apply, and the row may still exist, so its event must never be deleted blind.
     const repo = fakeRepo([row('t1', 9), row('t2', 10)]);
     const real = repo.update.getMockImplementation()!;
     repo.update.mockImplementation(async (u, id, data) => {
@@ -521,12 +523,10 @@ describe('applyDesiredSchedule (unmirrored engine rows)', () => {
     });
     const { mirror } = insertingMirror();
 
-    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10)]), {
+    await expect(applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10)]), {
       now: NOW, horizonEnd: HORIZON, mirror,
-    });
-    expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 1, attachFailed: 1 });
+    })).rejects.toThrow('connection reset');
     expect(mirror.delete).not.toHaveBeenCalled();
-    expect(repo.rows().find((r) => r.id === 'b-t2')!.googleEventId).not.toBeNull();
   });
 });
 
@@ -697,11 +697,12 @@ describe('replan idempotence across a moving `now`', () => {
 });
 
 /**
- * One row that fails to save (a Google call errors, or a DB write hits a foreign key because
- * its task was deleted a moment ago) must not abort the user's whole replan: the row is
- * skipped and counted, and every other row is still applied — in the same order as before.
- * Only errors the caller marks fatal (`isFatal`: e.g. the Google connection itself is
- * unusable) still abort the apply.
+ * One row that fails to save must not abort the user's whole replan — but only errors that
+ * belong to ONE row are isolated: the db layer's NotFoundError / ConflictError (matched by
+ * name), a foreign-key violation (Prisma P2003: the row's task/habit was deleted meanwhile),
+ * and whatever the caller declares row-scoped (`isRowScoped`; Google's reconcile: an API answer
+ * about one event). Anything else — the database or the network going away, an unknown error —
+ * aborts the apply at that row, as before isolation existed. Write order is unchanged.
  */
 describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', () => {
   const at = (hh: number) => ({
@@ -715,8 +716,16 @@ describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', ()
   });
   const mirrored = (t: string, hh: number) => row(t, hh, { googleEventId: `g-${t}`, googleCalendarId: 'cal1' });
 
+  /** The db layer's domain errors, as core sees them (by name, like apply.ts does). */
+  const named = (name: string) => Object.assign(new Error(name), { name });
+  /** Prisma's error shape, as thrown untranslated by the repository (only P2002/P2025 are translated). */
+  const prisma = (code: string, message = `Prisma ${code}`) => Object.assign(new Error(message), { code });
+  /** A mirror error the test declares row-scoped through `isRowScoped` (Google: an answer about one event). */
+  class RowScoped extends Error {}
+  const isRowScoped = (err: unknown) => err instanceof RowScoped;
+
   /** A recording mirror: every call is logged; the listed block/row ids throw `err`. */
-  function failingMirror(fails: { create?: string; update?: string; delete?: string }, err: unknown = new Error('google 500')) {
+  function failingMirror(fails: { create?: string; update?: string; delete?: string }, err: unknown = new RowScoped('google 404')) {
     const calls: string[] = [];
     let n = 0;
     const mirror = {
@@ -735,11 +744,11 @@ describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', ()
         if (existing.id === fails.delete) throw err;
       }),
     };
-    return { mirror: mirror as unknown as ScheduleMirror, calls };
+    return { mirror: mirror as unknown as ScheduleMirror & typeof mirror, calls };
   }
 
   /** fakeRepo whose `method` throws `err` for one id (create: for one engineKey), recording every write. */
-  function failingRepo(seed: DbScheduledBlock[], method: 'create' | 'update' | 'delete', failId: string, err: unknown = new Error('violates foreign key constraint')) {
+  function failingRepo(seed: DbScheduledBlock[], method: 'create' | 'update' | 'delete', failId: string, err: unknown) {
     const repo = fakeRepo(seed);
     const writes: string[] = [];
     const realCreate = repo.create.getMockImplementation()!;
@@ -747,63 +756,41 @@ describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', ()
     const realDelete = repo.delete.getMockImplementation()!;
     repo.create.mockImplementation(async (u, data) => {
       writes.push(`create ${data.engineKey}`);
-      if (method === 'create' && data.engineKey === failId) throw err;
+      if (method === 'create' && (failId === '*' || data.engineKey === failId)) throw err;
       return realCreate(u, data);
     });
     repo.update.mockImplementation(async (u, id, data) => {
       writes.push(`update ${id}`);
-      if (method === 'update' && id === failId) throw err;
+      if (method === 'update' && (failId === '*' || id === failId)) throw err;
       return realUpdate(u, id, data);
     });
     repo.delete.mockImplementation(async (u, id) => {
       writes.push(`delete ${id}`);
-      if (method === 'delete' && id === failId) throw err;
+      if (method === 'delete' && (failId === '*' || id === failId)) throw err;
       return realDelete(u, id);
     });
     return { repo, writes };
   }
 
-  it('a failing DB create is skipped and counted; the other creates, updates and deletes still apply', async () => {
-    const { repo, writes } = failingRepo([row('t1', 14), row('t9', 15)], 'create', 'task:t3:0');
+  it('a create that hits a foreign key (its task was just deleted) is skipped and counted; everything else applies', async () => {
+    const { repo, writes } = failingRepo([row('t1', 14), row('t9', 15)], 'create', 'task:t3:0', prisma('P2003'));
     const plan = desired([want('t1', 9), want('t2', 10), want('t3', 11), want('t4', 12)]);
 
     const res = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON });
 
-    expect(res).toEqual({
+    expect(res).toMatchObject({
       created: 2, updated: 1, deleted: 1, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0, createFailed: 1,
     });
     expect(writes).toEqual(['update b-t1', 'create task:t2:0', 'create task:t3:0', 'create task:t4:0', 'delete b-t9']);
     expect(repo.rows().map((r) => r.engineKey).sort()).toEqual(['task:t1:0', 'task:t2:0', 'task:t4:0']);
   });
 
-  it('a failing Google insert for a new block skips its DB create (Google first) and is counted', async () => {
-    const repo = fakeRepo([]);
-    const { mirror, calls } = failingMirror({ create: 'task:t2:0' });
-
-    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10), want('t3', 11)]), { now: NOW, horizonEnd: HORIZON, mirror });
-
-    expect(res).toMatchObject({ created: 2, createFailed: 1 });
-    expect(calls).toEqual(['create task:t1:0', 'create task:t2:0', 'create task:t3:0']);
-    expect(repo.rows().map((r) => r.engineKey)).toEqual(['task:t1:0', 'task:t3:0']);
-  });
-
-  it('a failing Google update leaves that row untouched in the DB and is counted; later rows still move', async () => {
-    const { repo, writes } = failingRepo([mirrored('t1', 14), mirrored('t2', 15), mirrored('t3', 16)], 'update', '-none-');
-    const { mirror, calls } = failingMirror({ update: 'b-t2' });
-
-    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10), want('t3', 11)]), { now: NOW, horizonEnd: HORIZON, mirror });
-
-    expect(res).toEqual({
-      created: 0, updated: 2, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0, updateFailed: 1,
-    });
-    expect(calls).toEqual(['update b-t1', 'update b-t2', 'update b-t3']);
-    expect(writes).toEqual(['update b-t1', 'update b-t3']);
-    expect(repo.rows().find((r) => r.id === 'b-t2')!.startsAt).toEqual(at(15).startsAt);
-    expect(repo.rows().find((r) => r.id === 'b-t3')!.startsAt).toEqual(at(11).startsAt);
-  });
-
-  it('a failing DB update (e.g. the row was cascaded away with its task) is counted; the rest applies', async () => {
-    const { repo, writes } = failingRepo([row('t1', 14), row('t2', 15), row('t3', 16)], 'update', 'b-t2');
+  it.each([
+    ['NotFoundError (the row went with its deleted task)', named('NotFoundError')],
+    ['ConflictError', named('ConflictError')],
+    ['a foreign-key violation (P2003)', prisma('P2003')],
+  ])('a DB update failing with %s is isolated', async (_name, err) => {
+    const { repo, writes } = failingRepo([row('t1', 14), row('t2', 15), row('t3', 16)], 'update', 'b-t2', err);
 
     const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10), want('t3', 11)]), { now: NOW, horizonEnd: HORIZON });
 
@@ -811,11 +798,60 @@ describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', ()
     expect(writes).toEqual(['update b-t1', 'update b-t2', 'update b-t3']);
   });
 
-  it('a failing Google delete in the sweep keeps that row (and its event) and is counted; the other stale rows go', async () => {
+  it.each([
+    ['the database is unreachable (P1001)', prisma('P1001', "Can't reach database server")],
+    ['a connection reset', new Error('connection reset')],
+    ['an unknown error', new Error('boom')],
+  ])('a DB update failing because %s aborts the apply at the first row', async (_name, err) => {
+    const { repo, writes } = failingRepo([row('t1', 14), row('t2', 15), row('t3', 16)], 'update', '*', err);
+
+    await expect(applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10), want('t3', 11)]), {
+      now: NOW, horizonEnd: HORIZON, isRowScoped: () => false,
+    })).rejects.toBe(err);
+    expect(writes).toEqual(['update b-t1']);
+  });
+
+  it('a DB failure aborts even when the mirror declares its own errors row-scoped (no Google call for later rows)', async () => {
+    const down = prisma('P1001');
+    const { repo } = failingRepo([mirrored('t1', 14), mirrored('t2', 15), mirrored('t3', 16)], 'update', '*', down);
+    const { mirror, calls } = failingMirror({});
+
+    await expect(applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10), want('t3', 11)]), {
+      now: NOW, horizonEnd: HORIZON, mirror, isRowScoped,
+    })).rejects.toBe(down);
+    expect(calls).toEqual(['update b-t1']); // exactly one Google push, then stop
+  });
+
+  it('a row-scoped Google insert failure for a new block skips its DB create (Google first) and is counted', async () => {
+    const repo = fakeRepo([]);
+    const { mirror, calls } = failingMirror({ create: 'task:t2:0' });
+
+    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10), want('t3', 11)]), { now: NOW, horizonEnd: HORIZON, mirror, isRowScoped });
+
+    expect(res).toMatchObject({ created: 2, createFailed: 1 });
+    expect(calls).toEqual(['create task:t1:0', 'create task:t2:0', 'create task:t3:0']);
+    expect(repo.rows().map((r) => r.engineKey)).toEqual(['task:t1:0', 'task:t3:0']);
+  });
+
+  it('a row-scoped Google update failure leaves that row untouched in the DB and is counted; later rows still move', async () => {
+    const repo = fakeRepo([mirrored('t1', 14), mirrored('t2', 15), mirrored('t3', 16)]);
+    const { mirror, calls } = failingMirror({ update: 'b-t2' });
+
+    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10), want('t3', 11)]), { now: NOW, horizonEnd: HORIZON, mirror, isRowScoped });
+
+    expect(res).toEqual({
+      created: 0, updated: 2, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0, updateFailed: 1,
+    });
+    expect(calls).toEqual(['update b-t1', 'update b-t2', 'update b-t3']);
+    expect(repo.update.mock.calls.map((c) => c[1])).toEqual(['b-t1', 'b-t3']);
+    expect(repo.rows().find((r) => r.id === 'b-t2')!.startsAt).toEqual(at(15).startsAt);
+  });
+
+  it('a row-scoped Google delete failure in the sweep keeps that row (and its event) and is counted', async () => {
     const repo = fakeRepo([mirrored('t7', 13), mirrored('t8', 14), mirrored('t9', 15)]);
     const { mirror, calls } = failingMirror({ delete: 'b-t8' });
 
-    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON, mirror });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON, mirror, isRowScoped });
 
     expect(res).toEqual({
       created: 0, updated: 0, deleted: 2, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0, deleteFailed: 1,
@@ -824,61 +860,54 @@ describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', ()
     expect(repo.rows().map((r) => r.id)).toEqual(['b-t8']);
   });
 
-  it('a failing DB delete in the sweep is counted; the other stale rows go', async () => {
-    const { repo } = failingRepo([row('t7', 13), row('t8', 14), row('t9', 15)], 'delete', 'b-t8');
+  it('a DB delete in the sweep that finds the row gone (NotFound) is counted; the other stale rows go', async () => {
+    const { repo } = failingRepo([row('t7', 13), row('t8', 14), row('t9', 15)], 'delete', 'b-t8', named('NotFoundError'));
 
     const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON });
 
     expect(res).toMatchObject({ deleted: 2, deleteFailed: 1 });
-    expect(repo.rows().map((r) => r.id)).toEqual(['b-t8']);
   });
 
-  it('an error the caller marks fatal still aborts the apply at that row', async () => {
-    const revoked = Object.assign(new Error('access revoked'), { fatal: true });
-    const { repo, writes } = failingRepo([mirrored('t1', 14), mirrored('t2', 15), mirrored('t3', 16)], 'update', '-none-');
-    const { mirror } = failingMirror({ update: 'b-t2' }, revoked);
-
-    await expect(applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10), want('t3', 11)]), {
-      now: NOW, horizonEnd: HORIZON, mirror, isFatal: (err) => (err as { fatal?: boolean }).fatal === true,
-    })).rejects.toBe(revoked);
-    expect(writes).toEqual(['update b-t1']); // nothing after the fatal row
+  it('a mirror error that is not declared row-scoped aborts: update, create, sweep delete', async () => {
+    const offline = new TypeError('fetch failed');
+    const upd = failingMirror({ update: 'b-t1' }, offline);
+    await expect(applyDesiredSchedule(fakeRepo([mirrored('t1', 14), mirrored('t2', 15)]), 'u1', desired([want('t1', 9), want('t2', 10)]), {
+      now: NOW, horizonEnd: HORIZON, mirror: upd.mirror, isRowScoped,
+    })).rejects.toBe(offline);
+    expect(upd.calls).toEqual(['update b-t1']);
+    const create = failingMirror({ create: 'task:t1:0' }, offline);
+    await expect(applyDesiredSchedule(fakeRepo([]), 'u1', desired([want('t1', 9), want('t2', 10)]), {
+      now: NOW, horizonEnd: HORIZON, mirror: create.mirror, isRowScoped,
+    })).rejects.toBe(offline);
+    expect(create.calls).toEqual(['create task:t1:0']);
+    const sweep = failingMirror({ delete: 'b-t8' }, offline);
+    await expect(applyDesiredSchedule(fakeRepo([mirrored('t8', 14), mirrored('t9', 15)]), 'u1', desired([]), {
+      now: NOW, horizonEnd: HORIZON, mirror: sweep.mirror, isRowScoped,
+    })).rejects.toBe(offline);
+    expect(sweep.calls).toEqual(['delete b-t8']);
   });
 
-  it('a fatal error on a first insert aborts too (unchanged and changed never-mirrored rows)', async () => {
-    const fatal = Object.assign(new Error('timeout'), { fatal: true });
-    const isFatal = (err: unknown) => (err as { fatal?: boolean }).fatal === true;
+  it('a non-row-scoped error on a first insert aborts too (unchanged and changed never-mirrored rows, and storing the ids)', async () => {
+    const offline = new TypeError('fetch failed');
     // Unchanged row with no event yet: the attach insert (mirror.create) throws.
-    const unchanged = failingMirror({ create: 'task:t1:0' }, fatal);
-    const repoA = fakeRepo([row('t1', 9), row('t2', 10)]);
-    await expect(applyDesiredSchedule(repoA, 'u1', desired([want('t1', 9), want('t2', 10)]), {
-      now: NOW, horizonEnd: HORIZON, mirror: unchanged.mirror, isFatal,
-    })).rejects.toBe(fatal);
+    const unchanged = failingMirror({ create: 'task:t1:0' }, offline);
+    await expect(applyDesiredSchedule(fakeRepo([row('t1', 9), row('t2', 10)]), 'u1', desired([want('t1', 9), want('t2', 10)]), {
+      now: NOW, horizonEnd: HORIZON, mirror: unchanged.mirror, isRowScoped,
+    })).rejects.toBe(offline);
     expect(unchanged.calls).toEqual(['create task:t1:0']);
     // Changed row with no event yet: the inserting mirror.update throws.
-    const changed = failingMirror({ update: 'b-t1' }, fatal);
+    const changed = failingMirror({ update: 'b-t1' }, offline);
     const repoB = fakeRepo([row('t1', 14), row('t2', 15)]);
     await expect(applyDesiredSchedule(repoB, 'u1', desired([want('t1', 9), want('t2', 10)]), {
-      now: NOW, horizonEnd: HORIZON, mirror: changed.mirror, isFatal,
-    })).rejects.toBe(fatal);
+      now: NOW, horizonEnd: HORIZON, mirror: changed.mirror, isRowScoped,
+    })).rejects.toBe(offline);
     expect(repoB.update).not.toHaveBeenCalled(); // not even the plan's own move went through
-    // Storing the inserted ids hits a fatal error.
+    // Storing the inserted ids hits the database going away.
+    const down = prisma('P1001');
     const repoC = fakeRepo([row('t1', 9), row('t2', 10)]);
-    repoC.update.mockImplementation(async () => { throw fatal; });
+    repoC.update.mockImplementation(async () => { throw down; });
     await expect(applyDesiredSchedule(repoC, 'u1', desired([want('t1', 9), want('t2', 10)]), {
-      now: NOW, horizonEnd: HORIZON, mirror: failingMirror({}).mirror, isFatal,
-    })).rejects.toBe(fatal);
-  });
-
-  it('a fatal error from a sweep delete or a create aborts too', async () => {
-    const fatal = Object.assign(new Error('timeout'), { fatal: true });
-    const isFatal = (err: unknown) => (err as { fatal?: boolean }).fatal === true;
-    const sweep = failingMirror({ delete: 'b-t9' }, fatal);
-    await expect(applyDesiredSchedule(fakeRepo([mirrored('t9', 15)]), 'u1', desired([]), {
-      now: NOW, horizonEnd: HORIZON, mirror: sweep.mirror, isFatal,
-    })).rejects.toBe(fatal);
-    const create = failingMirror({ create: 'task:t1:0' }, fatal);
-    await expect(applyDesiredSchedule(fakeRepo([]), 'u1', desired([want('t1', 9)]), {
-      now: NOW, horizonEnd: HORIZON, mirror: create.mirror, isFatal,
-    })).rejects.toBe(fatal);
+      now: NOW, horizonEnd: HORIZON, mirror: failingMirror({}).mirror, isRowScoped,
+    })).rejects.toBe(down);
   });
 });
