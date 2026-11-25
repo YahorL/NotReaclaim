@@ -23,7 +23,8 @@ export default {
         page: ch('--c-page'),
         fg: ch('--c-text-1'),
         'fg-2': fixed('--c-text-1', 0.66),
-        'fg-3': fixed('--c-text-1', 0.55),
+        // fg-3's alpha is per theme (--a-fg-3: .55 dark, .62 light, where .55 fell under 4.5:1).
+        'fg-3': `rgb(var(--c-text-1) / var(--a-fg-3))`,
         'on-accent': ch('--c-on-accent'),
         danger: ch('--c-danger'),
         card: ch('--c-card'),

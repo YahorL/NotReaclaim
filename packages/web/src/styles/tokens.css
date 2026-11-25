@@ -68,7 +68,8 @@
   color-scheme: dark;
 
   --c-page: 7 8 10;              /* --bg-page #07080A */
-  --c-text-1: 244 245 247;       /* --text-1 #F4F5F7; --text-2/--text-3 = this @ .66 / .55 */
+  --c-text-1: 244 245 247;       /* --text-1 #F4F5F7; --text-2/--text-3 = this @ .66 / --a-fg-3 */
+  --a-fg-3: 0.55;                /* --text-3 alpha (Tailwind fg-3) */
   --c-on-accent: 11 12 14;       /* --text-on-accent #0B0C0E */
   --c-danger: 255 138 142;       /* --text-danger #FF8A8E */
   --c-card: 22 22 26;            /* opaque card = --panel-bg without its alpha */
@@ -141,8 +142,9 @@
 
   --c-page: 227 228 231;         /* #E3E4E7 */
   --c-text-1: 17 18 20;          /* #111214 */
+  --a-fg-3: 0.62;                /* design .55 was ~4.1:1 on the light page/glass (gutter hours, panel "Next:"); .62 clears 4.5:1 (P8) */
   --c-on-accent: 11 12 14;
-  --c-danger: 200 50 58;         /* #C8323A */
+  --c-danger: 179 38 46;         /* #B3262E (design #C8323A was 4.1:1 on the light page/glass; P8) */
   --c-card: 255 255 255;
   --c-line-rgb: 17 18 20;
   --c-primary: 17 18 20;
@@ -182,7 +184,9 @@
   --x-accent-soft: rgba(120, 155, 0, 0.07);
   --x-accent-line: rgba(120, 155, 0, 0.55);
 
-  --x-meeting-bg: linear-gradient(180deg, #7381FF, #5361F0);
+  /* Design: #7381FF → #5361F0. White 11–13px tile text was 3.3:1 at the light top; the top stop is
+     deepened to #5A66F2 (4.6:1) and the bottom follows so the gradient keeps its depth (P8). */
+  --x-meeting-bg: linear-gradient(180deg, #5A66F2, #4753E3);
   --x-meeting-border: 1px solid rgba(255, 255, 255, 0.35);
   --x-meeting-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 10px 22px -10px rgba(83, 97, 240, 0.7);
   --x-today-col: rgba(120, 155, 0, 0.025);

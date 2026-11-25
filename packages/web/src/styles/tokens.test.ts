@@ -128,6 +128,35 @@ describe('tokens.css', () => {
       expect(contrast(focus, channelsIn(selector, surface)), surface).toBeGreaterThanOrEqual(3);
     }
   });
+
+  // Small secondary text (fg-3: gutter hours, "Next:" lines) and danger text sit on the bare page
+  // or on glass that is close to it; both must hold 4.5:1 there (design light values were ~4.1:1).
+  it.each([['dark', DARK], ['light', LIGHT]])('fg-3 and danger text reach 4.5:1 on the %s page', (_name, selector) => {
+    const page = channelsIn(selector, '--c-page');
+    const ink = channelsIn(selector, '--c-text-1');
+    const noComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    const rule = [...noComments.matchAll(/([^{}]+)\{([^{}]*)\}/g)].find((m) => (m[1] ?? '').trim().replace(/\s+/g, ' ') === selector);
+    const alpha = Number(rule?.[2]?.match(/--a-fg-3\s*:\s*([\d.]+);/)?.[1]);
+    expect(alpha).toBeGreaterThan(0);
+    const fg3 = ink.map((c, i) => Math.round(c * alpha + page[i]! * (1 - alpha))) as [number, number, number];
+    expect(contrast(fg3, page)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(channelsIn(selector, '--c-danger'), page)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  // Meeting tiles carry 11px white time labels: every colour stop of the meeting fill must hold
+  // 4.5:1 against --c-on-meeting (the design's light top stop #7381FF was 3.3:1).
+  it.each([['dark', DARK], ['light', LIGHT]])('meeting tile text reaches 4.5:1 on every %s fill stop', (_name, selector) => {
+    const text = channelsIn(selector, '--c-on-meeting');
+    const noComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    const rule = [...noComments.matchAll(/([^{}]+)\{([^{}]*)\}/g)].find((m) => (m[1] ?? '').trim().replace(/\s+/g, ' ') === selector);
+    const bg = rule?.[2]?.match(/--x-meeting-bg\s*:\s*([^;]+);/)?.[1] ?? '';
+    const stops = [...bg.matchAll(/#([0-9a-f]{6})/gi)].map((m) => {
+      const h = m[1]!;
+      return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)) as [number, number, number];
+    });
+    expect(stops.length).toBeGreaterThan(0);
+    for (const stop of stops) expect(contrast(text, stop), stop.join(',')).toBeGreaterThanOrEqual(4.5);
+  });
 });
 
 /** The `r g b` triplet `name` holds inside the rule whose selector list is exactly `selector`. */
