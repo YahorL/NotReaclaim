@@ -316,22 +316,84 @@ describe('WeekGrid', () => {
     expect(scroller.className).toContain('md:overscroll-auto');
   });
 
-  it('a tap on a task block opens its task on a coarse pointer', () => {
+  // md+: a click or tap selects the block (detail card); below md a tap opens the drawer.
+  it('below md a tap on a task block opens its task', () => {
     const onEditTask = vi.fn();
-    renderGrid({ coarse: true, onEditTask });
+    const onSelect = vi.fn();
+    renderGrid({ compact: true, coarse: true, onEditTask, onSelect, days: [days[0]!] });
     const tile = screen.getAllByTestId('event-block').find((b) => b.textContent?.includes('Write spec'))!;
     fireEvent.pointerDown(tile, { clientX: 40, clientY: 80, pointerId: 1 });
     fireEvent.pointerUp(tile, { clientX: 40, clientY: 80, pointerId: 1 });
     expect(onEditTask).toHaveBeenCalledWith('t1');
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it('leaves the desktop click behaviour of a task block untouched', () => {
+  it('at md+ a click on a task block selects it instead of opening the drawer', () => {
     const onEditTask = vi.fn();
-    renderGrid({ onEditTask });
+    const onSelect = vi.fn();
+    renderGrid({ onEditTask, onSelect });
     const tile = screen.getAllByTestId('event-block').find((b) => b.textContent?.includes('Write spec'))!;
     fireEvent.pointerDown(tile, { clientX: 40, clientY: 80, pointerId: 1 });
     fireEvent.pointerUp(tile, { clientX: 40, clientY: 80, pointerId: 1 });
+    expect(onSelect).toHaveBeenCalledWith('b:b1', { keyboard: false });
     expect(onEditTask).not.toHaveBeenCalled();
+  });
+
+  it('at md+ a coarse tap (iPad) selects too', () => {
+    const onEditTask = vi.fn();
+    const onSelect = vi.fn();
+    renderGrid({ coarse: true, onEditTask, onSelect });
+    const tile = screen.getAllByTestId('event-block').find((b) => b.textContent?.includes('Write spec'))!;
+    fireEvent.pointerDown(tile, { clientX: 40, clientY: 80, pointerId: 1 });
+    fireEvent.pointerUp(tile, { clientX: 40, clientY: 80, pointerId: 1 });
+    expect(onSelect).toHaveBeenCalledWith('b:b1', { keyboard: false });
+    expect(onEditTask).not.toHaveBeenCalled();
+  });
+
+  it('a real drag does not select', () => {
+    const onSelect = vi.fn();
+    const onCommit = vi.fn();
+    renderGrid({ onSelect, onCommit });
+    const tile = screen.getAllByTestId('event-block').find((b) => b.textContent?.includes('Write spec'))!;
+    fireEvent.pointerDown(tile, { clientX: 40, clientY: 80, pointerId: 1 });
+    fireEvent.pointerMove(tile, { clientX: 40, clientY: 80 + minutesToPx(60), pointerId: 1 });
+    fireEvent.pointerUp(tile, { clientX: 40, clientY: 80 + minutesToPx(60), pointerId: 1 });
+    // …and the native click a browser may fire after the drag (detail 1) is ignored too.
+    fireEvent.click(within(tile).getByTestId('block-body'), { detail: 1 });
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('Enter on a block body selects it, flagged as keyboard', () => {
+    const onSelect = vi.fn();
+    renderGrid({ onSelect });
+    const body = screen.getAllByTestId('block-body').find((b) => b.getAttribute('aria-label')?.startsWith('Write spec'))!;
+    fireEvent.click(body, { detail: 0 }); // what a browser fires for Enter / Space on a button
+    expect(onSelect).toHaveBeenCalledWith('b:b1', { keyboard: true });
+  });
+
+  it('a click on a (static) Google meeting selects it', () => {
+    const onSelect = vi.fn();
+    renderGrid({ onSelect, blocks: [] });
+    fireEvent.click(screen.getByTestId('block-body'), { detail: 1 });
+    expect(onSelect).toHaveBeenCalledWith('e:e1', { keyboard: false });
+  });
+
+  it('every block body is reachable with Tab (a focusable button)', () => {
+    renderGrid();
+    const bodies = screen.getAllByTestId('block-body');
+    expect(bodies).toHaveLength(2);
+    for (const b of bodies) {
+      expect(b.tagName).toBe('BUTTON');
+      expect(b).not.toHaveAttribute('tabindex', '-1');
+    }
+  });
+
+  it('outlines the selected block', () => {
+    renderGrid({ selectedKey: 'b:b1' });
+    const tiles = screen.getAllByTestId('event-block');
+    expect(tiles.find((t) => t.textContent?.includes('Write spec'))).toHaveAttribute('data-selected', 'true');
+    expect(tiles.find((t) => t.textContent?.includes('Standup'))).toHaveAttribute('data-selected', 'false');
   });
 
 });
@@ -368,10 +430,10 @@ describe('WeekGrid app-created events', () => {
     });
   });
 
-  it('clicking an app event (no drag) calls onEditEvent with the event', () => {
+  it('below md, tapping an app event (no drag) calls onEditEvent with the event', () => {
     const onEditEvent = vi.fn();
     const onCommitEvent = vi.fn();
-    renderGrid({ events: [appEvent], onEditEvent, onCommitEvent });
+    renderGrid({ events: [appEvent], onEditEvent, onCommitEvent, compact: true });
     const tile = tileFor('Coffee');
     fireEvent.pointerDown(tile, { clientX: 50, clientY: 100, pointerId: 1 });
     fireEvent.pointerUp(tile, { clientX: 50, clientY: 100, pointerId: 1 });
@@ -415,10 +477,10 @@ describe('WeekGrid blocked time', () => {
     });
   });
 
-  it('clicking a blocked entry opens the editor, and its × deletes it', () => {
+  it('below md, tapping a blocked entry opens the editor, and its × deletes it', () => {
     const onEditEvent = vi.fn();
     const onDeleteEvent = vi.fn();
-    renderGrid({ events: [blockedEvent], blocks: [], onEditEvent, onDeleteEvent });
+    renderGrid({ events: [blockedEvent], blocks: [], onEditEvent, onDeleteEvent, compact: true });
     const tile = tileFor('Gym');
     fireEvent.pointerDown(tile, { clientX: 50, clientY: 100, pointerId: 1 });
     fireEvent.pointerUp(tile, { clientX: 50, clientY: 100, pointerId: 1 });

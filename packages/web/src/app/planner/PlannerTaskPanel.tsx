@@ -180,7 +180,7 @@ export function PlannerTaskPanel({ tasks, preview, nowMs, zone, onComplete, onEd
     <aside
       data-testid="planner-task-panel"
       aria-label="Tasks"
-      className={`flex flex-col overflow-hidden ${compact ? 'min-h-0 w-full flex-1' : 'glass w-[330px] shrink-0 rounded-panel'}`}
+      className={`flex flex-col overflow-hidden ${compact ? 'min-h-0 w-full flex-1' : 'glass min-h-0 w-[330px] flex-1 rounded-panel'}`}
     >
       <div role="tablist" aria-label="Task view" className={`flex shrink-0 gap-1 rounded-pill bg-fg/[.05] p-1 ${compact ? 'mx-1 mb-2' : 'mx-3.5 mt-3.5'}`}>
         {TABS.map((t) => {

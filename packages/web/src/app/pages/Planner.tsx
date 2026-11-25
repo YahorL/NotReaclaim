@@ -1,8 +1,9 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { DndContext, DragOverlay, type DragEndEvent, type DragMoveEvent, type DragStartEvent } from '@dnd-kit/core';
 import type { CalendarEvent, Task } from '../../api/types';
 import { ApiError } from '../../api/client';
-import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useHabitsQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation, useSettingsQuery } from '../../api/queries';
+import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useHabitsQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation, useSettingsQuery, useStopBlockMutation } from '../../api/queries';
 import { dayColumns, daysThatFit, shiftDays, dayAnchor, rangeLabel, weekdayLabel } from '../planner/weekModel';
 import { toIso } from '../lib/time';
 import { useTimezone } from '../settings/useTimezone';
@@ -23,6 +24,8 @@ import { summarizeUnscheduled } from '../planner/unscheduledSummary';
 import { TaskDrawer } from '../tasks/TaskDrawer';
 import { EventDrawer } from '../planner/EventDrawer';
 import { labelBlocksWithSubtasks } from '../planner/blockLabels';
+import { BlockDetailCard, type BlockDetail } from '../planner/BlockDetailCard';
+import { classifyBlock } from '../planner/weekModel';
 
 const DRAWER_DESKTOP_CLASS = 'fixed right-3 top-[120px] z-50';
 
@@ -91,6 +94,8 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   const updateTask = useUpdateTaskMutation();
   const deleteTask = useDeleteTaskMutation();
   const createBlock = useCreateScheduledBlockMutation();
+  const stopBlock = useStopBlockMutation();
+  const navigate = useNavigate();
   const [editingId, setEditingId] = useState<string | null>(null);
   const editing = tasks.find((t) => t.id === editingId) ?? null;
   // Only one drawer at a time — they share the same fixed slot on the right. The event is looked
@@ -161,6 +166,51 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
     [schedule.data, tasks],
   );
 
+  // Selection (spec §5.4): `b:<id>` / `e:<id>`. md+ only — below md a tap opens the drawer.
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  // The selection came from the keyboard: the card takes focus (and hands it back on close).
+  const [selectedByKeyboard, setSelectedByKeyboard] = useState(false);
+  const selectedDetail = useMemo((): BlockDetail | null => {
+    if (!selectedKey) return null;
+    if (selectedKey.startsWith('b:')) {
+      const b = labeledBlocks.find((x) => `b:${x.id}` === selectedKey);
+      if (!b) return null;
+      const cls = classifyBlock(b);
+      const endMs = Date.parse(b.endsAt);
+      return { key: selectedKey, kind: cls.kind, source: null, title: b.title, startMs: Date.parse(b.startsAt), endMs,
+        pinned: cls.pinned, started: b.startedAt != null, running: b.startedAt != null && endMs > nowMs, taskId: b.taskId, event: null };
+    }
+    const ev = (calendar.data ?? []).find((x) => `e:${x.id}` === selectedKey);
+    if (!ev) return null;
+    return { key: selectedKey, kind: ev.kind === 'blocked' ? 'blocked' : 'meeting', source: ev.source, title: ev.title,
+      startMs: Date.parse(ev.startsAt), endMs: Date.parse(ev.endsAt), pinned: false, started: false, running: false, taskId: null, event: ev };
+  }, [selectedKey, labeledBlocks, calendar.data, nowMs]);
+  // The selected block left the data (deleted, paged away, replanned out): drop the selection.
+  useEffect(() => {
+    if (selectedKey && !selectedDetail && !schedule.isFetching && !calendar.isFetching) setSelectedKey(null);
+  }, [selectedKey, selectedDetail, schedule.isFetching, calendar.isFetching]);
+  const closeDetail = () => {
+    const key = selectedKey;
+    const focusInCard = document.activeElement?.closest('[data-testid="block-detail-card"]') != null;
+    setSelectedKey(null);
+    // Back to the block the card described, when the card held focus.
+    if (key && focusInCard) {
+      document.querySelector<HTMLElement>(`[data-block-key="${key}"] [data-testid="block-body"]`)?.focus();
+    }
+  };
+  // Escape deselects — unless something above the planner (a dialog, a sheet, the create popover)
+  // owns that Escape.
+  useEffect(() => {
+    if (!selectedKey) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (document.querySelector('[aria-modal="true"],[data-testid="create-popover"]')) return;
+      closeDetail();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  });
+
   // Build accent map: taskId → hex color (only for tasks whose category has a non-null color)
   const accents = useMemo<Record<string, string>>(() => {
     const cats = categoriesQ.data ?? [];
@@ -222,6 +272,28 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
     onDelete: onDeleteTask,
   };
 
+  const selectedTask = selectedDetail?.taskId ? tasks.find((t) => t.id === selectedDetail.taskId) ?? null : null;
+  const selectedBlockId = selectedDetail && !selectedDetail.event ? selectedDetail.key.slice(2) : null;
+  const detailCard = !compact && selectedDetail ? (
+    <BlockDetailCard
+      detail={selectedDetail}
+      zone={zone}
+      task={selectedTask}
+      autoFocus={selectedByKeyboard}
+      onClose={closeDetail}
+      onOpenTask={openTaskDrawer}
+      onOpenEvent={openEventDrawer}
+      onOpenHabits={() => navigate('/habits')}
+      onUnpin={selectedBlockId ? () => updateBlock.mutate({ id: selectedBlockId, patch: { pinned: false } }) : undefined}
+      onStop={selectedBlockId ? () => stopBlock.mutate(selectedBlockId) : undefined}
+      onDelete={() => {
+        if (selectedBlockId) deleteBlock.mutate(selectedBlockId);
+        else if (selectedDetail.event) deleteEvent.mutate(selectedDetail.event.id);
+        setSelectedKey(null);
+      }}
+    />
+  ) : null;
+
   // `h-full` hands the shell's content height down the flex chain so the hours-scroll can size
   // itself from real layout instead of a hard-coded chrome constant. AppShell's shell-content
   // already reserves the fixed tab bar in its padding, so nothing here has to know about it.
@@ -251,7 +323,12 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
       </div>
       {replan.isError && <p className="-mt-2 shrink-0 px-1 text-[13px] text-danger">Re-plan failed. Try again.</p>}
     <div className={`flex min-h-0 flex-1 ${compact ? 'gap-2' : 'gap-5'}`}>
-      <div ref={gridRef} className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div ref={gridRef} className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        {/* Panel hidden: the card floats over the grid instead of taking a column — narrowing the
+            grid would change the day count and could page the selected block out of view. */}
+        {!compact && panelHidden && detailCard && (
+          <div className="absolute bottom-4 right-4 z-20 w-[330px] rounded-panel shadow-lift">{detailCard}</div>
+        )}
         {isLoading && <div className="shrink-0 p-2 text-sm text-fg-2">Loading your days…</div>}
         <WeekGrid
           days={days}
@@ -271,6 +348,8 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           onEditTask={openTaskDrawer}
           onDeleteEvent={(id) => deleteEvent.mutate(id)}
           taskDrop={taskDrop}
+          selectedKey={selectedKey}
+          onSelect={(key, { keyboard }) => { setSelectedKey(key); setSelectedByKeyboard(keyboard); }}
           accents={accents}
           compact={compact}
           coarse={coarse}
@@ -281,7 +360,13 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
         />
       </div>
       {/* Below md the panel never renders inline — it becomes the bottom sheet below. */}
-      {!compact && !panelHidden && <PlannerTaskPanel {...panelProps} />}
+      {/* Side column: the detail card atop the task panel. */}
+      {!compact && !panelHidden && (
+        <div className="flex min-h-0 w-[330px] shrink-0 flex-col gap-5">
+          {detailCard}
+          <PlannerTaskPanel {...panelProps} />
+        </div>
+      )}
     </div>
       {compact && taskSheetOpen && (
         <Sheet label="Tasks" onClose={() => setTaskSheetOpen(false)} collapsed={sheetCollapsed}>

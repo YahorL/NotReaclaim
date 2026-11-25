@@ -43,8 +43,10 @@ export interface InteractiveBlockProps {
   onUnpin?: () => void;
   onDelete?: () => void;
   /** Fired on a press that moved nothing (a click, not a drag) — never alongside onCommit — and on
-   *  keyboard activation of the block body. */
-  onClick?: () => void;
+   *  keyboard activation of the block body (`keyboard` true). */
+  onClick?: (keyboard: boolean) => void;
+  /** `b:<id>` / `e:<id>` — exposed as data-block-key (focus restore after the detail card closes). */
+  blockKey?: string;
   deleteLabel?: string;
   /** Rendered day columns: the block layer spans all of them, so one column = layer width / dayCount. */
   dayCount?: number;
@@ -59,7 +61,7 @@ export interface InteractiveBlockProps {
 type DragMode = 'move' | 'resize';
 
 export function InteractiveBlock(props: InteractiveBlockProps) {
-  const { dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, leftPct = 0, widthPct = 100, lane = 0, lanes = 1, startLabel, title, kind, pinned, source = null, started = false, selected = false, onCommit, onUnpin, onDelete, onClick, deleteLabel = 'Delete block', dayCount = 7, accent, zone = 'UTC', coarse = false, getScrollContainer } = props;
+  const { blockKey, dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, leftPct = 0, widthPct = 100, lane = 0, lanes = 1, startLabel, title, kind, pinned, source = null, started = false, selected = false, onCommit, onUnpin, onDelete, onClick, deleteLabel = 'Delete block', dayCount = 7, accent, zone = 'UTC', coarse = false, getScrollContainer } = props;
   // Refs hold the authoritative drag state; mutated directly so pointer handlers always
   // see the latest values regardless of React's batching/commit schedule.
   const modeRef = useRef<DragMode | null>(null);
@@ -283,7 +285,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
       const tappedMode = modeRef.current;
       pressRef.current = endPress();
       resetDragState();
-      if (tappedMode === 'move') onClick?.();
+      if (tappedMode === 'move') onClick?.(false);
       return;
     }
     pressRef.current = endPress();
@@ -304,7 +306,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
     const endMin = (endMs - dayStartMs) / MS_PER_MIN;
 
     if (mode === 'move') {
-      if (deltaMin === 0 && deltaDays === 0) { onClick?.(); return; } // a click, not a drag: no held preview
+      if (deltaMin === 0 && deltaDays === 0) { onClick?.(false); return; } // a click, not a drag: no held preview
       const moved = clampToWindow(startMin + deltaMin, endMin - startMin);
       // Zone-aware: column starts are wall-clock anchors (midnight, or the configured day start),
       // so a cross-day drag must preserve the wall clock rather than add a flat 24h.
@@ -356,6 +358,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
 
   return (
     <CalendarBlock
+      blockKey={blockKey}
       title={title}
       kind={kind}
       source={source}
@@ -374,7 +377,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
       // Pointer presses are discriminated by the drag machinery (a zero-delta press → onClick), so
       // the body's own click only counts when the keyboard produced it (detail 0). A real mouse
       // click after a short drag must never select.
-      onBodyClick={(e) => { if (e.detail === 0) onClick?.(); }}
+      onBodyClick={(e) => { if (e.detail === 0) onClick?.(true); }}
       onPointerDown={begin('move')}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}

@@ -8,6 +8,8 @@ export const ROW_LAYOUT_MAX_MIN = 45;
 type PointerHandler = (e: ReactPointerEvent<HTMLElement>) => void;
 
 export interface CalendarBlockProps {
+  /** `b:<id>` / `e:<id>`, exposed as data-block-key. */
+  blockKey?: string;
   title: string;
   kind: BlockKind;
   source?: 'app' | 'google' | null;
@@ -57,7 +59,7 @@ const DELETE_BTN = 'h-[18px] w-[18px] items-center justify-center rounded-full b
  */
 export function CalendarBlock(props: CalendarBlockProps) {
   const {
-    title, kind, source = null, pinned = false, started = false, accent, startLabel, whenLabel, durationMin,
+    blockKey, title, kind, source = null, pinned = false, started = false, accent, startLabel, whenLabel, durationMin,
     style, className = '', dayIndex, selected = false, coarse = false, onDelete, deleteLabel = 'Delete block',
     onUnpin, onBodyClick, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, resize, children,
   } = props;
@@ -70,6 +72,7 @@ export function CalendarBlock(props: CalendarBlockProps) {
   return (
     <div
       data-testid="event-block"
+      data-block-key={blockKey}
       data-kind={kind}
       data-pinned={pinned}
       data-locked={v.locked}

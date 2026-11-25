@@ -101,7 +101,7 @@ describe('Planner', () => {
     expect(screen.getByTestId('planner-task-panel')).toBeInTheDocument();
   });
 
-  it('clicking an app-created event opens the event edit drawer, prefilled', async () => {
+  it('selecting an app-created event and pressing Open event opens the edit drawer, prefilled', async () => {
     const appEvent: CalendarEvent = {
       id: 'e9', userId: 'u1', title: 'Coffee',
       startsAt: '2026-01-07T15:00:00.000Z', endsAt: '2026-01-07T15:30:00.000Z',
@@ -114,6 +114,9 @@ describe('Planner', () => {
     const tile = screen.getAllByTestId('event-block').find((b) => b.textContent?.includes('Coffee'))!;
     fireEvent.pointerDown(tile, { clientX: 40, clientY: 80, pointerId: 1 });
     fireEvent.pointerUp(tile, { clientX: 40, clientY: 80, pointerId: 1 });
+    // md+: the click selects; the detail card's Open event opens the drawer.
+    expect(screen.queryByTestId('event-drawer')).toBeNull();
+    fireEvent.click(within(screen.getByTestId('block-detail-card')).getByRole('button', { name: 'Open event' }));
     expect(screen.getByTestId('event-drawer')).toBeInTheDocument();
     expect(screen.getByTestId('event-title')).toHaveValue('Coffee');
     expect(screen.getByTestId('event-start')).toHaveValue('2026-01-07T15:00'); // TZ=UTC settings default
@@ -135,6 +138,7 @@ describe('Planner', () => {
     const tile = screen.getAllByTestId('event-block').find((b) => b.textContent?.includes('Coffee'))!;
     fireEvent.pointerDown(tile, { clientX: 40, clientY: 80, pointerId: 1 });
     fireEvent.pointerUp(tile, { clientX: 40, clientY: 80, pointerId: 1 });
+    fireEvent.click(screen.getByTestId('detail-open'));
     // pull the start earlier (the end stays 15:30, so the range stays valid and Save is enabled)
     fireEvent.change(screen.getByTestId('event-start'), { target: { value: '2026-01-07T14:00' } });
     fireEvent.click(screen.getByTestId('event-save'));
@@ -300,6 +304,104 @@ describe('Planner', () => {
     await waitFor(() => expect(updateTask).toHaveBeenCalledWith('b', expect.objectContaining({
       title: 'B task', dueBy: '2026-01-12T15:00:00.000Z',
     })));
+  });
+});
+
+describe('Planner block selection', () => {
+  beforeEach(() => { localStorage.removeItem('nr.plannerPanelHidden'); });
+  const task: Task = {
+    id: 't1', userId: 'u1', title: 'Write spec', priority: 2, sortOrder: 0,
+    durationMs: 3_600_000, dueBy: '2026-01-10T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1,
+    categoryId: null, status: 'pending', completedAt: null, createdAt: '', updatedAt: '',
+  };
+  const tileOf = (title: string) => within(screen.getByTestId('block-layer')).getAllByTestId('event-block').find((b) => b.textContent?.includes(title))!;
+  const tap = (el: HTMLElement) => {
+    fireEvent.pointerDown(el, { clientX: 40, clientY: 80, pointerId: 1 });
+    fireEvent.pointerUp(el, { clientX: 40, clientY: 80, pointerId: 1 });
+  };
+
+  it('click selects a task block → detail card; Open task opens the TaskDrawer', async () => {
+    renderWithProviders(<Planner now={() => NOW} />, { api: makeApi({ listTasks: vi.fn(async () => [task]) }) });
+    await waitFor(() => expect(tileOf('Write spec')).toBeTruthy());
+    tap(tileOf('Write spec'));
+    const card = screen.getByTestId('block-detail-card');
+    expect(tileOf('Write spec')).toHaveAttribute('data-selected', 'true');
+    expect(within(card).getByRole('heading', { name: 'Write spec' })).toBeInTheDocument();
+    expect(within(card).getByTestId('detail-chip')).toHaveTextContent('Task · Auto-scheduled');
+    expect(within(card).getByTestId('detail-time')).toHaveTextContent('1:00 PM – 2:00 PM');
+    expect(within(card).getByTestId('detail-duration')).toHaveTextContent('1h');
+    expect(within(card).getByTestId('detail-task-extras')).toHaveTextContent('High priority');
+    fireEvent.click(within(card).getByRole('button', { name: 'Open task' }));
+    expect(screen.getByTestId('task-drawer')).toBeInTheDocument();
+  });
+
+  it('✕ closes the card and deselects', async () => {
+    renderWithProviders(<Planner now={() => NOW} />, { api: makeApi() });
+    await waitFor(() => expect(tileOf('Write spec')).toBeTruthy());
+    tap(tileOf('Write spec'));
+    fireEvent.click(screen.getByRole('button', { name: 'Close details' }));
+    expect(screen.queryByTestId('block-detail-card')).toBeNull();
+    expect(tileOf('Write spec')).toHaveAttribute('data-selected', 'false');
+  });
+
+  it('Escape closes the card', async () => {
+    renderWithProviders(<Planner now={() => NOW} />, { api: makeApi() });
+    await waitFor(() => expect(tileOf('Write spec')).toBeTruthy());
+    tap(tileOf('Write spec'));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByTestId('block-detail-card')).toBeNull();
+  });
+
+  it('a drag does not select', async () => {
+    renderWithProviders(<Planner now={() => NOW} />, { api: makeApi() });
+    await waitFor(() => expect(tileOf('Write spec')).toBeTruthy());
+    const tile = tileOf('Write spec');
+    fireEvent.pointerDown(tile, { clientX: 40, clientY: 80, pointerId: 1 });
+    fireEvent.pointerMove(tile, { clientX: 40, clientY: 200, pointerId: 1 });
+    fireEvent.pointerUp(tile, { clientX: 40, clientY: 200, pointerId: 1 });
+    expect(screen.queryByTestId('block-detail-card')).toBeNull();
+  });
+
+  it('a Google meeting card has no Open / Unpin / Delete', async () => {
+    renderWithProviders(<Planner now={() => NOW} />, { api: makeApi() });
+    await waitFor(() => expect(tileOf('Standup')).toBeTruthy());
+    fireEvent.click(within(tileOf('Standup')).getByTestId('block-body'), { detail: 1 });
+    const card = screen.getByTestId('block-detail-card');
+    expect(within(card).getByTestId('detail-chip')).toHaveTextContent('Meeting · Locked');
+    expect(within(card).queryByTestId('detail-open')).toBeNull();
+    expect(within(card).queryByTestId('detail-unpin')).toBeNull();
+    expect(within(card).queryByTestId('detail-delete')).toBeNull();
+    expect(card).toHaveTextContent('Synced from Google Calendar');
+  });
+
+  it('Delete on the card deletes the block and closes the card', async () => {
+    const deleteScheduledBlock = vi.fn(async () => undefined);
+    renderWithProviders(<Planner now={() => NOW} />, { api: makeApi({ deleteScheduledBlock }) });
+    await waitFor(() => expect(tileOf('Write spec')).toBeTruthy());
+    tap(tileOf('Write spec'));
+    fireEvent.click(screen.getByTestId('detail-delete'));
+    expect(screen.queryByTestId('block-detail-card')).toBeNull();
+    await waitFor(() => expect(deleteScheduledBlock).toHaveBeenCalledWith('b1'));
+  });
+
+  it('Unpin on a pinned block\'s card unpins it', async () => {
+    const pinned = [{ ...blocks[0]!, pinned: true }];
+    const updateScheduledBlock = vi.fn(async () => pinned[0]!);
+    renderWithProviders(<Planner now={() => NOW} />, { api: makeApi({ getSchedule: vi.fn(async () => pinned), updateScheduledBlock }) });
+    await waitFor(() => expect(tileOf('Write spec')).toBeTruthy());
+    tap(tileOf('Write spec'));
+    expect(screen.getByTestId('detail-chip')).toHaveTextContent('Task · Pinned');
+    fireEvent.click(screen.getByTestId('detail-unpin'));
+    await waitFor(() => expect(updateScheduledBlock).toHaveBeenCalledWith('b1', { pinned: false }));
+  });
+
+  it('with the panel hidden the card still shows (floating over the grid)', async () => {
+    renderWithProviders(<Planner now={() => NOW} />, { api: makeApi() });
+    await waitFor(() => expect(tileOf('Write spec')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('panel-hide'));
+    tap(tileOf('Write spec'));
+    expect(screen.getByTestId('block-detail-card')).toBeInTheDocument();
+    expect(screen.queryByTestId('planner-task-panel')).toBeNull();
   });
 });
 

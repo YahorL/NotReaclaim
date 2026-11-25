@@ -11,6 +11,7 @@ import { layoutWeek, blockLeftCss, blockWidthCss } from './blockLayout';
 import { DAY_COLUMN_DROP_TYPE, dayColumnDroppableId } from './scheduleDrop';
 import { Sheet } from '../components/Sheet';
 import { Icons } from '../shell/icons';
+import { useToast } from '../shell/ToastProvider';
 
 /**
  * Registers a day column as a dnd-kit droppable without restructuring the grid: hooks cannot run
@@ -63,7 +64,7 @@ export interface WeekGridProps {
   onCommit: (id: string, patch: { startsAt?: string; endsAt?: string; pinned?: boolean }) => void;
   /** Drag/resize commit for app-created calendar events (Google-owned events are read-only). */
   onCommitEvent?: (id: string, patch: { startsAt: string; endsAt: string }) => void;
-  /** Click (no drag) on an app-created event — opens the event editor. */
+  /** Compact layout only: a tap on an app-created event or blocked time opens the event editor. */
   onEditEvent?: (event: CalendarEvent) => void;
   onDeleteBlock?: (id: string) => void;
   onDeleteEvent?: (id: string) => void;
@@ -80,10 +81,14 @@ export interface WeekGridProps {
   compact?: boolean;
   /** Coarse pointer: long-press-armed drag, bigger resize target, always-visible actions. */
   coarse?: boolean;
-  /** Coarse pointers only: a tap on a task block opens that task (spec §2 — tap opens the drawer).
-   *  Deliberately not wired on fine pointers: a desktop click on a block does nothing, and that
-   *  is kept as desktop behaviour. */
+  /** Compact layout only: a tap on a task block opens that task's drawer (the detail card is an
+   *  md+ feature, spec §5.2). */
   onEditTask?: (taskId: string) => void;
+  /** The selected block (`b:<id>` / `e:<id>`), outlined. */
+  selectedKey?: string | null;
+  /** md+: a click / tap / Enter on a block selects it (the Planner shows its detail card).
+   *  `keyboard` = the selection came from the keyboard (focus moves to the card). */
+  onSelect?: (key: string, opts: { keyboard: boolean }) => void;
 }
 
 interface Item {
@@ -121,10 +126,27 @@ function toItems(blocks: ScheduledBlock[], events: CalendarEvent[], zone: string
 }
 
 export function WeekGrid(props: WeekGridProps) {
-  const { days, nowMs, weekLabel, blocks, events, onPrev, onToday, onNext, onCommit, onCommitEvent, onEditEvent, onDeleteBlock, onDeleteEvent, taskDrop = null, accents = {}, zone = 'UTC', dayStartMinute = 0, panelHidden, onTogglePanel, compact = false, coarse = false, onEditTask } = props;
+  const { days, nowMs, weekLabel, blocks, events, onPrev, onToday, onNext, onCommit, onCommitEvent, onEditEvent, onDeleteBlock, onDeleteEvent, taskDrop = null, accents = {}, zone = 'UTC', dayStartMinute = 0, panelHidden, onTogglePanel, compact = false, coarse = false, onEditTask, selectedKey = null, onSelect } = props;
   const gridCols = `${timeGutterPx(compact)}px repeat(${days.length}, minmax(0, 1fr))`;
   const items = toItems(blocks, events, zone);
   const layout = layoutWeek(items, days);
+  const toast = useToast();
+
+  /**
+   * A click (a press that did not drag) or Enter on a block. At md+ it selects (detail card,
+   * spec §5.4) — for mouse and touch alike. Below md the side panel is a sheet, so a tap keeps the
+   * old behaviour and opens the drawer directly; the two kinds with no drawer say why.
+   */
+  const activate = (it: Item, keyboard: boolean) => {
+    if (!compact) { onSelect?.(it.key, { keyboard }); return; }
+    if (it.blockId) {
+      if (it.taskId) onEditTask?.(it.taskId);
+      else toast.show('Edit habits on the Habits page');
+      return;
+    }
+    if (it.event?.source === 'app') onEditEvent?.(it.event);
+    else toast.show('Synced from Google Calendar', { icon: 'lock' });
+  };
   const n = days.length;
   const todayIndex = days.findIndex((d) => isToday(nowMs, d));
   const todayLine = todayIndex >= 0 ? nowLine(nowMs, days[todayIndex]!) : null;
@@ -296,9 +318,9 @@ export function WeekGrid(props: WeekGridProps) {
                         onCommit={(patch) => onCommit(blockId, patch)}
                         onUnpin={it.pinned ? () => onCommit(blockId, { pinned: false }) : undefined}
                         onDelete={onDeleteBlock ? () => onDeleteBlock(blockId) : undefined}
-                        // Habit blocks have no taskId and stay inert on tap: there is no habit
-                        // drawer reachable from the planner, and inventing one is out of scope.
-                        onClick={coarse && it.taskId && onEditTask ? () => onEditTask(it.taskId!) : undefined}
+                        onClick={(keyboard) => activate(it, keyboard)}
+                        blockKey={it.key}
+                        selected={selectedKey === it.key}
                         dayCount={n}
                         accent={accent}
                         zone={zone}
@@ -319,7 +341,9 @@ export function WeekGrid(props: WeekGridProps) {
                         {...geometry}
                         startLabel={it.startLabel} title={it.title} kind={it.kind} pinned={false} source="app"
                         onCommit={(patch) => onCommitEvent?.(ev.id, { startsAt: patch.startsAt, endsAt: patch.endsAt })}
-                        onClick={onEditEvent ? () => onEditEvent(ev) : undefined}
+                        onClick={(keyboard) => activate(it, keyboard)}
+                        blockKey={it.key}
+                        selected={selectedKey === it.key}
                         onDelete={onDeleteEvent ? () => onDeleteEvent(ev.id) : undefined}
                         deleteLabel="Delete event"
                         dayCount={n}
@@ -332,6 +356,9 @@ export function WeekGrid(props: WeekGridProps) {
                   return (
                     <CalendarBlock
                       key={it.key}
+                      blockKey={it.key}
+                      selected={selectedKey === it.key}
+                      onBodyClick={(e) => activate(it, e.detail === 0)}
                       title={it.title}
                       kind={it.kind}
                       source={it.source}
