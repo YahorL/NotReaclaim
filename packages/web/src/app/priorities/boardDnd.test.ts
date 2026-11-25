@@ -1,8 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
-import type { ClientRect, DroppableContainer, UniqueIdentifier } from '@dnd-kit/core';
 import type { Task, UpdateTaskInput } from '../../api/types';
-import { boardDropTargetName, boardKeyboardCoordinates, columnDroppableId, overColumnKey, resolveBoardDrop, taskMovePatch, type BoardDropColumn } from './boardDnd';
+import { applyBoardDrop, boardDropTargetName, columnDroppableId, dropPosition, keyboardMove, moveAnnouncement, overColumnKey, resolveBoardDrop, taskMovePatch, type BoardArrowKey, type BoardDropColumn } from './boardDnd';
 
 const cols: BoardDropColumn[] = [
   { key: 'critical', tasks: [{ id: 'c1' }] },
@@ -174,66 +172,107 @@ describe('board drop → PATCH (ported from the deleted Priorities drag tests)',
   });
 });
 
-describe('boardKeyboardCoordinates', () => {
-  const rect = (top: number, height: number): ClientRect =>
-    ({ top, left: 0, height, width: 300, right: 300, bottom: top + height });
-
-  const rects = new Map<UniqueIdentifier, ClientRect>([
-    ['col:high', rect(0, 600)], // a column's rect always starts ABOVE every card it holds
-    ['a', rect(100, 60)],       // first card
-    ['b', rect(200, 60)],       // second card
-  ]);
-
-  /**
-   * A stand-in for dnd-kit's own `DroppableContainersMap`, which the package does not export as a
-   * value. Same shape (a Map subclass carrying `getEnabled`), which is exactly what makes this test
-   * load-bearing: `boardKeyboardCoordinates` rebuilds the filtered collection through
-   * `containers.constructor`, so if it ever rebuilt through a plain `Map` instead, the delegate's
-   * `getEnabled()` call would throw here rather than quietly regress.
-   */
-  class Containers extends Map<UniqueIdentifier, DroppableContainer> {
-    getEnabled() { return Array.from(this.values()).filter((c) => !c.disabled); }
-    toArray() { return Array.from(this.values()); }
-    getNodeFor(id: UniqueIdentifier) { return this.get(id)?.node.current ?? undefined; }
-  }
-
-  const container = (id: UniqueIdentifier): DroppableContainer => ({
-    id, key: id, disabled: false, data: { current: undefined },
-    // A real node is required: the getter reads `node.current` and walks its scroll ancestors.
-    node: { current: document.createElement('div') },
-    rect: { current: rects.get(id)! },
-  } as unknown as DroppableContainer);
-
-  const containers = new Containers([
-    ['col:high', container('col:high')], ['a', container('a')], ['b', container('b')],
-  ]);
-
-  const argsFor = (activeId: string): any => ({
-    active: activeId,
-    currentCoordinates: { x: 0, y: rects.get(activeId)!.top },
-    context: {
-      active: { id: activeId, data: { current: undefined }, rect: { current: { initial: null, translated: null } } },
-      collisionRect: rects.get(activeId)!,
-      droppableRects: rects,
-      droppableContainers: containers,
-      over: null,
-      scrollableAncestors: [],
-    },
+describe('keyboardMove (grip arrow keys)', () => {
+  // critical: c1 · high: a, b, c · low: l1 · backlog: (empty) · completed: d1
+  it('ArrowUp steps a card above its neighbour', () => {
+    expect(keyboardMove(cols, 'b', 'ArrowUp')).toEqual({ taskId: 'b', to: 'high', index: 0 });
   });
 
-  const arrowUp = () => new KeyboardEvent('keydown', { code: 'ArrowUp' });
-
-  it('ArrowUp on the FIRST card of a column does nothing, where the stock getter jumps to the column', () => {
-    // The defect, reproduced: no card sits above 'a', so the only survivor of the stock getter's
-    // direction filter is the column container, and it returns the column's own origin — which the
-    // board reads as `over = col:high`, i.e. "append to the bottom of this column".
-    expect(sortableKeyboardCoordinates(arrowUp(), argsFor('a'))).toEqual({ x: 0, y: 0 });
-    // With the containers filtered out there is no candidate at all, so the card stays put.
-    expect(boardKeyboardCoordinates(arrowUp(), argsFor('a'))).toBeUndefined();
+  it('ArrowUp on the FIRST card of a column does nothing (never wraps to the bottom)', () => {
+    expect(keyboardMove(cols, 'a', 'ArrowUp')).toBeNull();
   });
 
-  it('still steps onto the card above when there is one', () => {
-    // Filtering containers must not cost ordinary reordering: 'b' still walks up to 'a'.
-    expect(boardKeyboardCoordinates(arrowUp(), argsFor('b'))).toEqual({ x: 0, y: 100 });
+  it('ArrowDown steps a card below its neighbour, in the rendered-column index contract', () => {
+    // Insert after 'b' = index 2 in [a, b, c] as rendered (the dragged card still counted).
+    const drop = keyboardMove(cols, 'a', 'ArrowDown');
+    expect(drop).toEqual({ taskId: 'a', to: 'high', index: 2 });
+  });
+
+  it('ArrowDown on the LAST card does nothing', () => {
+    expect(keyboardMove(cols, 'c', 'ArrowDown')).toBeNull();
+  });
+
+  it('ArrowLeft moves to the neighbouring column at the same position, clamped to its length', () => {
+    // 'c' is third in High; Critical holds one card, so it lands last there.
+    expect(keyboardMove(cols, 'c', 'ArrowLeft')).toEqual({ taskId: 'c', to: 'critical', index: 1 });
+    expect(keyboardMove(cols, 'a', 'ArrowLeft')).toEqual({ taskId: 'a', to: 'critical', index: 0 });
+  });
+
+  it('ArrowRight moves to the next RENDERED column (hidden columns are skipped by construction)', () => {
+    // There is no Medium column in `cols`, so High → Low.
+    expect(keyboardMove(cols, 'b', 'ArrowRight')).toEqual({ taskId: 'b', to: 'low', index: 1 });
+  });
+
+  it('reaches an EMPTY column (Low → Backlog), which a pointer-less drag could not', () => {
+    expect(keyboardMove(cols, 'l1', 'ArrowRight')).toEqual({ taskId: 'l1', to: 'backlog', index: 0 });
+  });
+
+  it('stops at the edges: ArrowLeft from the first column, ArrowRight before Completed', () => {
+    expect(keyboardMove(cols, 'c1', 'ArrowLeft')).toBeNull();
+    // Backlog is the last droppable column: Completed rejects drops.
+    const withBacklogCard: BoardDropColumn[] = cols.map((c) => (c.key === 'backlog' ? { ...c, tasks: [{ id: 'k1' }] } : c));
+    expect(keyboardMove(withBacklogCard, 'k1', 'ArrowRight')).toBeNull();
+  });
+
+  it('never moves a card out of the Completed column, nor an unknown id', () => {
+    expect(keyboardMove(cols, 'd1', 'ArrowLeft')).toBeNull();
+    expect(keyboardMove(cols, 'ghost', 'ArrowUp')).toBeNull();
+  });
+
+  it('feeds taskMovePatch the same way a pointer drop does', () => {
+    const board = [
+      { key: 'critical' as const, tasks: [task({ id: 'c1', priority: 1, sortOrder: 0 })] },
+      { key: 'high' as const, tasks: [task({ id: 'a', sortOrder: 0 }), task({ id: 'b', sortOrder: 10 }), task({ id: 'c', sortOrder: 20 })] },
+    ];
+    const patchFor = (id: string, key: BoardArrowKey) => {
+      const drop = keyboardMove(board, id, key)!;
+      const t = board.flatMap((c) => c.tasks).find((x) => x.id === id)!;
+      return taskMovePatch({ taskId: id, task: t, to: drop.to, index: drop.index, columnTasks: board.find((c) => c.key === drop.to)!.tasks });
+    };
+    expect(patchFor('a', 'ArrowDown')).toEqual({ sortOrder: 15 });         // between b and c
+    expect(patchFor('c', 'ArrowUp')).toEqual({ sortOrder: 5 });            // between a and b
+    expect(patchFor('b', 'ArrowLeft')).toEqual({ priority: 1, sortOrder: 1 }); // after c1
+  });
+});
+
+describe('dropPosition / moveAnnouncement', () => {
+  it('is the 1-based slot the card ends up in, accounting for its own old slot in the same column', () => {
+    // a ↓ (index 2 in [a,b,c] as rendered) ends up second.
+    expect(dropPosition(cols, { taskId: 'a', to: 'high', index: 2 })).toBe(2);
+    // c ↑ to index 1 ends up second; upward moves need no adjustment.
+    expect(dropPosition(cols, { taskId: 'c', to: 'high', index: 1 })).toBe(2);
+    // Appending a's own column via the container (index 3) ends up third, not fourth.
+    expect(dropPosition(cols, { taskId: 'a', to: 'high', index: 3 })).toBe(3);
+    // Cross-column: the index is already the slot.
+    expect(dropPosition(cols, { taskId: 'a', to: 'critical', index: 1 })).toBe(2);
+  });
+
+  it('reads "Moved X to <column>, position N"', () => {
+    expect(moveAnnouncement('Write spec', 'high', 2)).toBe('Moved Write spec to High priority, position 2.');
+    expect(moveAnnouncement('Write spec', 'backlog', 1)).toBe('Moved Write spec to Backlog, position 1.');
+  });
+});
+
+describe('applyBoardDrop (the arrangement held until the refetch lands)', () => {
+  const ids = (columns: BoardDropColumn[], key: string) => columns.find((c) => c.key === key)!.tasks.map((t) => t.id);
+
+  it('reorders within a column', () => {
+    const next = applyBoardDrop(cols, { taskId: 'a', to: 'high', index: 2 });
+    expect(ids(next, 'high')).toEqual(['b', 'a', 'c']);
+  });
+
+  it('moves across columns at the given slot and leaves the others untouched', () => {
+    const next = applyBoardDrop(cols, { taskId: 'b', to: 'critical', index: 0 });
+    expect(ids(next, 'critical')).toEqual(['b', 'c1']);
+    expect(ids(next, 'high')).toEqual(['a', 'c']);
+    expect(next.find((c) => c.key === 'low')).toBe(cols.find((c) => c.key === 'low'));
+  });
+
+  it('appends into an empty column', () => {
+    expect(ids(applyBoardDrop(cols, { taskId: 'l1', to: 'backlog', index: 0 }), 'backlog')).toEqual(['l1']);
+  });
+
+  it('returns the columns unchanged for an unknown task', () => {
+    expect(applyBoardDrop(cols, { taskId: 'ghost', to: 'high', index: 0 })).toBe(cols);
   });
 });

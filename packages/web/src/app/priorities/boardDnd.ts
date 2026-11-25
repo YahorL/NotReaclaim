@@ -1,5 +1,3 @@
-import type { DroppableContainer, DroppableContainers, KeyboardCoordinateGetter, UniqueIdentifier } from '@dnd-kit/core';
-import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import type { Task, UpdateTaskInput } from '../../api/types';
 import { type BucketKey, type BoardColumnKey, bucketToPriority, columnMeta, insertionSortOrder, priorityToBucket } from './priorityBucket';
 
@@ -52,44 +50,67 @@ export function boardDropTargetName(
   return key ? `the ${columnMeta(key).label} column` : null;
 }
 
-/**
- * The board's ArrowUp/ArrowDown getter: `sortableKeyboardCoordinates`, but blind to the `col:*`
- * container droppables.
- *
- * The stock getter keeps every enabled droppable whose rect merely lies in the arrow's direction
- * (`collisionRect.top > rect.top` for ArrowUp), and a column's rect starts above every card it
- * holds — so a column is always a candidate. On the *first* card of a column that is fatal: no card
- * is above it, the column is the only survivor, `closestCorners` returns it, and the overlay jumps
- * to the column header while `over` becomes `col:<key>` — which `resolveBoardDrop`'s container
- * branch reads as "append to the bottom of this column". ArrowUp on the top card silently sent it
- * to the bottom.
- *
- * Dropping the containers from the *candidate* set fixes it without touching their droppable state:
- * pointer drops still need the column rect to land in a column's empty area, and ArrowUp on the
- * first card now correctly does nothing.
- *
- * Known limitation: with the containers filtered out, a keyboard drag can only ever land on a card,
- * so an EMPTY column is unreachable by keyboard (it has no cards to aim at). Accepted — the board
- * was 0% keyboard-accessible before this getter existed, and the alternative (keeping columns as
- * candidates) silently teleports the top card of every column to the bottom on ArrowUp.
- *
- * The filtered collection is rebuilt through `droppableContainers.constructor` rather than a plain
- * `Map`, because the getter calls `getEnabled()` and `get()` on it — dnd-kit's own reducer clones
- * the collection the same way (`new DroppableContainersMap(state.droppable.containers)`), so this
- * is the library's idiom rather than a workaround.
- */
-export const boardKeyboardCoordinates: KeyboardCoordinateGetter = (event, args) => {
-  const containers = args.context.droppableContainers;
-  const cardsOnly = Array.from(containers.entries())
-    .filter(([id]) => !String(id).startsWith(COLUMN_DROPPABLE_PREFIX));
-  const CollectionCtor = containers.constructor as unknown as
-    new (entries: Iterable<[UniqueIdentifier, DroppableContainer]>) => DroppableContainers;
+export type BoardArrowKey = 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight';
 
-  return sortableKeyboardCoordinates(event, {
-    ...args,
-    context: { ...args.context, droppableContainers: new CollectionCtor(cardsOnly) },
+export function isBoardArrowKey(key: string): key is BoardArrowKey {
+  return key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight';
+}
+
+/**
+ * The board's keyboard model (prototype `interactions.md §2`): with a card's grip focused, ↑/↓
+ * swap it with its neighbour and ←/→ move it to the neighbouring *rendered* column at the same
+ * position (clamped to that column's length). No lift/drop step — each key press is a move.
+ *
+ * Driven by column order rather than by geometry: dnd-kit's rect-based keyboard getter could not
+ * reach an empty column (no card to aim at), and on the first card of a column ArrowUp landed on
+ * the column container and sent the card to the bottom. Completed is neither a source (its cards
+ * have no grip) nor a target (it rejects drops), so ←/→ stop at Backlog.
+ *
+ * Returns a `BoardDrop` in `resolveBoardDrop`'s contract (index into the target column as
+ * rendered, still counting the moving card when it is its own column), or null at an edge.
+ */
+export function keyboardMove(columns: BoardDropColumn[], taskId: string, key: BoardArrowKey): BoardDrop | null {
+  const from = columns.find((c) => c.tasks.some((t) => t.id === taskId));
+  if (!from || from.key === 'completed') return null;
+  const i = from.tasks.findIndex((t) => t.id === taskId);
+
+  if (key === 'ArrowUp') return i > 0 ? { taskId, to: from.key, index: i - 1 } : null;
+  if (key === 'ArrowDown') return i < from.tasks.length - 1 ? { taskId, to: from.key, index: i + 2 } : null;
+
+  const droppable = columns.filter((c) => c.key !== 'completed');
+  const target = droppable[droppable.indexOf(from) + (key === 'ArrowLeft' ? -1 : 1)];
+  if (!target) return null;
+  return { taskId, to: target.key, index: Math.min(i, target.tasks.length) };
+}
+
+/** The 1-based slot a drop leaves the card in, as the board will show it after the move. */
+export function dropPosition(columns: BoardDropColumn[], drop: BoardDrop): number {
+  const sourceIndex = columns.find((c) => c.key === drop.to)?.tasks.findIndex((t) => t.id === drop.taskId) ?? -1;
+  return (sourceIndex !== -1 && sourceIndex < drop.index ? drop.index - 1 : drop.index) + 1;
+}
+
+/** The live-region sentence for a finished move: "Moved Write spec to High priority, position 2." */
+export function moveAnnouncement(title: string, to: BoardColumnKey, position: number): string {
+  return `Moved ${title} to ${columnMeta(to).label}, position ${position}.`;
+}
+
+/**
+ * The board after `drop`, for display only: the card leaves its column and lands in its slot.
+ * Board renders this from the drop until the task query reflects the move, so nothing snaps back
+ * in between (the PATCH and its refetch are asynchronous).
+ */
+export function applyBoardDrop<C extends { key: BoardColumnKey; tasks: { id: string }[] }>(columns: C[], drop: BoardDrop): C[] {
+  const from = columns.find((c) => c.tasks.some((t) => t.id === drop.taskId));
+  if (!from) return columns;
+  const card = from.tasks.find((t) => t.id === drop.taskId)!;
+  const slot = dropPosition(columns, drop) - 1;
+  return columns.map((c) => {
+    if (c.key !== from.key && c.key !== drop.to) return c;
+    const tasks = c.tasks.filter((t) => t.id !== drop.taskId);
+    if (c.key === drop.to) tasks.splice(slot, 0, card);
+    return { ...c, tasks };
   });
-};
+}
 
 /**
  * Turn a dnd-kit drop into the board's existing `(taskId, to, index)` contract, where `index` is

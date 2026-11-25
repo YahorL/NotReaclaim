@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, type MouseEventHandler, type TouchEventHandler } from 'react';
 import { DndContext, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -7,18 +7,21 @@ import { Icons } from '../shell/icons';
 import { useAppSensors, pointerFirstCollision } from '../dnd/sensors';
 import { useClickOutside } from '../components/useClickOutside';
 import { subtaskDropSortOrder } from '../tasks/subtaskDnd';
-import { type BoardColumnKey, columnMeta, relativeDayTimeLabel, dueShort } from './priorityBucket';
+import { formatDurationShort } from '../lib/duration';
+import { type BoardColumnKey, relativeDayTimeLabel, dueShort } from './priorityBucket';
+import { isBoardArrowKey, type BoardArrowKey } from './boardDnd';
 
-// The card's static classes, split around the column's left-border colour that goes between them.
-const CARD_LAYOUT = 'flex items-start gap-3 border-t border-l-4 border-t-line';
-const CARD_SURFACE = 'bg-card last:rounded-b-xl py-3.5 pl-4 pr-3.5 transition-colors hover:bg-[#fafbfc]';
+const MENU_ITEM = 'block w-full rounded-input px-3 py-1.5 text-left text-[14px] font-medium hover:bg-fg/[.07] focus-visible:bg-fg/[.07] focus-visible:outline-offset-[-2px]';
 
-/** Dragging wins over the backlog's muting, which wins over the completed fade. */
-function cardOpacity(isDragging: boolean, muted: boolean, done: boolean): string {
-  if (isDragging) return 'opacity-40';
-  if (muted) return 'opacity-70';
-  if (done) return 'opacity-45';
-  return '';
+/** The prototype's 6-dot grip (10×16). */
+export function GripDots() {
+  return (
+    <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor" aria-hidden="true">
+      <circle cx="2.5" cy="3" r="1.4" /><circle cx="7.5" cy="3" r="1.4" />
+      <circle cx="2.5" cy="8" r="1.4" /><circle cx="7.5" cy="8" r="1.4" />
+      <circle cx="2.5" cy="13" r="1.4" /><circle cx="7.5" cy="13" r="1.4" />
+    </svg>
+  );
 }
 
 function SortableCardSubtask({ subtask, onToggle }: { subtask: Subtask; onToggle: () => void }) {
@@ -36,9 +39,10 @@ function SortableCardSubtask({ subtask, onToggle }: { subtask: Subtask; onToggle
       style={{ transform: CSS.Transform.toString(transform), transition }}
       {...attributes}
       {...listeners}
-      className={`flex flex-col ${isDragging ? 'opacity-40' : ''}`}
+      data-dragging={isDragging || undefined}
+      className="flex flex-col rounded-[10px] px-2 py-1 transition-colors hover:bg-fg/[.05] data-[dragging]:opacity-40"
     >
-      <div className="flex items-center gap-2 text-[13px]">
+      <div className="flex items-center gap-2.5 text-[13px]">
         {/* Negative margins cancel the padding, so the halo costs no layout on desktop. The halo
             is deliberately NOT symmetric: 10px sideways (40px wide, nothing is adjacent there) but
             only 4px vertically, because checklist rows stack. Rows are 20px on coarse and the ul
@@ -51,10 +55,10 @@ function SortableCardSubtask({ subtask, onToggle }: { subtask: Subtask; onToggle
             data-testid={`card-subtask-${subtask.id}`}
             checked={subtask.done}
             onChange={onToggle}
-            className="h-3.5 w-3.5 accent-indigo coarse:h-5 coarse:w-5"
+            className="h-4 w-4 accent-accent coarse:h-5 coarse:w-5"
           />
         </label>
-        <span className={subtask.done ? 'text-inkSoft line-through' : 'text-ink'}>{subtask.title}</span>
+        <span className={`transition-colors duration-300 ${subtask.done ? 'text-fg/50 line-through' : 'text-fg/90'}`}>{subtask.title}</span>
       </div>
     </li>
   );
@@ -67,7 +71,7 @@ export interface TaskRowProps {
   now: number;
   /** Settings zone the due / next labels are read in. */
   zone: string;
-  /** False in the Completed column: no sortable listeners, no drag affordance. */
+  /** False in the Completed column: no sortable listeners, no grip. */
   draggable?: boolean;
   muted?: boolean;
   onComplete: (task: Task) => void;
@@ -75,22 +79,17 @@ export interface TaskRowProps {
   onDelete: (task: Task) => void;
   onToggleSubtask: (subtaskId: string, done: boolean) => void;
   onReorderSubtask: (subtaskId: string, sortOrder: number) => void;
+  /** Grip arrow keys: ↑/↓ reorder, ←/→ neighbouring column (Board resolves and announces it). */
+  onKeyboardMove?: (taskId: string, key: BoardArrowKey) => void;
 }
 
-export function TaskRow({ task, columnKey, nextMs, now, zone, draggable = true, muted = false, onComplete, onEdit, onDelete, onToggleSubtask, onReorderSubtask }: TaskRowProps) {
+export function TaskRow({ task, columnKey, nextMs, now, zone, draggable = true, muted = false, onComplete, onEdit, onDelete, onToggleSubtask, onReorderSubtask, onKeyboardMove }: TaskRowProps) {
   const {
-    attributes: cardAttributes, listeners: cardListeners, setNodeRef: setCardRef,
-    setActivatorNodeRef: setCardActivatorRef,
-    transform: cardTransform, transition: cardTransition, isDragging,
+    attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging,
   } = useSortable({
     id: task.id,
     disabled: !draggable,
-    // role=group: dnd-kit would otherwise default the card to role="button", which nests the ✓
-    // button, the kebab menu and the subtask checkboxes inside a button. The card is a plain div
-    // in a TasksCard, not a `ul > li`, so listitem is wrong too; group is the honest role for a
-    // container of controls, and dnd-kit keeps aria-roledescription and tabindex either way.
-    attributes: { role: 'group' },
-    // dnd-kit owns the in-drag reflow; `useFlip` (in Column) owns post-PATCH re-sorts. Leaving
+    // dnd-kit owns the in-drag reflow; `useFlip` (in Column) owns post-move re-sorts. Leaving
     // both on would double-animate the same movement.
     animateLayoutChanges: () => false,
   });
@@ -103,9 +102,11 @@ export function TaskRow({ task, columnKey, nextMs, now, zone, draggable = true, 
   const meta = `${dueShort(task.dueBy, zone)}${nextMs !== null ? ` · Next: ${relativeDayTimeLabel(nextMs, now, zone)}` : ''}`;
   const subtasks = task.subtasks ?? [];
   const subtaskDone = subtasks.filter((s) => s.done).length;
-  const colMeta = columnMeta(columnKey);
-  const cursor = draggable ? 'cursor-grab' : 'cursor-default';
-  const opacity = cardOpacity(isDragging, muted, done);
+  // Mouse drags start anywhere on the card (a 4px move, so a click still opens the drawer); touch
+  // drags start only on the grip, so a swipe on the card body always scrolls the page.
+  const { onMouseDown, onTouchStart } = (draggable ? listeners ?? {} : {}) as {
+    onMouseDown?: MouseEventHandler; onTouchStart?: TouchEventHandler;
+  };
   const onSubtaskDragEnd = (e: DragEndEvent) => {
     if (!e.over) return;
     const sortOrder = subtaskDropSortOrder(subtasks, String(e.active.id), String(e.over.id));
@@ -114,62 +115,111 @@ export function TaskRow({ task, columnKey, nextMs, now, zone, draggable = true, 
 
   return (
     <div
-      // Both refs: the KeyboardSensor only ignores keys coming from descendants when the card is
-      // registered as its own activator node. Without it, Space/Enter on the ✓ button, the kebab
-      // or a checklist checkbox would be preventDefault'd into a card drag.
-      ref={(n) => { setCardRef(n); setCardActivatorRef(n); }}
+      ref={setNodeRef}
       data-testid="task-row" data-task-id={task.id} data-bucket={columnKey}
-      style={{ transform: CSS.Transform.toString(cardTransform), transition: cardTransition }}
-      {...(draggable ? cardAttributes : {})}
-      {...(draggable ? cardListeners : {})}
+      data-muted={muted || undefined} data-done={done || undefined}
+      // While its clone is in the air the card stays as a dashed placeholder of its own height.
+      data-dragging={isDragging || undefined} data-placeholder={isDragging || undefined}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      // The prototype starts a mouse drag from the card body or the grip, never from its other
+      // controls (✓, kebab, checklist).
+      onMouseDown={(e) => {
+        const hit = (e.target as Element).closest('button, input, label, a');
+        if (!hit || hit.hasAttribute('data-grip')) onMouseDown?.(e);
+      }}
       onClick={() => onEdit(task)}
-      className={`${CARD_LAYOUT} ${colMeta.leftBorder} ${CARD_SURFACE} ${cursor} ${opacity}`}
+      className={`group/card glass-card glass-card-hover relative flex flex-col gap-1.5 rounded-card py-2.5 pl-2.5 pr-2 select-none touch-pan-y ${draggable ? 'cursor-grab' : 'cursor-default'} ${menuOpen ? 'z-20' : ''} data-[muted]:opacity-70 data-[done]:opacity-60 data-[placeholder]:border-dashed data-[placeholder]:border-accent-fg/70 data-[placeholder]:bg-accent-fg/[.06] data-[placeholder]:bg-none data-[placeholder]:opacity-100 data-[placeholder]:shadow-none [&[data-placeholder]>*]:invisible`}
     >
-      <button
-        type="button" aria-label="complete"
-        onClick={(e) => { e.stopPropagation(); onComplete(task); }}
-        className={`mt-0.5 ${done ? 'text-low' : 'text-[#b9bdcb]'}`}
-      >
-        <Icons.check size={21} />
-      </button>
-      <div className="min-w-0 flex-1">
-        <div className={`text-[16px] font-semibold text-ink ${done ? 'line-through' : ''}`}>{task.title}</div>
-        <div className="mt-1 flex items-center gap-1.5 text-[14px] text-inkSoft">
-          <Icons.calendar size={15} /><span>{meta}</span>
-          {subtasks.length > 0 && (
-            <span data-testid="subtask-count" className="flex items-center gap-1">
-              <Icons.check size={13} />{subtaskDone}/{subtasks.length}
+      <div className="flex items-center gap-2">
+        {draggable ? (
+          <button
+            type="button"
+            ref={setActivatorNodeRef}
+            data-grip=""
+            aria-label={`Drag ${task.title}`}
+            aria-roledescription={attributes['aria-roledescription']}
+            aria-describedby={attributes['aria-describedby']}
+            onTouchStart={onTouchStart}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (!isBoardArrowKey(e.key) || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+              e.preventDefault(); // no page scroll
+              onKeyboardMove?.(task.id, e.key);
+            }}
+            className="-ml-1 flex h-[30px] w-[18px] shrink-0 cursor-grab touch-none items-center justify-center rounded-lg text-fg/45 opacity-60 transition hover:bg-fg/[.08] focus-visible:text-fg focus-visible:opacity-100 group-hover/card:text-fg group-hover/card:opacity-100 coarse:-my-1.5 coarse:-ml-2.5 coarse:h-11 coarse:w-9 coarse:opacity-100"
+          >
+            <GripDots />
+          </button>
+        ) : (
+          <span aria-hidden="true" className="-ml-1 w-[18px] shrink-0" />
+        )}
+        <button
+          type="button" aria-label="complete" aria-pressed={done}
+          onClick={(e) => { e.stopPropagation(); onComplete(task); }}
+          className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border-[1.5px] transition-colors duration-200 ${done ? 'animate-pop-check border-accent bg-accent text-on-accent' : 'border-fg/30 hover:border-accent-fg'}`}
+        >
+          {done && (
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10" /></svg>
+          )}
+        </button>
+        <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
+          <div className={`line-clamp-2 text-[14px] font-medium leading-[1.3] transition-colors duration-300 ${done ? 'text-fg/50' : 'text-fg'}`}>
+            {/* Strike-draw: a 1.5px gradient line whose width grows to 100% when done; `clone`
+                repeats it on each wrapped line of the 2-line clamp. */}
+            <span className={`bg-[linear-gradient(currentColor,currentColor)] bg-[position:0_58%] bg-no-repeat transition-[background-size] duration-300 ease-out-soft [box-decoration-break:clone] [-webkit-box-decoration-break:clone] ${done ? 'bg-[length:100%_1.5px]' : 'bg-[length:0%_1.5px]'}`}>
+              {task.title}
             </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-1.5 text-[12px] text-fg-2">
+            <Icons.calendar size={12} className="shrink-0" /><span>{meta}</span>
+            {subtasks.length > 0 && (
+              <span data-testid="subtask-count" className="ml-1.5 inline-flex items-center gap-1">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M8 12l3 3 5-6" /></svg>
+                {subtaskDone}/{subtasks.length}
+              </span>
+            )}
+          </div>
+        </div>
+        {task.durationMs >= 60_000 && (
+          <span data-testid="duration-chip" className="chip h-6 shrink-0 px-2 text-[11px]">{formatDurationShort(task.durationMs)}</span>
+        )}
+        <div ref={menuRef} className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button" aria-label="task menu" aria-haspopup="true" aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((v) => !v)}
+            className="flex items-center justify-center rounded-full p-[7px] text-fg/60 transition-colors hover:bg-fg/[.08] hover:text-fg coarse:p-3.5"
+          >
+            <Icons.dots size={18} />
+          </button>
+          {menuOpen && (
+            <div className="glass-dialog absolute right-0 top-[calc(100%+4px)] z-30 w-[150px] animate-pop rounded-card p-1.5">
+              <button type="button" onClick={() => { setMenuOpen(false); onEdit(task); }} className={`${MENU_ITEM} text-fg`}>Edit</button>
+              <button type="button" onClick={() => { setMenuOpen(false); onDelete(task); }} className={`${MENU_ITEM} text-danger`}>Delete</button>
+            </div>
           )}
         </div>
-        {subtasks.length > 0 && (
-          // Nested inside the board's DndContext (Task 4). Safe: dnd-kit stamps `dndKit` on the
-          // native event when a sensor captures it, so the enclosing card's activator declines —
-          // structurally what the old stopPropagation calls were doing by hand.
-          <DndContext sensors={subtaskSensors} collisionDetection={pointerFirstCollision} onDragEnd={onSubtaskDragEnd}>
-            <SortableContext items={subtasks.map((s) => s.id)} strategy={verticalListSortingStrategy}>
-              {/* space-y-2 on coarse is the second half of the checkbox-halo fix: it lifts the
-                  row pitch from 24px to 28px so the padded labels above abut instead of overlap. */}
-              <ul data-testid="card-subtasks" className="mt-1.5 space-y-1 coarse:space-y-2" onClick={(e) => e.stopPropagation()}>
-                {subtasks.map((s) => (
-                  <SortableCardSubtask key={s.id} subtask={s} onToggle={() => onToggleSubtask(s.id, !s.done)} />
-                ))}
-              </ul>
-            </SortableContext>
-          </DndContext>
-        )}
       </div>
-      <div ref={menuRef} className="relative" onClick={(e) => e.stopPropagation()}>
-        <button type="button" aria-label="task menu" onClick={() => setMenuOpen((v) => !v)} className="rounded-md p-1 text-inkSoft hover:bg-[#eef0f4] coarse:p-3.5">
-          <Icons.dots size={18} />
-        </button>
-        {menuOpen && (
-          <div className="absolute right-0 top-[calc(100%+4px)] z-30 w-[140px] animate-pop rounded-lg border border-line bg-card p-1 shadow-pop">
-            <button type="button" onClick={() => { setMenuOpen(false); onEdit(task); }} className="block w-full rounded px-3 py-1.5 text-left text-[14px] hover:bg-bg">Edit</button>
-            <button type="button" onClick={() => { setMenuOpen(false); onDelete(task); }} className="block w-full rounded px-3 py-1.5 text-left text-[14px] text-crit hover:bg-bg">Delete</button>
-          </div>
-        )}
-      </div>
+      {subtasks.length > 0 && (
+        // Nested inside the board's DndContext. Safe: dnd-kit stamps `dndKit` on the native event
+        // when a sensor captures it, so the enclosing card's activator declines — structurally
+        // what the old stopPropagation calls were doing by hand.
+        <DndContext sensors={subtaskSensors} collisionDetection={pointerFirstCollision} onDragEnd={onSubtaskDragEnd}>
+          <SortableContext items={subtasks.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+            {/* space-y-2 on coarse is the second half of the checkbox-halo fix: it lifts the
+                row pitch from 24px to 28px so the padded labels above abut instead of overlap. */}
+            <ul
+              data-testid="card-subtasks"
+              aria-label={`Subtasks of ${task.title}`}
+              className="space-y-0.5 pb-0.5 pl-[42px] coarse:space-y-2"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {subtasks.map((s) => (
+                <SortableCardSubtask key={s.id} subtask={s} onToggle={() => onToggleSubtask(s.id, !s.done)} />
+              ))}
+            </ul>
+          </SortableContext>
+        </DndContext>
+      )}
     </div>
   );
 }

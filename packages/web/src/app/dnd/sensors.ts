@@ -27,8 +27,9 @@ export const COARSE_DRAG_ACTIVATION = { delay: 250, tolerance: 8 };
  *
  * `keyboardCoordinateGetter` defaults to the plain sortable getter, which is right for a surface
  * whose only droppables are its list items. A surface that also registers *container* droppables
- * (the board's `col:*` columns) passes its own getter, because the stock one would happily step the
- * overlay onto a container — see `boardKeyboardCoordinates`.
+ * must not use the stock getter, which would happily step the overlay onto a container (the
+ * Priorities board sidesteps this: it has no KeyboardSensor and moves cards with grip arrow keys,
+ * see `usePointerSensors`).
  */
 export function useAppSensors(
   keyboardCoordinateGetter: KeyboardCoordinateGetter = sortableKeyboardCoordinates,
@@ -41,15 +42,23 @@ export function useAppSensors(
 }
 
 /**
+ * Mouse + touch only, no keyboard sensor, for surfaces whose keyboard story is not dnd-kit's
+ * lift/move/drop: the Priorities board (grip arrow keys move a card directly — `keyboardMove`).
+ */
+export function usePointerSensors(): SensorDescriptor<SensorOptions>[] {
+  return useSensors(
+    useSensor(MouseSensor, { activationConstraint: FINE_DRAG_ACTIVATION }),
+    useSensor(TouchSensor, { activationConstraint: COARSE_DRAG_ACTIVATION }),
+  );
+}
+
+/**
  * Sensors for drag-to-schedule. Same two pointer sensors, no keyboard sensor: a day column is a
  * continuous 24-hour surface with no discrete keyboard coordinates, and inventing one is out of
  * scope (spec section 3 covers list reordering only).
  */
 export function useDragToScheduleSensors(): SensorDescriptor<SensorOptions>[] {
-  return useSensors(
-    useSensor(MouseSensor, { activationConstraint: FINE_DRAG_ACTIVATION }),
-    useSensor(TouchSensor, { activationConstraint: COARSE_DRAG_ACTIVATION }),
-  );
+  return usePointerSensors();
 }
 
 /**

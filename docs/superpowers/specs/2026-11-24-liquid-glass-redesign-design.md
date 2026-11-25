@@ -517,3 +517,66 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
   - **Not verified:** Escape while a native select or date picker is open (headless cannot drive native popups); a Stats week whose busiest day sits exactly on the top tick.
   - **The created task can be hidden.** If it lands past the fifth card in its priority group (behind "Show N more"), the glow plays on a hidden card. Low priority is the default, and Low is often the long group. Consider auto-expanding the group for a fresh id.
 - **Suite:** 1346 tests / 109 files → 1381 / 110.
+
+### P6 implementation notes (2026-11-25): Priorities board deviations and contracts
+- **Keyboard model.** Direct grip arrow keys, as in the prototype, replace dnd-kit's lift/move/drop.
+  - With a card's grip focused, ↑/↓ swap it with its neighbour. ←/→ move it to the neighbouring *rendered* column at the same position, clamped to that column's length. Hidden columns are skipped, Backlog is included, and Completed is neither a source nor a target.
+  - The logic is the pure `keyboardMove` in `boardDnd.ts`. Each key press is a move through the existing `onMove`/`taskMovePatch`.
+  - **Why:** the plan assumed `boardKeyboardCoordinates` plus a jsdom-testable KeyboardSensor. That getter is rect-based (jsdom rects are 0), it could not reach an empty column, and ←/→ landed on whichever card was geometrically closest rather than on the neighbouring priority.
+  - The board therefore has **no KeyboardSensor**: `usePointerSensors()` is new in `dnd/sensors.ts`, and `useDragToScheduleSensors` delegates to it. `boardKeyboardCoordinates` and its tests are deleted; `keyboardMove` tests cover the same guarantee (ArrowUp on the top card is a no-op).
+  - dnd-kit's "press space" instructions are replaced with arrow-key wording.
+  - Focus follows the moved card. A cross-column move remounts it, so Board refocuses `[data-task-id] [data-grip]`.
+  - Keyboard moves announce through Board's own `role=status` (`board-announcer`). Pointer drops announce through a `makeAnnouncements` onDragEnd override. Both read "Moved X to High priority, position 2." (`moveAnnouncement` + `dropPosition`, which accounts for a same-column downward move).
+- **Activation.**
+  - Mouse: a drag starts from the card body or the grip, never from ✓, the kebab or the checklist. A click still opens the TaskDrawer; a click on the grip does not.
+  - Touch: a drag starts **only from the grip** (`touch-none`, 250ms hold unchanged). The card is `touch-pan-y`, so a swipe on the body always scrolls.
+  - The card is no longer a focusable dnd-kit node (the old `role=group` and `tabindex` are gone). The grip (`aria-label="Drag <title>"`) carries `aria-roledescription`/`aria-describedby`. Completed cards render no grip.
+- **Pointer DnD stays single-container.** We did not adopt dnd-kit's multi-container pattern.
+  - The source card becomes a dashed accent placeholder of its own height (`data-placeholder`/`data-dragging`, contents `invisible`), and dnd-kit's sorting opens the gap inside its own column.
+  - In another column, the hovered column gets `data-drop-target` (accent border + ring). A 3px accent **drop line** (`drop-indicator`), which takes no layout space, marks the landing slot: before the hovered card, or at the end on the column's empty area.
+  - **Deviation from the design:** the placeholder does not travel into the other column. A layout-shifting placeholder there would move the hovered card out from under the pointer and oscillate.
+  - Droppables use `MeasuringStrategy.Always`.
+  - The column droppable is the whole grid cell, which stretches to the row height. Its empty area therefore works as a "drop at end" target, including on a collapsed column, which then expands.
+- **No snap-back.**
+  - Board paints a move synchronously by rendering `applyBoardDrop(...)` (`Held`, keyed on the `columns` identity it came from; ignored once new columns arrive).
+  - `Priorities.onMove` then makes the move optimistic: `await cancelQueries(['tasks'])`, snapshot, write the patch into every cached `['tasks', …]` list, then `mutate`. On error it restores the snapshots and invalidates.
+  - The cancel is load-bearing. The previous move's post-success refetch may still be in flight, and its pre-move response would land on top of the write and step the card back. A test pins this.
+  - Residual (follow-up): a refetch that *starts* after the write but is served before the server applies the PATCH depends on server ordering.
+- **Motion.**
+  - `DragOverlay`: a clone with grip, check, title, "Due m/d" and duration chip, `rotate(-1.5deg) scale(1.03)` (`data-tilt`), `ring-accent/65`, `shadow-lift`, opaque `bg-card`.
+  - Drop animation: 520ms on the literal `cubic-bezier(.34,1.4,.5,1)`. The source slot stays hidden while the clone flies into it, and a WAAPI animation straightens the tilt on the way. It is `null` under reduced motion.
+  - `useFlip`: 240ms, literal `cubic-bezier(.2,.8,.2,1)`. It now measures `offsetTop` against the column list (`relative`) on **every commit**, and animates only when the order key changed. The old viewport `top` recorded at the last re-sort made every card glide by the pane's scroll distance (or a card's growth) on the next re-sort.
+  - `useFlip` is skipped for the commit of a same-column pointer drop (dnd-kit already slid those cards) and under reduced motion. Cross-column drops and keyboard moves animate.
+- **Layout.**
+  - The board is `grid grid-flow-col auto-cols-[min(372px,85vw)] md:auto-cols-[minmax(260px,1fr)] gap-4` (16px, the prototype gap). The planned "auto-fit when ≥ 6×260 fits, else snap pane" switch needs no measuring: the columns share the width when they fit and the pane scrolls sideways when they don't.
+  - **At 1440 with all six columns visible the content (~1300px) is narrower than 6×260+gaps, so the desktop pane scrolls sideways.** Four or five visible columns fit.
+  - Collapsed = a header-only card in its full-width cell, not a narrow card.
+  - Pane padding is `px-4` + `scroll-pl-4` on phones and `md:px-1` at md+, so columns line up with the header and toolbar. Snap-off-while-dragging is unchanged.
+- **Structure and labels.**
+  - `TasksCard` is deleted. The count moved to the column header chip (`column-count-<key>`), which removes the unreadable dark `#eef0f4` chip.
+  - Column = `<section aria-label>` (region) with an `<h2>` and the chevron `aria-label="Collapse|Expand <name>"` + `aria-expanded`. Collapse state lives in Board.
+  - Empty copy: "Drop tasks here", "No completed tasks" (Completed), "No matching tasks" while searching.
+  - META dots are on `pri-*` tokens plus a `glow` halo. Backlog is `bg-fg-3` with no halo. `leftBorder` is removed: the dot carries priority, and the card keeps `data-bucket`. `PriorityPicker`/`TaskSearchPalette` read only `.dot` (same colours).
+- **Toolbar.**
+  - The search field is `type=search` (role `searchbox`), placeholder "Search tasks…", 460px at md+.
+  - `Dropdown` follows the AccountMenu menu-button pattern (first row focused on open, ↑/↓/Home/End, Escape `preventDefault` + refocus trigger, Tab closes). Rows are `menuitemcheckbox` + `aria-checked` in labelled `role=group`s, and toggling keeps the menu open.
+  - `App.test.tsx` (outside P6's files) had its placeholder query updated; the change is test-only.
+- **Test note.** dnd-kit keeps a capture-phase document click blocker for 50ms after a drag ends. jsdom drag tests must wait it out (`releaseDrag()` in `Priorities.test.tsx`), or the next test's first click is swallowed. This caused a flaky failure.
+- **Follow-ups (not done):**
+  - The ✓ button keeps `aria-label="complete"` (+ `aria-pressed`); naming it "Mark done: <title>" is left to the P8 a11y pass.
+  - The card kebab is still plain buttons, not a `role=menu`.
+  - Identical consecutive announcements are not re-spoken.
+  - Opening the TaskDrawer from the keyboard is via kebab → Edit only (the card itself is not focusable).
+- **Live verification after merge:**
+  - Landing spring lands in the right slot (same-column and cross-column).
+  - The tilt straightens on drop.
+  - The drop line and hovered-column border.
+  - Drop on an empty column and on a collapsed column (expands).
+  - Rapid keyboard moves: ↓ ↓ ↓ and → → in quick succession, with focus kept on the grip throughout.
+  - Drag cues use `accent-fg` (olive in light) for the drop line, placeholder, hovered-column border and overlay ring; the light lime fill is ~1.1:1. Check that they read in both themes.
+  - Touch drag via the grip with body scroll intact (390px, snap pane).
+  - Kebab menu stacking above the next card and next column in light theme (`.glass` has `backdrop-filter` there).
+  - The overlay is not clipped by the pane.
+  - Both themes vs `07`.
+  - The 6-column horizontal scroll at 1440.
+- **Suite:** 1155 → 1192 (97 files).
