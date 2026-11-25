@@ -245,7 +245,7 @@ describe('Buffers page', () => {
     await waitFor(() => expect((screen.getByTestId('task-buffer') as HTMLInputElement).value).toBe('60'));
     fireEvent.click(screen.getByRole('button', { name: 'Increase gap between tasks' }));
     fireEvent.click(screen.getByTestId('save'));
-    await waitFor(() => expect(patchSettings).toHaveBeenCalledWith(expect.objectContaining({ taskBufferMs: 65 * 60_000 })));
+    await waitFor(() => expect(patchSettings).toHaveBeenCalledWith({ taskBufferMs: 65 * 60_000 }));
   });
 
   describe('the steppers stay inside the 24 h cap (1440 min)', () => {
