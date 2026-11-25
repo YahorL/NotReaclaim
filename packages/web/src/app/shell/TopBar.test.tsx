@@ -105,6 +105,17 @@ describe('TopBar Next-task indicator', () => {
     expect(el.textContent).toContain('Today');
   });
 
+  it('reads "Next · <title> · <time>" with a truncating title', async () => {
+    const api = fakeApiClient({ getSchedule: async () => [block({ title: 'A very long task title that must not stretch the header' })] });
+    renderWithProviders(<TopBar onNewTask={() => {}} now={nowFn} />, { api });
+    const el = await screen.findByTestId('next-task');
+    expect(el.textContent).toMatch(/^Next·A very long.*·Today 2:00pm$/);
+    const title = screen.getByText(/^A very long/);
+    expect(title.className).toContain('truncate');
+    expect(title.className).toContain('max-w-[24ch]');
+    expect(screen.getByTestId('next-task-start')).toHaveTextContent('Start');
+  });
+
   it('is hidden when the schedule is empty', async () => {
     const api = fakeApiClient({
       getSchedule: async () => [],

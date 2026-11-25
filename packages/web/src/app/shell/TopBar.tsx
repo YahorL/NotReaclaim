@@ -18,10 +18,13 @@ interface TopBarProps {
 
 /** 46px round glass icon button (prototype `.gbtn` header buttons). */
 const ROUND_GLASS = 'btn-glass flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full';
+/** The compact Now/Next pill (non-planner routes; the Planner gets its Next-up card in P3). */
+const PILL_LABEL = 'flex h-[34px] min-w-0 items-center gap-1.5 rounded-pill px-3 text-[14px] text-fg-2 transition-colors hover:bg-fg/[.06]';
+const PILL_ACTION = 'inline-flex h-[34px] shrink-0 items-center gap-1.5 rounded-pill px-3.5 text-[13px] font-semibold';
 
 export function TopBar({ onNewTask, onSearch, now = Date.now, sidebarHidden, onToggleSidebar }: TopBarProps) {
   const { pathname } = useLocation();
-  const { running, nextBlock, nextLabel, start, stop, openPlanner } = useNowNextControls(now);
+  const { running, nextBlock, nextTime, start, stop, openPlanner } = useNowNextControls(now);
   const zone = useTimezone();
   const tasksQ = useTasksQuery();
   const openTaskCount = tasksQ.data ? tasksQ.data.filter(isActiveTask).length : null;
@@ -50,49 +53,43 @@ export function TopBar({ onNewTask, onSearch, now = Date.now, sidebarHidden, onT
           </button>
         )}
 
-        {running && (
-          <div className="flex items-center gap-1.5">
+        {running ? (
+          <div data-testid="now-next-pill" className="glass-card flex h-[46px] min-w-0 items-center gap-1 rounded-pill p-1.5">
             <button
               type="button"
               data-testid="current-task"
               onClick={openPlanner}
-              className="flex items-center gap-1.5 rounded-[9px] px-3 py-2 text-[14px] font-semibold text-fg-2 hover:bg-line"
+              className={PILL_LABEL}
             >
-              <Icons.clock size={16} />
-              Now: {running.title}
+              <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-accent" />
+              <span className="font-medium text-fg">Now</span>
+              <span aria-hidden="true">·</span>
+              <span className="max-w-[24ch] truncate text-fg">{running.title}</span>
             </button>
-            <button
-              type="button"
-              data-testid="stop-task"
-              onClick={stop}
-              className="rounded-[9px] bg-crit px-3 py-2 text-[13px] font-bold text-white hover:opacity-90"
-            >
-              Stop
+            <button type="button" data-testid="stop-task" onClick={stop} className={`btn-glass ${PILL_ACTION} text-danger`}>
+              <Icons.stop size={14} /> Stop
             </button>
           </div>
-        )}
-
-        {nextBlock && (
-          <div className="flex items-center gap-1.5">
+        ) : nextBlock ? (
+          <div data-testid="now-next-pill" className="glass-card flex h-[46px] min-w-0 items-center gap-1 rounded-pill p-1.5">
             <button
               type="button"
               data-testid="next-task"
               onClick={openPlanner}
-              className="flex items-center gap-1.5 rounded-[9px] px-3 py-2 text-[14px] font-semibold text-fg-2 hover:bg-line"
+              className={PILL_LABEL}
             >
-              <Icons.clock size={16} />
-              {nextLabel}
+              <Icons.clock size={15} className="shrink-0" />
+              <span className="font-medium text-fg">Next</span>
+              <span aria-hidden="true">·</span>
+              <span className="max-w-[24ch] truncate text-fg">{nextBlock.title}</span>
+              <span aria-hidden="true">·</span>
+              <span className="shrink-0">{nextTime}</span>
             </button>
-            <button
-              type="button"
-              data-testid="next-task-start"
-              onClick={start}
-              className="rounded-[9px] bg-indigo px-3 py-2 text-[13px] font-bold text-white hover:bg-indigo600"
-            >
-              Start
+            <button type="button" data-testid="next-task-start" onClick={start} className={`btn-accent ${PILL_ACTION}`}>
+              <Icons.play size={14} /> Start
             </button>
           </div>
-        )}
+        ) : null}
 
         <button
           type="button"
