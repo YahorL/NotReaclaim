@@ -52,37 +52,6 @@ export default {
         'pri-high': ch('--c-pri-high'),
         'pri-med': ch('--c-pri-med'),
         'pri-low': ch('--c-pri-low'),
-
-        // ---- legacy names, re-pointed at tokens for the transition (removed in P8, Task 8.2) ----
-        // indigo → meeting violet, NOT lime: today's `bg-indigo text-white` buttons would be
-        // white-on-lime. Screen phases move brand fills to `bg-accent text-on-accent` and brand
-        // text to `text-accent-fg`.
-        indigo: ch('--c-meeting'),
-        indigo600: ch('--c-meeting'),
-        indigoSoft: fixed('--c-meeting', 0.12),
-        event: ch('--c-meeting'),
-        bg: ch('--c-page'),
-        ink: ch('--c-text-1'),
-        inkSoft: fixed('--c-text-1', 0.66),
-        crit: ch('--c-pri-crit'),
-        high: ch('--c-pri-high'),
-        med: ch('--c-pri-med'),
-        low: ch('--c-pri-low'),
-        // The old sidebar stays a fixed dark island (dark-theme values) until P2 replaces it
-        // with the rail: its active item is `bg-sidebarHover text-white`, which a themed
-        // (light) surface would make white-on-white.
-        sidebar: 'rgb(22 22 26 / <alpha-value>)',
-        sidebarHover: 'rgb(255 255 255 / 0.08)',
-        sidebarText: 'rgb(244 245 247 / 0.66)',
-        sidebarMuted: 'rgb(244 245 247 / 0.55)',
-        // Kind palettes — Stats charts and planner tiles.
-        kind: {
-          meetingBar: ch('--c-chart-meet'),
-          habitBar: ch('--c-chart-habit'),
-          taskBar: ch('--c-chart-task'),
-          habitText: ch('--c-habit-fg'),
-          taskText: ch('--c-text-1'),
-        },
       },
       backgroundColor: {
         overlay: raw('--x-overlay'),
@@ -99,7 +68,7 @@ export default {
         pill: 'var(--radius-pill)',
       },
       boxShadow: {
-        // legacy names re-pointed
+        // pre-redesign names, kept as real token shadows (still used: shadow-card/pop/modal)
         card: 'var(--x-card-shadow)',
         pop: 'var(--x-shadow-pop)',
         modal: 'var(--x-shadow-modal)',
