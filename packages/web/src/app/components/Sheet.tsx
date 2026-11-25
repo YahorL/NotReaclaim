@@ -129,7 +129,7 @@ export function useFocusTrap<T extends HTMLElement>(ref: RefObject<T>, { onEscap
  * header with a ✕, backdrop tap dismisses, Escape dismisses it while it holds focus, focus is
  * taken on mount, trapped while open and returned on unmount.
  *
- * Sits on the modal tier (`z-50`, same as NewTaskModal) — MobileTabBar is a z-40 bar pinned to the
+ * Sits on the modal tier (`z-50`; NewTaskModal sits just above it at `z-[58]`) — MobileTabBar is a z-40 bar pinned to the
  * same bottom edge and rendered later in AppShell, so anything below z-50 would let taps in the
  * bottom strip fall through to the tabs.
  *

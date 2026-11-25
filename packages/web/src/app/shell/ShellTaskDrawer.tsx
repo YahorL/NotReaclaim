@@ -9,7 +9,8 @@ import { TaskDrawer } from '../tasks/TaskDrawer';
 /**
  * The task drawer the search palette opens, hosted by the shell so it works on every route
  * without navigating. Same wiring as the Planner/Priorities drawers; z-[55] puts it above a
- * page-level drawer (z-50) that may already be open in the same slot.
+ * page-level drawer (z-50) that may already be open in the same slot, and below NewTaskModal
+ * (z-[58]) — which closes it on open anyway.
  */
 export function ShellTaskDrawer({ taskId, onClose }: { taskId: string; onClose: () => void }) {
   const tasksQ = useTasksQuery();

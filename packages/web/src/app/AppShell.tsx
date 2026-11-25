@@ -14,6 +14,7 @@ import { useTasksQuery } from '../api/queries';
 import { useTimezone } from './settings/useTimezone';
 import { ToastProvider } from './shell/ToastProvider';
 import { RecentlyCreatedProvider } from './shell/RecentlyCreated';
+import { OpenTaskDrawersProvider, type OpenTaskDrawers } from './shell/OpenTaskDrawers';
 
 const SIDEBAR_HIDDEN_KEY = 'nr.sidebarHidden';
 
@@ -48,14 +49,18 @@ export function AppShell() {
   // The control that opened the dialog, so focus can return there. Taken from the click itself:
   // a click does not focus a <button> in Safari, so document.activeElement would be <body>.
   const newTaskOpenerRef = useRef<HTMLElement | null>(null);
+  // The task the palette opened, edited in the shell-hosted drawer.
+  const [searchedTaskId, setSearchedTaskId] = useState<string | null>(null);
   const openNewTask = (e?: { currentTarget: EventTarget | null }) => {
     const target = e?.currentTarget ?? document.activeElement;
     newTaskOpenerRef.current = target instanceof HTMLElement ? target : null;
+    // The dialog is modal (and on the tier above drawers): a searched-task drawer left open would
+    // sit outside its focus trap. Only the header buttons open it, so the opener is never inside.
+    setSearchedTaskId(null);
     setNewTaskOpen(true);
   };
   const [searchOpen, setSearchOpen] = useState(false);
-  // The task the palette opened, edited in the shell-hosted drawer.
-  const [searchedTaskId, setSearchedTaskId] = useState<string | null>(null);
+  const openTaskDrawers = useRef<OpenTaskDrawers>(new Map()).current;
   const tasksQ = useTasksQuery();
   const zone = useTimezone();
   useTaskSearchShortcut(() => setSearchOpen(true));
@@ -80,6 +85,7 @@ export function AppShell() {
   return (
     <ToastProvider>
       <RecentlyCreatedProvider>
+      <OpenTaskDrawersProvider value={openTaskDrawers}>
       <div ref={rootRef} data-testid="app-shell" className="flex h-dvh overflow-hidden bg-page md:gap-5 md:p-5">
         {!sidebarHidden && <Sidebar />}
         <main className="flex min-w-0 flex-1 flex-col md:gap-5">
@@ -108,10 +114,16 @@ export function AppShell() {
           <TaskSearchPalette
             tasks={tasksQ.data ?? []} zone={zone}
             onClose={() => setSearchOpen(false)}
-            onSelect={(id) => { setSearchOpen(false); setSearchedTaskId(id); }}
+            onSelect={(id) => {
+              setSearchOpen(false);
+              // Already open in a drawer (a page's, or ours): focus goes back there instead of a
+              // second drawer seeding a second, diverging copy of the form.
+              if (!openTaskDrawers.has(id)) setSearchedTaskId(id);
+            }}
           />
         )}
       </div>
+      </OpenTaskDrawersProvider>
       </RecentlyCreatedProvider>
     </ToastProvider>
   );

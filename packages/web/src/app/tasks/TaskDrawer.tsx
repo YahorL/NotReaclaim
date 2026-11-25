@@ -17,6 +17,7 @@ import { useZoneChange } from '../settings/useTimezone';
 import { useCategoriesQuery, useCreateSubtaskMutation, useUpdateSubtaskMutation, useDeleteSubtaskMutation } from '../../api/queries';
 import { useAppSensors, pointerFirstCollision } from '../dnd/sensors';
 import { subtaskDropSortOrder } from './subtaskDnd';
+import { useRegisterOpenTaskDrawer } from '../shell/OpenTaskDrawers';
 
 function SortableSubtask({ subtask, onToggle, onDelete }: {
   subtask: Subtask;
@@ -64,6 +65,7 @@ export interface TaskDrawerProps {
 }
 
 export function TaskDrawer({ task, zone, onSave, onCancel, saving = false, error = null, compact = false }: TaskDrawerProps) {
+  useRegisterOpenTaskDrawer(task.id);
   const [form, set, setForm] = useFormState<TaskFormState>(() => toFormState(task, zone));
   // Seeded once, like the form: a task loaded unsplit keeps min = max = duration until the user
   // edits a chunk stepper (then it is a split task by their choice). A refetch does not re-arm it.

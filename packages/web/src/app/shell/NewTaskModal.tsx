@@ -178,7 +178,7 @@ export function NewTaskModal({ onClose, now = () => Date.now(), opener }: NewTas
         pressOnBackdrop.current = null;
         if (e.target === e.currentTarget && !startedInside) requestClose();
       }}
-      className={`fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-overlay px-4 pb-6 pt-14 backdrop-blur-[8px] md:pt-[70px] ${closing ? 'pointer-events-none animate-bd-out' : 'animate-bd-in'}`}
+      className={`fixed inset-0 z-[58] flex items-start justify-center overflow-y-auto bg-overlay px-4 pb-6 pt-14 backdrop-blur-[8px] md:pt-[70px] ${closing ? 'pointer-events-none animate-bd-out' : 'animate-bd-in'}`}
     >
       <div
         ref={dialogRef}
