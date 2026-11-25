@@ -80,7 +80,6 @@ function BuffersForm({ initial, firstTime, onSave, saving, justSaved, saveError 
   const [editedSinceSave, setEditedSinceSave] = useState(false);
   const meetingBufferError = validateBufferMinutesText(meetingText);
   const taskBufferError = validateBufferMinutesText(taskText);
-  const ok = !meetingBufferError && !taskBufferError;
   const changed: Partial<BufferValues> = {
     ...(meetingText !== baseline.meeting && { meetingBufferMs: Number(meetingText) * 60000 }),
     ...(taskText !== baseline.task && { taskBufferMs: Number(taskText) * 60000 }),
@@ -90,6 +89,9 @@ function BuffersForm({ initial, firstTime, onSave, saving, justSaved, saveError 
   const toSend: Partial<BufferValues> = firstTime
     ? { meetingBufferMs: Number(meetingText) * 60000, taskBufferMs: Number(taskText) * 60000 }
     : changed;
+  // Only what is sent must be valid: an untouched over-cap value stored before the 24 h cap keeps
+  // its error on screen but does not block saving the other field.
+  const ok = !('meetingBufferMs' in toSend && meetingBufferError) && !('taskBufferMs' in toSend && taskBufferError);
   const canSave = ok && (firstTime || Object.keys(changed).length > 0);
   const edit = (set: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
     set(e.target.value);

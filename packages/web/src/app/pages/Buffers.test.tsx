@@ -365,4 +365,46 @@ describe('Buffers page', () => {
       await waitFor(() => expect(patchSettings).toHaveBeenCalledWith({ taskBufferMs: 900_000 }));
     });
   });
+
+  describe('only the fields that will be sent are validated', () => {
+    // 30 h, stored before the 24 h cap existed: shown as 1800 with its error.
+    const OVER_CAP_MS = 1800 * 60_000;
+
+    it('an untouched invalid buffer does not block saving the other, and keeps its error on screen', async () => {
+      const patchSettings = vi.fn(async () => settings());
+      const api = fakeApiClient({ getSettings: async () => settings({ meetingBufferMs: OVER_CAP_MS }), patchSettings } as never);
+      renderWithProviders(<Buffers />, { api });
+      await waitFor(() => expect(valueOf('meeting-buffer')).toBe('1800'));
+      expect(screen.getByTestId('err-meetingBufferMs')).toHaveTextContent('Buffer must be at most 24 hours (1440 min)');
+
+      fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '15' } });
+      expect(screen.getByTestId('save')).toBeEnabled();
+      expect(screen.getByTestId('err-meetingBufferMs')).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('save'));
+      await waitFor(() => expect(patchSettings).toHaveBeenCalledTimes(1));
+      expect(patchSettings).toHaveBeenCalledWith({ taskBufferMs: 900_000 });
+    });
+
+    it('an edited invalid buffer still blocks saving', async () => {
+      const patchSettings = vi.fn(async () => settings());
+      const api = fakeApiClient({ getSettings: async () => settings({ meetingBufferMs: OVER_CAP_MS }), patchSettings } as never);
+      renderWithProviders(<Buffers />, { api });
+      await waitFor(() => expect(valueOf('meeting-buffer')).toBe('1800'));
+      fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '15' } });
+      fireEvent.change(screen.getByTestId('meeting-buffer'), { target: { value: '1500' } });
+      expect(screen.getByTestId('save')).toBeDisabled();
+    });
+
+    it('first-time setup sends both buffers, so an invalid one blocks saving even if only the other was edited last', async () => {
+      const putSettings = vi.fn(async () => settings());
+      const api = fakeApiClient({
+        getSettings: () => Promise.reject(new ApiError(404, 'not_found', 'not found')), putSettings,
+      } as never);
+      renderWithProviders(<Buffers />, { api });
+      await waitFor(() => expect(screen.getByTestId('task-buffer')).toBeInTheDocument());
+      fireEvent.change(screen.getByTestId('meeting-buffer'), { target: { value: '-1' } });
+      fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '15' } });
+      expect(screen.getByTestId('save')).toBeDisabled();
+    });
+  });
 });
