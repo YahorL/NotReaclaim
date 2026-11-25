@@ -937,3 +937,23 @@ describe('InteractiveBlock keyboard move / resize', () => {
     expect(body()).toHaveAttribute('aria-describedby', 'planner-block-keys');
   });
 });
+
+describe('InteractiveBlock vs. stray text selections', () => {
+  it('a press clears a selection that would otherwise become a native drag of that text', () => {
+    renderBlock();
+    const range = document.createRange();
+    range.selectNodeContents(screen.getByTestId('block-body'));
+    window.getSelection()!.addRange(range);
+    expect(window.getSelection()!.isCollapsed).toBe(false);
+    fireEvent.pointerDown(screen.getByTestId('event-block'), { clientX: 50, clientY: 100, pointerId: 1 });
+    expect(window.getSelection()!.isCollapsed).toBe(true);
+  });
+
+  it('a tile is never a native drag source', () => {
+    renderBlock();
+    const ev = createEvent.dragStart(screen.getByTestId('event-block'));
+    fireEvent(screen.getByTestId('event-block'), ev);
+    expect(ev.defaultPrevented).toBe(true);
+    expect(screen.getByTestId('event-block').className).toContain('select-none');
+  });
+});

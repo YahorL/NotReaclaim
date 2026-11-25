@@ -163,6 +163,10 @@ export function useBlockDrag({ dayCount, coarse, getScrollContainer, onTap, onRe
     if (captureRef.current !== null || gestureRef.current !== null) return;
     const el = e.currentTarget;
     const pointerId = e.pointerId;
+    // A leftover text selection that covers this tile would turn the press into a native drag of
+    // that selection, and the browser then cancels our pointer (pointercancel) mid-gesture.
+    const selection = typeof window.getSelection === 'function' ? window.getSelection() : null;
+    if (selection && !selection.isCollapsed) selection.removeAllRanges();
     cb.current.onGrab?.();
     // Deferral is decided per *event*, not per device: `coarse` is the primary-pointer media query,
     // so an iPad with a trackpad reports coarse while the mouse in hand is fine. A mouse never

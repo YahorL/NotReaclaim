@@ -140,7 +140,10 @@ export function CalendarBlock(props: CalendarBlockProps) {
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
       onTransitionEnd={onTransitionEnd}
-      className={`group ${hidden ? 'pointer-events-none scale-[.92] opacity-0' : 'pointer-events-auto'} absolute overflow-hidden rounded-event ${v.className} ${MOTION_CLASS[motion]} ${settling ? 'z-20' : ''} ${shake ? 'animate-shake' : landing ? 'animate-land' : entering ? 'animate-ev-in' : ''} ${selected ? 'z-[3] outline outline-2 outline-offset-2 outline-fg' : ''} ${className}`}
+      // A tile is never a native drag source: a browser drag (of a stray text selection that
+      // covers the tile) would steal the pointer mid-gesture with a pointercancel.
+      onDragStart={(e) => e.preventDefault()}
+      className={`group select-none ${hidden ? 'pointer-events-none scale-[.92] opacity-0' : 'pointer-events-auto'} absolute overflow-hidden rounded-event ${v.className} ${MOTION_CLASS[motion]} ${settling ? 'z-20' : ''} ${shake ? 'animate-shake' : landing ? 'animate-land' : entering ? 'animate-ev-in' : ''} ${selected ? 'z-[3] outline outline-2 outline-offset-2 outline-fg' : ''} ${className}`}
       style={{ ...style, ...v.style, ...(landing ? { animationDelay: `${landDelayMs}ms` } : entering ? { animationDelay: `${enterDelayMs}ms` } : null) }}
     >
       {started && <span aria-hidden="true" data-testid="started-bar" className="absolute inset-y-0 left-0 w-[3px] bg-accent" />}
