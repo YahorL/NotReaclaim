@@ -167,6 +167,8 @@ export interface WeekGridProps {
   filters?: PlannerFilters;
   /** Wires the toolbar toggles; without it the legend is a static key. */
   onToggleFilter?: (name: PlannerFilterName) => void;
+  /** Blocks a Re-plan just placed (`b:<id>` → drop-in delay ms). */
+  landing?: ReadonlyMap<string, number>;
 }
 
 interface Item {
@@ -228,7 +230,7 @@ function toItems(blocks: ScheduledBlock[], events: CalendarEvent[], zone: string
 }
 
 export function WeekGrid(props: WeekGridProps) {
-  const { days, nowMs, weekLabel, blocks, events, onPrev, onToday, onNext, onCommit, onCommitEvent, onEditEvent, onDeleteBlock, onDeleteEvent, taskDrop = null, accents = {}, zone = 'UTC', dayStartMinute = 0, panelHidden, onTogglePanel, compact = false, coarse = false, onEditTask, selectedKey = null, onSelect, filters = ALL_SHOWN, onToggleFilter } = props;
+  const { days, nowMs, weekLabel, blocks, events, onPrev, onToday, onNext, onCommit, onCommitEvent, onEditEvent, onDeleteBlock, onDeleteEvent, taskDrop = null, accents = {}, zone = 'UTC', dayStartMinute = 0, panelHidden, onTogglePanel, compact = false, coarse = false, onEditTask, selectedKey = null, onSelect, filters = ALL_SHOWN, onToggleFilter, landing } = props;
   const gridCols = `${timeGutterPx(compact)}px repeat(${days.length}, minmax(0, 1fr))`;
   const dataItems = toItems(blocks, events, zone);
   const [pending, setPending] = useState<Record<string, Pending>>({});
@@ -477,6 +479,7 @@ export function WeekGrid(props: WeekGridProps) {
                         blockKey={it.key}
                         selected={selectedKey === it.key}
                         hidden={hidden}
+                        landDelayMs={landing?.get(it.key)}
                         dayCount={n}
                         accent={accent}
                         zone={zone}

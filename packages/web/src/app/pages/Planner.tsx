@@ -1,9 +1,10 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { DndContext, DragOverlay, type DragEndEvent, type DragMoveEvent, type DragStartEvent } from '@dnd-kit/core';
 import type { CalendarEvent, Task } from '../../api/types';
 import { ApiError } from '../../api/client';
-import { useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useHabitsQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation, useSettingsQuery, useStopBlockMutation } from '../../api/queries';
+import { queryKeys, useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useHabitsQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation, useSettingsQuery, useStopBlockMutation } from '../../api/queries';
 import { dayColumns, daysThatFit, shiftDays, dayAnchor, rangeLabel, weekdayLabel } from '../planner/weekModel';
 import { toIso } from '../lib/time';
 import { isOverlayOpen } from '../lib/overlay';
@@ -28,6 +29,11 @@ import { labelBlocksWithSubtasks } from '../planner/blockLabels';
 import { BlockDetailCard, type BlockDetail } from '../planner/BlockDetailCard';
 import { classifyBlock } from '../planner/weekModel';
 import { usePlannerFilters, isFilteredOut, ALL_SHOWN } from '../planner/usePlannerFilters';
+import { newBlockIds, dropInDelays, dropInDuration } from '../planner/replanDiff';
+import { usePrefersReducedMotion } from '../../theme/usePrefersReducedMotion';
+
+/** The Re-plan spinner shows at least this long, so a fast replan does not flicker the button. */
+export const REPLAN_MIN_SPIN_MS = 600;
 
 const DRAWER_DESKTOP_CLASS = `${DESKTOP_DRAWER_SLOT} z-50`;
 
@@ -162,6 +168,51 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
       },
     ),
   }), [tasks, days, zone]);
+
+  // ---- Re-plan drop-in (spec §5.5) ----
+  // Snapshot the block ids at the click; once the replan succeeded AND the schedule refetch it
+  // triggered has landed, the ids that were not there before drop in, staggered by start. Only a
+  // user's Re-plan does this — a WebSocket- or mutation-driven refetch never sets `landing`.
+  const qc = useQueryClient();
+  const reducedMotion = usePrefersReducedMotion();
+  const rangeKey = `${rangeFromIso}|${rangeToIso}`;
+  const [minSpin, setMinSpin] = useState(false);
+  const [awaitingReplan, setAwaitingReplan] = useState<{ ids: Set<string>; since: number; rangeKey: string } | null>(null);
+  const [landing, setLanding] = useState<ReadonlyMap<string, number> | undefined>(undefined);
+  const spinTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const landTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (spinTimer.current) clearTimeout(spinTimer.current);
+    if (landTimer.current) clearTimeout(landTimer.current);
+  }, []);
+  const startReplan = () => {
+    const ids = new Set((schedule.data ?? []).map((b) => b.id));
+    const key = rangeKey;
+    setMinSpin(true);
+    if (spinTimer.current) clearTimeout(spinTimer.current);
+    spinTimer.current = setTimeout(() => { spinTimer.current = null; setMinSpin(false); }, REPLAN_MIN_SPIN_MS);
+    replan.mutate(undefined, {
+      onSuccess: () => {
+        // The mutation's own onSuccess has just invalidated the schedule: if that refetch is in
+        // flight, wait for data newer than what is cached now; if it already landed, diff at once.
+        const st = qc.getQueryState(queryKeys.schedule(rangeFromIso, rangeToIso));
+        setAwaitingReplan({ ids, since: st?.fetchStatus === 'fetching' ? st.dataUpdatedAt : -1, rangeKey: key });
+      },
+    });
+  };
+  useEffect(() => {
+    if (!awaitingReplan) return;
+    if (awaitingReplan.rangeKey !== rangeKey) { setAwaitingReplan(null); return; } // paged away meanwhile
+    if (schedule.isFetching || schedule.dataUpdatedAt <= awaitingReplan.since) return;
+    const data = schedule.data ?? [];
+    setAwaitingReplan(null);
+    if (reducedMotion) return;
+    const delays = dropInDelays(newBlockIds(awaitingReplan.ids, data), data);
+    if (delays.size === 0) return;
+    setLanding(new Map([...delays].map(([id, ms]) => [`b:${id}`, ms])));
+    if (landTimer.current) clearTimeout(landTimer.current);
+    landTimer.current = setTimeout(() => { landTimer.current = null; setLanding(undefined); }, dropInDuration(delays) + 100);
+  }, [awaitingReplan, rangeKey, schedule.isFetching, schedule.dataUpdatedAt, schedule.data, reducedMotion]);
 
   const labeledBlocks = useMemo(
     () => labelBlocksWithSubtasks(schedule.data ?? [], tasks),
@@ -325,8 +376,8 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           className="min-w-0 flex-1"
           entries={unscheduledEntries}
           compact={compact}
-          onReplan={() => replan.mutate()}
-          replanPending={replan.isPending}
+          onReplan={startReplan}
+          replanPending={replan.isPending || minSpin}
           onShowAll={showAllTasks}
         />
         {!compact && <NextUpCard now={now} className="w-[330px] shrink-0" />}
@@ -362,6 +413,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           onSelect={(key, { keyboard }) => { setSelectedKey(key); setSelectedByKeyboard(keyboard); }}
           filters={filters}
           onToggleFilter={toggleFilter}
+          landing={landing}
           accents={accents}
           compact={compact}
           coarse={coarse}

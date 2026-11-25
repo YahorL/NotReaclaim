@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { ScheduledBlock, CalendarEvent, SchedulePreview, Task, Category, Habit } from '../../api/types';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
-import { Planner } from './Planner';
+import { Planner, REPLAN_MIN_SPIN_MS } from './Planner';
 import { installMatchMedia, type FakeMatchMedia } from '../../test/matchMedia';
 
 const NOW = Date.parse('2026-01-07T12:00:00.000Z'); // Wednesday
@@ -402,6 +402,76 @@ describe('Planner block selection', () => {
     tap(tileOf('Write spec'));
     expect(screen.getByTestId('block-detail-card')).toBeInTheDocument();
     expect(screen.queryByTestId('planner-task-panel')).toBeNull();
+  });
+});
+
+describe('Planner Re-plan drop-in', () => {
+  const b2: ScheduledBlock = { id: 'b2', userId: 'u1', title: 'Tax filing', startsAt: '2026-01-08T09:00:00.000Z', endsAt: '2026-01-08T10:00:00.000Z', taskId: 't9', habitId: null, pinned: false, engineKey: 'task:t9:0' };
+  const b3: ScheduledBlock = { ...b2, id: 'b3', title: 'Later one', startsAt: '2026-01-09T09:00:00.000Z', endsAt: '2026-01-09T10:00:00.000Z', engineKey: 'task:t9:1' };
+  const tileOf = (title: string) => within(screen.getByTestId('block-layer')).getAllByTestId('event-block').find((b) => b.textContent?.includes(title));
+
+  function replanApi(extra: ScheduledBlock[]) {
+    let replanned = false;
+    const replan = vi.fn(async () => { replanned = true; return { created: extra.length, updated: 0, deleted: 0, pinned: 0, removed: 0 }; });
+    const api = makeApi({ replan, getSchedule: vi.fn(async () => (replanned ? [...blocks, ...extra] : blocks)) });
+    return { api, replan };
+  }
+
+  it('newly placed blocks drop in (data-new + staggered land); blocks that were there do not', async () => {
+    const { api, replan } = replanApi([b3, b2]);
+    renderWithProviders(<Planner now={() => NOW} />, { api });
+    await waitFor(() => expect(tileOf('Write spec')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('replan-button'));
+    await waitFor(() => expect(replan).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(tileOf('Tax filing')).toHaveAttribute('data-new', 'true'));
+    expect(tileOf('Tax filing')!.className).toContain('animate-land');
+    expect(tileOf('Tax filing')!.style.animationDelay).toBe('0ms');
+    expect(tileOf('Later one')).toHaveAttribute('data-new', 'true');
+    expect(tileOf('Later one')!.style.animationDelay).toBe('180ms');
+    expect(tileOf('Write spec')).not.toHaveAttribute('data-new');
+    expect(tileOf('Standup')).not.toHaveAttribute('data-new');
+    // The flags clear once the last one has landed.
+    await waitFor(() => expect(tileOf('Later one')).not.toHaveAttribute('data-new'), { timeout: 2500 });
+  });
+
+  it('a refetch that is not a Re-plan (here: after a drag) never drops anything in', async () => {
+    let refetches = 0;
+    const getSchedule = vi.fn(async () => (refetches++ > 0 ? [...blocks, b2] : blocks));
+    const api = makeApi({ getSchedule });
+    renderWithProviders(<Planner now={() => NOW} />, { api });
+    await waitFor(() => expect(tileOf('Write spec')).toBeTruthy());
+    const tile = tileOf('Write spec')!;
+    fireEvent.pointerDown(tile, { clientX: 40, clientY: 80, pointerId: 1 });
+    fireEvent.pointerUp(tile, { clientX: 40, clientY: 200, pointerId: 1 });
+    await waitFor(() => expect(tileOf('Tax filing')).toBeTruthy());
+    expect(tileOf('Tax filing')).not.toHaveAttribute('data-new');
+  });
+
+  it('the button spins ("Re-planning…") for at least 600ms even when the replan is instant', async () => {
+    const { api, replan } = replanApi([]);
+    renderWithProviders(<Planner now={() => NOW} />, { api });
+    await waitFor(() => expect(tileOf('Write spec')).toBeTruthy());
+    const t0 = Date.now();
+    fireEvent.click(screen.getByTestId('replan-button'));
+    await waitFor(() => expect(replan).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId('replan-button')).toHaveTextContent('Re-planning…');
+    expect(screen.getByTestId('replan-button')).toBeDisabled();
+    await waitFor(() => expect(screen.getByTestId('replan-button')).toHaveTextContent(/^Re-plan$/));
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(REPLAN_MIN_SPIN_MS - 20);
+  });
+
+  it('under reduced motion nothing drops in (the blocks simply appear)', async () => {
+    const mm = installMatchMedia({ '(prefers-reduced-motion: reduce)': true });
+    try {
+      const { api } = replanApi([b2]);
+      renderWithProviders(<Planner now={() => NOW} />, { api });
+      await waitFor(() => expect(tileOf('Write spec')).toBeTruthy());
+      fireEvent.click(screen.getByTestId('replan-button'));
+      await waitFor(() => expect(tileOf('Tax filing')).toBeTruthy());
+      expect(tileOf('Tax filing')).not.toHaveAttribute('data-new');
+    } finally {
+      mm.restore();
+    }
   });
 });
 
