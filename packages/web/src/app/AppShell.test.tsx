@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { renderWithProviders, fakeApiClient } from '../test/fakes';
 import { AppShell } from './AppShell';
 
@@ -99,5 +99,52 @@ describe('AppShell mobile chrome', () => {
     const content = screen.getByTestId('shell-content');
     expect(content.className).toContain('pb-[calc(56px_+_env(safe-area-inset-bottom))]');
     expect(content.className).toContain('md:pb-0');
+  });
+});
+
+describe('AppShell task search', () => {
+  const tasks = [
+    {
+      id: 'task-1', userId: 'u1', title: 'Write the quarterly report', priority: 2, sortOrder: 0,
+      durationMs: 3_600_000, dueBy: null, minChunkMs: 1_800_000, maxChunkMs: 3_600_000, categoryId: null,
+      status: 'pending', completedAt: null, subtasks: [], createdAt: '', updatedAt: '',
+    },
+  ];
+  beforeEach(() => { localStorage.clear(); });
+
+  it('opens the palette from the header Search button and restores focus on Escape', async () => {
+    renderWithProviders(<AppShell />, { api: makeApi({ listTasks: async () => tasks as never }) });
+    const button = screen.getByRole('button', { name: 'Search tasks' });
+    button.focus();
+    fireEvent.click(button);
+    const input = screen.getByRole('combobox', { name: 'Search tasks' });
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Search tasks' })).toBeNull();
+    expect(document.activeElement).toBe(button);
+  });
+
+  it('opens with "/" and Ctrl+K, but not while typing in a field', () => {
+    renderWithProviders(<AppShell />, { api: makeApi() });
+    const field = document.createElement('input');
+    document.body.appendChild(field);
+    fireEvent.keyDown(field, { key: '/' });
+    expect(screen.queryByRole('dialog', { name: 'Search tasks' })).toBeNull();
+    field.remove();
+
+    fireEvent.keyDown(document.body, { key: '/' });
+    expect(screen.getByRole('dialog', { name: 'Search tasks' })).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Escape' });
+    fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
+    expect(screen.getByRole('dialog', { name: 'Search tasks' })).toBeInTheDocument();
+  });
+
+  it('opens the selected task in the shell-hosted task drawer', async () => {
+    renderWithProviders(<AppShell />, { api: makeApi({ listTasks: async () => tasks as never }) });
+    fireEvent.click(screen.getByRole('button', { name: 'Search tasks' }));
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'quarterly' } });
+    fireEvent.click(await screen.findByRole('option', { name: /Write the quarterly report/ }));
+    expect(screen.queryByRole('dialog', { name: 'Search tasks' })).toBeNull();
+    const drawer = await screen.findByTestId('task-drawer');
+    expect(within(drawer).getByDisplayValue('Write the quarterly report')).toBeInTheDocument();
   });
 });

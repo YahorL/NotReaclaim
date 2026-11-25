@@ -8,11 +8,21 @@ import { NewTaskModal } from './shell/NewTaskModal';
 import { GoogleBrokenBanner } from './shell/GoogleBrokenBanner';
 import { MobileTopBar } from './shell/MobileTopBar';
 import { MobileTabBar } from './shell/MobileTabBar';
+import { TaskSearchPalette, useTaskSearchShortcut } from './shell/TaskSearchPalette';
+import { ShellTaskDrawer } from './shell/ShellTaskDrawer';
+import { useTasksQuery } from '../api/queries';
+import { useTimezone } from './settings/useTimezone';
 
 export function AppShell() {
   const { token } = useAuth();
   useWebSocket({ token });
   const [newTaskOpen, setNewTaskOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  // The task the palette opened, edited in the shell-hosted drawer.
+  const [searchedTaskId, setSearchedTaskId] = useState<string | null>(null);
+  const tasksQ = useTasksQuery();
+  const zone = useTimezone();
+  useTaskSearchShortcut(() => setSearchOpen(true));
   const [sidebarHidden, setSidebarHidden] = useState(
     () => localStorage.getItem('nr.sidebarHidden') === 'true',
   );
@@ -31,7 +41,7 @@ export function AppShell() {
     <div className="flex h-dvh overflow-hidden bg-page md:gap-5 md:p-5">
       {!sidebarHidden && <Sidebar />}
       <main className="flex min-w-0 flex-1 flex-col md:gap-5">
-        <TopBar onNewTask={() => setNewTaskOpen(true)} sidebarHidden={sidebarHidden} onToggleSidebar={toggleSidebar} />
+        <TopBar onNewTask={() => setNewTaskOpen(true)} onSearch={() => setSearchOpen(true)} sidebarHidden={sidebarHidden} onToggleSidebar={toggleSidebar} />
         <MobileTopBar onNewTask={() => setNewTaskOpen(true)} />
         <GoogleBrokenBanner />
         {/* The tab bar is `fixed`, so the scroll area reserves its height (56px) plus the
@@ -45,6 +55,14 @@ export function AppShell() {
       </main>
       <MobileTabBar />
       {newTaskOpen && <NewTaskModal onClose={() => setNewTaskOpen(false)} />}
+      {searchedTaskId && <ShellTaskDrawer taskId={searchedTaskId} onClose={() => setSearchedTaskId(null)} />}
+      {searchOpen && (
+        <TaskSearchPalette
+          tasks={tasksQ.data ?? []} zone={zone}
+          onClose={() => setSearchOpen(false)}
+          onSelect={(id) => { setSearchOpen(false); setSearchedTaskId(id); }}
+        />
+      )}
     </div>
   );
 }
