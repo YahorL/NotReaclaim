@@ -46,12 +46,29 @@ const scheduleWritesPending = (qc: QueryClient) => qc.isMutating({ mutationKey: 
  */
 const deferredRoots = new WeakMap<QueryClient, QueryKey[]>();
 
-/** Record a protected root as deferred (and mark its queries stale without refetching them). */
-function deferRefresh(qc: QueryClient, queryKey: QueryKey): void {
+function recordDeferred(qc: QueryClient, queryKey: QueryKey): void {
   const deferred = deferredRoots.get(qc) ?? [];
   if (!deferred.some((r) => sameRoot(r, queryKey))) deferredRoots.set(qc, [...deferred, queryKey]);
+}
+
+/** Record a protected root as deferred and mark its queries stale without refetching them. */
+function deferRefresh(qc: QueryClient, queryKey: QueryKey): void {
+  recordDeferred(qc, queryKey);
   void qc.invalidateQueries({ queryKey, refetchType: 'none' });
 }
+
+/**
+ * `refetchOnWindowFocus` / `refetchOnReconnect` for the protected queries. With no planner write
+ * pending it returns `true`, i.e. TanStack's default (refetch if stale). While one is pending it
+ * skips the refetch and records the root, so the last write to settle refetches it. TanStack calls
+ * it once per observer, hence record-only (no invalidation from inside it). It never governs a
+ * newly mounted range's initial fetch.
+ */
+const refetchUnlessWriting = (qc: QueryClient, root: QueryKey) => (): boolean => {
+  if (scheduleWritesPending(qc) === 0) return true;
+  recordDeferred(qc, root);
+  return false;
+};
 
 /**
  * Invalidate a query root for a refresh signal. While a planner write is pending, the schedule /
@@ -144,17 +161,35 @@ export function useGoogleStatusQuery() {
 
 export function useScheduleQuery(from?: string, to?: string) {
   const api = useApi();
-  return useQuery({ queryKey: queryKeys.schedule(from, to), queryFn: () => api.getSchedule(from, to) });
+  const refetch = refetchUnlessWriting(useQueryClient(), queryKeys.scheduleRoot);
+  return useQuery({
+    queryKey: queryKeys.schedule(from, to),
+    queryFn: () => api.getSchedule(from, to),
+    refetchOnWindowFocus: refetch,
+    refetchOnReconnect: refetch,
+  });
 }
 
 export function useCalendarEventsQuery(from?: string, to?: string) {
   const api = useApi();
-  return useQuery({ queryKey: queryKeys.calendarEvents(from, to), queryFn: () => api.getCalendarEvents(from, to) });
+  const refetch = refetchUnlessWriting(useQueryClient(), queryKeys.calendarEventsRoot);
+  return useQuery({
+    queryKey: queryKeys.calendarEvents(from, to),
+    queryFn: () => api.getCalendarEvents(from, to),
+    refetchOnWindowFocus: refetch,
+    refetchOnReconnect: refetch,
+  });
 }
 
 export function useSchedulePreviewQuery() {
   const api = useApi();
-  return useQuery({ queryKey: queryKeys.schedulePreview(), queryFn: () => api.getSchedulePreview() });
+  const refetch = refetchUnlessWriting(useQueryClient(), queryKeys.scheduleRoot);
+  return useQuery({
+    queryKey: queryKeys.schedulePreview(),
+    queryFn: () => api.getSchedulePreview(),
+    refetchOnWindowFocus: refetch,
+    refetchOnReconnect: refetch,
+  });
 }
 
 export function useReplanMutation() {

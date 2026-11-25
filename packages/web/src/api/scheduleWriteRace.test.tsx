@@ -1,7 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider, hashKey, useMutation } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, focusManager, hashKey, onlineManager, useMutation } from '@tanstack/react-query';
 import { ApiProvider } from './ApiProvider';
 import { fakeApiClient } from '../test/fakes';
 import {
@@ -107,7 +107,7 @@ function setup() {
   record(eventsHistory, hashKey(queryKeys.calendarEvents('a', 'b')));
   const fetchers = [api.getSchedule, api.getSchedulePreview, api.getCalendarEvents, api.listTasks];
   return {
-    qc, api, server, hook, scheduleHistory, eventsHistory,
+    qc, api, server, hook, Wrapper, scheduleHistory, eventsHistory,
     moveBlock: moveBlock.pending, deleteBlock: deleteBlock.pending, moveEvent: moveEvent.pending, deleteEvent: deleteEvent.pending,
     /** Wait for the initial fetches, then reset the fetch counters. */
     async ready() {
@@ -446,5 +446,68 @@ describe('deferred refreshes are recorded explicitly, not inferred from isInvali
     expect(t.api.getSchedule).toHaveBeenCalledTimes(1);
     expect(t.api.getSchedulePreview).toHaveBeenCalledTimes(1);
     expect(t.api.getCalendarEvents).not.toHaveBeenCalled();
+  });
+});
+
+describe('window focus / reconnect during a pending planner write', () => {
+  // The real browser triggers TanStack listens for; both managers are module singletons.
+  const focusWindow = () => act(() => { window.dispatchEvent(new Event('visibilitychange')); });
+  const reconnect = () => act(() => {
+    window.dispatchEvent(new Event('offline'));
+    window.dispatchEvent(new Event('online'));
+  });
+  afterEach(() => {
+    focusManager.setFocused(undefined);
+    onlineManager.setOnline(true);
+  });
+
+  it.each([
+    ['focus', focusWindow],
+    ['reconnect', reconnect],
+  ] as const)('(l) %s during a block move: no schedule/event refetch, the tile never reverts, one refetch of each after the settle', async (_name, trigger) => {
+    const t = setup();
+    await t.ready();
+    act(() => t.hook.result.current.moveBlock.mutate({ id: 'b1', patch: NEW }));
+    await waitFor(() => expect(t.moveBlock).toHaveLength(1));
+
+    trigger();
+    await waitFor(() => expect(t.api.listTasks).toHaveBeenCalledTimes(1)); // other roots refetch as usual
+    await flush();
+    expect(t.api.getSchedule).not.toHaveBeenCalled();
+    expect(t.api.getSchedulePreview).not.toHaveBeenCalled();
+    expect(t.api.getCalendarEvents).not.toHaveBeenCalled();
+
+    act(() => t.moveBlock[0]!.ok());
+    await waitFor(() => expect(t.hook.result.current.moveBlock.isSuccess).toBe(true));
+    await flush();
+    expect(t.api.getSchedule).toHaveBeenCalledTimes(1);
+    expect(t.api.getSchedulePreview).toHaveBeenCalledTimes(1);
+    expect(t.api.getCalendarEvents).toHaveBeenCalledTimes(1); // recorded by the skipped refetch
+    expect(t.scheduleHistory.map((l) => b1(l)?.startsAt)).not.toContain(OLD.startsAt);
+  });
+
+  it.each([
+    ['focus', focusWindow],
+    ['reconnect', reconnect],
+  ] as const)('(m) %s with nothing pending refetches every root, as before', async (_name, trigger) => {
+    const t = setup();
+    await t.ready();
+    trigger();
+    await waitFor(() => expect(t.api.getSchedule).toHaveBeenCalledTimes(1));
+    await flush();
+    expect(t.api.getSchedulePreview).toHaveBeenCalledTimes(1);
+    expect(t.api.getCalendarEvents).toHaveBeenCalledTimes(1);
+    expect(t.api.listTasks).toHaveBeenCalledTimes(1);
+  });
+
+  it('(o) a range mounted during a pending write still fetches', async () => {
+    const t = setup();
+    await t.ready();
+    act(() => t.hook.result.current.moveBlock.mutate({ id: 'b1', patch: NEW }));
+    await waitFor(() => expect(t.moveBlock).toHaveLength(1));
+    const next = renderHook(() => ({ schedule: useScheduleQuery('c', 'd'), events: useCalendarEventsQuery('c', 'd') }), { wrapper: t.Wrapper });
+    await waitFor(() => expect(next.result.current.schedule.isSuccess && next.result.current.events.isSuccess).toBe(true));
+    expect(t.api.getSchedule).toHaveBeenCalledWith('c', 'd');
+    expect(t.api.getCalendarEvents).toHaveBeenCalledWith('c', 'd');
   });
 });
