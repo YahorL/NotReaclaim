@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query';
 import { useApi } from './ApiProvider';
 import type { ApiClient } from './client';
 import type { CreateTaskInput, UpdateTaskInput, CreateHabitInput, UpdateHabitInput, SettingsInput, UpdateScheduledBlockInput, CreateCategoryInput, UpdateCategoryInput, CreateSubtaskInput, UpdateSubtaskInput, CreateCalendarEventInput, UpdateCalendarEventInput, CreateScheduledBlockInput } from './types';
@@ -21,6 +21,34 @@ export const queryKeys = {
   googleStatus: () => ['googleStatus'] as const,
 };
 
+/**
+ * Shared `mutationKey` of the optimistic planner writes (block/event move + delete). While any is
+ * pending, a refetch of a deferred root could read the pre-write server state and overwrite the
+ * optimistic value (tile jumps back, deleted tile reappears), so refresh signals for those roots
+ * only mark them stale and the last write to settle refetches once.
+ */
+export const SCHEDULE_WRITE_KEY = ['scheduleWrite'] as const;
+
+/** The query roots a pending planner write protects. */
+const DEFERRED_ROOTS: readonly QueryKey[] = [queryKeys.scheduleRoot, queryKeys.calendarEventsRoot];
+
+const sameRoot = (a: QueryKey, b: QueryKey) => a.length === 1 && b.length === 1 && a[0] === b[0];
+
+const scheduleWritesPending = (qc: QueryClient) => qc.isMutating({ mutationKey: SCHEDULE_WRITE_KEY });
+
+/**
+ * Invalidate a query root for a refresh signal. While a planner write is pending, the schedule /
+ * calendar-event roots are only marked stale (the write's settle refetches them); everything else,
+ * and everything when nothing is pending, is invalidated + refetched as usual.
+ */
+export function invalidateRoot(qc: QueryClient, queryKey: QueryKey): void {
+  if (DEFERRED_ROOTS.some((r) => sameRoot(r, queryKey)) && scheduleWritesPending(qc) > 0) {
+    void qc.invalidateQueries({ queryKey, refetchType: 'none' });
+  } else {
+    void qc.invalidateQueries({ queryKey });
+  }
+}
+
 /** A mutation that calls the API, then invalidates each of `roots` (in order) on success. */
 function useApiMutation<TVars = void, TResult = unknown>(
   call: (api: ApiClient, vars: TVars) => Promise<TResult>,
@@ -39,6 +67,9 @@ function useApiMutation<TVars = void, TResult = unknown>(
 /**
  * A mutation that optimistically rewrites every cached LIST under `root` with `apply`, rolls the
  * snapshots back on error, and invalidates `root` then each of `alsoInvalidate` once settled.
+ * It is a planner write (SCHEDULE_WRITE_KEY): if another planner write is still pending it only
+ * marks its roots stale; the last one to settle refetches its roots plus any deferred root that
+ * was marked stale meanwhile.
  */
 function useOptimisticListMutation<TVars, TResult>(
   call: (api: ApiClient, vars: TVars) => Promise<TResult>,
@@ -49,6 +80,7 @@ function useOptimisticListMutation<TVars, TResult>(
   const api = useApi();
   const qc = useQueryClient();
   return useMutation({
+    mutationKey: SCHEDULE_WRITE_KEY,
     mutationFn: (vars: TVars) => call(api, vars),
     onMutate: async (vars: TVars) => {
       await qc.cancelQueries({ queryKey: root });
@@ -61,9 +93,20 @@ function useOptimisticListMutation<TVars, TResult>(
     onError: (_err, _vars, ctx) => {
       ctx?.snapshots.forEach(([key, data]) => qc.setQueryData(key, data));
     },
+    // Synchronous on purpose: TanStack still counts this mutation as pending inside onSettled, so
+    // `=== 1` means "I am the last". Awaiting the refetch here would keep it pending during its
+    // own refetch, and a refresh signal arriving then would be deferred with no one to refetch it.
     onSettled: () => {
-      void qc.invalidateQueries({ queryKey: root });
-      for (const queryKey of alsoInvalidate) void qc.invalidateQueries({ queryKey });
+      const roots = [root, ...alsoInvalidate];
+      if (scheduleWritesPending(qc) > 1) {
+        for (const queryKey of roots) void qc.invalidateQueries({ queryKey, refetchType: 'none' });
+        return;
+      }
+      for (const queryKey of roots) void qc.invalidateQueries({ queryKey });
+      for (const queryKey of DEFERRED_ROOTS) {
+        if (roots.some((r) => sameRoot(r, queryKey))) continue;
+        void qc.refetchQueries({ queryKey, type: 'active', predicate: (q) => q.state.isInvalidated });
+      }
     },
   });
 }
