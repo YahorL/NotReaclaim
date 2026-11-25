@@ -740,8 +740,20 @@ Verified findings from the final review. Each item was checked in the code first
   - **S1:** under reduced motion the now-dot's computed `animation-iteration-count` is `1`.
   - **S2:** a paused habit in light: row opacity 1, buttons opacity 1, meta `rgba(17,18,20,.62)`. The screenshot was viewed.
   - The demo data was restored afterwards (events deleted, task order and habit status reset).
-- **Suite:** web 1436 / 110 → **1479 / 111**. Root build green.
+- **P2 follow-up, focus a script moves** (`287fc27`):
+  - Planner's `closeDetail` hands focus back to the block. That restore counted as keyboard focus, so after a mouse click on the card's ✕ a later ↓ moved and pinned the block again.
+  - The new `lib/inputModality.ts` tracks the last input modality with document capture listeners on `pointerdown` and `keydown`. The block body's `onFocus` takes it: after a click the block is pointer-focused, after Escape keyboard-focused.
+  - `test/setup.ts` resets the tracker after each test.
+- **Second live pass, real gestures** (Chromium and Firefox, 5/5 each):
+  - A mouse drag moves an ordinary block +1h, and a drag-resize adds 30 min.
+  - A drag of the overnight block −1h keeps its 8 hours.
+  - After clicking a block and closing its card with ✕ by mouse, focus is back on the block and ↓ does not move it.
+  - **B3:** Escape after clicking the category `select` open keeps the dialog and the typed name. Headless browsers do not expose whether the native popup really opened, so the open-dropdown case is still for the owner on a real browser.
+  - The P1 keyboard checks focused the tile programmatically, not with Tab.
+- **Suite:** web 1436 / 110 → **1481 / 111**. Root build green.
 - **Follow-ups (ledger, not fixed):**
+  - **B4 covers one direction only:** the palette will not open a second drawer on a task a page drawer already holds. A page can still open its own drawer on a task the shell's searched-task drawer holds (e.g. clicking that card on Priorities).
+    - **Fix direction:** have pages consult `OpenTaskDrawers`, or close the shell drawer on a page open.
   - **DST 25-hour days:**
     - `blockLayout.ts` `layoutWeek` assigns items to `[d, d + MS_PER_DAY)` and `placeInDay` maps a flat 24h. On the fall-back day (25 wall-clock hours) an item in the extra hour falls outside every column and does not render. (The 23h spring-forward day was not analysed.)
     - Separately, a cross-day move that crosses a DST day from a midnight-anchored column shifts wall-clock time by 1h. The minutes-from-anchor model treats the column as a flat 1440 minutes, while `shiftDays` is wall-clock.
