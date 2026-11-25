@@ -3,12 +3,19 @@ import type { SettingsInput } from '../../api/types';
 import type { ApiError } from '../../api/client';
 import { DurationStepper } from '../components/DurationStepper';
 import { FieldBox } from '../components/FieldBox';
+import { PrimaryButton } from '../components/Buttons';
+import { FIELD_ERROR } from '../components/formStyles';
+import { CAPS_LABEL, CHECKBOX, INPUT } from '../forms/controls';
 import { minutesToHHMM, hhmmToMinutes } from '../lib/duration';
 import {
   type SettingsFormState, validateSettingsForm, toSettingsInput, supportedTimezones,
 } from './settingsForm';
-import { type DayState, patchDay } from './weeklyHours';
+import { type DayState, daysToWindows, patchDay, weeklyHoursLabel, weeklyHoursTotal } from './weeklyHours';
 import { WeeklyHoursEditor } from './WeeklyHoursEditor';
+
+const CARD_CLS = 'glass flex min-w-0 flex-col gap-3.5 rounded-panel px-[22px] py-5';
+/** Prototype `.ctl`: the recessed control inside a field box. */
+const CTL = `${INPUT} h-10 rounded-input px-3 text-[16px] tabular-nums`;
 
 export interface SettingsFormProps {
   initial: SettingsFormState;
@@ -28,70 +35,79 @@ export function SettingsForm({ initial, onSave, saving = false, error = null, ju
   const setDay = (weekday: number, patch: Partial<DayState>) =>
     setForm((f) => ({ ...f, days: patchDay(f.days, weekday, patch) }));
 
-  const errCls = 'text-[11px] text-red-600';
+  const errCls = FIELD_ERROR;
+  const weekly = weeklyHoursLabel(weeklyHoursTotal(daysToWindows(form.days)));
 
   return (
-    <div data-testid="settings-form" className="max-w-md p-4">
+    <div data-testid="settings-form" className="flex flex-col gap-5">
+      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-2">
+        {/* Working hours */}
+        <section aria-labelledby="settings-hours" className={CARD_CLS}>
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 id="settings-hours" className={CAPS_LABEL}>Working hours</h2>
+            <span data-testid="weekly-total" className="text-[14px] text-fg-2">{weekly}</span>
+          </div>
+          <WeeklyHoursEditor days={form.days} onChange={setDay} errors={errors.days} />
+        </section>
 
-      {/* Working hours */}
-      <section className="mb-4 rounded-[14px] border border-line bg-card p-4">
-        <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-inkSoft">Working hours</h3>
-        <WeeklyHoursEditor days={form.days} onChange={setDay} errors={errors.days} />
-      </section>
+        <div className="flex flex-col gap-5">
+          {/* Timezone */}
+          <section aria-labelledby="settings-tz" className={CARD_CLS}>
+            <h2 id="settings-tz" className={CAPS_LABEL}>Timezone</h2>
+            <FieldBox label="Timezone">
+              <select
+                data-testid="timezone"
+                aria-label="Timezone"
+                className={`${CTL} w-full`}
+                value={form.timezone}
+                onChange={(e) => setForm((f) => ({ ...f, timezone: e.target.value }))}
+              >
+                {zoneOptions.map((z) => <option key={z} value={z}>{z}</option>)}
+              </select>
+            </FieldBox>
+            {errors.timezone && <p data-testid="err-timezone" className={errCls}>{errors.timezone}</p>}
+          </section>
 
-      {/* Timezone */}
-      <section className="mb-4 rounded-[14px] border border-line bg-card p-4">
-        <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-inkSoft">Timezone</h3>
-        <FieldBox label="Timezone">
-          <select
-            data-testid="timezone"
-            className="w-full bg-transparent text-[15px] font-bold text-ink focus:outline-none"
-            value={form.timezone}
-            onChange={(e) => setForm((f) => ({ ...f, timezone: e.target.value }))}
-          >
-            {zoneOptions.map((z) => <option key={z} value={z}>{z}</option>)}
-          </select>
-        </FieldBox>
-        {errors.timezone && <p data-testid="err-timezone" className={errCls}>{errors.timezone}</p>}
-      </section>
-
-      {/* Planner day boundary — display only, scheduling keeps the midnight boundary */}
-      <section className="mb-4 rounded-[14px] border border-line bg-card p-4">
-        <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-inkSoft">Planner</h3>
-        <FieldBox label="Day starts at">
-          <input
-            type="time"
-            data-testid="day-start"
-            className="w-full bg-transparent text-[15px] font-bold text-ink focus:outline-none"
-            value={minutesToHHMM(form.dayStartMinute ?? 0)}
-            onChange={(e) => setForm((f) => ({ ...f, dayStartMinute: hhmmToMinutes(e.target.value) }))}
-          />
-        </FieldBox>
-        <p className="mt-1 text-[12px] text-inkSoft">Each planner column runs from this time to the same time the next day — set 03:00 and late-night work stays on the previous day.</p>
-        {errors.dayStartMinute && <p data-testid="err-dayStartMinute" className={errCls}>{errors.dayStartMinute}</p>}
-      </section>
+          {/* Planner day boundary — display only, scheduling keeps the midnight boundary */}
+          <section aria-labelledby="settings-planner" className={CARD_CLS}>
+            <h2 id="settings-planner" className={CAPS_LABEL}>Planner</h2>
+            <FieldBox label="Day starts at">
+              <input
+                type="time"
+                data-testid="day-start"
+                aria-label="Day starts at"
+                className={`${CTL} w-full max-w-[220px]`}
+                value={minutesToHHMM(form.dayStartMinute ?? 0)}
+                onChange={(e) => setForm((f) => ({ ...f, dayStartMinute: hhmmToMinutes(e.target.value) }))}
+              />
+            </FieldBox>
+            <p className="text-[13px] leading-relaxed text-fg-2">Each planner column runs from this time to the same time the next day. Set 03:00 and late-night work stays on the previous day.</p>
+            {errors.dayStartMinute && <p data-testid="err-dayStartMinute" className={errCls}>{errors.dayStartMinute}</p>}
+          </section>
+        </div>
+      </div>
 
       {/* Scheduling */}
-      <section className="mb-4 rounded-[14px] border border-line bg-card p-4">
-        <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-inkSoft">Scheduling</h3>
-
-        {/* Horizon */}
-        <div className="mb-3">
-          <FieldBox label="Planning horizon">
-            <input
-              type="number"
-              data-testid="horizon"
-              className="w-full bg-transparent text-[15px] font-bold text-ink focus:outline-none"
-              value={form.horizonDays}
-              onChange={(e) => setForm((f) => ({ ...f, horizonDays: Number(e.target.value) }))}
-            />
-          </FieldBox>
-          {errors.horizonDays && <p data-testid="err-horizonDays" className={errCls}>{errors.horizonDays}</p>}
-        </div>
-
-        {/* Chunk steppers */}
-        <div className="mb-3 flex gap-2">
-          <div className="flex-1">
+      <section aria-labelledby="settings-scheduling" className={CARD_CLS}>
+        <h2 id="settings-scheduling" className={CAPS_LABEL}>Scheduling</h2>
+        <div className="grid grid-cols-1 gap-3.5 md:grid-cols-3">
+          <div className="flex min-w-0">
+            <FieldBox label="Planning horizon">
+              <div className="flex items-center gap-3.5">
+                <input
+                  type="number"
+                  data-testid="horizon"
+                  aria-label="Planning horizon (days)"
+                  className={`${CTL} w-[124px] text-[26px] font-light`}
+                  value={form.horizonDays}
+                  onChange={(e) => setForm((f) => ({ ...f, horizonDays: Number(e.target.value) }))}
+                />
+                <span className="text-[15px] text-fg-2">days ahead</span>
+              </div>
+              {errors.horizonDays && <p data-testid="err-horizonDays" className={errCls}>{errors.horizonDays}</p>}
+            </FieldBox>
+          </div>
+          <div className="flex min-w-0">
             <FieldBox label="Min chunk">
               <DurationStepper
                 valueMs={form.defaultMinChunkMs}
@@ -99,10 +115,10 @@ export function SettingsForm({ initial, onSave, saving = false, error = null, ju
                 label="min"
                 size={22}
               />
+              {errors.defaultMinChunkMs && <p data-testid="err-defaultMinChunkMs" className={errCls}>{errors.defaultMinChunkMs}</p>}
             </FieldBox>
-            {errors.defaultMinChunkMs && <p data-testid="err-defaultMinChunkMs" className={errCls}>{errors.defaultMinChunkMs}</p>}
           </div>
-          <div className="flex-1">
+          <div className="flex min-w-0">
             <FieldBox label="Max chunk">
               <DurationStepper
                 valueMs={form.defaultMaxChunkMs}
@@ -110,18 +126,18 @@ export function SettingsForm({ initial, onSave, saving = false, error = null, ju
                 label="max"
                 size={22}
               />
+              {errors.defaultMaxChunkMs && <p data-testid="err-defaultMaxChunkMs" className={errCls}>{errors.defaultMaxChunkMs}</p>}
             </FieldBox>
-            {errors.defaultMaxChunkMs && <p data-testid="err-defaultMaxChunkMs" className={errCls}>{errors.defaultMaxChunkMs}</p>}
           </div>
         </div>
 
-        <label className="mt-1 flex items-center gap-2 text-[14px] font-semibold text-ink">
+        <label className="flex cursor-pointer items-center gap-2.5 text-[15px]">
           <input
             type="checkbox"
             data-testid="require-start"
             checked={form.requireStartToTrack}
             onChange={(e) => setForm((f) => ({ ...f, requireStartToTrack: e.target.checked }))}
-            className="h-4 w-4 accent-indigo"
+            className={CHECKBOX}
           />
           Only count time after I press Start
         </label>
@@ -129,16 +145,13 @@ export function SettingsForm({ initial, onSave, saving = false, error = null, ju
 
       {error && <p data-testid="form-error" className={errCls}>{error.message}</p>}
 
-      <div className="flex items-center gap-3">
-        <button
-          data-testid="save"
-          disabled={!ok || saving}
-          onClick={() => { if (ok) onSave(toSettingsInput(form)); }}
-          className="rounded-[9px] bg-indigo px-5 py-2 text-[14px] font-bold text-white disabled:opacity-50"
-        >
+      <div className="flex items-center gap-3.5">
+        <PrimaryButton large data-testid="save" disabled={!ok || saving} onClick={() => { if (ok) onSave(toSettingsInput(form)); }}>
           Save
-        </button>
-        {justSaved && <span data-testid="saved" className="text-sm text-low">Saved</span>}
+        </PrimaryButton>
+        <span role="status" className="text-[13px] text-fg-2">
+          {justSaved && <span data-testid="saved">Saved</span>}
+        </span>
       </div>
     </div>
   );
