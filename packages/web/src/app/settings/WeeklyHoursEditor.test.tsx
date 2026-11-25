@@ -8,6 +8,22 @@ const days = (): DayState[] => [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
 }));
 
 describe('WeeklyHoursEditor', () => {
+  it('gives the time inputs a phone-width row (narrow day column, tight gaps) and widens from sm', () => {
+    // Found live at 390px: with the 72px day column, 10px gaps and 16px editor padding each time
+    // input was ~83px and Chromium clipped "09:00 AM" to "09:0".
+    for (const showCoverage of [false, true]) {
+      const { unmount } = render(<WeeklyHoursEditor days={days()} onChange={vi.fn()} showCoverage={showCoverage} />);
+      const row = screen.getByTestId('day-1-row');
+      expect(row.className).toContain('grid-cols-[64px_minmax(0,1fr)_8px_minmax(0,1fr)]');
+      expect(row.className).toContain('gap-1.5');
+      expect(row.className).toContain('sm:gap-2.5');
+      expect(screen.getByTestId('day-1-start').className).toContain('px-1.5');
+      expect(screen.getByTestId('day-1-start').className).toContain('sm:px-2.5');
+      expect(screen.getByTestId('day-1-start').className).toContain('max-sm:[&::-webkit-calendar-picker-indicator]:hidden');
+      unmount();
+    }
+  });
+
   it('lists Monday first and names every control after its day', () => {
     render(<WeeklyHoursEditor days={days()} onChange={vi.fn()} />);
     const toggles = screen.getAllByRole('checkbox');

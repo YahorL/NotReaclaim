@@ -8,9 +8,13 @@ const TICKS = ['12a', '6a', '12p', '6p', '12a'];
 
 // Prototype `.dayrow`: day | start | – | end [| 24h coverage bar]. The bar column only exists from
 // sm up (the prototype hides it below 640px), and only where the caller asks for it (Hours).
-const ROW_PLAIN = 'grid grid-cols-[72px_minmax(0,1fr)_14px_minmax(0,1fr)] items-center gap-2.5 py-[5px]';
-const ROW_COVERAGE = 'grid grid-cols-[72px_minmax(0,1fr)_14px_minmax(0,1fr)] items-center gap-2.5 py-1.5 sm:grid-cols-[72px_120px_14px_120px_minmax(120px,1fr)]';
-const TIME = `${INPUT} h-[38px] w-full rounded-input px-2.5 text-[14px] tabular-nums`;
+// Below sm the day column, gaps and input padding tighten: at 390px inside a card the roomy
+// desktop row left each time input ~83px and Chromium clipped "09:00 AM" to "09:0".
+const ROW_PLAIN = 'grid grid-cols-[64px_minmax(0,1fr)_8px_minmax(0,1fr)] items-center gap-1.5 py-[5px] sm:grid-cols-[72px_minmax(0,1fr)_14px_minmax(0,1fr)] sm:gap-2.5';
+const ROW_COVERAGE = 'grid grid-cols-[64px_minmax(0,1fr)_8px_minmax(0,1fr)] items-center gap-1.5 py-1.5 sm:grid-cols-[72px_120px_14px_120px_minmax(120px,1fr)] sm:gap-2.5';
+// Chromium's clock icon still ate ~20px of that; below sm it is dropped (a tap on the field
+// opens the native picker on touch, and the segments stay keyboard-editable).
+const TIME = `${INPUT} h-[38px] w-full min-w-0 rounded-input px-1.5 text-[14px] tabular-nums sm:px-2.5 max-sm:[&::-webkit-calendar-picker-indicator]:hidden`;
 
 export interface WeeklyHoursEditorProps {
   days: DayState[];
@@ -26,7 +30,7 @@ export interface WeeklyHoursEditorProps {
 export function WeeklyHoursEditor({ days, onChange, errors = {}, idPrefix = 'day', showCoverage = false, coverageColor = null }: WeeklyHoursEditorProps) {
   const row = showCoverage ? ROW_COVERAGE : ROW_PLAIN;
   return (
-    <div className="glass-card rounded-[20px] px-4 py-2">
+    <div className="glass-card rounded-[20px] px-2.5 py-2 sm:px-4">
       {MON_FIRST.map((wd) => {
         const day = days.find((d) => d.weekday === wd)!;
         const dayErr = errors[wd];
@@ -35,7 +39,7 @@ export function WeeklyHoursEditor({ days, onChange, errors = {}, idPrefix = 'day
           <div key={wd} data-testid={`${idPrefix}-${wd}-row`} data-enabled={day.enabled} className={row}>
             {/* The label makes the whole day name a toggle target; `coarse:py-2` opens the row pitch
                 so adjacent days are not mis-hit on touch. */}
-            <label className={`flex cursor-pointer items-center gap-2.5 text-[14px] coarse:py-2 ${day.enabled ? 'text-fg' : 'text-fg-2'}`}>
+            <label className={`flex cursor-pointer items-center gap-2 text-[14px] coarse:py-2 sm:gap-2.5 ${day.enabled ? 'text-fg' : 'text-fg-2'}`}>
               <input
                 type="checkbox"
                 data-testid={`${idPrefix}-${wd}-toggle`}
