@@ -103,12 +103,12 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
         colsVisible={colsVisible} setColsVisible={setColsVisible}
       />
       <div className={boardPaneClass(dragging)}>
-        {tasksQ.isLoading && <p className="text-sm text-inkSoft">Loading tasks…</p>}
+        {tasksQ.isLoading && <p role="status" className="px-1 py-2 text-[14px] text-fg-2">Loading tasks…</p>}
         {tasksQ.isError && (
-          <p className="text-sm">
-            <span className="text-crit">Couldn't load tasks.</span>{' '}
-            <button type="button" onClick={() => void tasksQ.refetch()} className="rounded border border-line px-2">Retry</button>
-          </p>
+          <div role="alert" className="glass flex flex-wrap items-center gap-3 rounded-panel px-4 py-3 text-[14px]">
+            <span className="text-danger">Couldn't load tasks.</span>
+            <button type="button" onClick={() => void tasksQ.refetch()} className="btn-glass h-9 rounded-pill px-4 text-[13px] font-medium">Retry</button>
+          </div>
         )}
         {!tasksQ.isLoading && !tasksQ.isError && (
           <Board

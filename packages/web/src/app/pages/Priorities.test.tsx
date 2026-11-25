@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { act, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { Task, SchedulePreview } from '../../api/types';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 import { installMatchMedia, type FakeMatchMedia } from '../../test/matchMedia';
@@ -15,6 +15,16 @@ const task = (over: Partial<Task> = {}): Task => ({
 });
 
 const preview: SchedulePreview = { blocks: [], unscheduled: [] };
+
+/**
+ * Ends a jsdom mouse drag. dnd-kit keeps a capture-phase click blocker on the document for 50ms
+ * after a drag ends (it swallows the click a real release produces), and jsdom shares `document`
+ * across the tests of a file — so wait it out, or the next test's first click is eaten.
+ */
+async function releaseDrag(): Promise<void> {
+  fireEvent.mouseUp(document, { clientX: 40, clientY: 40 });
+  await act(() => new Promise((r) => { setTimeout(r, 60); }));
+}
 
 function makeApi(over = {}) {
   return fakeApiClient({
@@ -303,8 +313,8 @@ describe('Priorities board moves', () => {
     expect(screen.getByTestId('board-drag-overlay').style.transform).toBe('rotate(-1.5deg) scale(1.03)');
     expect(card).toHaveAttribute('data-placeholder', 'true');
     expect(card).toHaveAttribute('data-dragging', 'true');
-    fireEvent.mouseUp(document, { clientX: 40, clientY: 40 });
-    await waitFor(() => expect(card).not.toHaveAttribute('data-placeholder'));
+    await releaseDrag();
+    expect(card).not.toHaveAttribute('data-placeholder');
     expect(updateTask).not.toHaveBeenCalled();
   });
 
@@ -315,7 +325,44 @@ describe('Priorities board moves', () => {
     fireEvent.mouseDown(within(card).getByRole('button', { name: 'complete' }), { button: 0, clientX: 10, clientY: 10 });
     fireEvent.mouseMove(document, { clientX: 40, clientY: 40 });
     expect(screen.queryByTestId('board-drag-overlay')).toBeNull();
-    fireEvent.mouseUp(document);
+    await releaseDrag();
+  });
+});
+
+describe('Priorities page states', () => {
+  it('announces loading while the tasks query is pending', async () => {
+    const listTasks = vi.fn(() => new Promise<Task[]>(() => {}));
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks }) });
+    expect(await screen.findByRole('status')).toHaveTextContent('Loading tasks…');
+    expect(screen.queryByTestId('board')).toBeNull();
+  });
+
+  it('shows an alert with a Retry that refetches when the tasks query fails', async () => {
+    let fail = true;
+    const listTasks = vi.fn(async () => {
+      if (fail) throw new Error('down');
+      return [task({ id: 'c1', title: 'Critical thing', priority: 1 })];
+    });
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks }) });
+    const alert = await screen.findByRole('alert', {}, { timeout: 5000 });
+    expect(alert).toHaveTextContent("Couldn't load tasks.");
+    fail = false;
+    fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText('Critical thing')).toBeInTheDocument();
+  });
+
+  it('un-snaps the board pane for the duration of a drag', async () => {
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
+    await waitFor(() => expect(screen.getByText('Low thing')).toBeInTheDocument());
+    const pane = screen.getByTestId('board').closest('.overflow-auto') as HTMLElement;
+    expect(pane.classList.contains('snap-mandatory')).toBe(true);
+    const card = screen.getByText('Low thing').closest('[data-testid="task-row"]') as HTMLElement;
+    fireEvent.mouseDown(card, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.mouseMove(document, { clientX: 40, clientY: 40 });
+    await waitFor(() => expect(pane.classList.contains('snap-none')).toBe(true));
+    expect(pane.classList.contains('snap-mandatory')).toBe(false);
+    await releaseDrag();
+    expect(pane.classList.contains('snap-mandatory')).toBe(true);
   });
 });
 
