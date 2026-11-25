@@ -55,9 +55,22 @@ export interface SettingsFormErrors {
   days?: Partial<Record<number, string>>;
 }
 
-/** The rule for `meetingBufferMs` / `taskBufferMs`, shared by the Settings form and the Buffers page. */
+/** Buffers are 0..24 h — the server's bound too. */
+export const MAX_BUFFER_MINUTES = 24 * 60;
+const BUFFER_NOT_WHOLE = 'Buffer must be a whole number of minutes (≥ 0)';
+const BUFFER_TOO_LONG = 'Buffer must be at most 24 hours (1440 min)';
+
+/** The rule for `meetingBufferMs` / `taskBufferMs` as stored (ms). */
 export function validateBufferMs(ms: number): string | undefined {
-  if (!Number.isInteger(ms) || ms < 0) return 'Buffer must be a whole number of minutes (≥ 0)';
+  if (!Number.isInteger(ms) || ms < 0) return BUFFER_NOT_WHOLE;
+  if (ms > MAX_BUFFER_MINUTES * 60_000) return BUFFER_TOO_LONG;
+  return undefined;
+}
+
+/** The same rule for a minute count as typed: digits only, so '', '-', '-5' and '1.5' are errors. */
+export function validateBufferMinutesText(text: string): string | undefined {
+  if (!/^\d+$/.test(text)) return BUFFER_NOT_WHOLE;
+  if (Number(text) > MAX_BUFFER_MINUTES) return BUFFER_TOO_LONG;
   return undefined;
 }
 

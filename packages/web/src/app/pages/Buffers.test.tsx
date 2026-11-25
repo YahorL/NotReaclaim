@@ -116,4 +116,52 @@ describe('Buffers page', () => {
     await waitFor(() => expect(screen.getByTestId('form-error')).toHaveTextContent(/couldn't save/i));
     expect(screen.queryByTestId('saved')).not.toBeInTheDocument();
   });
+
+  describe('typed values are validated as typed', () => {
+    const load = async () => {
+      const putSettings = vi.fn(async () => settings());
+      const api = fakeApiClient({ getSettings: async () => settings(), putSettings } as never);
+      renderWithProviders(<Buffers />, { api });
+      await waitFor(() => expect((screen.getByTestId('meeting-buffer') as HTMLInputElement).value).toBe('5'));
+      return { putSettings };
+    };
+
+    it('keeps a fractional value as typed and flags it instead of rounding it', async () => {
+      const { putSettings } = await load();
+      fireEvent.change(screen.getByTestId('meeting-buffer'), { target: { value: '1.5' } });
+      expect((screen.getByTestId('meeting-buffer') as HTMLInputElement).value).toBe('1.5');
+      expect(screen.getByTestId('err-meetingBufferMs')).toHaveTextContent('Buffer must be a whole number of minutes (≥ 0)');
+      expect(screen.getByTestId('save')).toBeDisabled();
+      fireEvent.click(screen.getByTestId('save'));
+      await new Promise((r) => setTimeout(r, 0));
+      expect(putSettings).not.toHaveBeenCalled();
+    });
+
+    it('flags an emptied field instead of saving it as 0', async () => {
+      await load();
+      fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '' } });
+      expect((screen.getByTestId('task-buffer') as HTMLInputElement).value).toBe('');
+      expect(screen.getByTestId('err-taskBufferMs')).toHaveTextContent('Buffer must be a whole number of minutes (≥ 0)');
+      expect(screen.getByTestId('save')).toBeDisabled();
+    });
+
+    it('caps a buffer at 24 hours', async () => {
+      await load();
+      fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '1441' } });
+      expect(screen.getByTestId('err-taskBufferMs')).toHaveTextContent('Buffer must be at most 24 hours (1440 min)');
+      expect(screen.getByTestId('save')).toBeDisabled();
+      fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '1440' } });
+      expect(screen.queryByTestId('err-taskBufferMs')).not.toBeInTheDocument();
+      expect(screen.getByTestId('save')).not.toBeDisabled();
+    });
+
+    it('drops the Saved label as soon as the form is edited again', async () => {
+      await load();
+      fireEvent.click(screen.getByTestId('save'));
+      await waitFor(() => expect(screen.getByTestId('saved')).toBeInTheDocument());
+      fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '-1' } });
+      expect(screen.queryByTestId('saved')).not.toBeInTheDocument();
+      expect(screen.getByTestId('save')).toBeDisabled();
+    });
+  });
 });

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ApiError } from '../../api/client';
 import { useSettingsQuery, useUpdateSettingsMutation } from '../../api/queries';
-import { toFormState, defaultFormState, toSettingsInput, browserTimezone, validateBufferMs, type SettingsFormState } from '../settings/settingsForm';
+import { toFormState, defaultFormState, toSettingsInput, browserTimezone, validateBufferMinutesText, type SettingsFormState } from '../settings/settingsForm';
 import { FIELD_ERROR } from '../components/formStyles';
 
 const labelCls = 'mb-0.5 block text-[10px] uppercase tracking-wide text-inkSoft';
@@ -41,12 +41,26 @@ function BuffersForm({ initial, onSave, saving, justSaved, saveError }: {
   justSaved: boolean;
   saveError: string | null;
 }) {
-  const [form, setForm] = useState<SettingsFormState>(() => initial);
+  // The fields hold the text as typed, so '', '-5' or '1.5' reach the validator (and stay on
+  // screen with their error) instead of being coerced to a number first.
+  const [meetingText, setMeetingText] = useState(() => String(Math.round(initial.meetingBufferMs / 60000)));
+  const [taskText, setTaskText] = useState(() => String(Math.round(initial.taskBufferMs / 60000)));
+  // A "Saved" left over from the previous save must not sit next to an edited (maybe invalid) form.
+  const [editedSinceSave, setEditedSinceSave] = useState(false);
   // Only the two fields this page edits gate Save: the rest of the payload is the stored settings,
   // and an error there would have nowhere on this page to show.
-  const meetingBufferError = validateBufferMs(form.meetingBufferMs);
-  const taskBufferError = validateBufferMs(form.taskBufferMs);
+  const meetingBufferError = validateBufferMinutesText(meetingText);
+  const taskBufferError = validateBufferMinutesText(taskText);
   const ok = !meetingBufferError && !taskBufferError;
+  const edit = (set: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    set(e.target.value);
+    setEditedSinceSave(true);
+  };
+  const save = () => {
+    if (!ok) return;
+    setEditedSinceSave(false);
+    onSave(toSettingsInput({ ...initial, meetingBufferMs: Number(meetingText) * 60000, taskBufferMs: Number(taskText) * 60000 }));
+  };
 
   return (
     <div className="p-4">
@@ -58,11 +72,11 @@ function BuffersForm({ initial, onSave, saving, justSaved, saveError }: {
           <div className="flex-1">
             <label className={labelCls}>Buffer around meetings (min)</label>
             <input
-              type="number" step="1" min="0"
+              type="number" step="1" min="0" max="1440"
               data-testid="meeting-buffer"
               className="w-full rounded-[9px] border border-line px-2 py-1 text-sm font-bold text-ink focus:border-indigo focus:outline-none"
-              value={Math.round(form.meetingBufferMs / 60000)}
-              onChange={(e) => setForm((f) => ({ ...f, meetingBufferMs: Math.round(Number(e.target.value)) * 60000 }))}
+              value={meetingText}
+              onChange={edit(setMeetingText)}
             />
             <p className="mt-0.5 text-[11px] text-inkSoft">Kept free around meetings</p>
             {meetingBufferError && <p data-testid="err-meetingBufferMs" className={FIELD_ERROR}>{meetingBufferError}</p>}
@@ -70,11 +84,11 @@ function BuffersForm({ initial, onSave, saving, justSaved, saveError }: {
           <div className="flex-1">
             <label className={labelCls}>Gap between tasks (min)</label>
             <input
-              type="number" step="1" min="0"
+              type="number" step="1" min="0" max="1440"
               data-testid="task-buffer"
               className="w-full rounded-[9px] border border-line px-2 py-1 text-sm font-bold text-ink focus:border-indigo focus:outline-none"
-              value={Math.round(form.taskBufferMs / 60000)}
-              onChange={(e) => setForm((f) => ({ ...f, taskBufferMs: Math.round(Number(e.target.value)) * 60000 }))}
+              value={taskText}
+              onChange={edit(setTaskText)}
             />
             <p className="mt-0.5 text-[11px] text-inkSoft">Minimum gap between scheduled blocks</p>
             {taskBufferError && <p data-testid="err-taskBufferMs" className={FIELD_ERROR}>{taskBufferError}</p>}
@@ -88,12 +102,12 @@ function BuffersForm({ initial, onSave, saving, justSaved, saveError }: {
         <button
           data-testid="save"
           disabled={!ok || saving}
-          onClick={() => { if (ok) onSave(toSettingsInput(form)); }}
+          onClick={save}
           className="rounded-[9px] bg-indigo px-5 py-2 text-[14px] font-bold text-white disabled:opacity-50"
         >
           Save
         </button>
-        {justSaved && <span data-testid="saved" className="text-[11px] text-green-600">Saved</span>}
+        {justSaved && !editedSinceSave && <span data-testid="saved" className="text-[11px] text-green-600">Saved</span>}
       </div>
       </div>
     </div>

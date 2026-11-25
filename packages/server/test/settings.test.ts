@@ -54,6 +54,24 @@ describe('settings routes', () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it('accepts buffers of 0 and exactly 24 h, rejects anything above 24 h (the column is a 32-bit int)', async () => {
+    const { app } = buildTestApp();
+    const token = await tokenFor(app);
+    const auth = { authorization: `Bearer ${token}` };
+    const DAY = 24 * 60 * 60_000;
+    for (const ms of [0, DAY]) {
+      const res = await app.inject({ method: 'PUT', url: '/settings', headers: auth, payload: { ...settingsBody, meetingBufferMs: ms, taskBufferMs: ms } });
+      expect(res.statusCode, String(ms)).toBe(200);
+    }
+    for (const field of ['meetingBufferMs', 'taskBufferMs']) {
+      for (const ms of [DAY + 1, 2 ** 31]) {
+        const res = await app.inject({ method: 'PUT', url: '/settings', headers: auth, payload: { ...settingsBody, [field]: ms } });
+        expect(res.statusCode, `${field}=${ms}`).toBe(400);
+        expect(res.json().message).toBe(`${field}: must be at most 24 hours`);
+      }
+    }
+  });
+
   it('PUT /settings round-trips requireStartToTrack', async () => {
     const { app } = buildTestApp({ settings: null });
     const token = await tokenFor(app);

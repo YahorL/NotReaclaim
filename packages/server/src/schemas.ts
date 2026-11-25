@@ -40,17 +40,31 @@ export const listTasksQuerySchema = z.object({
   status: taskStatusSchema.optional(),
 });
 
-export const createHabitSchema = z.object({
+// A minute of the local day, 00:00..24:00 inclusive (1440 = end of day, as for working hours).
+const minuteOfDaySchema = z.number().int().min(0).max(1440);
+
+// Shared by the create refine below and the PATCH /habits merged check in habit-routes. Core
+// has no overnight preferred windows: it silently drops one whose end is not after its start.
+export const PREFERRED_ORDER = { message: 'must be after preferredStartMinute', path: ['preferredEndMinute'] };
+export const preferredWindowInOrder = (start: number | null | undefined, end: number | null | undefined): boolean =>
+  start == null || end == null || start < end;
+
+const habitFieldsSchema = z.object({
   title: z.string().min(1),
   priority: z.number().int(),
   chunkMs: z.number().int().positive(),
   perPeriod: z.number().int().positive(),
   eligibleDays: z.array(z.number().int().min(0).max(6)),
   periodType: z.enum(['week']).optional(),
-  preferredStartMinute: z.number().int().nullable().optional(),
-  preferredEndMinute: z.number().int().nullable().optional(),
+  preferredStartMinute: minuteOfDaySchema.nullable().optional(),
+  preferredEndMinute: minuteOfDaySchema.nullable().optional(),
 });
-export const updateHabitSchema = createHabitSchema.partial().extend({
+export const createHabitSchema = habitFieldsSchema.refine(
+  (b) => preferredWindowInOrder(b.preferredStartMinute, b.preferredEndMinute), PREFERRED_ORDER,
+);
+// Partial: window order is checked in the route against the stored row, and only when the
+// patch touches a bound, so rows that already conflict stay editable.
+export const updateHabitSchema = habitFieldsSchema.partial().extend({
   status: z.enum(['active', 'paused']).optional(),
 });
 
@@ -65,6 +79,9 @@ export const workingHourEntrySchema = z.object({
   endMinute: z.number().int().min(0).max(1440),
 }).refine((w) => w.startMinute < w.endMinute, { message: 'startMinute must be before endMinute' });
 
+// 0..24 h. Also keeps the value inside the 32-bit Int column (a larger one was a 500).
+const bufferMsSchema = z.number().int().nonnegative().max(24 * 60 * 60_000, { message: 'must be at most 24 hours' });
+
 export const settingsSchema = z.object({
   timezone: z.string().refine(isValidTimezone, { message: 'must be a valid IANA time zone' }),
   // An empty week is allowed here (unlike category windows): it means "no working hours".
@@ -72,8 +89,8 @@ export const settingsSchema = z.object({
   horizonDays: z.number().int().positive().optional(),
   defaultMinChunkMs: z.number().int().positive(),
   defaultMaxChunkMs: z.number().int().positive(),
-  meetingBufferMs: z.number().int().nonnegative().optional(),
-  taskBufferMs: z.number().int().nonnegative().optional(),
+  meetingBufferMs: bufferMsSchema.optional(),
+  taskBufferMs: bufferMsSchema.optional(),
   requireStartToTrack: z.boolean().optional(),
   /** Visual planner day boundary, minutes past local midnight (0 = midnight, 180 = 03:00). */
   dayStartMinute: z.number().int().min(0).max(1439).optional(),
