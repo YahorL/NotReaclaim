@@ -668,3 +668,81 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
 | Re-plan loading state + drop-in | Pass (P4 live) |
 | Reduced motion: nothing animates | Pass (getAnimations audit, both engines) |
 | No contrast regressions; icon-only buttons labelled | Pass after the P8 fixes (axe 0 violations after fixes; composited contrast; button-name rule clean) |
+
+### Final review fixes (2026-11-25)
+
+Verified findings from the final review. Each item was checked in the code first and fixed with a regression test (TDD for the pure logic). Nothing was skipped.
+
+- **Planner:**
+  - **P1, blocks running past the column end** (`43ba7f8`). An overnight blocked event (23:00–07:00), or anything crossing a `dayStartMinute` column, used to jump or get cut down. Two new pure helpers in `weekModel.ts` now drive both the keyboard (`blockKeyboard.ts`) and the pointer (`dragModel.ts`):
+    - `moveStartMin` clamps only the **start**, to `[0, 1440−15]`. The block keeps its length, so its end may run past the column.
+    - `resizeEndMin` treats a zero snapped delta as a no-op before any clamping. It never grows a block past the column end, and never cuts it back to the column end either.
+    - Neither helper moves against the key or drag direction. An off-grid start in the last slot stays put on ↓.
+    - **Deliberate behaviour change:** an ordinary 23:00–24:00 block pressed ↓ (or dragged to the bottom) now becomes 23:15–00:15 instead of being clamped inside the column. The old clamp tests were rewritten for this.
+    - The move and resize ghosts clip their height at the column end, as the tile does. `clampToWindow` is unchanged, because `scheduleDrop` still uses it.
+  - **P2, focus origin** (`543783e`):
+    - `InteractiveBlock` records whether the body was focused by a pointer: a ref set on press (body or resize handle) and cleared on blur.
+    - A pointer-focused block ignores arrows and Delete. The arrows keep their default action and scroll the hours.
+    - Tabbing back in (or programmatic focus) re-enables the keys.
+    - Backspace is no longer a delete key. `main` had no keyboard delete, so Delete now works only on keyboard-focused blocks.
+    - `:focus-visible` was rejected: browsers may start matching it on the very keypress being read.
+  - **P3, hold re-baselining** (`669eea3`):
+    - A WeekGrid `Pending` remembers its last `committed` target.
+    - When the optimistic write of that commit lands while a newer keyboard preview is pending, the hold re-baselines onto it. Previously it dropped the hold, which flicked the tile back and made the next press build on the stale time.
+  - **P4, filtered tiles and lanes** (`c662f1d`): visible and filtered-out items get separate `layoutWeek` passes. Hidden tiles keep their own geometry, so they stay mounted and can fade back in.
+  - **P5, lost pointer capture** (`dbbec91`):
+    - `useBlockDrag` handles `lostpointercapture` like `pointercancel`: it reverts and commits nothing.
+    - It acts only when the event's target is our capturing element and its `pointerId` matches. `reset()` clears `captureRef` before it releases capture, so our own release never lands here. A child losing the browser's implicit touch capture to the tile is ignored too.
+    - `CalendarBlock` forwards the new prop.
+- **Board, dialog and shell:**
+  - **B1 + B2, board moves** (`51535e3`):
+    - The grip ignores `e.repeat`, but still prevents the default so the page does not scroll.
+    - The new `useMoveTaskMutation` (`queries.ts`) writes optimistically in `onMutate`, which TanStack runs immediately even for a queued mutation, after cancelling any tasks refetch in flight.
+    - `scope: { id: 'task-move' }` serializes the PATCHes in press order.
+    - Rollback and invalidation are mutation-level. A run of queued moves settles as one: when the last one settles, any failure restores the cache from before the run's first move, and the tasks and schedule are refetched once.
+    - `useUpdateTaskMutation` is unchanged (drawers use it).
+  - **B3, Escape in a native picker** (`a3f51de`). In `useFocusTrap`:
+    - The first Escape on a `select` or a date/time-type input only "closes the picker". It is still `preventDefault`ed, so document-level Escape listeners underneath stand down.
+    - A second Escape in a row (no other key in between) closes the surface, so a keyboard user is never stuck.
+    - **Scope trade-off:** this lives in the hook rather than the modal, so every sheet, drawer-in-sheet and the palette behave the same way.
+  - **B4, New task over drawers** (`f79bef4`):
+    - Opening New task clears the searched-task drawer. NewTaskModal moves to `z-[58]`: above the shell drawer (`z-[55]`), below the palette (`z-[60]`).
+    - TaskDrawers register their task in a shell-level map (`shell/OpenTaskDrawers.tsx`). Picking a task in the palette that a drawer already holds now just closes the palette, so focus returns to that drawer, instead of opening a second drawer with a diverging seeded form.
+  - **B5, focus** (`fc090dc`):
+    - AccountMenu → Settings focuses the page heading (TopBar `h1#page-heading`, `tabIndex=-1`) after the route renders.
+    - AppShell captures the palette's opener. The compact Sheet around ShellTaskDrawer restores focus to that opener (new `restoreTo` on `Sheet` and `DrawerHost`) instead of the palette input, which is detached by then.
+    - The palette's Enter ignores IME composition (`nativeEvent.isComposing`, and `keyCode 229` for Safari).
+- **Pages and styling:**
+  - **S1, reduced motion** (`483182a`): the kill switch adds `animation-iteration-count: 1 !important`. The now-dot pulse and the Re-plan spinner end on their last frame; the spinner stays a static icon next to "Re-planning…".
+  - **S2, paused habits** (`2446897`): the row-wide `opacity-[.55]` is gone.
+    - A paused row now tints its title `fg-2`, its meta `fg-3` (per-theme alpha tuned for 4.5:1) and its day pills neutral.
+    - The buttons stay at full strength.
+  - **S3, chart headroom** (`b505727`): the chart tabpanel gets `pt-6`, on the box the y-ticks and the plot share, so they stay aligned.
+  - **S4, Settings save status** (`97d548b`): SettingsForm keeps a baseline, compared through `toSettingsInput`. `onSave(input, onSaved)` sets it on success, and the status reads "Unsaved changes" or "Saved" as on Buffers.
+  - **S5, tabs and swatches** (`556437b`):
+    - Segmented sets `aria-controls` only on the selected tab.
+    - Category swatch checks use white where it reaches 3:1, and otherwise the dark ink (`lib/contrast.ts`). Only Amber and Cyan flip.
+  - **S6, empty times** (`35e3d08`):
+    - An enabled day with an empty start or end reads "Enter a start and end time", in both Settings and the Hours/category editors.
+    - A cleared planner day start is stored as `NaN`, which the existing day-start check flags, rather than `0`.
+    - Habit preferred times may legitimately be empty and were left alone.
+- **Live check** (headless Chromium and Firefox via playwright-core, 1440×900, demo user in America/New_York; all 14 checks passed in both engines):
+  - **P1 (overnight blocked time, 23:00–07:00):**
+    - ↓ gives 23:15–07:15.
+    - Shift+↓ is a no-op.
+    - Shift+↑ gives 23:15–07:00.
+    - A click on the clipped tile's resize handle leaves 07:00.
+  - **P2:**
+    - After a mouse click on a block, ↓ scrolls the hours (scrollTop 400→440/466) and leaves the block alone.
+    - Backspace and Delete delete nothing.
+  - **B3:** the first Escape on the New task category `select` keeps the dialog and the typed name, and the second closes it.
+  - **B1:** holding ↓ on a grip (12 repeats) moves the card one position with exactly one PATCH, and the order survives a reload.
+  - **S1:** under reduced motion the now-dot's computed `animation-iteration-count` is `1`.
+  - **S2:** a paused habit in light: row opacity 1, buttons opacity 1, meta `rgba(17,18,20,.62)`. The screenshot was viewed.
+  - The demo data was restored afterwards (events deleted, task order and habit status reset).
+- **Suite:** web 1436 / 110 → **1479 / 111**. Root build green.
+- **Follow-ups (ledger, not fixed):**
+  - **DST 25-hour days:**
+    - `blockLayout.ts` `layoutWeek` assigns items to `[d, d + MS_PER_DAY)` and `placeInDay` maps a flat 24h. On the fall-back day (25 wall-clock hours) an item in the extra hour falls outside every column and does not render. On the spring-forward day (23h), the next column's first hour overlaps.
+    - Separately, a cross-day move that crosses a DST day from a midnight-anchored column shifts wall-clock time by 1h. The minutes-from-anchor model treats the column as a flat 1440 minutes, while `shiftDays` is wall-clock.
+    - **Fix direction:** derive each column's real span from the next column's anchor, and map minutes through the zone rather than through a flat `MS_PER_MIN` offset.
