@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
-/** Glass pill input + lime Add (prototype Habits `.inp` + `.lime`). `label` names the input for
+/** Glass pill input + lime Add (prototype Habits `.inp` + `.lime`). It sits on the bare page, so it
+ *  takes the glass-button surface (white glass in light) rather than the recessed in-card INPUT. `label` names the input for
  *  screen readers (the placeholder is not a label); it defaults to the placeholder. */
 export function QuickAdd({ placeholder, label, onAdd }: { placeholder: string; label?: string; onAdd: (title: string) => void }) {
   const [value, setValue] = useState('');
@@ -14,7 +15,7 @@ export function QuickAdd({ placeholder, label, onAdd }: { placeholder: string; l
     <div className="flex gap-2.5">
       <input
         aria-label={label ?? placeholder}
-        className="h-12 min-w-0 flex-1 rounded-pill border border-fg/10 bg-fg/[.05] px-5 text-[15px] text-fg shadow-[inset_0_1px_2px_rgb(0_0_0/0.3)] outline-none transition-colors placeholder:text-fg-2 focus:border-focus"
+        className="h-12 min-w-0 flex-1 rounded-pill border border-fg/10 [background:var(--x-btn-bg)] px-5 text-[15px] text-fg shadow-[inset_0_1px_2px_rgb(0_0_0/0.3)] outline-none [[data-theme=light]_&]:shadow-[inset_0_1px_2px_rgb(0_0_0/0.06)] transition-colors placeholder:text-fg-2 focus:border-focus"
         placeholder={placeholder}
         value={value}
         onChange={(e) => setValue(e.target.value)}
