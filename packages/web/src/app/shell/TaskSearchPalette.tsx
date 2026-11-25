@@ -88,7 +88,7 @@ export function TaskSearchPalette({ tasks, zone, onSelect, onClose }: TaskSearch
             placeholder="Search tasks…"
             className="min-w-0 flex-1 bg-transparent text-[17px] text-fg outline-none placeholder:text-fg-3"
           />
-          <kbd className="hidden shrink-0 rounded-input border border-line px-2 py-0.5 text-[11px] text-fg-3 md:inline">Esc</kbd>
+          <kbd className="hidden shrink-0 rounded-input border border-line px-2 py-0.5 text-[11px] text-fg-2 md:inline">Esc</kbd>
         </div>
 
         <ul id={LISTBOX_ID} role="listbox" aria-label="Tasks" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2 empty:hidden">

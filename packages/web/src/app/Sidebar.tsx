@@ -22,7 +22,7 @@ export function Sidebar() {
         <NavLinkItem to="/priorities" label="Priorities" icon={<Icons.priorities size={20} />} />
         <NavLinkItem to="/stats" label="Stats" icon={<Icons.stats size={20} />} />
       </div>
-      <span aria-hidden="true" className="mt-1.5 [@media(max-height:760px)]:mt-0 text-[10px] uppercase tracking-[0.12em] text-fg-3">Time</span>
+      <span aria-hidden="true" className="mt-1.5 [@media(max-height:760px)]:mt-0 text-[10px] uppercase tracking-[0.12em] text-fg-2">Time</span>
       <div role="group" aria-label="Time management" className={RAIL_GROUP}>
         <NavLinkItem to="/habits" label="Habits" icon={<Icons.habits size={20} />} />
         <NavLinkItem to="/buffers" label="Buffers" icon={<Icons.buffers size={20} />} />
