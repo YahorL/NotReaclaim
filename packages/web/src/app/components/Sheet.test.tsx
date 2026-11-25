@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { createEvent, render, screen, fireEvent } from '@testing-library/react';
 import { useRef } from 'react';
 import { Sheet, useFocusTrap, type FocusTrapOptions } from './Sheet';
 
@@ -194,6 +194,9 @@ describe('useFocusTrap options', () => {
       <div ref={ref} tabIndex={-1} data-testid="trap" onKeyDown={onKeyDown}>
         <button type="button">first</button>
         <button type="button" ref={second}>second</button>
+        <select aria-label="Category"><option>a</option></select>
+        <input aria-label="Due" type="datetime-local" />
+        <input aria-label="Name" type="text" />
       </div>
     );
   }
@@ -223,5 +226,30 @@ describe('useFocusTrap options', () => {
     render(<Trapped onEscape={onEscape} />);
     fireEvent.keyDown(screen.getByRole('button', { name: 'first' }), { key: 'Escape' });
     expect(onEscape).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Name' }), { key: 'Escape' });
+    expect(onEscape).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([['Category'], ['Due']])('the first Escape in a native picker (%s) only closes the picker; a second in a row closes the surface', (name) => {
+    const onEscape = vi.fn();
+    render(<Trapped onEscape={onEscape} />);
+    const picker = screen.getByLabelText(name);
+    const first = createEvent.keyDown(picker, { key: 'Escape' });
+    fireEvent(picker, first);
+    expect(onEscape).not.toHaveBeenCalled();
+    // Still marked handled, so document-level Escape listeners underneath stand down.
+    expect(first.defaultPrevented).toBe(true);
+    fireEvent.keyDown(picker, { key: 'Escape' });
+    expect(onEscape).toHaveBeenCalledTimes(1);
+  });
+
+  it('any other key between two Escapes in a picker re-arms it', () => {
+    const onEscape = vi.fn();
+    render(<Trapped onEscape={onEscape} />);
+    const picker = screen.getByLabelText('Category');
+    fireEvent.keyDown(picker, { key: 'Escape' });
+    fireEvent.keyDown(picker, { key: 'ArrowDown' });
+    fireEvent.keyDown(picker, { key: 'Escape' });
+    expect(onEscape).not.toHaveBeenCalled();
   });
 });

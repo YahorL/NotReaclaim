@@ -55,7 +55,16 @@ export interface FocusTrapOptions {
  * new-task dialog): take focus on mount, trap Tab while open, Escape via the surface's OWN keydown,
  * and return focus to the opener on unmount. Returns the `onKeyDown` handler to put on the element.
  */
+const PICKER_INPUT_TYPES = new Set(['date', 'datetime-local', 'time', 'month', 'week']);
+
+/** A control whose Escape may belong to its native popup (an open dropdown / date picker). */
+function isNativePicker(target: EventTarget | null): boolean {
+  return target instanceof HTMLSelectElement || (target instanceof HTMLInputElement && PICKER_INPUT_TYPES.has(target.type));
+}
+
 export function useFocusTrap<T extends HTMLElement>(ref: RefObject<T>, { onEscape, restoreTo, initialFocus }: FocusTrapOptions = {}) {
+  /** The picker that just swallowed an Escape (see the handler below). */
+  const pickerEscape = useRef<EventTarget | null>(null);
   // Captured during the RENDER phase, on purpose. React applies a child's `autoFocus` in the
   // commit phase, so reading `document.activeElement` from the mount effect below would record
   // that child instead of the element that opened the surface -- and a child is detached by the
@@ -88,8 +97,20 @@ export function useFocusTrap<T extends HTMLElement>(ref: RefObject<T>, { onEscap
   // listeners underneath (the desktop CreatePopover, the planner's deselect) stand down. It is NOT
   // stopped: dnd-kit's KeyboardSensor listens on the document and must still see Escape to cancel
   // a keyboard drag that started inside a sheet.
+  //
+  // A native picker (select, date/time input) may be spending the Escape on closing its own popup,
+  // and not every browser keeps that keystroke to itself — closing the surface there lost the whole
+  // form. So the first Escape on a picker only "closes the picker"; a second one in a row (no other
+  // key between) closes the surface, so a keyboard user is never stuck in it.
   return (e: ReactKeyboardEvent<HTMLElement>) => {
-    if (e.key === 'Escape') { e.preventDefault(); onEscape?.(); return; }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (isNativePicker(e.target) && pickerEscape.current !== e.target) { pickerEscape.current = e.target; return; }
+      pickerEscape.current = null;
+      onEscape?.();
+      return;
+    }
+    pickerEscape.current = null;
     if (e.key !== 'Tab') return;
     const el = ref.current;
     if (!el) return;
