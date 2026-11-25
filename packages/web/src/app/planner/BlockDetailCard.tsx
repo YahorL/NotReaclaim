@@ -112,10 +112,11 @@ export function BlockDetailCard({
         <p className="mt-1 text-[14px] text-fg-2">{longDay(detail.startMs, zone)}</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-2.5">
+      {/* The time range gets the wider tile so "12:45 PM – 10:15 PM" stays on one line. */}
+      <div className="grid grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-2.5">
         <div className="glass-card rounded-card px-3.5 py-2.5">
           <div className="text-[12px] text-fg-2">Time</div>
-          <div data-testid="detail-time" className="mt-0.5 text-[14px] font-medium tabular-nums text-fg">{time(detail.startMs, zone)} – {time(detail.endMs, zone)}</div>
+          <div data-testid="detail-time" className="mt-0.5 whitespace-nowrap text-[14px] font-medium tabular-nums text-fg">{time(detail.startMs, zone)} – {time(detail.endMs, zone)}</div>
         </div>
         <div className="glass-card rounded-card px-3.5 py-2.5">
           <div className="text-[12px] text-fg-2">Duration</div>
