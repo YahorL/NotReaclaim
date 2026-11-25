@@ -64,15 +64,16 @@ export interface ApplyScheduleOptions {
   /**
    * Told about every write failure the apply isolates, with the row and the error, so the
    * caller can log them: the counts deliberately carry no error objects (they are sent to
-   * clients). Not reported (only counted): an event orphaned because its compensating delete
-   * failed too (storeInsertedIds' 'orphaned').
+   * clients). A compensating event delete that failed (the event is left behind) is reported
+   * as an extra 'orphan' entry next to the row's own failure, without a count of its own. A
+   * callback that throws is ignored: reporting never aborts the apply.
    */
   onRowFailure?: (failure: RowFailure) => void;
 }
 
 /** One row the apply skipped: what it was doing, which row (null for a not-yet-created one), and why. */
 export interface RowFailure {
-  kind: 'create' | 'update' | 'delete' | 'attach' | 'pinned';
+  kind: 'create' | 'update' | 'delete' | 'attach' | 'pinned' | 'orphan';
   blockId: string | null;
   engineKey: string | null;
   error: unknown;
@@ -154,8 +155,15 @@ export async function applyDesiredSchedule(
     if (!opts.isRowScoped?.(err)) throw err;
     if (opts.isTransient?.(err) && ++transientStreak >= MAX_TRANSIENT_STREAK) throw err;
   };
-  const report = (kind: RowFailure['kind'], row: { id: string; engineKey: string | null } | null, engineKey: string | null, error: unknown) =>
-    opts.onRowFailure?.({ kind, blockId: row?.id ?? null, engineKey: row?.engineKey ?? engineKey, error });
+  const report = (kind: RowFailure['kind'], row: { id: string; engineKey: string | null } | null, engineKey: string | null, error: unknown) => {
+    try {
+      opts.onRowFailure?.({ kind, blockId: row?.id ?? null, engineKey: row?.engineKey ?? engineKey, error });
+    } catch {
+      // reporting is best effort: a failing logger must never abort the apply
+    }
+  };
+  const reportOrphan = (row: DbScheduledBlock | null, engineKey: string | null) =>
+    (err: unknown) => report('orphan', row, engineKey, err);
   // The keyed map must span ALL prior placements, not just [now, horizonEnd]: engine keys
   // (task:<id>:<chunk>, habit:<id>:<occurrence>) are horizon-relative and recur over time,
   // so a reissued key must MOVE its old (possibly past) row — unique (userId, engineKey) —
@@ -224,7 +232,7 @@ export async function applyDesiredSchedule(
             insertError = { error: err }; // the plan still applies below; the row is retried next cycle
           }
           if (ids && mirror) {
-            const outcome = await storeInsertedIds(scheduledBlocks, mirror, userId, match, ids, fields);
+            const outcome = await storeInsertedIds(scheduledBlocks, mirror, userId, match, ids, reportOrphan(match, block.id), fields);
             if (outcome === 'stored') {
               updated += 1;
               attached += 1;
@@ -238,7 +246,7 @@ export async function applyDesiredSchedule(
           } catch (err) {
             // The row is gone (a cascade from its deleted task/habit) but Google was just
             // moved: nothing references that event any more, so remove it (best effort).
-            if (mirror && !unmirrored && isNotFoundError(err)) await deleteQuietly(mirror, match);
+            if (mirror && !unmirrored && isNotFoundError(err)) await deleteQuietly(mirror, match, reportOrphan(match, block.id));
             throw err;
           }
           updated += 1;
@@ -264,7 +272,7 @@ export async function applyDesiredSchedule(
           continue;
         }
         try {
-          const outcome = await storeInsertedIds(scheduledBlocks, mirror, userId, match, ids);
+          const outcome = await storeInsertedIds(scheduledBlocks, mirror, userId, match, ids, reportOrphan(match, block.id));
           if (outcome === 'stored') attached += 1;
           else if (outcome === 'orphaned') attachFailed += 1;
         } catch (err) {
@@ -296,7 +304,7 @@ export async function applyDesiredSchedule(
         // A foreign-key or unique-key rejection proves the row was never stored, so nothing
         // will ever reference the just-inserted event: remove it (best effort). Any other
         // failure may have committed anyway (a lost reply), so that event is left alone.
-        if (mirror && ids && isRejectedCreate(err)) await deleteQuietly(mirror, unsavedRow(userId, input, now));
+        if (mirror && ids && isRejectedCreate(err)) await deleteQuietly(mirror, unsavedRow(userId, input, now), reportOrphan(null, block.id));
         throw err;
       }
       created += 1;
@@ -329,7 +337,9 @@ export async function applyDesiredSchedule(
 
   const { synced: pinnedSynced, failed: pinnedFailed } = opts.mirror
     ? await mirrorPinnedBlocks(scheduledBlocks, userId, existing, {
-      now, mirror: opts.mirror, mirrorSnapshot, onFailure: (row, err) => report('pinned', row, null, err),
+      now, mirror: opts.mirror, mirrorSnapshot,
+      onFailure: (row, err) => report('pinned', row, null, err),
+      onOrphan: (row, err) => report('orphan', row, null, err),
     })
     : { synced: 0, failed: 0 };
 
@@ -365,6 +375,7 @@ async function mirrorPinnedBlocks(
     mirror: ScheduleMirror;
     mirrorSnapshot?: MirrorSnapshot;
     onFailure?: (row: DbScheduledBlock, err: unknown) => void;
+    onOrphan?: (row: DbScheduledBlock, err: unknown) => void;
   },
 ): Promise<{ synced: number; failed: number }> {
   const { now, mirror, mirrorSnapshot } = opts;
@@ -380,7 +391,7 @@ async function mirrorPinnedBlocks(
     try {
       if (row.googleEventId == null) {
         const ids = await mirror.create(block);
-        const outcome = await storeInsertedIds(scheduledBlocks, mirror, userId, row, ids);
+        const outcome = await storeInsertedIds(scheduledBlocks, mirror, userId, row, ids, (err) => opts.onOrphan?.(row, err));
         // 'gone': the user deleted the row mid-apply and its event was removed again.
         if (outcome === 'stored') synced += 1;
         else if (outcome === 'orphaned') failed += 1;
@@ -435,6 +446,7 @@ async function storeInsertedIds(
   userId: string,
   row: DbScheduledBlock,
   ids: MirrorIds,
+  onOrphan: (err: unknown) => void,
   fields: { startsAt?: Date; endsAt?: Date; title?: string } = {},
 ): Promise<StoreOutcome> {
   try {
@@ -450,7 +462,8 @@ async function storeInsertedIds(
   try {
     await mirror.delete({ ...row, googleEventId: ids.googleEventId, googleCalendarId: ids.googleCalendarId });
     return 'gone';
-  } catch {
+  } catch (err) {
+    onOrphan(err);
     return 'orphaned';
   }
 }
@@ -480,12 +493,12 @@ function unsavedRow(userId: string, input: CreateScheduledBlockInput, now: numbe
   };
 }
 
-/** Best-effort compensating event delete: its failure leaves an orphan event, never fails the row. */
-async function deleteQuietly(mirror: ScheduleMirror, row: DbScheduledBlock): Promise<void> {
+/** Best-effort compensating event delete: its failure leaves an orphan event (reported), never fails the row. */
+async function deleteQuietly(mirror: ScheduleMirror, row: DbScheduledBlock, onOrphan: (err: unknown) => void): Promise<void> {
   try {
     await mirror.delete(row);
-  } catch {
-    // orphaned on the external calendar; the row's own failure is what gets counted
+  } catch (err) {
+    onOrphan(err); // orphaned on the external calendar; the row's own failure is what gets counted
   }
 }
 

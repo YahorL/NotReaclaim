@@ -1141,3 +1141,67 @@ describe('applyDesiredSchedule: a streak of transient external failures aborts',
     expect(res).toMatchObject({ created: 0, createFailed: 4 });
   });
 });
+
+describe('applyDesiredSchedule failure reporting is robust', () => {
+  const at = (hh: number) => ({
+    startsAt: new Date(`2026-01-05T${String(hh).padStart(2, '0')}:00:00.000Z`),
+    endsAt: new Date(`2026-01-05T${String(hh).padStart(2, '0')}:30:00.000Z`),
+  });
+  const row = (t: string, hh: number, over: Partial<DbScheduledBlock> = {}) =>
+    dbBlock({ id: `b-${t}`, taskId: t, engineKey: `task:${t}:0`, title: t, ...at(hh), ...over });
+  const want = (t: string, hh: number) => eBlock({
+    id: `task:${t}:0`, sourceId: t, title: t, start: at(hh).startsAt.getTime(), end: at(hh).endsAt.getTime(),
+  });
+  const fk = () => Object.assign(new Error('fk'), { code: 'P2003' });
+
+  it('a throwing onRowFailure never aborts the apply', async () => {
+    const repo = fakeRepo([]);
+    const real = repo.create.getMockImplementation()!;
+    repo.create.mockImplementation(async (u, data) => { if (data.engineKey === 'task:t1:0') throw fk(); return real(u, data); });
+
+    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10)]), {
+      now: NOW, horizonEnd: HORIZON, onRowFailure: () => { throw new Error('logger down'); },
+    });
+
+    expect(res).toMatchObject({ created: 1, createFailed: 1 });
+  });
+
+  it("a compensating delete that fails is reported as an 'orphan' (counts unchanged): after a rejected create", async () => {
+    const repo = fakeRepo([]);
+    repo.create.mockImplementation(async () => { throw fk(); });
+    const gone = new Error('google 503');
+    const mirror = {
+      create: vi.fn(async () => ({ googleEventId: 'g-1', googleCalendarId: 'cal1' })),
+      update: vi.fn(), delete: vi.fn(async () => { throw gone; }),
+    } as unknown as ScheduleMirror;
+    const reports: Array<{ kind: string }> = [];
+
+    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9)]), {
+      now: NOW, horizonEnd: HORIZON, mirror, onRowFailure: (f) => reports.push(f),
+    });
+
+    expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0, createFailed: 1 });
+    expect(reports).toEqual([
+      { kind: 'orphan', blockId: null, engineKey: 'task:t1:0', error: gone },
+      { kind: 'create', blockId: null, engineKey: 'task:t1:0', error: expect.objectContaining({ code: 'P2003' }) },
+    ]);
+  });
+
+  it("…and after a first insert whose row vanished (storeInsertedIds' 'orphaned')", async () => {
+    const repo = fakeRepo([row('t1', 9)]);
+    repo.update.mockImplementation(async () => { throw Object.assign(new Error('gone'), { name: 'NotFoundError' }); });
+    const gone = new Error('google 503');
+    const mirror = {
+      create: vi.fn(async () => ({ googleEventId: 'g-1', googleCalendarId: 'cal1' })),
+      update: vi.fn(), delete: vi.fn(async () => { throw gone; }),
+    } as unknown as ScheduleMirror;
+    const reports: unknown[] = [];
+
+    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9)]), {
+      now: NOW, horizonEnd: HORIZON, mirror, onRowFailure: (f) => reports.push(f),
+    });
+
+    expect(res).toMatchObject({ attached: 0, attachFailed: 1 });
+    expect(reports).toEqual([{ kind: 'orphan', blockId: 'b-t1', engineKey: 'task:t1:0', error: gone }]);
+  });
+});
