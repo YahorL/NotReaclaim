@@ -49,7 +49,11 @@ export function invalidateRoot(qc: QueryClient, queryKey: QueryKey): void {
   }
 }
 
-/** A mutation that calls the API, then invalidates each of `roots` (in order) on success. */
+/**
+ * A mutation that calls the API, then invalidates each of `roots` (in order) on success — via
+ * `invalidateRoot`, so it cannot refetch over a pending planner write's optimistic value. It does
+ * not carry SCHEDULE_WRITE_KEY: it has no optimistic value to protect.
+ */
 function useApiMutation<TVars = void, TResult = unknown>(
   call: (api: ApiClient, vars: TVars) => Promise<TResult>,
   roots: readonly QueryKey[],
@@ -59,7 +63,7 @@ function useApiMutation<TVars = void, TResult = unknown>(
   return useMutation({
     mutationFn: (vars: TVars) => call(api, vars),
     onSuccess: () => {
-      for (const queryKey of roots) void qc.invalidateQueries({ queryKey });
+      for (const queryKey of roots) invalidateRoot(qc, queryKey);
     },
   });
 }

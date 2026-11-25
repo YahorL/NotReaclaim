@@ -13,6 +13,8 @@ import {
   useUpdateScheduledBlockMutation,
   useDeleteScheduledBlockMutation,
   useUpdateCalendarEventMutation,
+  useUpdateTaskMutation,
+  useCreateCalendarEventMutation,
 } from './queries';
 import { invalidateForEvent } from '../realtime/events';
 
@@ -59,6 +61,11 @@ function setup() {
     updateScheduledBlock: moveBlock.fn,
     deleteScheduledBlock: deleteBlock.fn,
     updateCalendarEvent: moveEvent.fn,
+    updateTask: vi.fn(async () => ({})),
+    createCalendarEvent: vi.fn(async () => {
+      server.events = [...server.events, { id: 'e2', ...NEW }];
+      return {};
+    }),
   };
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const Wrapper = ({ children }: { children: ReactNode }) => (
@@ -75,6 +82,8 @@ function setup() {
       moveBlock: useUpdateScheduledBlockMutation(),
       deleteBlock: useDeleteScheduledBlockMutation(),
       moveEvent: useUpdateCalendarEventMutation(),
+      updateTask: useUpdateTaskMutation(),
+      createEvent: useCreateCalendarEventMutation(),
     }),
     { wrapper: Wrapper },
   );
@@ -317,5 +326,43 @@ describe('a refresh signal during a pending planner write', () => {
     await flush();
     expect(t.api.getSchedule).toHaveBeenCalledTimes(1);
     expect(t.api.listTasks).toHaveBeenCalledTimes(1);
+  });
+
+  it('(h) a non-planner mutation succeeding during a pending block delete refetches its own roots but defers the schedule', async () => {
+    const t = setup();
+    await t.ready();
+    act(() => t.hook.result.current.deleteBlock.mutate('b1'));
+    await waitFor(() => expect(t.deleteBlock).toHaveLength(1));
+    act(() => t.hook.result.current.updateTask.mutate({ id: 't1', patch: { title: 'x' } }));
+    await waitFor(() => expect(t.hook.result.current.updateTask.isSuccess).toBe(true));
+    await waitFor(() => expect(t.api.listTasks).toHaveBeenCalledTimes(1));
+    await flush();
+    expect(t.api.getSchedule).not.toHaveBeenCalled();
+
+    act(() => t.deleteBlock[0]!.ok());
+    await waitFor(() => expect(t.hook.result.current.deleteBlock.isSuccess).toBe(true));
+    await flush();
+    expect(t.api.getSchedule).toHaveBeenCalledTimes(1);
+    expect(t.scheduleHistory.some((l) => b1(l))).toBe(false);
+  });
+
+  it('(i) a calendar-event create succeeding during a pending block move is refetched once the move settles', async () => {
+    const t = setup();
+    await t.ready();
+    act(() => t.hook.result.current.moveBlock.mutate({ id: 'b1', patch: NEW }));
+    await waitFor(() => expect(t.moveBlock).toHaveLength(1));
+    act(() => t.hook.result.current.createEvent.mutate({ title: 'New', ...NEW }));
+    await waitFor(() => expect(t.hook.result.current.createEvent.isSuccess).toBe(true));
+    await flush();
+    expect(t.api.getCalendarEvents).not.toHaveBeenCalled();
+    expect(t.api.getSchedule).not.toHaveBeenCalled();
+
+    act(() => t.moveBlock[0]!.ok());
+    await waitFor(() => expect(t.hook.result.current.moveBlock.isSuccess).toBe(true));
+    await flush();
+    expect(t.api.getCalendarEvents).toHaveBeenCalledTimes(1);
+    expect(t.api.getSchedule).toHaveBeenCalledTimes(1);
+    expect(t.qc.getQueryData<Item[]>(queryKeys.calendarEvents('a', 'b'))).toHaveLength(2);
+    expect(t.scheduleHistory.map((l) => b1(l)?.startsAt)).not.toContain(OLD.startsAt);
   });
 });
