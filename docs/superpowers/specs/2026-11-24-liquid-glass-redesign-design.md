@@ -328,7 +328,7 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
   - Right padding is reserved only for what is always visible in the corner cluster: lock/pin, plus × on coarse pointers.
   - Accessible name: "<title>, <Wed 09:00 AM – 10:00 AM>, <locked, synced from Google | movable, drag to reschedule>". **P4** should add the arrow-key wording and `aria-describedby` once keyboard moves exist.
   - Started tasks get a 3px accent bar (`started-bar`). There is no play icon or "Now" dot: the pin keeps the icon slot.
-- **Times** on tiles still use `formatHm` ("09:00 AM", 2-digit hour); the design shows "1:30 PM". The detail card and Next-up card use the unpadded form. Unifying them is a P8 polish item, because many tests pin the `formatHm` output.
+- **Times:** `formatHm` now renders the unpadded hour ("9:00 AM", `hour: 'numeric'`, still the user's locale), matching the design and the detail/Next-up cards. Its callers are all planner surfaces: tile labels, tile accessible names, the drag/resize label and the CreatePopover slot label.
 - **Legend:** four static items (Meetings swatch, Movable dashed swatch, Locked icon, Blocked hatch). P4 turns the first two into the filter toggles.
 - **Selection (§5.4, Q6 default applied):**
   - **md+, any pointer:** a click, tap or Enter selects. Behaviour changes: an iPad tap no longer opens the TaskDrawer, and a desktop click on an app event no longer opens the EventDrawer. The card's Open buttons do both.

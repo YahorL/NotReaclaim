@@ -17,7 +17,7 @@ describe('CreatePopover', () => {
   it('shows the snapped slot label and defaults to a 30-min event', () => {
     renderWithProviders(<CreatePopover {...baseProps} />, { api: fakeApiClient() });
     expect(screen.getByTestId('create-popover')).toBeInTheDocument();
-    expect(screen.getByTestId('slot-label').textContent).toMatch(/09:00.*09:30/);
+    expect(screen.getByTestId('slot-label').textContent).toMatch(/^9:00 AM – 9:30 AM$/);
   });
 
   it('creates an event and closes', async () => {
@@ -388,7 +388,7 @@ describe('CreatePopover as a bottom sheet', () => {
 
   it('compact keeps the same form and the snapped slot', () => {
     renderWithProviders(<CreatePopover {...baseProps} compact />, { api: fakeApiClient() });
-    expect(screen.getByTestId('slot-label').textContent).toMatch(/09:00.*09:30/);
+    expect(screen.getByTestId('slot-label').textContent).toMatch(/^9:00 AM – 9:30 AM$/);
     expect(screen.getByTestId('mode-event')).toBeInTheDocument();
     expect(screen.getByTestId('mode-task')).toBeInTheDocument();
     expect(screen.getByTestId('mode-blocked')).toBeInTheDocument();

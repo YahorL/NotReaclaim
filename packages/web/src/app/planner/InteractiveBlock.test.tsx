@@ -82,7 +82,6 @@ describe('InteractiveBlock', () => {
     expect(onCommit).not.toHaveBeenCalled();
   });
 
-  const fmt = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   it('preview snaps to the 15-min grid while moving (sub-step drag → no offset)', () => {
     renderBlock();
@@ -100,7 +99,7 @@ describe('InteractiveBlock', () => {
     fireEvent.pointerMove(el, { clientX: 50, clientY: 120, pointerId: 1 }); // 20px ≈ 20min → snaps to 15
     expect(el.style.transform).toBe(`translate(0px, ${minutesToPx(15)}px)`);
     expect(screen.getByTestId('drag-label')).toHaveTextContent(
-      `${fmt(START + 15 * 60_000)} – ${fmt(END + 15 * 60_000)}`,
+      '9:15 AM – 10:15 AM',
     );
   });
 
@@ -112,7 +111,7 @@ describe('InteractiveBlock', () => {
     const el = screen.getByTestId('event-block');
     expect(el.style.height).toBe(`calc(5% + ${minutesToPx(60)}px)`);
     expect(screen.getByTestId('drag-label')).toHaveTextContent(
-      `${fmt(START)} – ${fmt(END + 60 * 60_000)}`,
+      '9:00 AM – 11:00 AM',
     );
   });
 
@@ -648,7 +647,6 @@ describe('InteractiveBlock scroll compensation', () => {
     } as unknown as HTMLElement;
   }
 
-  const fmt = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   it('folds the container scroll during a drag into the committed move', () => {
     const onCommit = vi.fn();
@@ -703,7 +701,7 @@ describe('InteractiveBlock scroll compensation', () => {
       fireEvent.pointerMove(el, { clientX: 50, clientY: 590, pointerId: 1 });
       // 30px of finger travel = 30 min → snapped to +30.
       expect(screen.getByTestId('drag-label')).toHaveTextContent(
-        `${fmt(START + 30 * 60_000)} – ${fmt(END + 30 * 60_000)}`,
+        '9:30 AM – 10:30 AM',
       );
 
       // Now the finger stops. One auto-scroll frame fires — and nothing else.
@@ -712,7 +710,7 @@ describe('InteractiveBlock scroll compensation', () => {
       expect(scroller.scrollTop).toBe(step);
       // 30px of finger + 12px of scroll = 42 min → snapped to +45, with no new pointermove.
       expect(screen.getByTestId('drag-label')).toHaveTextContent(
-        `${fmt(START + 45 * 60_000)} – ${fmt(END + 45 * 60_000)}`,
+        '9:45 AM – 10:45 AM',
       );
 
       // And the commit agrees with what the preview showed — no landing jump.

@@ -227,7 +227,7 @@ describe('weekModel timezone-aware (America/New_York)', () => {
     expect(shiftDays(noonZ, 1, Z)).toBe(Date.parse('2026-06-19T16:00:00.000Z'));
   });
   it('formats labels in the zone', () => {
-    expect(formatHm(Date.parse('2026-06-18T13:00:00.000Z'), Z)).toBe('09:00 AM'); // 13:00Z = 9am EDT
+    expect(formatHm(Date.parse('2026-06-18T13:00:00.000Z'), Z)).toBe('9:00 AM'); // 13:00Z = 9am EDT; no leading zero (design form)
     expect(weekdayLabel(Date.parse('2026-06-18T13:00:00.000Z'), Z)).toBe('Thu');
     expect(dayOfMonth(Date.parse('2026-06-18T13:00:00.000Z'), Z)).toBe(18);
   });

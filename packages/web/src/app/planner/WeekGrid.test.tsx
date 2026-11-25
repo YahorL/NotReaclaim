@@ -290,7 +290,7 @@ describe('WeekGrid', () => {
     const blocks = [block({ id: 'b1', title: 'Morning', startsAt: '2026-06-18T13:00:00.000Z', endsAt: '2026-06-18T14:00:00.000Z' })];
     renderGrid({ days: [day], blocks, nowMs: Date.parse('2026-06-18T16:00:00.000Z'), zone: 'America/New_York' });
     const tile = screen.getAllByTestId('event-block').find((b) => b.textContent?.includes('Morning'))!;
-    expect(tile.textContent).toMatch(/09:00 AM/); // 13:00Z = 9am EDT
+    expect(tile.textContent).toMatch(/(^|[^0-9])9:00 AM/); // 13:00Z = 9am EDT, no leading zero
   });
 
   it('renders two overlapping blocks side-by-side at half width', () => {

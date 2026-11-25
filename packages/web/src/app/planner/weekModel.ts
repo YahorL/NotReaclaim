@@ -188,9 +188,9 @@ export function shiftDays(ms: number, days: number, zone: string): number {
   return DateTime.fromMillis(ms, { zone }).plus({ days }).toMillis();
 }
 
-/** Time-of-day label (e.g. "09:00 AM") of `ms` rendered in `zone`. */
+/** Time-of-day label (e.g. "9:00 AM", no leading zero — the design's tile/ghost form) of `ms` rendered in `zone`. */
 export function formatHm(ms: number, zone: string): string {
-  return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: zone });
+  return new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone: zone });
 }
 
 /** 3-letter weekday (e.g. "Mon") of `ms` in `zone`. */
