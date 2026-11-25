@@ -8,6 +8,7 @@ import { HabitRow } from '../habits/HabitRow';
 import { HabitDrawer } from '../habits/HabitDrawer';
 import { DrawerHost } from '../components/DrawerHost';
 import { useCompactWidth } from '../lib/useMediaQuery';
+import { saveErrorText } from '../lib/saveError';
 import { defaultQuickAddInput } from '../habits/habitForm';
 import { habitSummary } from '../habits/habitSummary';
 
@@ -73,7 +74,7 @@ export function Habits() {
           {/* Keyed by id: the drawer seeds its form once at mount, and the overlay is no focus
               trap, so keyboard Edit on another row switches the habit under a mounted drawer. */}
           <HabitDrawer key={editing.id} habit={editing} compact={compact} saving={updateM.isPending}
-            error={updateM.error instanceof ApiError ? updateM.error : null}
+            error={updateM.error instanceof ApiError ? { message: saveErrorText(updateM.error) } : null}
             onSave={(patch) => updateM.mutate({ id: editing.id, patch }, { onSuccess: () => setEditing(null) })}
             onCancel={() => setEditing(null)} />
         </DrawerHost>

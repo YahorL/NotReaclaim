@@ -16,7 +16,8 @@ export const authCallbackQuerySchema = z.object({ code: z.string().min(1), state
 export const consentQuerySchema = z.object({ invite: z.string().min(1).optional() });
 
 // Shared by the chunk-order refines below and the PATCH /tasks merged check in task-routes.
-export const CHUNK_ORDER = { message: 'minChunkMs must not exceed maxChunkMs', path: ['minChunkMs'] };
+// Messages on a field path read after the field name: the 400 body says "minChunkMs: must not…".
+export const CHUNK_ORDER = { message: 'must not exceed maxChunkMs', path: ['minChunkMs'] };
 
 const taskFieldsSchema = z.object({
   title: z.string().min(1),
@@ -39,17 +40,31 @@ export const listTasksQuerySchema = z.object({
   status: taskStatusSchema.optional(),
 });
 
-export const createHabitSchema = z.object({
+// A minute of the local day, 00:00..24:00 inclusive (1440 = end of day, as for working hours).
+const minuteOfDaySchema = z.number().int().min(0).max(1440);
+
+// Shared by the create refine below and the PATCH /habits merged check in habit-routes. Core
+// has no overnight preferred windows: it silently drops one whose end is not after its start.
+export const PREFERRED_ORDER = { message: 'must be after preferredStartMinute', path: ['preferredEndMinute'] };
+export const preferredWindowInOrder = (start: number | null | undefined, end: number | null | undefined): boolean =>
+  start == null || end == null || start < end;
+
+const habitFieldsSchema = z.object({
   title: z.string().min(1),
   priority: z.number().int(),
   chunkMs: z.number().int().positive(),
   perPeriod: z.number().int().positive(),
   eligibleDays: z.array(z.number().int().min(0).max(6)),
   periodType: z.enum(['week']).optional(),
-  preferredStartMinute: z.number().int().nullable().optional(),
-  preferredEndMinute: z.number().int().nullable().optional(),
+  preferredStartMinute: minuteOfDaySchema.nullable().optional(),
+  preferredEndMinute: minuteOfDaySchema.nullable().optional(),
 });
-export const updateHabitSchema = createHabitSchema.partial().extend({
+export const createHabitSchema = habitFieldsSchema.refine(
+  (b) => preferredWindowInOrder(b.preferredStartMinute, b.preferredEndMinute), PREFERRED_ORDER,
+);
+// Partial: window order is checked in the route against the stored row, and only when the
+// patch touches a bound, so rows that already conflict stay editable.
+export const updateHabitSchema = habitFieldsSchema.partial().extend({
   status: z.enum(['active', 'paused']).optional(),
 });
 
@@ -64,21 +79,33 @@ export const workingHourEntrySchema = z.object({
   endMinute: z.number().int().min(0).max(1440),
 }).refine((w) => w.startMinute < w.endMinute, { message: 'startMinute must be before endMinute' });
 
-export const settingsSchema = z.object({
-  timezone: z.string().refine(isValidTimezone, { message: 'timezone must be a valid IANA time zone' }),
+// 0..24 h. Also keeps the value inside the 32-bit Int column (a larger one was a 500).
+const bufferMsSchema = z.number().int().nonnegative().max(24 * 60 * 60_000, { message: 'must be at most 24 hours' });
+
+const settingsFieldsSchema = z.object({
+  timezone: z.string().refine(isValidTimezone, { message: 'must be a valid IANA time zone' }),
   // An empty week is allowed here (unlike category windows): it means "no working hours".
   workingHours: z.array(workingHourEntrySchema),
   horizonDays: z.number().int().positive().optional(),
   defaultMinChunkMs: z.number().int().positive(),
   defaultMaxChunkMs: z.number().int().positive(),
-  meetingBufferMs: z.number().int().nonnegative().optional(),
-  taskBufferMs: z.number().int().nonnegative().optional(),
+  meetingBufferMs: bufferMsSchema.optional(),
+  taskBufferMs: bufferMsSchema.optional(),
   requireStartToTrack: z.boolean().optional(),
   /** Visual planner day boundary, minutes past local midnight (0 = midnight, 180 = 03:00). */
   dayStartMinute: z.number().int().min(0).max(1439).optional(),
-}).refine((b) => b.defaultMinChunkMs <= b.defaultMaxChunkMs, {
-  message: 'defaultMinChunkMs must not exceed defaultMaxChunkMs', path: ['defaultMinChunkMs'],
 });
+// Shared by the PUT refine and the PATCH /settings merged check in settings-routes.
+export const DEFAULT_CHUNK_ORDER = { message: 'must not exceed defaultMaxChunkMs', path: ['defaultMinChunkMs'] };
+export const settingsSchema = settingsFieldsSchema.refine(
+  (b) => b.defaultMinChunkMs <= b.defaultMaxChunkMs, DEFAULT_CHUNK_ORDER,
+);
+// PATCH: any subset, each field under the PUT rules. Chunk order is checked in the route against
+// the stored row, and only when the patch touches min or max, so other edits are never blocked
+// by a stored value that predates a rule (e.g. a legacy invalid time zone).
+export const patchSettingsSchema = settingsFieldsSchema.partial().refine(
+  (b) => Object.values(b).some((v) => v !== undefined), { message: 'empty update' },
+);
 
 export const createCategorySchema = z.object({
   name: z.string().min(1),
@@ -145,14 +172,17 @@ export const updateScheduledBlockSchema = z
   })
   .refine((b) => !(b.startsAt && b.endsAt) || startsBeforeEnds(b.startsAt, b.endsAt), START_BEFORE_END);
 
+/** Minimum password length, everywhere a password is set: register, set-password and the admin CLI. */
+export const MIN_PASSWORD_LENGTH = 10;
+
 export const registerSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(10),
+  password: z.string().min(MIN_PASSWORD_LENGTH),
   inviteCode: z.string().min(1).optional(),
 });
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
 });
-export const setPasswordSchema = z.object({ password: z.string().min(10) });
+export const setPasswordSchema = z.object({ password: z.string().min(MIN_PASSWORD_LENGTH) });
 export const changeEmailSchema = z.object({ email: z.string().email() });

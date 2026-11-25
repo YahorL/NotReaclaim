@@ -162,6 +162,14 @@ describe('board drop → PATCH (ported from the deleted Priorities drag tests)',
     expect(move(board, 'a', 'col:low')).toEqual({ priority: 4, sortOrder: 8 });
   });
 
+  it('a drop on the column area below the last card lands at the end — same patch as dropping after the last card', () => {
+    // Same column: dropping on the last card (downward) inserts after it; the column area appends.
+    expect(move(board, 'a', 'col:high')).toEqual(move(board, 'a', 'c'));
+    expect(move(board, 'a', 'col:high')).toEqual({ sortOrder: 4 });
+    // From another column: the bottom of a non-empty column, past its last card (sortOrder 7).
+    expect(move(board, 'c1', 'col:low')).toEqual({ priority: 4, sortOrder: 8 });
+  });
+
   it('dropping a pending task onto the backlog sets status without priority', () => {
     const patch = move(board, 'l1', 'col:backlog');
     expect(patch).toEqual({ status: 'backlog', sortOrder: 0 });

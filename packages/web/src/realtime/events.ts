@@ -1,5 +1,5 @@
 import type { QueryClient, QueryKey } from '@tanstack/react-query';
-import { queryKeys } from '../api/queries';
+import { invalidateRoot, queryKeys } from '../api/queries';
 
 /** The data kinds a server write can announce; mirrors the server's closed `DataResource` union. */
 export type DataResource = 'tasks' | 'habits' | 'categories' | 'settings' | 'calendarEvents' | 'schedule' | 'googleStatus';
@@ -22,32 +22,43 @@ const RESOURCE_ROOTS: Record<DataResource, QueryKey> = {
   googleStatus: queryKeys.googleStatusRoot,
 };
 
+/**
+ * Refresh everything a realtime event could have refreshed — for a socket that has just come back
+ * after a drop, whose missed events are gone. `RESOURCE_ROOTS` names every root (the other event
+ * types refresh subsets of it; `events.test.ts` pins that). Through `invalidateRoot`, so the
+ * schedule / calendar-event roots wait for a pending planner write to settle.
+ */
+export function invalidateAllEventRoots(qc: QueryClient): void {
+  for (const root of Object.values(RESOURCE_ROOTS)) invalidateRoot(qc, root);
+}
+
 /** Invalidate the query keys affected by a server event. Invalidating a root key (e.g.
  *  ['schedule']) matches every ['schedule', ...] key (including ['schedule','preview']) by prefix.
  *  Anything unrecognised — an event type or a resource name from a newer server — is ignored,
- *  so old and new bundles/servers can talk to each other during a deploy. */
+ *  so old and new bundles/servers can talk to each other during a deploy. While a planner write
+ *  is pending, the schedule/calendar-event roots are only marked stale (see `invalidateRoot`). */
 export function invalidateForEvent(qc: QueryClient, event: ServerEvent): void {
   switch (event.type) {
     case 'schedule.updated':
-      void qc.invalidateQueries({ queryKey: queryKeys.scheduleRoot });
+      invalidateRoot(qc, queryKeys.scheduleRoot);
       break;
     case 'sync.completed':
-      void qc.invalidateQueries({ queryKey: queryKeys.scheduleRoot });
-      void qc.invalidateQueries({ queryKey: queryKeys.calendarEventsRoot });
+      invalidateRoot(qc, queryKeys.scheduleRoot);
+      invalidateRoot(qc, queryKeys.calendarEventsRoot);
       break;
     case 'task.changed':
-      void qc.invalidateQueries({ queryKey: queryKeys.tasksRoot });
-      void qc.invalidateQueries({ queryKey: queryKeys.scheduleRoot });
+      invalidateRoot(qc, queryKeys.tasksRoot);
+      invalidateRoot(qc, queryKeys.scheduleRoot);
       break;
     case 'google.status':
-      void qc.invalidateQueries({ queryKey: queryKeys.googleStatusRoot });
+      invalidateRoot(qc, queryKeys.googleStatusRoot);
       break;
     case 'data.changed': {
       const resources: unknown = event.resources;
       if (!Array.isArray(resources)) break;
       for (const resource of new Set(resources)) {
         if (typeof resource !== 'string' || !Object.hasOwn(RESOURCE_ROOTS, resource)) continue;
-        void qc.invalidateQueries({ queryKey: RESOURCE_ROOTS[resource as DataResource] });
+        invalidateRoot(qc, RESOURCE_ROOTS[resource as DataResource]);
       }
       break;
     }

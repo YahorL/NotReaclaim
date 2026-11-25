@@ -6,7 +6,7 @@ export { NotFoundError, ConflictError } from './errors.js';
 export { createUserRepository } from './repositories/user-repository.js';
 export type { UserRepository, CreateUserInput, UpdateUserInput } from './repositories/user-repository.js';
 export { createSettingsRepository } from './repositories/settings-repository.js';
-export type { SettingsRepository, UpsertSettingsInput } from './repositories/settings-repository.js';
+export type { SettingsRepository, UpsertSettingsInput, UpdateSettingsInput } from './repositories/settings-repository.js';
 export { createCalendarEventRepository } from './repositories/calendar-event-repository.js';
 export type { CalendarEventRepository, CreateCalendarEventInput, UpsertCalendarEventInput, UpdateCalendarEventInput } from './repositories/calendar-event-repository.js';
 export { createTaskRepository } from './repositories/task-repository.js';

@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import type { SettingsInput } from '../../api/types';
-import type { ApiError } from '../../api/client';
 import { DurationStepper } from '../components/DurationStepper';
 import { FieldBox } from '../components/FieldBox';
 import { PrimaryButton } from '../components/Buttons';
@@ -22,7 +21,8 @@ export interface SettingsFormProps {
   /** `onSaved` once the server confirmed THIS input: it becomes the "Unsaved changes" baseline. */
   onSave: (input: SettingsInput, onSaved: () => void) => void;
   saving?: boolean;
-  error?: ApiError | null;
+  /** The failed save's text (server message, or the no-response line — see saveErrorText). */
+  error?: { message: string } | null;
   justSaved?: boolean;
   timezones?: string[];
 }

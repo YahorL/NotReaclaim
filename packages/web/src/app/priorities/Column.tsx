@@ -48,11 +48,14 @@ export function Column({
   // the user did not drag: a keyboard move, a refetch, a WS-driven re-sort, a filter.
   const setFlipRef = useFlip(tasks.map((t) => t.id).join('|'), suppressFlip);
   // The whole grid cell is a drop target (it stretches to the row's height), so a card can land in
-  // a column's empty area or on a collapsed column. Completed rejects drops.
+  // a column's empty area or on a collapsed column's header. Completed rejects drops.
   const { setNodeRef } = useDroppable({ id: columnDroppableId(columnKey), disabled: isCompleted });
 
   return (
-    <div ref={setNodeRef} data-testid={`column-${columnKey}`} className="flex min-w-0 snap-start flex-col">
+    // The grid stretches each column cell to the board's height so the empty space below the cards
+    // accepts a drop. A collapsed column shows only its header, so it keeps to its own height
+    // (self-start): stretched, it would accept drops all the way down with nothing visible there.
+    <div ref={setNodeRef} data-testid={`column-${columnKey}`} className={`flex min-w-0 snap-start flex-col ${collapsed ? 'self-start' : ''}`}>
       <section
         aria-label={meta.label}
         data-drop-target={isTarget || undefined}

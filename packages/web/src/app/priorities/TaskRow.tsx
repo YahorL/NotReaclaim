@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEventHandler, type TouchEventHandler } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEventHandler, type TouchEventHandler } from 'react';
 import { DndContext, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { Task, Subtask } from '../../api/types';
 import { Icons } from '../shell/icons';
 import { useAppSensors, pointerFirstCollision } from '../dnd/sensors';
+import { makeSubtaskAnnouncements } from '../dnd/announcements';
 import { useClickOutside } from '../components/useClickOutside';
 import { subtaskDropSortOrder } from '../tasks/subtaskDnd';
 import { formatDurationShort } from '../lib/duration';
@@ -124,6 +125,8 @@ export function TaskRow({ task, columnKey, nextMs, now, zone, draggable = true, 
   const done = task.status === 'completed';
   const meta = `${dueShort(task.dueBy, zone)}${nextMs !== null ? ` · Next: ${relativeDayTimeLabel(nextMs, now, zone)}` : ''}`;
   const subtasks = task.subtasks ?? [];
+  // Say the subtask's title and position, not dnd-kit's raw ids (see makeSubtaskAnnouncements).
+  const subtaskA11y = useMemo(() => ({ announcements: makeSubtaskAnnouncements(subtasks, task.title) }), [subtasks, task.title]);
   const subtaskDone = subtasks.filter((s) => s.done).length;
   // Mouse drags start anywhere on the card (a 4px move, so a click still opens the drawer); touch
   // drags start only on the grip, so a swipe on the card body always scrolls the page.
@@ -232,7 +235,7 @@ export function TaskRow({ task, columnKey, nextMs, now, zone, draggable = true, 
         // Nested inside the board's DndContext. Safe: dnd-kit stamps `dndKit` on the native event
         // when a sensor captures it, so the enclosing card's activator declines — structurally
         // what the old stopPropagation calls were doing by hand.
-        <DndContext sensors={subtaskSensors} collisionDetection={pointerFirstCollision} onDragEnd={onSubtaskDragEnd}>
+        <DndContext sensors={subtaskSensors} accessibility={subtaskA11y} collisionDetection={pointerFirstCollision} onDragEnd={onSubtaskDragEnd}>
           <SortableContext items={subtasks.map((s) => s.id)} strategy={verticalListSortingStrategy}>
             {/* space-y-2 on coarse is the second half of the checkbox-halo fix: it lifts the
                 row pitch from 24px to 28px so the padded labels above abut instead of overlap. */}

@@ -48,6 +48,39 @@ describe('NewTaskModal', () => {
     expect(screen.getByRole('button', { name: /^create$/i })).toBeDisabled();
   });
 
+  it('says why Create is disabled when min chunk > max chunk (the drawer wording)', () => {
+    renderWithProviders(<NewTaskModal now={() => NOW} onClose={vi.fn()} />, { api: fakeApiClient(api() as never) });
+    fireEvent.change(screen.getByPlaceholderText(/task name/i), { target: { value: 'Write spec' } });
+    expect(screen.queryByTestId('err-maxChunkMs')).toBeNull();
+    // Fallback seed is 30 / 120 min: step min up to 135 min, past max.
+    for (let i = 0; i < 7; i++) fireEvent.click(screen.getByRole('button', { name: 'increase min' }));
+    expect(screen.getByRole('button', { name: /^create$/i })).toBeDisabled();
+    const err = screen.getByTestId('err-maxChunkMs');
+    expect(err).toHaveTextContent('Max chunk must be ≥ min chunk');
+    expect(err).toHaveClass('text-danger');
+    // It sits with the Max duration field, like the date errors sit with theirs.
+    expect(screen.getByText('Max duration').parentElement).toContainElement(err);
+  });
+
+  it('hides the chunk-order error when Split is off (unsplit chunks collapse to the duration)', () => {
+    renderWithProviders(<NewTaskModal now={() => NOW} onClose={vi.fn()} />, { api: fakeApiClient(api() as never) });
+    for (let i = 0; i < 7; i++) fireEvent.click(screen.getByRole('button', { name: 'increase min' }));
+    expect(screen.getByTestId('err-maxChunkMs')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: /split up/i }));
+    expect(screen.queryByTestId('err-maxChunkMs')).toBeNull();
+  });
+
+  it('shows "Title is required" once the user has typed and cleared the name, not on a fresh modal', () => {
+    renderWithProviders(<NewTaskModal now={() => NOW} onClose={vi.fn()} />, { api: fakeApiClient(api() as never) });
+    expect(screen.queryByTestId('err-title')).toBeNull();
+    const input = screen.getByPlaceholderText(/task name/i);
+    fireEvent.change(input, { target: { value: 'W' } });
+    expect(screen.queryByTestId('err-title')).toBeNull();
+    fireEvent.change(input, { target: { value: '  ' } });
+    expect(screen.getByTestId('err-title')).toHaveTextContent('Title is required');
+    expect(screen.getByTestId('err-title')).toHaveClass('text-danger');
+  });
+
   it('with Split off, sends min=max=duration', async () => {
     const createTask = vi.fn(async () => task());
     renderWithProviders(<NewTaskModal now={() => NOW} onClose={vi.fn()} />, { api: fakeApiClient(api(createTask) as never) });
@@ -105,6 +138,40 @@ describe('NewTaskModal', () => {
     fireEvent.click(screen.getByTestId('new-category-confirm'));
     await waitFor(() => expect(createCategory).toHaveBeenCalledWith({ name: 'Deep Work', windows: [{ weekday: 1, startMinute: 540, endMinute: 1020 }] }));
     await waitFor(() => expect(screen.queryByTestId('new-category-name')).not.toBeInTheDocument());
+  });
+
+  describe('the new category\'s hours (the server rejects an empty window list)', () => {
+    const settingsWith = (workingHours: unknown[]) => ({ id: 's', userId: 'u', timezone: 'UTC', workingHours, horizonDays: 14, defaultMinChunkMs: 1800000, defaultMaxChunkMs: 7200000, createdAt: '', updatedAt: '' });
+    async function createCategoryWith(workingHours: unknown[], defaultWindows: unknown[] | null) {
+      const createCategory = vi.fn().mockResolvedValue({ id: 'cat-new', userId: 'u', name: 'Deep Work', windows: [], isDefault: false });
+      const api = fakeApiClient({
+        getSettings: vi.fn().mockResolvedValue(settingsWith(workingHours)),
+        listCategories: vi.fn().mockResolvedValue([{ id: 'cat-def', userId: 'u', name: 'Working Hours', windows: defaultWindows, isDefault: true }]),
+        createCategory,
+      } as never);
+      renderWithProviders(<NewTaskModal onClose={() => {}} now={() => NOW} />, { api });
+      await waitFor(() => expect(screen.getByTestId('category-select')).toHaveValue('cat-def'));
+      fireEvent.click(screen.getByTestId('new-category-btn'));
+      fireEvent.change(screen.getByTestId('new-category-name'), { target: { value: 'Deep Work' } });
+      fireEvent.click(screen.getByTestId('new-category-confirm'));
+      await waitFor(() => expect(createCategory).toHaveBeenCalledTimes(1));
+      return createCategory.mock.calls[0]![0] as { name: string; windows: unknown[] };
+    }
+
+    it('never sends an empty window list when working hours are empty: falls back to a new account\'s week (Mon–Fri 09:00–17:00)', async () => {
+      const body = await createCategoryWith([], null);
+      expect(body.windows.length).toBeGreaterThan(0);
+      expect(body).toEqual({
+        name: 'Deep Work',
+        windows: [1, 2, 3, 4, 5].map((weekday) => ({ weekday, startMinute: 540, endMinute: 1020 })),
+      });
+    });
+
+    it('copies the default category\'s own hours when it has them (it does not inherit working hours)', async () => {
+      const own = [{ weekday: 2, startMinute: 600, endMinute: 720 }];
+      const body = await createCategoryWith([], own);
+      expect(body).toEqual({ name: 'Deep Work', windows: own });
+    });
   });
 
   it('sizes the dialog fluidly so it fits narrow viewports', () => {

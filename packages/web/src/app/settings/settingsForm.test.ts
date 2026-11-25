@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { Settings } from '../../api/types';
 import {
   toFormState, defaultFormState, validateSettingsForm, toSettingsInput, browserTimezone, type SettingsFormState,
+  validateBufferMs, validateBufferMinutesText,
 } from './settingsForm';
 
 const settings = (over: Partial<Settings> = {}): Settings => ({
@@ -80,6 +81,23 @@ describe('settingsForm', () => {
     const out = toSettingsInput({ ...base, meetingBufferMs: 900000, taskBufferMs: 600000 });
     expect(out).toMatchObject({ meetingBufferMs: 900000, taskBufferMs: 600000 });
     expect(validateSettingsForm({ ...base, meetingBufferMs: -60000 }).ok).toBe(false);
+  });
+
+  // The Settings form shows no buffer fields, so a buffer over 24 h stored before the server
+  // capped it must not silently disable its Save: the server's 400 names the field instead.
+  it('does not cap a stored buffer in the Settings form, which has no field to show the error', () => {
+    expect(validateBufferMs(0)).toBeUndefined();
+    expect(validateBufferMs(25 * 60 * 60_000)).toBeUndefined();
+    expect(validateSettingsForm(validState({ meetingBufferMs: 25 * 60 * 60_000 })).ok).toBe(true);
+    expect(validateBufferMs(-60_000)).toBe('Buffer must be a whole number of minutes (≥ 0)');
+  });
+
+  it('validates typed buffer text: whole minutes 0..1440, nothing else', () => {
+    for (const ok of ['0', '5', '05', '1440']) expect(validateBufferMinutesText(ok), ok).toBeUndefined();
+    for (const bad of ['', ' ', '-', '-5', '1.5', '1e3', 'abc']) {
+      expect(validateBufferMinutesText(bad), bad).toBe('Buffer must be a whole number of minutes (≥ 0)');
+    }
+    expect(validateBufferMinutesText('1441')).toBe('Buffer must be at most 24 hours (1440 min)');
   });
 
   it('round-trips dayStartMinute and defaults it to 0', () => {

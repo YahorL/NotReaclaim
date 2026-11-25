@@ -2,9 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // OAuth token refresh goes through google-auth-library's own transporter (not global fetch),
 // so the library is stubbed here to script exactly what a failed refresh rejects with.
-const { refreshMock } = vi.hoisted(() => ({ refreshMock: vi.fn() }));
+const { refreshMock, constructed } = vi.hoisted(() => ({ refreshMock: vi.fn(), constructed: [] as unknown[] }));
 vi.mock('google-auth-library', () => ({
   OAuth2Client: class {
+    constructor(opts: unknown) { constructed.push(opts); }
     setCredentials(): void {}
     refreshAccessToken(): Promise<{ credentials: { access_token?: string; expiry_date?: number } }> {
       return refreshMock();
@@ -77,5 +78,18 @@ describe('googleClient.refreshAccessToken', () => {
   it('rejects a refresh that returns no access token', async () => {
     refreshMock.mockResolvedValue({ credentials: {} });
     await expect(client.refreshAccessToken('rt')).rejects.toBeInstanceOf(GoogleAuthError);
+  });
+});
+
+describe('OAuth request timeout', () => {
+  it('gives the OAuth client (token refresh, code exchange) the same request timeout', async () => {
+    constructed.length = 0;
+    refreshMock.mockResolvedValue({ credentials: { access_token: 'at', expiry_date: 1 } });
+    await createGoogleClient({ clientId: 'cid', clientSecret: 'secret' }).refreshAccessToken('rt');
+    await createGoogleClient({ clientId: 'cid', clientSecret: 'secret', requestTimeoutMs: 250 }).refreshAccessToken('rt');
+    expect(constructed).toEqual([
+      expect.objectContaining({ transporterOptions: { timeout: 15_000 } }),
+      expect.objectContaining({ transporterOptions: { timeout: 250 } }),
+    ]);
   });
 });

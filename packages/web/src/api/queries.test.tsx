@@ -4,7 +4,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiProvider } from './ApiProvider';
 import { fakeApiClient } from '../test/fakes';
-import { queryKeys, useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useHabitsQuery, useCreateTaskMutation, useDeleteHabitMutation, useSettingsQuery, useUpdateSettingsMutation, useCreateCalendarEventMutation, useCreateScheduledBlockMutation } from './queries';
+import { queryKeys, useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useHabitsQuery, useCreateTaskMutation, useDeleteHabitMutation, useSettingsQuery, useSaveSettingsMutation, useCreateCalendarEventMutation, useCreateScheduledBlockMutation } from './queries';
 
 function wrap(api = fakeApiClient(), qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   const Wrapper = ({ children }: { children: ReactNode }) => (
@@ -140,17 +140,32 @@ describe('useSettingsQuery', () => {
   });
 });
 
-describe('useUpdateSettingsMutation', () => {
-  it('calls putSettings and invalidates settings + schedule', async () => {
+describe('useSaveSettingsMutation (the Settings page)', () => {
+  const input = { timezone: 'UTC', workingHours: [], defaultMinChunkMs: 1, defaultMaxChunkMs: 1, meetingBufferMs: 5, taskBufferMs: 6 };
+
+  it('PATCHes every field but the two buffers and invalidates settings + schedule', async () => {
+    const patchSettings = vi.fn(async () => ({ id: 's1' }));
     const putSettings = vi.fn(async () => ({ id: 's1' }));
-    const api = fakeApiClient({ putSettings } as never);
+    const api = fakeApiClient({ patchSettings, putSettings } as never);
     const { Wrapper, qc } = wrap(api);
     const spy = vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
-    const { result } = renderHook(() => useUpdateSettingsMutation(), { wrapper: Wrapper });
-    result.current.mutate({ timezone: 'UTC', workingHours: [], defaultMinChunkMs: 1, defaultMaxChunkMs: 1 });
-    await waitFor(() => expect(putSettings).toHaveBeenCalled());
+    const { result } = renderHook(() => useSaveSettingsMutation(true), { wrapper: Wrapper });
+    result.current.mutate(input);
+    await waitFor(() => expect(patchSettings).toHaveBeenCalledWith({ timezone: 'UTC', workingHours: [], defaultMinChunkMs: 1, defaultMaxChunkMs: 1 }));
+    expect(putSettings).not.toHaveBeenCalled();
     await waitFor(() => expect(spy).toHaveBeenCalledWith({ queryKey: ['settings'] }));
     expect(spy).toHaveBeenCalledWith({ queryKey: ['schedule'] });
+  });
+
+  it('with no settings row yet, PUTs the whole input (buffers included)', async () => {
+    const patchSettings = vi.fn(async () => ({ id: 's1' }));
+    const putSettings = vi.fn(async () => ({ id: 's1' }));
+    const api = fakeApiClient({ patchSettings, putSettings } as never);
+    const { Wrapper } = wrap(api);
+    const { result } = renderHook(() => useSaveSettingsMutation(false), { wrapper: Wrapper });
+    result.current.mutate(input);
+    await waitFor(() => expect(putSettings).toHaveBeenCalledWith(input));
+    expect(patchSettings).not.toHaveBeenCalled();
   });
 });
 

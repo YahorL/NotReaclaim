@@ -108,16 +108,37 @@ sudo tailscale serve --bg 8080
 tailscale serve status      # expect https://<machine>.<tailnet>.ts.net → 127.0.0.1:8080
 ```
 Create your owner account (registration is closed, so do it via the admin CLI inside the
-server container):
+server container). It asks for the password twice without echoing it (at least 10 characters,
+the same rule as registering in the app):
 ```sh
 docker compose exec server node packages/server/scripts/admin.mjs \
-  create-user --email you@example.com --password 'your-strong-password' --admin
+  create-user --email you@example.com --admin --timezone Europe/Berlin
 ```
-(Omit `--password` for a Google-only account that links by email on first Google sign-in.
-The CLI also has `set-password --email <e> --password <p>` and
-`create-invite [--email <invitee>] [--by <issuer email>] [--max-uses <n>] [--expires <date>]`:
-`--email` binds the code to that invitee, `--by` names the issuing user (default: the first
-admin). Run it with `help` for usage; a bad invocation prints usage and exits non-zero.)
+`--timezone` (an IANA zone) is the account's starting time zone; it defaults to the server
+process's own zone — normally `UTC` inside the container — and can be changed later in Settings.
+From a script, pipe the password on stdin instead (`-T` disables the TTY so stdin is read):
+```sh
+printf '%s\n' "$OWNER_PASSWORD" | docker compose exec -T server node packages/server/scripts/admin.mjs \
+  create-user --email you@example.com --admin
+```
+(`--password <p>` still works but prints a warning: it is visible in shell history and the
+process list. `--google-only` creates an account without a password that links by email on
+first Google sign-in.)
+
+The CLI also has:
+- `set-password --email <e>` — asks for (or reads from stdin) a new password, same rules.
+- `delete-user --email <e> [--yes]` — shows the user and how many tasks, habits, blocks,
+  calendar events and issued invite codes go with it, then asks you to type the email again
+  (`--yes` skips that and is required when not on a terminal). It refuses to delete the last
+  admin. It removes only NotReclaim's data: events already in the user's Google Calendar are
+  NOT deleted and the Google grant is NOT revoked (the user can remove it at
+  https://myaccount.google.com/permissions). Sessions the user is already signed in with are
+  not ended: their requests fail until the session token expires.
+- `create-invite [--email <invitee>] [--by <issuer email>] [--max-uses <n>] [--expires <date>]` —
+  `--email` binds the code to that invitee, `--by` names the issuing user (default: the oldest
+  admin).
+
+Run it with `help` for usage; a bad invocation prints usage and exits 2.
 
 Now browse to `https://<machine>.<tailnet>.ts.net` from any device on your tailnet and log in.
 

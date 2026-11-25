@@ -1,9 +1,10 @@
 import { ApiError } from '../../api/client';
-import { useSettingsQuery, useUpdateSettingsMutation } from '../../api/queries';
+import { useSettingsQuery, useSaveSettingsMutation } from '../../api/queries';
 import { SettingsForm } from '../settings/SettingsForm';
 import { AccountSection } from '../settings/AccountSection';
 import { AppearanceSection } from '../settings/AppearanceSection';
 import { toFormState, defaultFormState, browserTimezone } from '../settings/settingsForm';
+import { saveErrorText } from '../lib/saveError';
 import { appVersion, formatAppVersion, type AppVersion } from '../lib/appVersion';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
@@ -14,7 +15,7 @@ const MOBILE_ROW = 'glass flex items-center justify-between rounded-card px-4 py
 /** `version` is injectable so tests don't depend on build-time env injection. */
 export function Settings({ version }: { version?: AppVersion } = {}) {
   const settingsQ = useSettingsQuery();
-  const updateM = useUpdateSettingsMutation();
+  const updateM = useSaveSettingsMutation(settingsQ.data !== undefined);
   const { signOut } = useAuth();
 
   if (settingsQ.isLoading) {
@@ -52,7 +53,7 @@ export function Settings({ version }: { version?: AppVersion } = {}) {
           initial={initial}
           saving={updateM.isPending}
           justSaved={updateM.isSuccess}
-          error={updateM.error instanceof ApiError ? updateM.error : null}
+          error={updateM.isError ? { message: saveErrorText(updateM.error) } : null}
           onSave={(input, onSaved) => updateM.mutate(input, { onSuccess: onSaved })}
         />
         <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-2">

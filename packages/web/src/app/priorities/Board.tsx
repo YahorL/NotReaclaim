@@ -174,7 +174,9 @@ export function Board({
   }, [shown, tasksById]);
 
   return (
-    <div ref={rootRef} className="min-h-full">
+    // A flex column, so the grid below can grow (flex-1) to the pane's height: a percentage
+    // min-height on the grid would resolve against this div's auto height, i.e. to nothing.
+    <div ref={rootRef} className="flex min-h-full flex-col">
       {/* Keyboard moves bypass dnd-kit, so they announce here. */}
       <div role="status" aria-live="polite" data-testid="board-announcer" className="sr-only">{announcement}</div>
       <DndContext
@@ -193,8 +195,10 @@ export function Board({
             cannot all fit (6 × 260 + gaps needs ~1640px) — the prototype's auto-fit grid, minus the
             wrapping onto a second row. From ~1380px the minimum is 300px so the four priority columns
             fill the view as in the design (07) with Backlog/Completed one scroll away; at 260px six
-            squeezed columns left card titles ~60px wide. */}
-        <div data-testid="board" className="grid min-h-full auto-cols-[min(372px,85vw)] grid-flow-col gap-4 md:auto-cols-[minmax(260px,1fr)] min-[1380px]:auto-cols-[minmax(300px,1fr)]">
+            squeezed columns left card titles ~60px wide. Each cell (a column's droppable) stretches
+            to the grid's height, which fills the pane (flex-1), so the space below a column's last
+            card accepts a drop. */}
+        <div data-testid="board" className="grid min-h-full flex-1 auto-cols-[min(372px,85vw)] grid-flow-col gap-4 md:auto-cols-[minmax(260px,1fr)] min-[1380px]:auto-cols-[minmax(300px,1fr)]">
           {shown.map((c, i) => (
             <Column
               key={c.key} columnKey={c.key} tasks={c.tasks} index={i} now={now} zone={zone} nextMsFor={nextMsFor}

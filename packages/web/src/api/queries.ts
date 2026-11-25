@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query';
 import { useApi } from './ApiProvider';
 import type { ApiClient } from './client';
 import type { CreateTaskInput, UpdateTaskInput, CreateHabitInput, UpdateHabitInput, SettingsInput, UpdateScheduledBlockInput, CreateCategoryInput, UpdateCategoryInput, CreateSubtaskInput, UpdateSubtaskInput, CreateCalendarEventInput, UpdateCalendarEventInput, CreateScheduledBlockInput } from './types';
@@ -22,7 +22,104 @@ export const queryKeys = {
   googleStatus: () => ['googleStatus'] as const,
 };
 
-/** A mutation that calls the API, then invalidates each of `roots` (in order) on success. */
+/**
+ * Shared `mutationKey` of the optimistic planner writes (block/event move + delete). While any is
+ * pending, a refetch of a protected root could read the pre-write server state and overwrite the
+ * optimistic value (tile jumps back, deleted tile reappears), so refresh signals for those roots
+ * are deferred and each deferred root is refetched once when no planner write is pending any more.
+ */
+const SCHEDULE_WRITE_KEY = ['scheduleWrite'] as const;
+
+/** The query roots a pending planner write protects. */
+const PROTECTED_ROOTS: readonly QueryKey[] = [queryKeys.scheduleRoot, queryKeys.calendarEventsRoot];
+
+const sameRoot = (a: QueryKey, b: QueryKey) => a.length === 1 && b.length === 1 && a[0] === b[0];
+
+const isProtectedRoot = (queryKey: QueryKey) => PROTECTED_ROOTS.some((r) => sameRoot(r, queryKey));
+
+const scheduleWritesPending = (qc: QueryClient) => qc.isMutating({ mutationKey: SCHEDULE_WRITE_KEY });
+
+/**
+ * Protected roots whose refresh was deferred while a planner write was pending, per client; it is
+ * drained (each root refetched once) as soon as no planner write is pending. An explicit record,
+ * not the queries' `isInvalidated` flag: a fetch already in flight when the signal arrived clears
+ * that flag when it lands with pre-signal data, and a failed fetch sets it without anything having
+ * been deferred.
+ */
+const deferredRoots = new WeakMap<QueryClient, QueryKey[]>();
+
+/** Clients whose mutation cache is watched by `drainWhenIdle`. */
+const drainWatched = new WeakSet<QueryClient>();
+
+/**
+ * Invariant: whenever no planner write is pending and the record is non-empty, the record is
+ * drained. A write leaves the pending count either through its `success`/`error` update (TanStack
+ * dispatches it AFTER the write's own onSettled, so `isMutating` read inside onSettled cannot tell
+ * which of two writes settling in the same tick is last) or by being removed from the cache
+ * (session swap; a removed write may never settle, e.g. a paused offline one). Both notify the
+ * mutation cache, so its listener re-checks after each event. The check runs in a microtask
+ * because `clear()` notifies `removed` while the writes are still counted. Installed with the
+ * first record, so a non-empty record always has a watcher.
+ */
+function drainWhenIdle(qc: QueryClient): void {
+  if (drainWatched.has(qc)) return;
+  drainWatched.add(qc);
+  qc.getMutationCache().subscribe(() => {
+    if (!deferredRoots.has(qc)) return;
+    queueMicrotask(() => {
+      const deferred = deferredRoots.get(qc);
+      if (!deferred || scheduleWritesPending(qc) > 0) return;
+      deferredRoots.delete(qc);
+      // Plain invalidate: its default cancelRefetch also restarts a GET still in flight from
+      // before the deferred signal, which would otherwise land with pre-signal data.
+      for (const queryKey of deferred) void qc.invalidateQueries({ queryKey });
+    });
+  });
+}
+
+function recordDeferred(qc: QueryClient, queryKey: QueryKey): void {
+  drainWhenIdle(qc);
+  const deferred = deferredRoots.get(qc) ?? [];
+  if (!deferred.some((r) => sameRoot(r, queryKey))) deferredRoots.set(qc, [...deferred, queryKey]);
+}
+
+/** Record a protected root as deferred and mark its queries stale without refetching them. */
+function deferRefresh(qc: QueryClient, queryKey: QueryKey): void {
+  recordDeferred(qc, queryKey);
+  void qc.invalidateQueries({ queryKey, refetchType: 'none' });
+}
+
+/**
+ * `refetchOnWindowFocus` / `refetchOnReconnect` for the protected queries. With no planner write
+ * pending it returns `true`, i.e. TanStack's default (refetch if stale). While one is pending it
+ * skips the refetch and records the root, so the drain refetches it once no write is pending.
+ * TanStack calls it once per observer, hence record-only (no invalidation from inside it). It never
+ * governs a newly mounted range's initial fetch.
+ */
+const refetchUnlessWriting = (qc: QueryClient, root: QueryKey) => (): boolean => {
+  if (scheduleWritesPending(qc) === 0) return true;
+  recordDeferred(qc, root);
+  return false;
+};
+
+/**
+ * Invalidate a query root for a refresh signal. While a planner write is pending, the schedule /
+ * calendar-event roots are deferred (drained once no write is pending); everything else, and
+ * everything when nothing is pending, is invalidated + refetched as usual.
+ */
+export function invalidateRoot(qc: QueryClient, queryKey: QueryKey): void {
+  if (isProtectedRoot(queryKey) && scheduleWritesPending(qc) > 0) {
+    deferRefresh(qc, queryKey);
+  } else {
+    void qc.invalidateQueries({ queryKey });
+  }
+}
+
+/**
+ * A mutation that calls the API, then invalidates each of `roots` (in order) on success — via
+ * `invalidateRoot`, so it cannot refetch over a pending planner write's optimistic value. It does
+ * not carry SCHEDULE_WRITE_KEY: it has no optimistic value to protect.
+ */
 function useApiMutation<TVars = void, TResult = unknown>(
   call: (api: ApiClient, vars: TVars) => Promise<TResult>,
   roots: readonly QueryKey[],
@@ -32,14 +129,16 @@ function useApiMutation<TVars = void, TResult = unknown>(
   return useMutation({
     mutationFn: (vars: TVars) => call(api, vars),
     onSuccess: () => {
-      for (const queryKey of roots) void qc.invalidateQueries({ queryKey });
+      for (const queryKey of roots) invalidateRoot(qc, queryKey);
     },
   });
 }
 
 /**
  * A mutation that optimistically rewrites every cached LIST under `root` with `apply`, rolls the
- * snapshots back on error, and invalidates `root` then each of `alsoInvalidate` once settled.
+ * snapshots back on error, and refreshes `root` and each of `alsoInvalidate` once settled.
+ * It is a planner write (SCHEDULE_WRITE_KEY): settling only records its roots as deferred; they
+ * are refetched, with every root deferred meanwhile, once no planner write is pending.
  */
 function useOptimisticListMutation<TVars, TResult>(
   call: (api: ApiClient, vars: TVars) => Promise<TResult>,
@@ -50,6 +149,7 @@ function useOptimisticListMutation<TVars, TResult>(
   const api = useApi();
   const qc = useQueryClient();
   return useMutation({
+    mutationKey: SCHEDULE_WRITE_KEY,
     mutationFn: (vars: TVars) => call(api, vars),
     onMutate: async (vars: TVars) => {
       await qc.cancelQueries({ queryKey: root });
@@ -60,11 +160,16 @@ function useOptimisticListMutation<TVars, TResult>(
       return { snapshots };
     },
     onError: (_err, _vars, ctx) => {
+      // A write no longer in the mutation cache was dropped by a session swap: its snapshots hold
+      // the previous session's data and must not be restored over the new session's cache.
+      if (!qc.getMutationCache().getAll().some((m) => m.state.context === ctx)) return;
       ctx?.snapshots.forEach(([key, data]) => qc.setQueryData(key, data));
     },
+    // Record only, never refetch here: the drain runs once no planner write is pending (see
+    // drainWhenIdle), i.e. after this write has left the pending state, so a write is never
+    // pending during its own refetch and a write that is not the last never refetches.
     onSettled: () => {
-      void qc.invalidateQueries({ queryKey: root });
-      for (const queryKey of alsoInvalidate) void qc.invalidateQueries({ queryKey });
+      for (const queryKey of [root, ...alsoInvalidate]) deferRefresh(qc, queryKey);
     },
   });
 }
@@ -77,17 +182,35 @@ export function useGoogleStatusQuery() {
 
 export function useScheduleQuery(from?: string, to?: string) {
   const api = useApi();
-  return useQuery({ queryKey: queryKeys.schedule(from, to), queryFn: () => api.getSchedule(from, to) });
+  const refetch = refetchUnlessWriting(useQueryClient(), queryKeys.scheduleRoot);
+  return useQuery({
+    queryKey: queryKeys.schedule(from, to),
+    queryFn: () => api.getSchedule(from, to),
+    refetchOnWindowFocus: refetch,
+    refetchOnReconnect: refetch,
+  });
 }
 
 export function useCalendarEventsQuery(from?: string, to?: string) {
   const api = useApi();
-  return useQuery({ queryKey: queryKeys.calendarEvents(from, to), queryFn: () => api.getCalendarEvents(from, to) });
+  const refetch = refetchUnlessWriting(useQueryClient(), queryKeys.calendarEventsRoot);
+  return useQuery({
+    queryKey: queryKeys.calendarEvents(from, to),
+    queryFn: () => api.getCalendarEvents(from, to),
+    refetchOnWindowFocus: refetch,
+    refetchOnReconnect: refetch,
+  });
 }
 
 export function useSchedulePreviewQuery() {
   const api = useApi();
-  return useQuery({ queryKey: queryKeys.schedulePreview(), queryFn: () => api.getSchedulePreview() });
+  const refetch = refetchUnlessWriting(useQueryClient(), queryKeys.scheduleRoot);
+  return useQuery({
+    queryKey: queryKeys.schedulePreview(),
+    queryFn: () => api.getSchedulePreview(),
+    refetchOnWindowFocus: refetch,
+    refetchOnReconnect: refetch,
+  });
 }
 
 export function useReplanMutation() {
@@ -195,7 +318,7 @@ export function useMoveTaskMutation() {
       const r = run.current;
       run.current = null;
       if (r?.failed) for (const [key, data] of r.snapshots) qc.setQueryData(key, data);
-      for (const queryKey of TASK_ROOTS) void qc.invalidateQueries({ queryKey });
+      for (const queryKey of TASK_ROOTS) invalidateRoot(qc, queryKey);
     },
   });
 }
@@ -215,8 +338,34 @@ export function useSettingsQuery() {
   return useQuery({ queryKey: queryKeys.settings(), queryFn: () => api.getSettings() });
 }
 
-export function useUpdateSettingsMutation() {
-  return useApiMutation((api, body: SettingsInput) => api.putSettings(body), [queryKeys.settingsRoot, queryKeys.scheduleRoot]);
+const SETTINGS_ROOTS = [queryKeys.settingsRoot, queryKeys.scheduleRoot] as const;
+
+/**
+ * The Settings page's save: a PATCH of the fields that page owns, i.e. everything but the two
+ * buffers (the Buffers page's), so it cannot revert a buffer change saved there meanwhile nor fail
+ * on a stored buffer it does not show. `configured` false = no settings row yet (GET was 404, and
+ * PATCH would be too): the whole input is PUT instead, its buffers being the form's defaults.
+ */
+export function useSaveSettingsMutation(configured: boolean) {
+  return useApiMutation((api, input: SettingsInput) => {
+    if (!configured) return api.putSettings(input);
+    const { meetingBufferMs: _meeting, taskBufferMs: _task, ...owned } = input;
+    return api.patchSettings(owned);
+  }, SETTINGS_ROOTS);
+}
+
+export type BufferValues = { meetingBufferMs: number; taskBufferMs: number };
+
+/**
+ * The Buffers page's save: a PATCH of just the buffers given, so it cannot revert a settings
+ * change made elsewhere since it loaded. With no settings row yet (`firstTime`, the defaults that
+ * page shows) there is nothing to patch, so it PUTs those defaults plus the buffers instead.
+ */
+export function useSaveBuffersMutation(firstTime: SettingsInput | null) {
+  return useApiMutation(
+    (api, buffers: Partial<BufferValues>) => firstTime ? api.putSettings({ ...firstTime, ...buffers }) : api.patchSettings(buffers),
+    SETTINGS_ROOTS,
+  );
 }
 
 export function useCategoriesQuery() {

@@ -1,7 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { NotFoundError } from '@notreclaim/db';
 import type { AppDeps, AfterMutation } from './app.js';
-import { createHabitSchema, updateHabitSchema, idParamSchema } from './schemas.js';
+import { ZodError } from 'zod';
+import {
+  createHabitSchema, updateHabitSchema, idParamSchema, PREFERRED_ORDER, preferredWindowInOrder,
+} from './schemas.js';
 import { dataChanged } from './events.js';
 
 export function registerHabitRoutes(app: FastifyInstance, deps: AppDeps, afterMutation: AfterMutation): void {
@@ -29,6 +32,13 @@ export function registerHabitRoutes(app: FastifyInstance, deps: AppDeps, afterMu
   app.patch('/habits/:id', guard, async (request) => {
     const { id } = idParamSchema.parse(request.params);
     const body = updateHabitSchema.parse(request.body);
+    if (body.preferredStartMinute !== undefined || body.preferredEndMinute !== undefined) {
+      const stored = await deps.repos.habits.findById(request.userId, id);
+      if (!stored) throw new NotFoundError(`Habit ${id} not found`);
+      const start = body.preferredStartMinute !== undefined ? body.preferredStartMinute : stored.preferredStartMinute;
+      const end = body.preferredEndMinute !== undefined ? body.preferredEndMinute : stored.preferredEndMinute;
+      if (!preferredWindowInOrder(start, end)) throw new ZodError([{ code: 'custom', ...PREFERRED_ORDER }]);
+    }
     const habit = await deps.repos.habits.update(request.userId, id, body);
     announce(request.userId);
     afterMutation(request.userId);

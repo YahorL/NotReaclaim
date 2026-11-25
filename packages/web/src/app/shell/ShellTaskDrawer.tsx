@@ -5,6 +5,7 @@ import { DrawerHost, DESKTOP_DRAWER_SLOT } from '../components/DrawerHost';
 import { useCompactWidth } from '../lib/useMediaQuery';
 import { useTimezone } from '../settings/useTimezone';
 import { TaskDrawer } from '../tasks/TaskDrawer';
+import { saveErrorText } from '../lib/saveError';
 
 /**
  * The task drawer the search palette opens, hosted by the shell so it works on every route
@@ -51,7 +52,7 @@ export function ShellTaskDrawer({ taskId, onClose, opener }: {
       <TaskDrawer
         key={task.id}
         task={task} zone={zone} compact={compact} saving={updateTask.isPending}
-        error={updateTask.error instanceof ApiError ? updateTask.error : null}
+        error={updateTask.error instanceof ApiError ? { message: saveErrorText(updateTask.error) } : null}
         onSave={(patch) => updateTask.mutate({ id: task.id, patch }, { onSuccess: onClose })}
         onCancel={onClose}
       />

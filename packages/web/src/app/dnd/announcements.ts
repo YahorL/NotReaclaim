@@ -24,6 +24,36 @@ export function makeAnnouncements(name: NameLookup, dropTargetName: NameLookup):
 }
 
 /**
+ * The same treatment for a task's subtask list (board card and edit drawer). The only drop
+ * targets are the other subtasks, and a sortable drop lands the item at the hovered item's index
+ * (`subtaskDropSortOrder`), so targets are read as that position — "Draft is over position 3 of
+ * 4." Positions also keep consecutive messages distinct: dnd-kit's live region is aria-atomic and
+ * state-backed, so a sentence identical to the previous one is never spoken (see
+ * `boardDropTargetName`). `subtasks` must be in rendered order — the array the SortableContext gets.
+ */
+export function makeSubtaskAnnouncements(subtasks: { id: string; title: string }[], taskTitle: string): Announcements {
+  const n = subtasks.length;
+  const indexOf = (id: string | number) => subtasks.findIndex((s) => s.id === String(id));
+  const of = (id: string | number) => subtasks[indexOf(id)]?.title ?? String(id);
+  const position = (id: string | number) => {
+    const i = indexOf(id);
+    return i === -1 ? String(id) : `position ${i + 1} of ${n}`;
+  };
+  return {
+    onDragStart: ({ active }) => (indexOf(active.id) === -1
+      ? `Picked up ${of(active.id)}.`
+      : `Picked up ${of(active.id)}, ${position(active.id)} in ${taskTitle}.`),
+    onDragOver: ({ active, over }) => (over
+      ? `${of(active.id)} is over ${position(over.id)}.`
+      : `${of(active.id)} is not over a drop target.`),
+    onDragEnd: ({ active, over }) => (over && over.id !== active.id
+      ? `${of(active.id)} was dropped at ${position(over.id)} in ${taskTitle}.`
+      : `${of(active.id)} was dropped where it started.`),
+    onDragCancel: ({ active }) => `Moving ${of(active.id)} was cancelled.`,
+  };
+}
+
+/**
  * For drag surfaces with no KeyboardSensor. dnd-kit's default text promises "press the space bar
  * to pick up", which the planner's drag-to-schedule does not implement (day columns have no
  * keyboard coordinate story — see `useDragToScheduleSensors`).

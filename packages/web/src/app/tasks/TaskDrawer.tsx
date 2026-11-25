@@ -1,9 +1,8 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { DndContext, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { Task, Subtask, UpdateTaskInput } from '../../api/types';
-import type { ApiError } from '../../api/client';
 import { FieldBox } from '../components/FieldBox';
 import { DurationStepper } from '../components/DurationStepper';
 import { DrawerPanel } from '../components/DrawerPanel';
@@ -16,6 +15,7 @@ import { type DateSeed, type TaskFormState, toFormState, toDateSeed, validateTas
 import { useZoneChange } from '../settings/useTimezone';
 import { useCategoriesQuery, useCreateSubtaskMutation, useUpdateSubtaskMutation, useDeleteSubtaskMutation } from '../../api/queries';
 import { useAppSensors, pointerFirstCollision } from '../dnd/sensors';
+import { makeSubtaskAnnouncements } from '../dnd/announcements';
 import { subtaskDropSortOrder } from './subtaskDnd';
 import { useRegisterOpenTaskDrawer } from '../shell/OpenTaskDrawers';
 
@@ -59,7 +59,8 @@ export interface TaskDrawerProps {
   onSave: (patch: UpdateTaskInput) => void;
   onCancel: () => void;
   saving?: boolean;
-  error?: ApiError | null;
+  /** The failed save's text (see saveErrorText). */
+  error?: { message: string } | null;
   /** Hosted in a full-screen Sheet below md: drop the 440px panel chrome and the self-dismiss. */
   compact?: boolean;
 }
@@ -97,6 +98,8 @@ export function TaskDrawer({ task, zone, onSave, onCancel, saving = false, error
   const [newSubtask, setNewSubtask] = useState('');
   const sensors = useAppSensors();
   const subtasks = task.subtasks ?? [];
+  // Say the subtask's title and position, not dnd-kit's raw ids (see makeSubtaskAnnouncements).
+  const subtaskA11y = useMemo(() => ({ announcements: makeSubtaskAnnouncements(subtasks, task.title) }), [subtasks, task.title]);
   const onSubtaskDragEnd = (e: DragEndEvent) => {
     if (!e.over) return;
     const sortOrder = subtaskDropSortOrder(subtasks, String(e.active.id), String(e.over.id));
@@ -172,7 +175,7 @@ export function TaskDrawer({ task, zone, onSave, onCancel, saving = false, error
 
       <div>
         <span className="mb-1 block text-[13px] text-fg-2">Subtasks</span>
-        <DndContext sensors={sensors} collisionDetection={pointerFirstCollision} onDragEnd={onSubtaskDragEnd}>
+        <DndContext sensors={sensors} accessibility={subtaskA11y} collisionDetection={pointerFirstCollision} onDragEnd={onSubtaskDragEnd}>
           <SortableContext items={subtasks.map((s) => s.id)} strategy={verticalListSortingStrategy}>
             <ul className="mb-1.5 space-y-1.5">
               {subtasks.map((s) => (

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, createEvent } from '@testing-library/react';
+import { render, screen, fireEvent, createEvent, waitFor } from '@testing-library/react';
 import { TaskRow } from './TaskRow';
 import type { Task } from '../../api/types';
 
@@ -139,6 +139,18 @@ describe('TaskRow card subtask drag handles', () => {
     for (const id of ['s1', 's2', 's3']) {
       expect(screen.getByTestId(`card-subtask-li-${id}`)).not.toHaveAttribute('draggable');
     }
+  });
+
+  it('announces a keyboard drag of a checklist item by its title and position — never by id', async () => {
+    renderRow({ ...base, title: 'Write spec', subtasks: threeSubtasks } as Task);
+    const row = screen.getByTestId('card-subtask-li-s1');
+    const liveText = () => Array.from(document.querySelectorAll('[id^="DndLiveRegion"]')).map((e) => e.textContent).join('|');
+    fireEvent.keyDown(row, { code: 'Space', key: ' ' });
+    // jsdom has no layout, so dnd-kit follows the pick-up with an over on whichever row its zero
+    // rects pick — either sentence proves the wiring; their wording is pinned in announcements.test.
+    await waitFor(() => expect(liveText()).toMatch(/^(Picked up first, position 1 of 3 in Write spec|first is over position [123] of 3)\.$/));
+    fireEvent.keyDown(row, { code: 'Escape', key: 'Escape' });
+    await waitFor(() => expect(liveText()).toBe('Moving first was cancelled.'));
   });
 
   it('Space on a checklist checkbox is not swallowed by the keyboard drag sensor', () => {

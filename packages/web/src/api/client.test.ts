@@ -56,6 +56,19 @@ describe('createApiClient', () => {
     expect(JSON.parse(init.body as string)).toMatchObject({ title: 'A' });
   });
 
+  it('patchSettings sends a PATCH to /settings with only the given fields', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ id: 's1' }));
+    vi.stubGlobal('fetch', fetchMock);
+    const api = createApiClient({ baseUrl: '', getToken: () => 't' });
+
+    await api.patchSettings({ meetingBufferMs: 300000, taskBufferMs: 0 });
+
+    const [url, init] = (fetchMock.mock.calls as unknown as [[string, RequestInit]])[0];
+    expect(url).toBe('/settings');
+    expect(init.method).toBe('PATCH');
+    expect(JSON.parse(init.body as string)).toEqual({ meetingBufferMs: 300000, taskBufferMs: 0 });
+  });
+
   it('getCalendarEvents builds the range query string', async () => {
     const fetchMock = vi.fn(async () => jsonResponse([{ id: 'e1', title: 'Standup' }]));
     vi.stubGlobal('fetch', fetchMock);

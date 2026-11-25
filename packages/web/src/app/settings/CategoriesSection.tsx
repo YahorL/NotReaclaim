@@ -1,7 +1,7 @@
 import { useState, useRef, type KeyboardEvent } from 'react';
 import { Link } from 'react-router-dom';
 import type { Category, UpdateCategoryInput } from '../../api/types';
-import { ApiError } from '../../api/client';
+import { saveErrorText } from '../lib/saveError';
 import { FIELD_ERROR } from '../components/formStyles';
 import { useCategoriesQuery, useCreateCategoryMutation, useUpdateCategoryMutation, useDeleteCategoryMutation } from '../../api/queries';
 import { PrimaryButton, SecondaryButton } from '../components/Buttons';
@@ -10,11 +10,6 @@ import { WeeklyHoursEditor } from './WeeklyHoursEditor';
 import { validateCategoryForm } from './categoryForm';
 import { type DayState, windowsToDays, daysToWindows, patchDay, weeklyHoursTotal, weeklyHoursLabel } from './weeklyHours';
 import { checkInkOn } from '../lib/contrast';
-
-/** A mutation failure as text. Anything but an ApiError (e.g. a network TypeError) gets a generic line. */
-function saveErrorText(error: unknown): string {
-  return error instanceof ApiError ? error.message : "Couldn't save. Check your connection and try again.";
-}
 
 // Category colours are user data (stored hex), so they stay inline; the names are for screen readers.
 const COLOR_PALETTE: { hex: string; name: string }[] = [

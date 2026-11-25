@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useId, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { ApiError } from '../../api/client';
+import { saveErrorText } from '../lib/saveError';
 import { useCreateTaskMutation, useSettingsQuery, useCategoriesQuery, useCreateCategoryMutation } from '../../api/queries';
 import { Icons } from './icons';
 import {
@@ -20,7 +21,8 @@ import { usePrefersReducedMotion } from '../../theme/usePrefersReducedMotion';
 import { useToast } from './ToastProvider';
 import { useRecentlyCreated } from './RecentlyCreated';
 
-const FALLBACK_WORKING_HOURS = [{ weekday: 1, startMinute: 540, endMinute: 1020 }];
+/** Mon–Fri 09:00–17:00: the week a brand-new account gets (server `DEFAULT_WORKING_HOURS` in packages/server/src/auth/user-defaults.ts). */
+const FALLBACK_WORKING_HOURS = [1, 2, 3, 4, 5].map((weekday) => ({ weekday, startMinute: 540, endMinute: 1020 }));
 
 /** `--dur-modal-out`: the exit plays this long before the dialog unmounts. */
 export const MODAL_EXIT_MS = 220;
@@ -89,6 +91,7 @@ export function NewTaskModal({ onClose, now = () => Date.now(), opener }: NewTas
     }
   }, [categories, form.categoryId]);
 
+  const [titleTouched, setTitleTouched] = useState(false);
   const { ok, errors } = validateNewTaskForm(form, zone);
   const error = createM.error instanceof ApiError ? createM.error : null;
 
@@ -147,7 +150,11 @@ export function NewTaskModal({ onClose, now = () => Date.now(), opener }: NewTas
   const canAddCategory = newCatName.trim() !== '' && !createCategoryM.isPending;
   const addCategory = () => {
     if (!canAddCategory) return;
-    const windows = settingsQ.data?.workingHours ?? FALLBACK_WORKING_HOURS;
+    // Copy the default category's effective hours (its own windows, else working hours). The
+    // server requires at least one window — an empty week would make the category unschedulable —
+    // so nothing to copy falls back to the built-in.
+    const defaultHours = categories.find((c) => c.isDefault)?.windows ?? settingsQ.data?.workingHours;
+    const windows = defaultHours?.length ? defaultHours : FALLBACK_WORKING_HOURS;
     createCategoryM.mutate({ name: newCatName.trim(), windows }, {
       onSuccess: (cat) => { set('categoryId', cat.id); setCreatingCat(false); setNewCatName(''); },
     });
@@ -197,20 +204,25 @@ export function NewTaskModal({ onClose, now = () => Date.now(), opener }: NewTas
           </button>
         </div>
 
-        <div className="flex h-[60px] shrink-0 items-center gap-3 rounded-field border-[1.5px] border-meeting/60 bg-fg/[.04] px-[18px] text-fg-2 transition-[border-color,box-shadow] duration-200 focus-within:border-meeting focus-within:shadow-[0_0_0_4px_rgb(var(--c-meeting)/0.22)]">
-          <Icons.emoji size={22} className="shrink-0" />
-          <label htmlFor={nameId} className="sr-only">Task name</label>
-          <input
-            id={nameId}
-            ref={nameRef}
-            autoFocus
-            autoComplete="off"
-            value={form.title}
-            onChange={(e) => set('title', e.target.value)}
-            onKeyDown={onNameKeyDown}
-            placeholder="Task name…"
-            className="min-w-0 flex-1 bg-transparent text-[20px] font-medium text-fg outline-none placeholder:text-fg-3"
-          />
+        <div className="flex flex-col">
+          <div className="flex h-[60px] shrink-0 items-center gap-3 rounded-field border-[1.5px] border-meeting/60 bg-fg/[.04] px-[18px] text-fg-2 transition-[border-color,box-shadow] duration-200 focus-within:border-meeting focus-within:shadow-[0_0_0_4px_rgb(var(--c-meeting)/0.22)]">
+            <Icons.emoji size={22} className="shrink-0" />
+            <label htmlFor={nameId} className="sr-only">Task name</label>
+            <input
+              id={nameId}
+              ref={nameRef}
+              autoFocus
+              autoComplete="off"
+              value={form.title}
+              onChange={(e) => { setTitleTouched(true); set('title', e.target.value); }}
+              onKeyDown={onNameKeyDown}
+              placeholder="Task name…"
+              className="min-w-0 flex-1 bg-transparent text-[20px] font-medium text-fg outline-none placeholder:text-fg-3"
+            />
+          </div>
+          {/* Gated on a first edit: the modal OPENS with an empty title, and a red line before the
+              user has typed anything would scold them for not having started yet. */}
+          {titleTouched && errors.title && <p data-testid="err-title" className={FIELD_ERROR}>{errors.title}</p>}
         </div>
 
         <div data-testid="duration-priority-row" className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -246,6 +258,7 @@ export function NewTaskModal({ onClose, now = () => Date.now(), opener }: NewTas
             </FieldBox>
             <FieldBox label="Max duration">
               <div className="pt-1.5"><DurationStepper label="max" valueMs={form.maxChunkMs} onChange={(ms) => set('maxChunkMs', ms)} /></div>
+              {errors.maxChunkMs && <p data-testid="err-maxChunkMs" className={FIELD_ERROR}>{errors.maxChunkMs}</p>}
             </FieldBox>
           </div>
         )}
@@ -318,7 +331,7 @@ export function NewTaskModal({ onClose, now = () => Date.now(), opener }: NewTas
           </LabelledField>
         </div>
 
-        {error && <p data-testid="modal-error" role="alert" className="text-[13px] text-danger">{error.message}</p>}
+        {error && <p data-testid="modal-error" role="alert" className="text-[13px] text-danger">{saveErrorText(error)}</p>}
 
         <div className="mt-auto flex items-center justify-end gap-3 pt-1 md:mt-0">
           <button type="button" onClick={requestClose} className="btn-glass inline-flex h-[46px] items-center rounded-pill px-6 text-[15px] font-medium text-fg">

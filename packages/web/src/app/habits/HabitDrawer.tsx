@@ -1,5 +1,4 @@
 import type { Habit, HabitStatus, UpdateHabitInput } from '../../api/types';
-import type { ApiError } from '../../api/client';
 import { DurationStepper } from '../components/DurationStepper';
 import { DrawerPanel } from '../components/DrawerPanel';
 import { FormField } from '../components/FormField';
@@ -20,7 +19,8 @@ export interface HabitDrawerProps {
   onSave: (patch: UpdateHabitInput) => void;
   onCancel: () => void;
   saving?: boolean;
-  error?: ApiError | null;
+  /** The failed save's text (see saveErrorText). */
+  error?: { message: string } | null;
   /** Hosted in a full-screen Sheet below md: drop the 440px panel chrome and the self-dismiss. */
   compact?: boolean;
 }
