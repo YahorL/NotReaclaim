@@ -29,7 +29,10 @@ function statusNote(task: Task, zone: string): string | null {
  */
 export function TaskSearchPalette({ tasks, zone, onSelect, onClose }: TaskSearchPaletteProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
-  const onKeyDown = useFocusTrap(dialogRef, { onEscape: onClose });
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Explicit initial focus on the combobox: `autoFocus` alone lost to the trap's container focus
+  // when the palette was opened by a shortcut pressed on a focused button (seen live in Chromium).
+  const onKeyDown = useFocusTrap(dialogRef, { onEscape: onClose, initialFocus: () => inputRef.current });
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const results = useMemo(() => searchTasks(tasks, query), [tasks, query]);
@@ -67,6 +70,7 @@ export function TaskSearchPalette({ tasks, zone, onSelect, onClose }: TaskSearch
         <div className="flex shrink-0 items-center gap-3 border-b border-line px-5 py-4">
           <Icons.search size={20} className="shrink-0 text-fg-2" />
           <input
+            ref={inputRef}
             autoFocus
             type="text"
             role="combobox"
