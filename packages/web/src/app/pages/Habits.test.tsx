@@ -67,7 +67,7 @@ describe('Habits page', () => {
     const deleteHabit = vi.fn(async () => undefined);
     renderWithProviders(<Habits />, { api: makeApi({ deleteHabit }) });
     await waitFor(() => expect(screen.getByText('Run')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: 'delete' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Run' }));
     fireEvent.click(screen.getByRole('button', { name: /yes/i }));
     await waitFor(() => expect(deleteHabit).toHaveBeenCalledWith('h1'));
   });
@@ -95,6 +95,26 @@ describe('Habits page', () => {
     expect(within(drawer).getByDisplayValue('Read')).toBeInTheDocument();
     fireEvent.click(within(drawer).getByTestId('save'));
     await waitFor(() => expect(updateHabit).toHaveBeenCalledWith('h2', expect.objectContaining({ title: 'Read', perPeriod: 2 })));
+  });
+});
+
+describe('Habits page summary', () => {
+  it('summarises active habits, hours booked per week and paused habits', async () => {
+    const listHabits = vi.fn(async () => [
+      habit({ chunkMs: 1_800_000, perPeriod: 7 }),
+      habit({ id: 'h2', title: 'Read', chunkMs: 3_600_000, perPeriod: 7 }),
+      habit({ id: 'h3', title: 'Clean', status: 'paused' }),
+    ]);
+    renderWithProviders(<Habits />, { api: makeApi({ listHabits }) });
+    const strip = await screen.findByTestId('habit-summary');
+    await waitFor(() => expect(strip).toHaveTextContent('2active habits'));
+    expect(strip).toHaveTextContent('10.5hbooked per week');
+    expect(strip).toHaveTextContent('1paused');
+  });
+
+  it('names the quick-add input', async () => {
+    renderWithProviders(<Habits />, { api: makeApi() });
+    expect(await screen.findByRole('textbox', { name: 'New habit name' })).toBeInTheDocument();
   });
 });
 

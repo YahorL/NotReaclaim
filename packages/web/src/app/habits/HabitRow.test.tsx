@@ -53,9 +53,47 @@ describe('HabitRow', () => {
 
   it('delete requires inline confirm', () => {
     const { onDelete } = setup();
-    fireEvent.click(screen.getByRole('button', { name: 'delete' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Run' }));
     expect(onDelete).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: /yes/i }));
     expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows seven read-only day pills with the eligible ones on, and says the days in text', () => {
+    setup();
+    const pills = screen.getAllByTestId('habit-day');
+    expect(pills.map((p) => p.textContent).join('')).toBe('SMTWTFS');
+    expect(pills.map((p) => p.getAttribute('data-on'))).toEqual(['false', 'true', 'false', 'true', 'false', 'true', 'false']);
+    pills.forEach((p) => expect(p).toHaveAttribute('aria-hidden', 'true'));
+    expect(screen.getByTestId('habit-days')).toHaveTextContent('Days: Mon, Wed, Fri');
+    // the pills are display only
+    expect(screen.queryByRole('button', { name: 'M' })).toBeNull();
+  });
+
+  it('reads "any day" when every day is eligible', () => {
+    setup({ eligibleDays: [0, 1, 2, 3, 4, 5, 6] });
+    expect(screen.getByTestId('habit-row')).toHaveTextContent('30m × 4/week · any day');
+    expect(screen.getByTestId('habit-days')).toHaveTextContent('Days: any day');
+  });
+
+  it('marks a paused habit with a chip and dims the row', () => {
+    setup({ status: 'paused' });
+    expect(screen.getByTestId('habit-paused')).toHaveTextContent('Paused');
+    expect(screen.getByTestId('habit-row')).toHaveAttribute('data-paused', 'true');
+    setup();
+    expect(screen.getAllByTestId('habit-row')[1]).toHaveAttribute('data-paused', 'false');
+  });
+
+  it('the at-risk chip states the missed count in text', () => {
+    setup({}, 2);
+    expect(screen.getByTestId('habit-at-risk')).toHaveTextContent('2 missed');
+  });
+
+  it('cancel in the inline confirm keeps the habit', () => {
+    const { onDelete } = setup();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Run' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Delete Run' })).toBeInTheDocument();
   });
 });

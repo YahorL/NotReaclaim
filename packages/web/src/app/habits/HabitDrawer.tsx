@@ -9,10 +9,11 @@ import { useFormState } from '../components/useFormState';
 import { type HabitFormState, toFormState, validateHabitForm, toUpdateInput } from './habitForm';
 
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const STATUSES: HabitStatus[] = ['active', 'paused'];
-const DAY_BTN = 'h-7 w-7 rounded-full text-[11px] font-bold transition-colors coarse:h-10 coarse:w-10';
-const DAY_ON = 'bg-indigo text-white';
-const DAY_OFF = 'bg-bg text-inkSoft border border-line';
+const DAY_BTN = 'h-7 w-7 rounded-full border text-[11px] font-semibold transition-colors coarse:h-10 coarse:w-10';
+const DAY_ON = 'border-accent bg-accent text-on-accent';
+const DAY_OFF = 'border-fg/15 text-fg-2 hover:text-fg';
 
 export interface HabitDrawerProps {
   habit: Habit;
@@ -84,6 +85,8 @@ export function HabitDrawer({ habit, onSave, onCancel, saving = false, error = n
                 key={d}
                 type="button"
                 data-testid={`day-${d}`}
+                aria-label={DAY_NAMES[d]}
+                aria-pressed={form.eligibleDays.includes(d)}
                 onClick={() => toggleDay(d)}
                 className={`${DAY_BTN} ${form.eligibleDays.includes(d) ? DAY_ON : DAY_OFF}`}
               >
