@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { isDiscardableUnstarted } from '@notreclaim/core';
 import { NotFoundError } from '@notreclaim/db';
 import type { AppDeps } from './app.js';
-import { bestEffortGoogleWrite } from './google-writeback.js';
+import { removeMirroredEvent } from './google-writeback.js';
 
 /**
  * Manual mode: delete the user's past task blocks that were never started, one row at a time
@@ -31,14 +31,9 @@ export async function discardUnstartedPastBlocks(
       // Remove the mirrored event too: nothing else ever will (reconcile only deletes
       // events of rows it still holds, and drift only lists [now, horizon]). Best-effort
       // and per row, same as DELETE /schedule/:id — a Google failure never fails the GET.
-      const { googleEventId, googleCalendarId } = b;
-      if (googleEventId && googleCalendarId) {
-        await bestEffortGoogleWrite(
-          app, deps, userId,
-          { fields: { blockId: b.id }, message: 'google write-back failed: discarded block event not removed remotely' },
-          (accessToken) => deps.google.client.deleteEvent(accessToken, googleCalendarId, googleEventId),
-        );
-      }
+      await removeMirroredEvent(app, deps, userId, b, {
+        fields: { blockId: b.id }, message: 'google write-back failed: discarded block event not removed remotely',
+      });
     }
   }
   return discarded;

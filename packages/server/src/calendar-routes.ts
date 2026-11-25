@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { NotFoundError } from '@notreclaim/db';
 import { PRIMARY_CALENDAR_ID } from '@notreclaim/google';
 import type { AppDeps, AfterMutation } from './app.js';
-import { bestEffortGoogleWrite } from './google-writeback.js';
+import { bestEffortGoogleWrite, removeMirroredEvent } from './google-writeback.js';
 import { resolveRange } from './range.js';
 import { rangeQuerySchema, createCalendarEventSchema, updateCalendarEventSchema, idParamSchema } from './schemas.js';
 import { dataChanged } from './events.js';
@@ -87,14 +87,9 @@ export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afte
     if (!event) throw new NotFoundError(`Event ${id} not found`);
     // Best-effort Google removal for events previously written back to the primary calendar.
     // The local delete still proceeds on failure, so the Google copy may be orphaned: log it.
-    const { googleEventId, googleCalendarId } = event;
-    if (googleEventId && googleCalendarId) {
-      await bestEffortGoogleWrite(
-        app, deps, request.userId,
-        { fields: { eventId: id }, message: 'google write-back failed: event not removed remotely' },
-        (accessToken) => deps.google.client.deleteEvent(accessToken, googleCalendarId, googleEventId),
-      );
-    }
+    await removeMirroredEvent(app, deps, request.userId, event, {
+      fields: { eventId: id }, message: 'google write-back failed: event not removed remotely',
+    });
     await deps.repos.calendarEvents.delete(request.userId, id);
     announce(request.userId);
     afterMutation(request.userId);

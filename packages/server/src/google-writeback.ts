@@ -20,3 +20,23 @@ export async function bestEffortGoogleWrite(
     app.log.warn({ err, ...onFailure.fields }, onFailure.message);
   }
 }
+
+/**
+ * Best-effort removal of a row's mirrored Google event. A row without BOTH Google ids (or no
+ * row at all) returns at once — it never even looks up an access token.
+ */
+export async function removeMirroredEvent(
+  app: FastifyInstance,
+  deps: Pick<AppDeps, 'google' | 'now'>,
+  userId: string,
+  row: { googleEventId: string | null; googleCalendarId: string | null } | null | undefined,
+  onFailure: { fields: Record<string, unknown>; message: string },
+): Promise<void> {
+  const googleEventId = row?.googleEventId;
+  const googleCalendarId = row?.googleCalendarId;
+  if (!googleEventId || !googleCalendarId) return;
+  await bestEffortGoogleWrite(
+    app, deps, userId, onFailure,
+    (accessToken) => deps.google.client.deleteEvent(accessToken, googleCalendarId, googleEventId),
+  );
+}

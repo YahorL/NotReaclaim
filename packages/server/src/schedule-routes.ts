@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { computeDesiredSchedule, startBlockPatch, stopBlockEndMs } from '@notreclaim/core';
 import { NotFoundError } from '@notreclaim/db';
 import type { AppDeps, AfterMutation } from './app.js';
-import { bestEffortGoogleWrite } from './google-writeback.js';
+import { removeMirroredEvent } from './google-writeback.js';
 import { discardUnstartedPastBlocks } from './manual-sweep.js';
 import { resolveRange } from './range.js';
 import { rangeQuerySchema, idParamSchema, updateScheduledBlockSchema, createScheduledBlockSchema } from './schemas.js';
@@ -114,15 +114,9 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
     // On a Google failure the row still goes, so the Google copy may be orphaned on the
     // Auto-scheduled calendar: the helper logs it.
     const blockRow = await deps.repos.scheduledBlocks.findById(request.userId, id);
-    const googleEventId = blockRow?.googleEventId;
-    const googleCalendarId = blockRow?.googleCalendarId;
-    if (googleEventId && googleCalendarId) {
-      await bestEffortGoogleWrite(
-        app, deps, request.userId,
-        { fields: { blockId: id }, message: 'google write-back failed: block event not removed remotely' },
-        (accessToken) => deps.google.client.deleteEvent(accessToken, googleCalendarId, googleEventId),
-      );
-    }
+    await removeMirroredEvent(app, deps, request.userId, blockRow, {
+      fields: { blockId: id }, message: 'google write-back failed: block event not removed remotely',
+    });
     await deps.repos.scheduledBlocks.delete(request.userId, id);
     // Still no replan — just tell the other tabs (there are no replan counts to report).
     announceBlockWrite(request.userId);
