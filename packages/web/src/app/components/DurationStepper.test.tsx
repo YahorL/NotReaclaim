@@ -13,13 +13,34 @@ describe('DurationStepper', () => {
     expect(durationLabel(90 * 60_000)).toBe('1 hr 30 min');
   });
 
-  it('grows both step buttons on a coarse pointer without moving the icons', () => {
-    // Sized for the SMALLER caller: every drawer/popover passes size={22}, so the padding must
-    // clear the floor there (22 + 20 = 42px), not just at the default 26 (46px).
-    render(<DurationStepper label="duration" size={22} valueMs={15 * 60_000} onChange={vi.fn()} />);
-    for (const name of ['decrease duration', 'increase duration']) {
-      expect(screen.getByRole('button', { name }).className).toContain('coarse:p-2.5');
+  it('shows the value as tabular text', () => {
+    render(<DurationStepper label="duration" valueMs={75 * 60_000} onChange={vi.fn()} />);
+    expect(screen.getByTestId('duration-value')).toHaveTextContent('1 hr 15 min');
+    expect(screen.getByTestId('duration-value').className).toContain('tabular-nums');
+  });
+
+  it('disables both buttons when disabled', () => {
+    render(<DurationStepper label="duration" disabled valueMs={30 * 60_000} onChange={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'decrease duration' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'increase duration' })).toBeDisabled();
+  });
+
+  it('marks the compact variant for the drawers and popover (size below the default)', () => {
+    const { rerender } = render(<DurationStepper label="duration" valueMs={15 * 60_000} onChange={vi.fn()} />);
+    expect(screen.getByTestId('duration-stepper')).not.toHaveAttribute('data-compact');
+    rerender(<DurationStepper label="duration" size={22} valueMs={15 * 60_000} onChange={vi.fn()} />);
+    expect(screen.getByTestId('duration-stepper')).toHaveAttribute('data-compact', 'true');
+  });
+
+  it('grows both step buttons to a 44px target on a coarse pointer, at either size', () => {
+    for (const size of [undefined, 22]) {
+      const { unmount } = render(<DurationStepper label="duration" size={size} valueMs={15 * 60_000} onChange={vi.fn()} />);
+      for (const name of ['decrease duration', 'increase duration']) {
+        const cls = screen.getByRole('button', { name }).className;
+        expect(cls).toContain('coarse:h-11');
+        expect(cls).toContain('coarse:w-11');
+      }
+      unmount();
     }
-    expect(screen.getByRole('button', { name: 'decrease duration' }).parentElement!.className).toContain('coarse:gap-1');
   });
 });

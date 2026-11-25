@@ -3,6 +3,7 @@ import { MS_PER_MIN, SLOT_MIN } from '../lib/time';
 import { Icons } from '../shell/icons';
 
 const STEP = SLOT_MIN * MS_PER_MIN;
+const DEFAULT_SIZE = 26;
 
 export function durationLabel(ms: number): string {
   const { hours, minutes } = msToHM(ms);
@@ -11,21 +12,33 @@ export function durationLabel(ms: number): string {
   return `${minutes} mins`;
 }
 
-/** Bold human duration + circular ∓ buttons stepping ±15 min (floor 15 min). */
-export function DurationStepper({ valueMs, onChange, disabled = false, label, size = 26 }: {
+// Literal class strings per variant (Tailwind JIT). Default = the prototype's `.big` 22px value
+// and 34px `.step` glass buttons (New task dialog, Settings). Compact = every caller passing a
+// smaller `size` (TaskDrawer, HabitDrawer, CreatePopover): their half-width columns cannot hold
+// "2 hr 15 min" at 22px beside two 34px buttons. Both grow to a 44px target on a coarse pointer.
+const VALUE = 'min-w-0 flex-1 whitespace-nowrap font-medium tabular-nums text-fg';
+const VALUE_DEFAULT = `${VALUE} text-[22px]`;
+const VALUE_COMPACT = `${VALUE} text-[17px]`;
+const BTN = 'btn-glass focus-ring grid shrink-0 place-items-center rounded-full text-fg coarse:h-11 coarse:w-11';
+const BTN_DEFAULT = `${BTN} h-[34px] w-[34px]`;
+const BTN_COMPACT = `${BTN} h-[30px] w-[30px]`;
+
+/** Human duration + round glass −/+ buttons stepping ±15 min (floor 15 min). `size` scales the icons. */
+export function DurationStepper({ valueMs, onChange, disabled = false, label, size = DEFAULT_SIZE }: {
   valueMs: number; onChange: (ms: number) => void; disabled?: boolean; label: string; size?: number;
 }) {
+  const compact = size < DEFAULT_SIZE;
+  const btn = compact ? BTN_COMPACT : BTN_DEFAULT;
+  const icon = Math.round(size * 0.55);
   return (
-    <div className="flex items-center">
-      <span className="flex-1 text-[18px] font-bold">{durationLabel(valueMs)}</span>
-      {/* Padding is sized for the SMALLER caller, not the default: TaskDrawer, HabitDrawer and
-          CreatePopover — the primary touch surfaces — all pass size={22}, so p-2.5 buys 42px
-          there and 46px at the default 26. The tighter coarse gap keeps the pair inside the same
-          field box rather than pushing the label out. */}
-      <div className="flex gap-2 text-indigo coarse:gap-1">
-        <button type="button" aria-label={`decrease ${label}`} disabled={disabled} onClick={() => onChange(Math.max(STEP, valueMs - STEP))} className="disabled:opacity-40 coarse:p-2.5"><Icons.minusCircle size={size} /></button>
-        <button type="button" aria-label={`increase ${label}`} disabled={disabled} onClick={() => onChange(valueMs + STEP)} className="disabled:opacity-40 coarse:p-2.5"><Icons.plusCircle size={size} /></button>
-      </div>
+    <div data-testid="duration-stepper" data-compact={compact || undefined} className="flex min-w-0 items-center gap-2">
+      <span data-testid="duration-value" className={compact ? VALUE_COMPACT : VALUE_DEFAULT}>{durationLabel(valueMs)}</span>
+      <button type="button" aria-label={`decrease ${label}`} disabled={disabled} onClick={() => onChange(Math.max(STEP, valueMs - STEP))} className={btn}>
+        <Icons.minus size={icon} className="[stroke-width:2.2]" />
+      </button>
+      <button type="button" aria-label={`increase ${label}`} disabled={disabled} onClick={() => onChange(valueMs + STEP)} className={btn}>
+        <Icons.plus size={icon} className="[stroke-width:2.2]" />
+      </button>
     </div>
   );
 }

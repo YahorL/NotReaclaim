@@ -63,6 +63,8 @@ export const Icons = {
   grip: (p: IconProps) => <Ic {...p} fill="currentColor"><circle cx="9.5" cy="7" r="1.6" /><circle cx="14.5" cy="7" r="1.6" /><circle cx="9.5" cy="12" r="1.6" /><circle cx="14.5" cy="12" r="1.6" /><circle cx="9.5" cy="17" r="1.6" /><circle cx="14.5" cy="17" r="1.6" /></Ic>,
   chevLeft: (p: IconProps) => <Ic {...p} d="M15 6l-6 6 6 6" />,
   chevRight: (p: IconProps) => <Ic {...p} d="M9 6l6 6-6 6" />,
+  /** Stepper "−" (prototype `.step`); pairs with `plus`. */
+  minus: (p: IconProps) => <Ic {...p} d="M5 12h14" />,
 } satisfies Record<string, (p: IconProps) => ReactElement>;
 
 export type IconName = keyof typeof Icons;

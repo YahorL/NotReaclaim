@@ -31,8 +31,8 @@ describe('NewTaskModal', () => {
     const createTask = vi.fn(async () => task());
     renderWithProviders(<NewTaskModal now={() => NOW} onClose={vi.fn()} />, { api: fakeApiClient(api(createTask) as never) });
     fireEvent.change(screen.getByPlaceholderText(/task name/i), { target: { value: 'Write spec' } });
-    fireEvent.click(screen.getByRole('button', { name: /high/i }));
-    expect(screen.getByRole('button', { name: /high/i })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('radio', { name: /high/i }));
+    expect(screen.getByRole('radio', { name: /high/i })).toHaveAttribute('aria-checked', 'true');
     fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
     await waitFor(() => expect(createTask).toHaveBeenCalledWith(expect.objectContaining({ title: 'Write spec', priority: 2 })));
   });
@@ -137,7 +137,7 @@ describe('NewTaskModal', () => {
     renderWithProviders(<NewTaskModal now={() => NOW} onClose={vi.fn()} />, { api: fakeApiClient(api() as never) });
     // basis-[195px] + a shrink-0 2x2 picker + a shrink-0 Split toggle = ~429px of children in a
     // 358px content box at 390: the row must be allowed to break instead of clipping.
-    const row = screen.getByRole('group', { name: 'Priority' }).closest('div.flex.flex-wrap') as HTMLElement;
+    const row = screen.getByRole('radiogroup', { name: 'Priority' }).closest('div.flex.flex-wrap') as HTMLElement;
     expect(row).not.toBeNull();
     expect(row.classList.contains('md:flex-nowrap')).toBe(true);
   });
