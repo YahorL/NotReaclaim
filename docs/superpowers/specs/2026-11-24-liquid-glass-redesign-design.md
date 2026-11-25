@@ -301,7 +301,7 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
 - **Icons.** `planner`/`priorities`/`stats` glyphs were redrawn to the prototype paths. `pin`/`play`/`stop`/`user` are drawn in the same style, since the prototype has no glyph for them (and the location pin is excluded). `grip` is re-centred on the 24 grid.
 - **Mobile.** The tab bar and top bar are `.glass` with `rounded-none` and one-side borders. The active tab is a 48×28 accent pill behind the icon, plus `aria-current`/`data-active`. The Habits tab now uses the `habits` glyph.
 - **Left for later phases:**
-  - Pages still carry their own outer padding (e.g. Planner `p-3`), so content sits ~12px inside the header's left edge (P3/P7).
+  - Pages still carry their own outer padding (e.g. Planner `md:p-4`), so content sits ~12–16px inside the header's left edge (P3/P7).
   - The Buffers card heading duplicates the new "Scheduling buffers" headline (P7).
 
 ### Survey notes for risky assumptions (checked 2026-11-24)
