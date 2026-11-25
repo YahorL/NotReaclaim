@@ -39,7 +39,7 @@ describe('Buffers page', () => {
 
   // Replaces "Save PUTs the full settings payload…", which pinned the defect: a PUT of the
   // settings captured on page load reverted any change made meanwhile in another tab.
-  it('Save PATCHes only the two buffer values, never the rest of the settings', async () => {
+  it('Save PATCHes only the edited buffer value, never the rest of the settings', async () => {
     const patchSettings = vi.fn(async () => settings());
     const putSettings = vi.fn(async () => settings());
     const api = fakeApiClient({ getSettings: async () => settings(), patchSettings, putSettings } as never);
@@ -48,8 +48,67 @@ describe('Buffers page', () => {
     fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '15' } });
     fireEvent.click(screen.getByTestId('save'));
     await waitFor(() => expect(patchSettings).toHaveBeenCalledTimes(1));
-    expect(patchSettings).toHaveBeenCalledWith({ meetingBufferMs: 300_000, taskBufferMs: 900_000 });
+    expect(patchSettings).toHaveBeenCalledWith({ taskBufferMs: 900_000 });
     expect(putSettings).not.toHaveBeenCalled();
+  });
+
+  describe('only what was edited is sent', () => {
+    it('an untouched buffer is not sent, so it cannot revert a change saved elsewhere', async () => {
+      const patchSettings = vi.fn(async () => settings());
+      const api = fakeApiClient({ getSettings: async () => settings(), patchSettings } as never);
+      renderWithProviders(<Buffers />, { api });
+      await waitFor(() => expect((screen.getByTestId('meeting-buffer') as HTMLInputElement).value).toBe('5'));
+      fireEvent.change(screen.getByTestId('meeting-buffer'), { target: { value: '20' } });
+      fireEvent.click(screen.getByTestId('save'));
+      await waitFor(() => expect(patchSettings).toHaveBeenCalledWith({ meetingBufferMs: 1_200_000 }));
+    });
+
+    it('a stored value that is not whole minutes (90 000 ms, shown as 2) is not rewritten by saving the other field', async () => {
+      const patchSettings = vi.fn(async () => settings());
+      const api = fakeApiClient({ getSettings: async () => settings({ meetingBufferMs: 90_000 }), patchSettings } as never);
+      renderWithProviders(<Buffers />, { api });
+      await waitFor(() => expect((screen.getByTestId('meeting-buffer') as HTMLInputElement).value).toBe('2'));
+      fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '15' } });
+      fireEvent.click(screen.getByTestId('save'));
+      await waitFor(() => expect(patchSettings).toHaveBeenCalledTimes(1));
+      expect(patchSettings).toHaveBeenCalledWith({ taskBufferMs: 900_000 });
+    });
+
+    it('Save is disabled until a field differs from what was loaded or last saved', async () => {
+      const patchSettings = vi.fn(async () => settings());
+      const api = fakeApiClient({ getSettings: async () => settings(), patchSettings } as never);
+      renderWithProviders(<Buffers />, { api });
+      await waitFor(() => expect((screen.getByTestId('task-buffer') as HTMLInputElement).value).toBe('10'));
+      expect(screen.getByTestId('save')).toBeDisabled();
+      fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '15' } });
+      expect(screen.getByTestId('save')).toBeEnabled();
+      fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '10' } });
+      expect(screen.getByTestId('save')).toBeDisabled();
+
+      fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '15' } });
+      fireEvent.click(screen.getByTestId('save'));
+      await waitFor(() => expect(screen.getByTestId('saved')).toBeInTheDocument());
+      expect(screen.getByTestId('save')).toBeDisabled(); // 15 is now what was saved
+
+      fireEvent.change(screen.getByTestId('meeting-buffer'), { target: { value: '7' } });
+      fireEvent.click(screen.getByTestId('save'));
+      await waitFor(() => expect(patchSettings).toHaveBeenCalledTimes(2));
+      expect(patchSettings).toHaveBeenLastCalledWith({ meetingBufferMs: 420_000 });
+    });
+
+    it('first-time setup can save with nothing edited (it creates the settings), with a PUT of the defaults', async () => {
+      const putSettings = vi.fn(async () => settings());
+      const api = fakeApiClient({
+        getSettings: () => Promise.reject(new ApiError(404, 'not_found', 'not found')), putSettings,
+      } as never);
+      renderWithProviders(<Buffers />, { api });
+      await waitFor(() => expect(screen.getByTestId('task-buffer')).toBeInTheDocument());
+      expect(screen.getByTestId('save')).toBeEnabled();
+      fireEvent.click(screen.getByTestId('save'));
+      await waitFor(() => expect(putSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ meetingBufferMs: 0, taskBufferMs: 0, defaultMinChunkMs: 30 * 60_000 }),
+      ));
+    });
   });
 
   it('first-time setup (no settings yet) saves the defaults plus the buffers with a PUT', async () => {
@@ -116,6 +175,7 @@ describe('Buffers page', () => {
     const api = fakeApiClient({ getSettings: async () => settings(), patchSettings } as never);
     renderWithProviders(<Buffers />, { api });
     await waitFor(() => expect((screen.getByTestId('task-buffer') as HTMLInputElement).value).toBe('10'));
+    fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '15' } });
 
     fireEvent.click(screen.getByTestId('save'));
     await waitFor(() => expect(screen.getByTestId('form-error')).toHaveTextContent('taskBufferMs must be non-negative'));
@@ -131,6 +191,7 @@ describe('Buffers page', () => {
     const api = fakeApiClient({ getSettings: async () => settings(), patchSettings } as never);
     renderWithProviders(<Buffers />, { api });
     await waitFor(() => expect((screen.getByTestId('task-buffer') as HTMLInputElement).value).toBe('10'));
+    fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '15' } });
     fireEvent.click(screen.getByTestId('save'));
     await waitFor(() => expect(screen.getByTestId('form-error')).toHaveTextContent(/couldn't save/i));
     expect(screen.queryByTestId('saved')).not.toBeInTheDocument();
@@ -176,6 +237,7 @@ describe('Buffers page', () => {
 
     it('drops the Saved label as soon as the form is edited again', async () => {
       await load();
+      fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '15' } });
       fireEvent.click(screen.getByTestId('save'));
       await waitFor(() => expect(screen.getByTestId('saved')).toBeInTheDocument());
       fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '-1' } });

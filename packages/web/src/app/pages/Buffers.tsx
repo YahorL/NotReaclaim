@@ -32,33 +32,53 @@ export function Buffers() {
     ? (updateM.error instanceof ApiError ? updateM.error.message : "Couldn't save buffers. Check your connection and try again.")
     : null;
 
-  return <BuffersForm initial={initial} onSave={(input) => updateM.mutate(input)} saving={updateM.isPending} justSaved={updateM.isSuccess} saveError={saveError} />;
+  return (
+    <BuffersForm
+      initial={initial}
+      firstTime={!settingsQ.data}
+      onSave={(buffers, onSaved) => updateM.mutate(buffers, { onSuccess: onSaved })}
+      saving={updateM.isPending} justSaved={updateM.isSuccess} saveError={saveError}
+    />
+  );
 }
 
-function BuffersForm({ initial, onSave, saving, justSaved, saveError }: {
+const minutesText = (ms: number) => String(Math.round(ms / 60000));
+
+function BuffersForm({ initial, firstTime, onSave, saving, justSaved, saveError }: {
   initial: SettingsFormState;
-  onSave: (buffers: BufferValues) => void;
+  /** No settings row yet: saving creates it, so Save is useful even with nothing edited. */
+  firstTime: boolean;
+  onSave: (buffers: Partial<BufferValues>, onSaved: () => void) => void;
   saving: boolean;
   justSaved: boolean;
   saveError: string | null;
 }) {
   // The fields hold the text as typed, so '', '-5' or '1.5' reach the validator (and stay on
   // screen with their error) instead of being coerced to a number first.
-  const [meetingText, setMeetingText] = useState(() => String(Math.round(initial.meetingBufferMs / 60000)));
-  const [taskText, setTaskText] = useState(() => String(Math.round(initial.taskBufferMs / 60000)));
+  const [meetingText, setMeetingText] = useState(() => minutesText(initial.meetingBufferMs));
+  const [taskText, setTaskText] = useState(() => minutesText(initial.taskBufferMs));
+  // The text as loaded / last saved. Only a field that differs from it is sent: an untouched one
+  // could revert a change saved elsewhere, or round a stored 90 000 ms (shown as 2) to 120 000.
+  const [baseline, setBaseline] = useState(() => ({ meeting: meetingText, task: taskText }));
   // A "Saved" left over from the previous save must not sit next to an edited (maybe invalid) form.
   const [editedSinceSave, setEditedSinceSave] = useState(false);
   const meetingBufferError = validateBufferMinutesText(meetingText);
   const taskBufferError = validateBufferMinutesText(taskText);
   const ok = !meetingBufferError && !taskBufferError;
+  const changed: Partial<BufferValues> = {
+    ...(meetingText !== baseline.meeting && { meetingBufferMs: Number(meetingText) * 60000 }),
+    ...(taskText !== baseline.task && { taskBufferMs: Number(taskText) * 60000 }),
+  };
+  const canSave = ok && (firstTime || Object.keys(changed).length > 0);
   const edit = (set: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
     set(e.target.value);
     setEditedSinceSave(true);
   };
   const save = () => {
-    if (!ok) return;
+    if (!canSave) return;
     setEditedSinceSave(false);
-    onSave({ meetingBufferMs: Number(meetingText) * 60000, taskBufferMs: Number(taskText) * 60000 });
+    const sent = { meeting: meetingText, task: taskText };
+    onSave(changed, () => setBaseline(sent));
   };
 
   return (
@@ -100,7 +120,7 @@ function BuffersForm({ initial, onSave, saving, justSaved, saveError }: {
       <div className="flex items-center gap-3">
         <button
           data-testid="save"
-          disabled={!ok || saving}
+          disabled={!canSave || saving}
           onClick={save}
           className="rounded-[9px] bg-indigo px-5 py-2 text-[14px] font-bold text-white disabled:opacity-50"
         >
