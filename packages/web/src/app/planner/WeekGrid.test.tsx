@@ -4,7 +4,7 @@ import type { ScheduledBlock, CalendarEvent } from '../../api/types';
 import { startOfWeek, dayColumns, minutesToPx } from './weekModel';
 import { blockLeftCss, blockWidthCss } from './blockLayout';
 import { within } from '@testing-library/react';
-import { WeekGrid, HOLD_TIMEOUT_MS, type WeekGridProps } from './WeekGrid';
+import { WeekGrid, HOLD_TIMEOUT_MS, REORDER_DELAY_MS, type WeekGridProps } from './WeekGrid';
 import { KEY_COMMIT_DEBOUNCE_MS } from './InteractiveBlock';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 
@@ -153,19 +153,55 @@ describe('WeekGrid', () => {
     expect(tile.querySelector('[data-testid="resize-handle"]')).toBeNull();
   });
 
-  it('keeps a stable, day-independent child order in the layer', () => {
-    // A cross-day move must not reorder the layer's children (React would re-insert the node).
+  it('renders the layer in time order (day, then start) whatever the ids, so Tab follows the calendar', () => {
+    const z = block({ id: 'z', title: 'Z', startsAt: '2026-01-05T08:00:00.000Z', endsAt: '2026-01-05T09:00:00.000Z' });
     const a = block({ id: 'a', title: 'A', startsAt: '2026-01-09T09:00:00.000Z', endsAt: '2026-01-09T10:00:00.000Z' });
-    const b = block({ id: 'b', title: 'B', startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T10:00:00.000Z' });
-    const { rerender } = renderGrid({ blocks: [a, b], events: [] });
-    const names = () => screen.getAllByTestId('block-body').map((t) => t.getAttribute('aria-label')!.split(',')[0]);
-    const before = names();
-    rerender(
-      <WeekGrid days={days} nowMs={WED_NOON} weekLabel="Jan 5 – 11" events={[]}
-        blocks={[{ ...a, startsAt: '2026-01-05T11:00:00.000Z', endsAt: '2026-01-05T12:00:00.000Z' }, b]}
-        onPrev={vi.fn()} onToday={vi.fn()} onNext={vi.fn()} onCommit={vi.fn()} />,
-    );
-    expect(names()).toEqual(before);
+    const m = block({ id: 'm', title: 'M', startsAt: '2026-01-05T12:00:00.000Z', endsAt: '2026-01-05T13:00:00.000Z' });
+    renderGrid({ blocks: [a, m, z], events: [event()] }); // Standup: Wed 10:00
+    const names = screen.getAllByTestId('block-body').map((t) => t.getAttribute('aria-label')!.split(',')[0]);
+    expect(names).toEqual(['Z', 'M', 'Standup', 'A']);
+  });
+
+  it('does not re-insert a node right after it moves: the DOM order catches up once things are calm', () => {
+    vi.useFakeTimers();
+    try {
+      // A cross-day / past-a-neighbour move must not reorder the layer's children at once (React
+      // would re-insert the node: focus lost, spring transition killed).
+      const a = block({ id: 'a', title: 'A', startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T10:00:00.000Z' });
+      const b = block({ id: 'b', title: 'B', startsAt: '2026-01-05T11:00:00.000Z', endsAt: '2026-01-05T12:00:00.000Z' });
+      const { rerender } = renderGrid({ blocks: [a, b], events: [] });
+      const names = () => screen.getAllByTestId('block-body').map((t) => t.getAttribute('aria-label')!.split(',')[0]);
+      const nodeA = screen.getAllByTestId('event-block')[0]!;
+      expect(names()).toEqual(['A', 'B']);
+      const moved = [{ ...a, startsAt: '2026-01-06T09:00:00.000Z', endsAt: '2026-01-06T10:00:00.000Z' }, b];
+      rerender(<WeekGrid days={days} nowMs={WED_NOON} weekLabel="Jan 5 – 11" events={[]} blocks={moved} onPrev={vi.fn()} onToday={vi.fn()} onNext={vi.fn()} onCommit={vi.fn()} />);
+      expect(names()).toEqual(['A', 'B']);
+      act(() => { vi.advanceTimersByTime(REORDER_DELAY_MS + 10); });
+      expect(names()).toEqual(['B', 'A']);
+      expect(screen.getAllByTestId('event-block')[1]).toBe(nodeA); // moved, not re-created
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('holds the DOM order while a block inside the layer has focus', () => {
+    vi.useFakeTimers();
+    try {
+      const a = block({ id: 'a', title: 'A', startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T10:00:00.000Z' });
+      const b = block({ id: 'b', title: 'B', startsAt: '2026-01-05T11:00:00.000Z', endsAt: '2026-01-05T12:00:00.000Z' });
+      const { rerender } = renderGrid({ blocks: [a, b], events: [] });
+      const names = () => screen.getAllByTestId('block-body').map((t) => t.getAttribute('aria-label')!.split(',')[0]);
+      screen.getAllByTestId('block-body')[0]!.focus();
+      rerender(<WeekGrid days={days} nowMs={WED_NOON} weekLabel="Jan 5 – 11" events={[]} blocks={[{ ...a, startsAt: '2026-01-05T13:00:00.000Z', endsAt: '2026-01-05T14:00:00.000Z' }, b]} onPrev={vi.fn()} onToday={vi.fn()} onNext={vi.fn()} onCommit={vi.fn()} />);
+      act(() => { vi.advanceTimersByTime(5 * REORDER_DELAY_MS); });
+      expect(names()).toEqual(['A', 'B']);
+      expect(document.activeElement?.getAttribute('aria-label')).toMatch(/^A,/);
+      act(() => { (document.activeElement as HTMLElement).blur(); });
+      act(() => { vi.advanceTimersByTime(REORDER_DELAY_MS); });
+      expect(names()).toEqual(['B', 'A']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('tints today\'s column', () => {

@@ -34,6 +34,56 @@ function DayDropZone({ dayIndex, dayStartMs }: { dayIndex: number; dayStartMs: n
   );
 }
 
+/** Quiet time after the last order change before the DOM follows (longer than the 550ms spring). */
+export const REORDER_DELAY_MS = 700;
+const REORDER_RETRY_MS = 400;
+/** Anything in motion (or about to animate) inside the layer: a DOM move would kill it. */
+const BUSY_SELECTOR = '[data-dragging],[data-resizing],[data-settling],[data-new],[data-entering],[data-shake]';
+
+/**
+ * Items in the order the layer renders them: by day, then start — so Tab and a screen reader's
+ * reading order follow the calendar — WITHOUT ever moving a DOM node that is busy.
+ *
+ * React re-inserts a node whose position in the child list changes. A re-inserted node drops
+ * focus, loses its running transition (the release spring, a replan glide) and replays its CSS
+ * animations; a moved pointer-captured node loses the capture. So the rendered order lags the
+ * time order: it only catches up once the order has been stable for REORDER_DELAY_MS and nothing
+ * in the layer is focused, dragged, settling, held, landing, entering or shaking. Until then
+ * known keys keep their old relative order; new keys (fresh nodes — nothing to disturb) are
+ * appended in time order.
+ */
+function useCalmTimeOrder<T extends { key: string; startMs: number }>(
+  items: T[],
+  layout: Map<string, { dayIndex: number }>,
+  layerRef: { current: HTMLElement | null },
+  holding: () => boolean,
+): T[] {
+  const timeOrder = items
+    .filter((it) => layout.has(it.key))
+    .sort((a, b) => (layout.get(a.key)!.dayIndex - layout.get(b.key)!.dayIndex) || (a.startMs - b.startMs) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  const sig = timeOrder.map((it) => it.key).join('|');
+  const [domOrder, setDomOrder] = useState<string[]>(() => timeOrder.map((it) => it.key));
+  const domSig = domOrder.join('|');
+
+  useEffect(() => {
+    if (sig === domSig) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const attempt = () => {
+      const layer = layerRef.current;
+      const busy = holding() || (layer != null && (layer.contains(document.activeElement) || layer.querySelector(BUSY_SELECTOR) != null));
+      if (busy) { timer = setTimeout(attempt, REORDER_RETRY_MS); return; }
+      setDomOrder(sig === '' ? [] : sig.split('|'));
+    };
+    timer = setTimeout(attempt, REORDER_DELAY_MS);
+    return () => clearTimeout(timer);
+    // `holding` / `layerRef` are read fresh on each attempt.
+  }, [sig, domSig]);
+
+  const rank = new Map(domOrder.map((k, i) => [k, i]));
+  const known = timeOrder.filter((it) => rank.has(it.key)).sort((a, b) => rank.get(a.key)! - rank.get(b.key)!);
+  return [...known, ...timeOrder.filter((it) => !rank.has(it.key))];
+}
+
 /** Shared, visually hidden keyboard instructions every movable block body points at. */
 const BLOCK_HELP_ID = 'planner-block-keys';
 
@@ -146,7 +196,8 @@ function toItems(blocks: ScheduledBlock[], events: CalendarEvent[], zone: string
       pinned: false, started: false, startMs, endMs: Date.parse(e.endsAt), startLabel: formatHm(startMs, zone),
       blockId: null, event: e, taskId: null };
   });
-  // One flat, day-independent order (by key): a cross-day move must not reorder the layer's
+  // A stable base order (by key). The layer renders in TIME order (Tab order), but only applies
+  // a new order once nothing is in motion — see useCalmTimeOrder.
   // children, or React re-inserts the node and loses its transition and focus.
   return [...fromEvents, ...fromBlocks].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 }
@@ -162,6 +213,10 @@ export function WeekGrid(props: WeekGridProps) {
     return pendingApplies(p, it) ? { ...it, startMs: p.startMs, endMs: p.endMs, startLabel: formatHm(p.startMs, zone) } : it;
   });
   const layout = layoutWeek(items, days);
+  const layerRef = useRef<HTMLDivElement>(null);
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
+  const rendered = useCalmTimeOrder(items, layout, layerRef, () => Object.keys(pendingRef.current).length > 0);
   const toast = useToast();
 
   const dropPending = (key: string) => {
@@ -372,8 +427,8 @@ export function WeekGrid(props: WeekGridProps) {
                 Arrow keys move the block by 15 minutes or one day. Shift with Up or Down makes it shorter or longer.
                 Enter shows its details. Delete removes it.
               </p>
-              <div data-testid="block-layer" className="pointer-events-none absolute inset-0">
-                {items.map((it) => {
+              <div ref={layerRef} data-testid="block-layer" className="pointer-events-none absolute inset-0">
+                {rendered.map((it) => {
                   const g = layout.get(it.key);
                   if (!g) return null;
                   const d = days[g.dayIndex]!;
