@@ -32,7 +32,8 @@ function Segment({ seg }: { seg: PreviewSegment }) {
       className={`${BLOCK} ${WIDTH_ANIM} ${meeting ? 'block-meeting' : 'border-[1.5px] border-dashed border-accent-fg/70 bg-accent/[.05] text-accent-fg'}`}
     >
       <span className="truncate text-[13px] font-medium">{meeting ? 'Meeting' : 'Task'}</span>
-      <span className={`truncate text-[11px] ${meeting ? 'opacity-80' : ''}`}>{seg.minutes} min</span>
+      {/* Full strength on the violet fill: white @ .8 there is 3.9:1 for 11px text. */}
+      <span className="truncate text-[11px]">{seg.minutes} min</span>
     </div>
   );
 }
