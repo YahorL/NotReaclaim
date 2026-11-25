@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import type { Task } from '../../api/types';
 import { ApiError } from '../../api/client';
-import { queryKeys, useTasksQuery, useSchedulePreviewQuery, useUpdateTaskMutation, useDeleteTaskMutation, useUpdateSubtaskMutation } from '../../api/queries';
+import { useTasksQuery, useSchedulePreviewQuery, useUpdateTaskMutation, useMoveTaskMutation, useDeleteTaskMutation, useUpdateSubtaskMutation } from '../../api/queries';
 import { TaskDrawer } from '../tasks/TaskDrawer';
 import { useTimezone } from '../settings/useTimezone';
 import { DrawerHost, DESKTOP_DRAWER_SLOT } from '../components/DrawerHost';
@@ -19,7 +18,7 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
   const updateM = useUpdateTaskMutation();
   const deleteM = useDeleteTaskMutation();
   const subtaskM = useUpdateSubtaskMutation();
-  const qc = useQueryClient();
+  const moveM = useMoveTaskMutation();
   const compact = useCompactWidth();
   const zone = useTimezone();
   const onToggleSubtask = (subtaskId: string, done: boolean) => subtaskM.mutate({ id: subtaskId, patch: { done } });
@@ -83,23 +82,9 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
     });
     if (!patch) return;
     // Optimistic, so a second arrow press computes from the moved state and focus can follow the
-    // card. Board already paints the move synchronously (its held arrangement), so the write can
-    // wait for `cancelQueries`: the previous move's post-success refetch may still be in flight,
-    // and its (pre-this-move) response would otherwise land on top of this write and step the card
-    // back. Rolled back and re-fetched if the PATCH fails.
-    void (async () => {
-      await qc.cancelQueries({ queryKey: queryKeys.tasksRoot });
-      const snapshots = qc.getQueriesData<unknown>({ queryKey: queryKeys.tasksRoot });
-      qc.setQueriesData<unknown>({ queryKey: queryKeys.tasksRoot }, (old: unknown) => (Array.isArray(old)
-        ? (old as Task[]).map((x) => (x.id === taskId ? { ...x, ...patch } as Task : x))
-        : old));
-      updateM.mutate({ id: taskId, patch }, {
-        onError: () => {
-          for (const [key, data] of snapshots) qc.setQueryData(key, data);
-          void qc.invalidateQueries({ queryKey: queryKeys.tasksRoot });
-        },
-      });
-    })();
+    // card; serialized and rolled back at the mutation level (see useMoveTaskMutation). Board
+    // already paints the move synchronously (its held arrangement).
+    moveM.mutate({ id: taskId, patch });
   };
 
   return (

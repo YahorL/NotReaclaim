@@ -167,6 +167,8 @@ export function TaskRow({ task, columnKey, nextMs, now, zone, draggable = true, 
             onKeyDown={(e) => {
               if (!isBoardArrowKey(e.key) || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
               e.preventDefault(); // no page scroll
+              // A held key auto-repeats every ~30ms: one move per press, not a PATCH storm.
+              if (e.repeat) return;
               onKeyboardMove?.(task.id, e.key);
             }}
             className="-ml-1 flex h-[30px] w-[18px] shrink-0 cursor-grab touch-none items-center justify-center rounded-lg text-fg/45 opacity-60 transition hover:bg-fg/[.08] focus-visible:text-fg focus-visible:opacity-100 group-hover/card:text-fg group-hover/card:opacity-100 coarse:-my-1.5 coarse:-ml-2.5 coarse:h-11 coarse:w-9 coarse:opacity-100"

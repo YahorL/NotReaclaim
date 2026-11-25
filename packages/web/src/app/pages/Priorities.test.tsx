@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { act, createEvent, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { Task, SchedulePreview } from '../../api/types';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 import { installMatchMedia, type FakeMatchMedia } from '../../test/matchMedia';
@@ -306,6 +306,73 @@ describe('Priorities board moves', () => {
     await act(() => new Promise((r) => { setTimeout(r, 20); }));
     expect(order()).toEqual(['b', 'c', 'a']);
     expect(document.activeElement).toBe(gripOf('First'));
+  });
+
+  it('a held arrow key (auto-repeat) moves once, not once per repeat', async () => {
+    const updateTask = vi.fn(async () => task());
+    const listTasks = vi.fn(async () => [
+      task({ id: 'a', title: 'First', priority: 2, sortOrder: 0 }),
+      task({ id: 'b', title: 'Second', priority: 2, sortOrder: 10 }),
+      task({ id: 'c', title: 'Third', priority: 2, sortOrder: 20 }),
+    ]);
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateTask }) });
+    await waitFor(() => expect(screen.getByText('First')).toBeInTheDocument());
+    fireEvent.keyDown(gripOf('First'), { key: 'ArrowDown' });
+    const repeat = createEvent.keyDown(gripOf('First'), { key: 'ArrowDown', repeat: true });
+    fireEvent(gripOf('First'), repeat);
+    fireEvent.keyDown(gripOf('First'), { key: 'ArrowDown', repeat: true });
+    expect(repeat.defaultPrevented).toBe(true); // still no page scroll
+    const order = () => within(screen.getByTestId('column-high')).getAllByTestId('task-row').map((r) => r.getAttribute('data-task-id'));
+    expect(order()).toEqual(['b', 'a', 'c']);
+    await waitFor(() => expect(updateTask).toHaveBeenCalledTimes(1));
+    await act(() => new Promise((r) => { setTimeout(r, 20); }));
+    expect(updateTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('moves persist one PATCH at a time, in order (the next is sent once the previous settles)', async () => {
+    let resolveFirst: (t: Task) => void = () => {};
+    const updateTask = vi.fn()
+      .mockImplementationOnce(() => new Promise<Task>((r) => { resolveFirst = r; }))
+      .mockImplementation(async () => task());
+    const listTasks = vi.fn(async () => [
+      task({ id: 'a', title: 'First', priority: 2, sortOrder: 0 }),
+      task({ id: 'b', title: 'Second', priority: 2, sortOrder: 10 }),
+      task({ id: 'c', title: 'Third', priority: 2, sortOrder: 20 }),
+    ]);
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateTask }) });
+    await waitFor(() => expect(screen.getByText('First')).toBeInTheDocument());
+    fireEvent.keyDown(gripOf('First'), { key: 'ArrowDown' });
+    await waitFor(() => expect(updateTask).toHaveBeenCalledTimes(1));
+    fireEvent.keyDown(gripOf('First'), { key: 'ArrowDown' });
+    await act(() => new Promise((r) => { setTimeout(r, 20); }));
+    expect(updateTask).toHaveBeenCalledTimes(1); // queued behind the first
+    await act(async () => { resolveFirst(task()); });
+    await waitFor(() => expect(updateTask).toHaveBeenCalledTimes(2));
+    expect(updateTask.mock.calls.map((c) => c[1])).toEqual([{ sortOrder: 15 }, { sortOrder: 21 }]);
+  });
+
+  it('when two queued moves both fail, the board rolls back to before the first (not to between them)', async () => {
+    const initial = [
+      task({ id: 'a', title: 'First', priority: 2, sortOrder: 0 }),
+      task({ id: 'b', title: 'Second', priority: 2, sortOrder: 10 }),
+      task({ id: 'c', title: 'Third', priority: 2, sortOrder: 20 }),
+    ];
+    // Later refetches never answer, so what shows is the rollback itself, not the server's list.
+    const listTasks = vi.fn().mockResolvedValueOnce(initial).mockImplementation(() => new Promise<Task[]>(() => {}));
+    let rejectFirst: (e: Error) => void = () => {};
+    const updateTask = vi.fn()
+      .mockImplementationOnce(() => new Promise<Task>((_r, j) => { rejectFirst = j; }))
+      .mockImplementation(async () => { throw new Error('boom'); });
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateTask }) });
+    await waitFor(() => expect(screen.getByText('First')).toBeInTheDocument());
+    const order = () => within(screen.getByTestId('column-high')).getAllByTestId('task-row').map((r) => r.getAttribute('data-task-id'));
+    fireEvent.keyDown(gripOf('First'), { key: 'ArrowDown' });
+    await waitFor(() => expect(updateTask).toHaveBeenCalledTimes(1));
+    fireEvent.keyDown(gripOf('First'), { key: 'ArrowDown' });
+    await waitFor(() => expect(order()).toEqual(['b', 'c', 'a']));
+    await act(async () => { rejectFirst(new Error('boom')); });
+    await waitFor(() => expect(updateTask).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(order()).toEqual(['a', 'b', 'c']));
   });
 
   it('ArrowUp on the top card and ArrowLeft from the first column do nothing', async () => {
