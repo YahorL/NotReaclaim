@@ -105,6 +105,37 @@ describe('settings routes', () => {
     expect((await app.inject({ method: 'GET', url: '/settings', headers: auth })).statusCode).toBe(404);
   });
 
+  it('a 400 names each bad field and why in plain text (the custom messages read naturally)', async () => {
+    const { app } = buildTestApp({ settings: null });
+    const token = await tokenFor(app);
+    const res = await app.inject({
+      method: 'PUT', url: '/settings', headers: { authorization: `Bearer ${token}` },
+      payload: {
+        ...settingsBody,
+        timezone: 'Fantasia/Castle',
+        workingHours: [{ weekday: 1, startMinute: 540, endMinute: 1020 }, { weekday: 2, startMinute: 600, endMinute: 540 }],
+        defaultMinChunkMs: 1800001, defaultMaxChunkMs: 1800000,
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({
+      code: 'validation_error',
+      message: 'timezone: must be a valid IANA time zone; workingHours.1: startMinute must be before endMinute; '
+        + 'defaultMinChunkMs: must not exceed defaultMaxChunkMs',
+    });
+  });
+
+  it('a 400 for the chunk-order rule reads naturally', async () => {
+    const { app } = buildTestApp({ settings: null });
+    const token = await tokenFor(app);
+    const res = await app.inject({
+      method: 'PUT', url: '/settings', headers: { authorization: `Bearer ${token}` },
+      payload: { ...settingsBody, defaultMinChunkMs: 1800001, defaultMaxChunkMs: 1800000 },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toBe('defaultMinChunkMs: must not exceed defaultMaxChunkMs');
+  });
+
   it('accepts canonical and legacy-alias IANA zones', async () => {
     const { app } = buildTestApp();
     const token = await tokenFor(app);

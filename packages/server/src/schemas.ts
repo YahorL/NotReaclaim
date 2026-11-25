@@ -16,7 +16,8 @@ export const authCallbackQuerySchema = z.object({ code: z.string().min(1), state
 export const consentQuerySchema = z.object({ invite: z.string().min(1).optional() });
 
 // Shared by the chunk-order refines below and the PATCH /tasks merged check in task-routes.
-export const CHUNK_ORDER = { message: 'minChunkMs must not exceed maxChunkMs', path: ['minChunkMs'] };
+// Messages on a field path read after the field name: the 400 body says "minChunkMs: must not…".
+export const CHUNK_ORDER = { message: 'must not exceed maxChunkMs', path: ['minChunkMs'] };
 
 const taskFieldsSchema = z.object({
   title: z.string().min(1),
@@ -65,7 +66,7 @@ export const workingHourEntrySchema = z.object({
 }).refine((w) => w.startMinute < w.endMinute, { message: 'startMinute must be before endMinute' });
 
 export const settingsSchema = z.object({
-  timezone: z.string().refine(isValidTimezone, { message: 'timezone must be a valid IANA time zone' }),
+  timezone: z.string().refine(isValidTimezone, { message: 'must be a valid IANA time zone' }),
   // An empty week is allowed here (unlike category windows): it means "no working hours".
   workingHours: z.array(workingHourEntrySchema),
   horizonDays: z.number().int().positive().optional(),
@@ -77,7 +78,7 @@ export const settingsSchema = z.object({
   /** Visual planner day boundary, minutes past local midnight (0 = midnight, 180 = 03:00). */
   dayStartMinute: z.number().int().min(0).max(1439).optional(),
 }).refine((b) => b.defaultMinChunkMs <= b.defaultMaxChunkMs, {
-  message: 'defaultMinChunkMs must not exceed defaultMaxChunkMs', path: ['defaultMinChunkMs'],
+  message: 'must not exceed defaultMaxChunkMs', path: ['defaultMinChunkMs'],
 });
 
 export const createCategorySchema = z.object({

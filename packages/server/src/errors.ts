@@ -1,4 +1,4 @@
-import { ZodError } from 'zod';
+import { ZodError, type ZodIssue } from 'zod';
 import { NotFoundError, ConflictError } from '@notreclaim/db';
 import { SettingsRequiredError } from '@notreclaim/core';
 import { GoogleNotConnectedError, GoogleApiError, GoogleAuthError } from '@notreclaim/google';
@@ -9,10 +9,18 @@ export interface MappedError {
   message: string;
 }
 
+/**
+ * One readable sentence per validation problem — `field.path: reason`, or the bare reason for a
+ * body-level rule — joined with "; ". Replaces zod's own `message`, a JSON dump of the issues.
+ */
+function validationMessage(issues: readonly ZodIssue[]): string {
+  return issues.map((i) => (i.path.length > 0 ? `${i.path.join('.')}: ${i.message}` : i.message)).join('; ');
+}
+
 /** Map any thrown value to an HTTP status + safe code/message. */
 export function mapDomainError(error: unknown): MappedError {
   if (error instanceof ZodError) {
-    return { status: 400, code: 'validation_error', message: error.message };
+    return { status: 400, code: 'validation_error', message: validationMessage(error.issues) };
   }
   if (error instanceof NotFoundError) {
     return { status: 404, code: 'not_found', message: error.message };

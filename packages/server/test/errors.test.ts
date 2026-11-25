@@ -23,6 +23,26 @@ describe('mapDomainError', () => {
     expect(mapDomainError(new Error('other')).status).toBe(500);
   });
 
+  it('turns a validation failure into one readable sentence per problem, not zod\'s JSON dump', () => {
+    const schema = z.object({
+      email: z.string().email(),
+      hours: z.array(z.object({ end: z.number().min(0) })),
+    }).refine(() => false, { message: 'the whole body is wrong' });
+    const result = schema.safeParse({ email: 'nope', hours: [{ end: 1 }, { end: -1 }] });
+    expect(result.success).toBe(false);
+    const mapped = mapDomainError((result as { error: ZodError }).error);
+    expect(mapped).toEqual({
+      status: 400,
+      code: 'validation_error',
+      message: 'email: Invalid email; hours.1.end: Number must be greater than or equal to 0; the whole body is wrong',
+    });
+  });
+
+  it('prints a body-level (path-less) issue as the bare message', () => {
+    const result = z.object({}).refine(() => false, { message: 'empty update' }).safeParse({});
+    expect(mapDomainError((result as { error: ZodError }).error).message).toBe('empty update');
+  });
+
   it('replaces Google\'s raw auth message with an actionable one', () => {
     // The raw text ("invalid_grant", a gaxios stack line) is for the logs, not for a user
     // staring at a failed replan.
