@@ -193,6 +193,19 @@ describe('Buffers page', () => {
     expect(parseFloat(meetingWidth())).toBeLessThan(before);
   });
 
+  it('the preview strip fits its card instead of scrolling (phone width)', async () => {
+    const api = fakeApiClient({ getSettings: async () => settings() } as never);
+    renderWithProviders(<Buffers />, { api });
+    await waitFor(() => expect(screen.getByTestId('legend-buffer')).toHaveTextContent('Buffer · 5 min'));
+    const strip = screen.getByTestId('preview-strip');
+    // Layout guarantee: no fixed minimum width and no horizontal scroller around the segments.
+    expect(strip.className).not.toMatch(/min-w-\[/);
+    expect(strip.parentElement!.className).not.toMatch(/overflow-x-auto/);
+    expect(strip).toHaveClass('min-w-0');
+    const total = screen.getAllByTestId('preview-segment').reduce((a, s) => a + parseFloat(s.style.width), 0);
+    expect(total).toBeCloseTo(100, 5);
+  });
+
   it('leaves the page title to the shell header (no duplicate card heading)', async () => {
     const api = fakeApiClient({ getSettings: async () => settings() } as never);
     renderWithProviders(<Buffers />, { api });

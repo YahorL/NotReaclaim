@@ -2,7 +2,7 @@ import { CAPS_LABEL } from '../forms/controls';
 import { bufferPreview, type PreviewSegment } from './bufferModel';
 
 const WIDTH_ANIM = 'transition-[width] duration-reflow ease-out-soft';
-const BLOCK = 'flex min-w-0 shrink-0 flex-col justify-center overflow-hidden rounded-[12px] px-3 py-2';
+const BLOCK = 'flex min-w-0 shrink-0 flex-col justify-center overflow-hidden rounded-[12px] px-2 py-2 sm:px-3';
 
 function Segment({ seg }: { seg: PreviewSegment }) {
   const style = { width: `${seg.pct}%` };
@@ -47,11 +47,10 @@ export function BufferPreview({ meetingBufferMin, gapMin }: { meetingBufferMin: 
         <span className={CAPS_LABEL}>Preview</span>
         <span className="text-[13px] text-fg-2">How an afternoon gets laid out</span>
       </div>
-      {/* Decorative: the legend below states both values in text. */}
-      <div aria-hidden="true" className="overflow-x-auto">
-        <div className="flex h-16 min-w-[480px] items-stretch">
-          {segs.map((s, i) => <Segment key={i} seg={s} />)}
-        </div>
+      {/* Decorative: the legend below states both values in text. Fluid, never scrolled: the
+          segments are shares of the strip, so the whole afternoon fits at any width. */}
+      <div aria-hidden="true" data-testid="preview-strip" className="flex h-16 min-w-0 items-stretch">
+        {segs.map((s, i) => <Segment key={i} seg={s} />)}
       </div>
       <div className="flex flex-wrap gap-[18px] text-[13px] text-fg-2">
         <span data-testid="legend-buffer" className="inline-flex items-center gap-2">
