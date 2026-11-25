@@ -227,13 +227,15 @@ describe('Planner', () => {
     expect(screen.getByTestId('next-up-card')).toBeInTheDocument();
   });
 
-  it('+N more on the summary card brings the hidden task panel back', async () => {
+  it('+N more on the summary card brings the hidden task panel back on All tasks', async () => {
     const many: SchedulePreview = { blocks: [], unscheduled: ['a', 'b', 'c', 'd'].map((id) => ({ sourceType: 'task' as const, sourceId: id, title: id, reason: 'x', remainingMs: 3_600_000 })) };
     renderWithProviders(<Planner now={() => NOW} />, { api: makeApi({ getSchedulePreview: vi.fn(async () => many) }) });
     await waitFor(() => expect(screen.getByTestId('planner-task-panel')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('panel-hide'));
     fireEvent.click(await screen.findByTestId('unscheduled-more'));
     expect(screen.getByTestId('planner-task-panel')).toBeInTheDocument();
+    // …switched to All tasks, where every at-risk task carries its warning.
+    expect(screen.getByRole('tab', { name: 'All tasks' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('task block is tinted when its category has a color', async () => {

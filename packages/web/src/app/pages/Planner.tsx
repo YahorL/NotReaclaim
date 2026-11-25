@@ -16,7 +16,7 @@ import { shouldCollapseSheet } from '../planner/dragSheet';
 import { Sheet } from '../components/Sheet';
 import { DrawerHost } from '../components/DrawerHost';
 import { WeekGrid } from '../planner/WeekGrid';
-import { PlannerTaskPanel } from '../planner/PlannerTaskPanel';
+import { PlannerTaskPanel, type PanelTab } from '../planner/PlannerTaskPanel';
 import { UnscheduledCard } from '../planner/UnscheduledCard';
 import { NextUpCard } from '../planner/NextUpCard';
 import { summarizeUnscheduled } from '../planner/unscheduledSummary';
@@ -67,6 +67,13 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
   // Dropped to a strip while a card is dragged out of the sheet, so the grid below is visible and
   // droppable. Cleared on drag end and on cancel; never persisted.
   const [sheetCollapsed, setSheetCollapsed] = useState(false);
+  // Lifted so the summary card's "+N more" can switch the panel to All tasks.
+  const [panelTab, setPanelTab] = useState<PanelTab>('priorities');
+  const showAllTasks = () => {
+    setPanelTab('tasks');
+    if (compact) setTaskSheetOpen(true);
+    else setPanelHidden(false);
+  };
 
   const schedule = useScheduleQuery(rangeFromIso, rangeToIso);
   const calendar = useCalendarEventsQuery(rangeFromIso, rangeToIso);
@@ -196,6 +203,8 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
     nowMs,
     zone,
     coarse,
+    tab: panelTab,
+    onTabChange: setPanelTab,
     onComplete: onCompleteTask,
     // Compact: the Tasks sheet and the drawer are both z-50 modal sheets, and two stacked sheets
     // would trap focus in the wrong one — close the sheet as we hand over.
@@ -236,7 +245,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           compact={compact}
           onReplan={() => replan.mutate()}
           replanPending={replan.isPending}
-          onShowAll={() => (compact ? setTaskSheetOpen(true) : setPanelHidden(false))}
+          onShowAll={showAllTasks}
         />
         {!compact && <NextUpCard now={now} className="w-[330px] shrink-0" />}
       </div>
