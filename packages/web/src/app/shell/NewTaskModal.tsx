@@ -139,7 +139,11 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
                 data-testid="new-category-confirm"
                 disabled={!newCatName.trim() || createCategoryM.isPending}
                 onClick={() => {
-                  const windows = settingsQ.data?.workingHours ?? FALLBACK_WORKING_HOURS;
+                  // Copy the default category's effective hours (its own windows, else working
+                  // hours). The server requires at least one window — an empty week would make
+                  // the category unschedulable — so nothing to copy falls back to the built-in.
+                  const defaultHours = categories.find((c) => c.isDefault)?.windows ?? settingsQ.data?.workingHours;
+                  const windows = defaultHours?.length ? defaultHours : FALLBACK_WORKING_HOURS;
                   createCategoryM.mutate({ name: newCatName.trim(), windows }, {
                     onSuccess: (cat) => { set('categoryId', cat.id); setCreatingCat(false); setNewCatName(''); },
                   });

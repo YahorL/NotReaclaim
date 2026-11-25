@@ -135,6 +135,37 @@ describe('NewTaskModal', () => {
     await waitFor(() => expect(screen.queryByTestId('new-category-name')).not.toBeInTheDocument());
   });
 
+  describe('the new category\'s hours (the server rejects an empty window list)', () => {
+    const settingsWith = (workingHours: unknown[]) => ({ id: 's', userId: 'u', timezone: 'UTC', workingHours, horizonDays: 14, defaultMinChunkMs: 1800000, defaultMaxChunkMs: 7200000, createdAt: '', updatedAt: '' });
+    async function createCategoryWith(workingHours: unknown[], defaultWindows: unknown[] | null) {
+      const createCategory = vi.fn().mockResolvedValue({ id: 'cat-new', userId: 'u', name: 'Deep Work', windows: [], isDefault: false });
+      const api = fakeApiClient({
+        getSettings: vi.fn().mockResolvedValue(settingsWith(workingHours)),
+        listCategories: vi.fn().mockResolvedValue([{ id: 'cat-def', userId: 'u', name: 'Working Hours', windows: defaultWindows, isDefault: true }]),
+        createCategory,
+      } as never);
+      renderWithProviders(<NewTaskModal onClose={() => {}} now={() => NOW} />, { api });
+      await waitFor(() => expect(screen.getByTestId('category-select')).toHaveValue('cat-def'));
+      fireEvent.click(screen.getByTestId('new-category-btn'));
+      fireEvent.change(screen.getByTestId('new-category-name'), { target: { value: 'Deep Work' } });
+      fireEvent.click(screen.getByTestId('new-category-confirm'));
+      await waitFor(() => expect(createCategory).toHaveBeenCalledTimes(1));
+      return createCategory.mock.calls[0]![0] as { name: string; windows: unknown[] };
+    }
+
+    it('never sends an empty window list when working hours are empty', async () => {
+      const body = await createCategoryWith([], null);
+      expect(body.windows.length).toBeGreaterThan(0);
+      expect(body).toEqual({ name: 'Deep Work', windows: [{ weekday: 1, startMinute: 540, endMinute: 1020 }] });
+    });
+
+    it('copies the default category\'s own hours when it has them (it does not inherit working hours)', async () => {
+      const own = [{ weekday: 2, startMinute: 600, endMinute: 720 }];
+      const body = await createCategoryWith([], own);
+      expect(body).toEqual({ name: 'Deep Work', windows: own });
+    });
+  });
+
   it('sizes the dialog fluidly so it fits narrow viewports', () => {
     renderWithProviders(<NewTaskModal now={() => NOW} onClose={vi.fn()} />, { api: fakeApiClient(api() as never) });
     const dialog = screen.getByLabelText('Close').closest('div.animate-pop') as HTMLElement;
