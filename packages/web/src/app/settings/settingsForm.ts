@@ -60,14 +60,18 @@ export const MAX_BUFFER_MINUTES = 24 * 60;
 const BUFFER_NOT_WHOLE = 'Buffer must be a whole number of minutes (≥ 0)';
 const BUFFER_TOO_LONG = 'Buffer must be at most 24 hours (1440 min)';
 
-/** The rule for `meetingBufferMs` / `taskBufferMs` as stored (ms). */
+/**
+ * The rule for `meetingBufferMs` / `taskBufferMs` as stored (ms), used by the Settings form.
+ * No 24 h cap here: that form has no buffer fields to show it on, so a larger value stored
+ * before the server capped it would silently disable Save — the server's 400 names it instead.
+ */
 export function validateBufferMs(ms: number): string | undefined {
   if (!Number.isInteger(ms) || ms < 0) return BUFFER_NOT_WHOLE;
-  if (ms > MAX_BUFFER_MINUTES * 60_000) return BUFFER_TOO_LONG;
   return undefined;
 }
 
-/** The same rule for a minute count as typed: digits only, so '', '-', '-5' and '1.5' are errors. */
+/** The Buffers page's rule for a minute count as typed: digits only (so '', '-', '-5' and '1.5'
+ *  are errors) and at most 24 h, matching the server. */
 export function validateBufferMinutesText(text: string): string | undefined {
   if (!/^\d+$/.test(text)) return BUFFER_NOT_WHOLE;
   if (Number(text) > MAX_BUFFER_MINUTES) return BUFFER_TOO_LONG;

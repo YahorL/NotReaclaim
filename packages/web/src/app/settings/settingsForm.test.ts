@@ -71,10 +71,12 @@ describe('settingsForm', () => {
     expect(validateSettingsForm({ ...base, meetingBufferMs: -60000 }).ok).toBe(false);
   });
 
-  it('bounds a buffer to 0..24 h', () => {
+  // The Settings form shows no buffer fields, so a buffer over 24 h stored before the server
+  // capped it must not silently disable its Save: the server's 400 names the field instead.
+  it('does not cap a stored buffer in the Settings form, which has no field to show the error', () => {
     expect(validateBufferMs(0)).toBeUndefined();
-    expect(validateBufferMs(24 * 60 * 60_000)).toBeUndefined();
-    expect(validateBufferMs(24 * 60 * 60_000 + 60_000)).toBe('Buffer must be at most 24 hours (1440 min)');
+    expect(validateBufferMs(25 * 60 * 60_000)).toBeUndefined();
+    expect(validateSettingsForm(validState({ meetingBufferMs: 25 * 60 * 60_000 })).ok).toBe(true);
     expect(validateBufferMs(-60_000)).toBe('Buffer must be a whole number of minutes (≥ 0)');
   });
 
