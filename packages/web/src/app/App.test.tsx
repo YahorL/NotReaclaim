@@ -50,7 +50,7 @@ describe('App routing', () => {
     tokenStore.set({ token: 'jwt', userId: 'u1' });
     renderWithProviders(<App />, { initialEntries: ['/'], api: authedApi() });
     fireEvent.click(screen.getByRole('button', { name: /account menu/i }));
-    fireEvent.click(screen.getByRole('button', { name: /sign out/i }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /sign out/i }));
     expect(screen.getByRole('button', { name: /sign in with google/i })).toBeInTheDocument();
   });
 

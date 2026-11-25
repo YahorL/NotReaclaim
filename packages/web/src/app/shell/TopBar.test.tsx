@@ -74,17 +74,17 @@ describe('TopBar (bare render)', () => {
 
   it('opens the account menu to reveal Sign out', () => {
     renderTopBar();
-    expect(screen.queryByRole('button', { name: /sign out/i })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /sign out/i })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /account menu/i }));
-    expect(screen.getByRole('button', { name: /sign out/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /sign out/i })).toBeInTheDocument();
   });
 
   it('the account menu closes on an outside pointerdown', () => {
     renderTopBar();
     fireEvent.click(screen.getByRole('button', { name: /account menu/i }));
-    expect(screen.getByRole('button', { name: /sign out/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /sign out/i })).toBeInTheDocument();
     fireEvent.pointerDown(document.body);
-    expect(screen.queryByRole('button', { name: /sign out/i })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /sign out/i })).toBeNull();
   });
 });
 
