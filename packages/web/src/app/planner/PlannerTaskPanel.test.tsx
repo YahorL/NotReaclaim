@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import type { Task, SchedulePreview } from '../../api/types';
+import { useEffect } from 'react';
 import { PlannerTaskPanel } from './PlannerTaskPanel';
+import { RecentlyCreatedProvider, useRecentlyCreated } from '../shell/RecentlyCreated';
 
 const NOW = Date.parse('2026-01-07T12:00:00.000Z');
 
@@ -255,5 +257,36 @@ describe('PlannerTaskPanel tick-off motion', () => {
     fireEvent.click(check);
     act(() => { vi.advanceTimersByTime(4100); });
     expect(check).not.toHaveAttribute('data-ticked');
+  });
+});
+
+describe('PlannerTaskPanel fresh glow', () => {
+  function MarkOnMount({ id }: { id: string }) {
+    const { markCreated } = useRecentlyCreated();
+    useEffect(() => { markCreated(id); }, [id, markCreated]);
+    return null;
+  }
+
+  it('marks only the just-created task card data-fresh (lime glow)', () => {
+    render(
+      <RecentlyCreatedProvider>
+        <MarkOnMount id="b" />
+        <PlannerTaskPanel
+          tasks={[task({ id: 'a', title: 'Older' }), task({ id: 'b', title: 'Brand new' })]}
+          preview={undefined} nowMs={NOW} zone="UTC"
+          onComplete={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()}
+        />
+      </RecentlyCreatedProvider>,
+    );
+    const cards = screen.getAllByTestId('panel-task');
+    const fresh = cards.find((c) => c.dataset.taskId === 'b')!;
+    const older = cards.find((c) => c.dataset.taskId === 'a')!;
+    expect(fresh).toHaveAttribute('data-fresh', 'true');
+    expect(older).not.toHaveAttribute('data-fresh');
+  });
+
+  it('nothing is fresh without the shell provider', () => {
+    renderPanel([task({ id: 'a' })]);
+    expect(screen.getByTestId('panel-task')).not.toHaveAttribute('data-fresh');
   });
 });

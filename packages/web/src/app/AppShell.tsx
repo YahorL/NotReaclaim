@@ -13,6 +13,7 @@ import { ShellTaskDrawer } from './shell/ShellTaskDrawer';
 import { useTasksQuery } from '../api/queries';
 import { useTimezone } from './settings/useTimezone';
 import { ToastProvider } from './shell/ToastProvider';
+import { RecentlyCreatedProvider } from './shell/RecentlyCreated';
 
 const SIDEBAR_HIDDEN_KEY = 'nr.sidebarHidden';
 
@@ -78,6 +79,7 @@ export function AppShell() {
   // above the page. Phones keep the edge-to-edge chrome.
   return (
     <ToastProvider>
+      <RecentlyCreatedProvider>
       <div ref={rootRef} data-testid="app-shell" className="flex h-dvh overflow-hidden bg-page md:gap-5 md:p-5">
         {!sidebarHidden && <Sidebar />}
         <main className="flex min-w-0 flex-1 flex-col md:gap-5">
@@ -105,6 +107,7 @@ export function AppShell() {
           />
         )}
       </div>
+      </RecentlyCreatedProvider>
     </ToastProvider>
   );
 }

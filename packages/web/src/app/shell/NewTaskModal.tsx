@@ -17,6 +17,8 @@ import { useFormState } from '../components/useFormState';
 import { useFocusTrap } from '../components/Sheet';
 import { CHECKBOX, INPUT } from '../forms/controls';
 import { usePrefersReducedMotion } from '../../theme/usePrefersReducedMotion';
+import { useToast } from './ToastProvider';
+import { useRecentlyCreated } from './RecentlyCreated';
 
 const FALLBACK_WORKING_HOURS = [{ weekday: 1, startMinute: 540, endMinute: 1020 }];
 
@@ -120,11 +122,18 @@ export function NewTaskModal({ onClose, now = () => Date.now(), opener }: NewTas
   // ---- submit ---------------------------------------------------------------------------------
   // A ref, not `isPending`: two Enters in one tick both see the pre-mutate render.
   const submitting = useRef(false);
+  const toast = useToast();
+  const { markCreated } = useRecentlyCreated();
   const submit = () => {
     if (!ok || submitting.current || closingRef.current) return;
     submitting.current = true;
     createM.mutate(toCreateTaskInput(form, zone), {
-      onSuccess: () => requestClose(),
+      // The planner panel glows the new card (data-fresh) once the tasks refetch lists it.
+      onSuccess: (created) => {
+        toast.show('Task created', { icon: 'check' });
+        markCreated(created.id);
+        requestClose();
+      },
       onError: () => { submitting.current = false; },
     });
   };

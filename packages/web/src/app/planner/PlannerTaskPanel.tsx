@@ -8,6 +8,7 @@ import { sortByDue, splitShown, PANEL_GROUP_LIMIT } from './panelTasks';
 import {
   BUCKETS, isActiveTask, priorityToBucket, sortBucket, relativeDayTimeLabel, nextBlockMsForTask, dueLabel, type BucketKey,
 } from '../priorities/priorityBucket';
+import { useRecentlyCreated } from '../shell/RecentlyCreated';
 
 export type PanelTab = 'priorities' | 'tasks';
 
@@ -58,6 +59,8 @@ function TaskCard({ task, nowMs, zone, nextMs, atRisk, showPriority, coarse, onC
   const spent = task.spentMs ?? 0;
   const pct = task.durationMs > 0 ? Math.min(100, (spent / task.durationMs) * 100) : 0;
   const bucket = priorityToBucket(task.priority);
+  // Just made in the New task dialog: a 1.3s lime glow ring as it lands (spec §4.3).
+  const fresh = useRecentlyCreated().freshTaskId === task.id;
   // Ticking it off pops the check and draws a strike through the title (spec §5.6) while the
   // completion is saved; the card then leaves the active list. If it is still here a while later
   // (the save failed), it un-ticks.
@@ -92,10 +95,11 @@ function TaskCard({ task, nowMs, zone, nextMs, atRisk, showPriority, coarse, onC
       data-testid="panel-task"
       data-task-id={task.id}
       data-dragging={isDragging || undefined}
+      data-fresh={fresh || undefined}
       {...attributes}
       {...listeners}
       title="Drag onto the calendar to schedule"
-      className={`glass-card glass-card-hover group relative flex cursor-grab items-center gap-2.5 rounded-card py-2.5 pl-3 pr-2.5 active:cursor-grabbing ${isDragging ? 'opacity-40' : ''}`}
+      className={`glass-card glass-card-hover group relative flex cursor-grab items-center gap-2.5 rounded-card py-2.5 pl-3 pr-2.5 active:cursor-grabbing ${isDragging ? 'opacity-40' : ''} ${fresh ? 'animate-fresh' : ''}`}
     >
       <button
         type="button"

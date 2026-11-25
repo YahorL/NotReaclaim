@@ -3,6 +3,9 @@ import { screen, fireEvent, waitFor } from '@testing-library/react';
 import type { Task } from '../../api/types';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 import { NewTaskModal } from './NewTaskModal';
+import { ToastProvider } from './ToastProvider';
+import { RecentlyCreatedProvider, useRecentlyCreated } from './RecentlyCreated';
+import { ApiError } from '../../api/client';
 import { installMatchMedia } from '../../test/matchMedia';
 import { REDUCED_MOTION_QUERY } from '../../theme/usePrefersReducedMotion';
 
@@ -409,5 +412,49 @@ describe('NewTaskModal chunk defaults when settings land late', () => {
     expect(screen.getByRole('button', { name: 'increase min' })).not.toBeDisabled();
     expect(screen.getByText('45 mins')).toBeInTheDocument();
     expect(screen.getByText('1 hr 30 min')).toBeInTheDocument();
+  });
+});
+
+describe('NewTaskModal after create', () => {
+  function FreshProbe() {
+    return <span data-testid="fresh-id">{useRecentlyCreated().freshTaskId ?? 'none'}</span>;
+  }
+
+  it('toasts "Task created" and marks the new task fresh for the planner panel', async () => {
+    const createTask = vi.fn(async () => task({ id: 'new-1' }));
+    const onClose = vi.fn();
+    renderWithProviders(
+      <ToastProvider><RecentlyCreatedProvider>
+        <NewTaskModal now={() => NOW} onClose={onClose} />
+        <FreshProbe />
+      </RecentlyCreatedProvider></ToastProvider>,
+      { api: fakeApiClient(api(createTask) as never) },
+    );
+    expect(screen.getByTestId('fresh-id')).toHaveTextContent('none');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Task name' }), { target: { value: 'Write spec' } });
+    fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
+    await waitFor(() => expect(screen.getByTestId('toast')).toHaveTextContent('Task created'));
+    expect(screen.getByTestId('toast')).toHaveAttribute('data-icon', 'check');
+    expect(screen.getByTestId('fresh-id')).toHaveTextContent('new-1');
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it('a failed create neither toasts nor closes, and can be retried', async () => {
+    const createTask = vi.fn()
+      .mockRejectedValueOnce(new ApiError(400, 'bad_request', 'Nope'))
+      .mockResolvedValueOnce(task({ id: 'new-2' }));
+    const onClose = vi.fn();
+    renderWithProviders(
+      <ToastProvider><NewTaskModal now={() => NOW} onClose={onClose} /></ToastProvider>,
+      { api: fakeApiClient(api(createTask) as never) },
+    );
+    fireEvent.change(screen.getByRole('textbox', { name: 'Task name' }), { target: { value: 'Write spec' } });
+    fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
+    expect(await screen.findByTestId('modal-error')).toHaveTextContent('Nope');
+    expect(screen.queryByTestId('toast')).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(createTask).toHaveBeenCalledTimes(2);
   });
 });
