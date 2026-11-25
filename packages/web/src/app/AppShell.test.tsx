@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { act } from '@testing-library/react';
 import { screen, fireEvent, waitFor, within } from '@testing-library/react';
@@ -182,6 +183,23 @@ describe('AppShell task search', () => {
       window.removeEventListener('error', onError);
     }
     expect(errors).toEqual([]);
+  });
+
+  it.each([false, true])('moves focus into the opened drawer on Enter, and back to Search when it closes (StrictMode: %s)', async (strict) => {
+    const ui = strict ? <StrictMode><AppShell /></StrictMode> : <AppShell />;
+    renderWithProviders(ui, { api: makeApi({ listTasks: async () => tasks as never }) });
+    const button = screen.getByRole('button', { name: 'Search tasks' });
+    button.focus();
+    fireEvent.click(button);
+    const input = screen.getByRole('combobox');
+    fireEvent.change(input, { target: { value: 'quarterly' } });
+    await screen.findByRole('option', { name: /Write the quarterly report/ });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    const drawer = await screen.findByTestId('task-drawer');
+    await waitFor(() => expect(document.activeElement).toBe(within(drawer).getByDisplayValue('Write the quarterly report')));
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByTestId('task-drawer')).toBeNull();
+    expect(document.activeElement).toBe(button);
   });
 
   it('opens the selected task in the shell-hosted task drawer', async () => {

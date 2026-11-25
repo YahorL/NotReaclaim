@@ -290,6 +290,7 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
   - The shortcut is ignored in editable targets (event target or focused element), while any overlay is open (`OVERLAY_OPEN_SELECTOR` in `lib/overlay.ts`: `[role=dialog]`, `[aria-modal=true]`, `[role=menu]`, the create popover — shared with the planner's Escape-to-deselect), and for keys that were already prevented. `NewTaskModal` is `role=dialog aria-modal=true aria-label="New task"` ahead of its P5 restyle.
   - `useFocusTrap`'s Escape calls `preventDefault` (not `stopPropagation`: dnd-kit's KeyboardSensor listens on the document and must still see Escape to cancel a keyboard drag inside a sheet). Document-level Escape listeners (CreatePopover, Planner deselect) ignore `defaultPrevented` events, so Escape in the palette no longer closes the create popover under it.
   - A blank query shows "Type to search your tasks"; nothing listed matches "No tasks match".
+  - Selecting a task moves focus into the desktop `ShellTaskDrawer` (its first field; passive effect, after the palette's own restore to Search), and closing the drawer returns focus to the opener when it was left on `<body>`. Compact hosts in a Sheet, whose trap covers this.
   - Below md the header is hidden and `MobileTopBar` pins "no search button", so search on phones is keyboard-only (hardware `/`). Decide in P8 whether to add a mobile entry point.
   - Z-tiers: shell drawer `z-[55]` (above page drawers at z-50), palette `z-[60]`, toast region `z-[70]`.
 - **Toasts.**
