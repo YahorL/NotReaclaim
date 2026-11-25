@@ -19,3 +19,11 @@ export function computeSpentMs(
   }
   return total;
 }
+
+/** Manual mode: an un-started task block that has ended never counts as spent, so it is discarded. */
+export function isDiscardableUnstarted(
+  b: Pick<ScheduledBlock, 'taskId' | 'startedAt' | 'endsAt'>,
+  now: number,
+): boolean {
+  return Boolean(b.taskId) && b.startedAt == null && b.endsAt.getTime() <= now;
+}

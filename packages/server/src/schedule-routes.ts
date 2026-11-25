@@ -3,6 +3,7 @@ import { computeDesiredSchedule, startBlockPatch, stopBlockEndMs } from '@notrec
 import { NotFoundError } from '@notreclaim/db';
 import type { AppDeps, AfterMutation } from './app.js';
 import { bestEffortGoogleWrite } from './google-writeback.js';
+import { discardUnstartedPastBlocks } from './manual-sweep.js';
 import { resolveRange } from './range.js';
 import { rangeQuerySchema, idParamSchema, updateScheduledBlockSchema, createScheduledBlockSchema } from './schemas.js';
 import { dataChanged } from './events.js';
@@ -20,32 +21,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
 
     // Manual mode: discard past task blocks that were never started (self-heal on load).
     if (settings?.requireStartToTrack) {
-      const past = await deps.repos.scheduledBlocks.listByUserInRange(request.userId, new Date(0), new Date(now));
-      let discarded = 0;
-      for (const b of past) {
-        if (b.taskId && b.startedAt == null && b.endsAt.getTime() <= now) {
-          // Row first: an overlapping GET may have discarded it already (it then owns the
-          // Google delete too), which must not fail this request.
-          try {
-            await deps.repos.scheduledBlocks.delete(request.userId, b.id);
-          } catch (err) {
-            if (err instanceof NotFoundError) continue;
-            throw err;
-          }
-          discarded++;
-          // Remove the mirrored event too: nothing else ever will (reconcile only deletes
-          // events of rows it still holds, and drift only lists [now, horizon]). Best-effort
-          // and per row, same as DELETE /schedule/:id — a Google failure never fails the GET.
-          const { googleEventId, googleCalendarId } = b;
-          if (googleEventId && googleCalendarId) {
-            await bestEffortGoogleWrite(
-              app, deps, request.userId,
-              { fields: { blockId: b.id }, message: 'google write-back failed: discarded block event not removed remotely' },
-              (accessToken) => deps.google.client.deleteEvent(accessToken, googleCalendarId, googleEventId),
-            );
-          }
-        }
-      }
+      const discarded = await discardUnstartedPastBlocks(app, deps, request.userId, now);
       // Only when a row actually went: the refetch this triggers in every tab finds nothing
       // left to discard, so it cannot loop. Un-started blocks never count as spent time in
       // manual mode, so tasks are unaffected.
