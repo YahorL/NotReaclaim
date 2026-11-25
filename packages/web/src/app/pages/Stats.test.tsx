@@ -36,7 +36,8 @@ describe('Stats page', () => {
     await waitFor(() => expect(screen.getByText('Total scheduled')).toBeInTheDocument());
     expect(screen.getByText('Task time')).toBeInTheDocument();
     expect(screen.getByText('Tasks done')).toBeInTheDocument();
-    expect(screen.getByText('1 / 2')).toBeInTheDocument();
+    expect(screen.getByText('Tasks done').closest('[data-testid="stat-card"]')).toHaveTextContent('1 / 2');
+    expect(screen.getByRole('progressbar', { name: 'Tasks done' })).toHaveAttribute('aria-valuenow', '50');
     expect(screen.getByTestId('hours-by-day')).toBeInTheDocument();
     expect(screen.getByTestId('time-split')).toBeInTheDocument();
   });
