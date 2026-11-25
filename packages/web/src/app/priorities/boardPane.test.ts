@@ -21,7 +21,8 @@ describe('boardPaneClass', () => {
 
   it('keeps the scroll gutter and the phone-only overscroll containment in both states', () => {
     for (const cls of [boardPaneClass(false), boardPaneClass(true)]) {
-      expect(cls).toContain('scroll-pl-[30px]');
+      expect(cls).toContain('scroll-pl-4');
+      expect(cls).toContain(' px-4 '); // the snap gutter matches the phone padding
       expect(cls).toContain('overscroll-contain');
       expect(cls).toContain('md:overscroll-auto');
     }

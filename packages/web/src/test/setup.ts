@@ -1,4 +1,9 @@
 import '@testing-library/jest-dom/vitest';
+import { afterEach } from 'vitest';
+import { resetInputModality } from '../app/lib/inputModality';
+
+// The planner's input-modality tracker is module state: never let one test's last click leak.
+afterEach(() => { resetInputModality(); });
 
 // jsdom does not implement PointerEvent, so @testing-library fireEvent.pointerDown/Move/Up
 // fall back to a plain Event with no clientY.  Polyfill a minimal PointerEvent that extends

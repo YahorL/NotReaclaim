@@ -135,6 +135,16 @@ describe('TaskDrawer layout', () => {
     expect(grid.classList.contains('md:grid-cols-2')).toBe(true);   // desktop two-column layout, unchanged
   });
 
+  it('gives each date field a full row at md+ (a half column clipped the datetime text)', () => {
+    renderWithProviders(<TaskDrawer zone="UTC" task={task()} onSave={vi.fn()} onCancel={vi.fn()} />, { api: emptyCategories() });
+    const grid = screen.getByTestId('task-drawer').querySelector('.grid') as HTMLElement;
+    const cellOf = (el: HTMLElement) => { let n: HTMLElement = el; while (n.parentElement !== grid) n = n.parentElement!; return n; };
+    expect(cellOf(screen.getByTestId('due-by'))).toHaveClass('md:col-span-2');
+    expect(cellOf(screen.getByTestId('schedule-after'))).toHaveClass('md:col-span-2');
+    // Neighbours stay paired.
+    expect(cellOf(screen.getByTestId('category-select'))).not.toHaveClass('md:col-span-2');
+  });
+
   it('compact drops the fixed 440px panel chrome', () => {
     renderWithProviders(<TaskDrawer zone="UTC" task={task()} compact onSave={vi.fn()} onCancel={vi.fn()} />, { api: emptyCategories() });
     const drawer = screen.getByTestId('task-drawer');

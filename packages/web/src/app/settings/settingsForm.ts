@@ -79,7 +79,9 @@ export function validateSettingsForm(s: SettingsFormState): { ok: boolean; error
 
   const days: Partial<Record<number, string>> = {};
   for (const d of s.days) {
-    if (d.enabled && hhmmToMinutes(d.start) >= hhmmToMinutes(d.end)) days[d.weekday] = 'End must be after start';
+    // A cleared <input type="time"> reads '', which hhmmToMinutes turns into 00:00 — check first.
+    if (d.enabled && (!d.start || !d.end)) days[d.weekday] = 'Enter a start and end time';
+    else if (d.enabled && hhmmToMinutes(d.start) >= hhmmToMinutes(d.end)) days[d.weekday] = 'End must be after start';
   }
   if (Object.keys(days).length > 0) errors.days = days;
 

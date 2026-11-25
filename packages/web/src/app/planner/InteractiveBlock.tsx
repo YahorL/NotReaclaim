@@ -1,21 +1,23 @@
-import { useState, useRef, useEffect, useLayoutEffect, type PointerEvent as ReactPointerEvent } from 'react';
-import { BASE, DELETE_BTN_CLASS, accentStyle, variantClass, type BlockKind } from './EventBlock';
-import { WINDOW_END_MIN, SLOT_MIN, snapMinutes, pxToMinutes, minutesToPx, clampToWindow, shiftDays, clampDayDelta, formatHm, resizeHandleClass } from './weekModel';
-import { IDLE, beginPress, pressMove, pressArm, endPress, isArmed, isTap, LONG_PRESS_MS, type PressState } from './longPress';
-import { useEdgeAutoScroll } from './edgeScroll';
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type TransitionEvent as ReactTransitionEvent } from 'react';
+import { CalendarBlock, type BlockMotion } from './CalendarBlock';
+import type { BlockKind } from './blockStyle';
+import { blockLeftCss, blockWidthCss } from './blockLayout';
+import { GRID_COLUMN_PX, WINDOW_END_MIN, minuteToPct, formatHm, weekdayLabel, resizeHandleClass, shiftDays } from './weekModel';
+import { moveTarget, resizeTarget, targetTimes, moveLabel, resizeLabel, type MoveInput } from './dragModel';
+import { useBlockDrag, type LiveDrag } from './useBlockDrag';
+import { keyboardChange } from './blockKeyboard';
+import { useToast } from '../shell/ToastProvider';
 import { MS_PER_MIN, toIso } from '../lib/time';
+import { trackInputModality, lastInputModality } from '../lib/inputModality';
 
-const MIN_DURATION_MIN = SLOT_MIN;
-const HELD_TIMEOUT_MS = 1500;
-const finite = (n: number): number => (Number.isFinite(n) ? n : 0);
-
-/**
- * Once a touch drag is armed the browser must stop treating the gesture as a scroll. `touch-action`
- * is latched when the finger lands, so flipping a class at arm time is too late — the only way out
- * mid-gesture is a non-passive touchmove listener that preventDefaults. Module-level so the
- * add/remove pair always sees the same function identity.
- */
-const blockTouchScroll = (e: TouchEvent): void => { e.preventDefault(); };
+/** Fallback for `data-settling` when no transitionend arrives (nothing moved, hidden tab, jsdom). */
+const SETTLE_FALLBACK_MS = 900;
+/** Below this the raw resize height stops shrinking (prototype `max(12, h + dy)`). */
+const MIN_RAW_HEIGHT_PX = 12;
+const SETTLE_PROPS = new Set(['top', 'left', 'height', 'transform']);
+/** Arrow-key edits preview at once and commit once the keys go quiet (key-repeat must not flood). */
+export const KEY_COMMIT_DEBOUNCE_MS = 400;
+export const EDGE_HINT = 'Use the arrows above to see more days';
 
 export interface InteractiveBlockProps {
   dayStartMs: number;
@@ -24,381 +26,259 @@ export interface InteractiveBlockProps {
   endMs: number;
   topPct: number;
   heightPct: number;
+  /** Horizontal lane position, in percent of the whole block layer (see blockLayout). */
   leftPct?: number;
   widthPct?: number;
+  lane?: number;
+  lanes?: number;
   startLabel: string;
   title: string;
   kind: BlockKind;
   pinned: boolean;
+  /** Calendar events only ('app' — Google events never reach this component). */
+  source?: 'app' | 'google' | null;
+  started?: boolean;
+  selected?: boolean;
   onCommit: (patch: { startsAt: string; endsAt: string; pinned: boolean }) => void;
+  /** Arrow-key preview before the debounced commit: the caller shows the block at these times. */
+  onPreview?: (startMs: number, endMs: number) => void;
+  /** id of the shared, visually hidden keyboard instructions. */
+  describedBy?: string;
+  /** Filtered out by the Meetings / Movable toggles (see CalendarBlock `hidden`). */
+  hidden?: boolean;
+  /** Newly placed by a Re-plan: drop-in delay (see CalendarBlock `landDelayMs`). */
+  landDelayMs?: number;
+  /** Entrance pop-in delay (see CalendarBlock `enterDelayMs`). */
+  enterDelayMs?: number;
   onUnpin?: () => void;
   onDelete?: () => void;
-  /** Fired on a press that moved nothing (a click, not a drag) — never alongside onCommit. */
-  onClick?: () => void;
+  /** Fired on a press that did not drag — never alongside onCommit — and on keyboard activation
+   *  of the block body (`keyboard` true). */
+  onClick?: (keyboard: boolean) => void;
+  /** `b:<id>` / `e:<id>` — exposed as data-block-key (focus restore after the detail card closes). */
+  blockKey?: string;
   deleteLabel?: string;
+  /** Rendered day columns: the block layer spans all of them, so one column = layer width / dayCount. */
   dayCount?: number;
   accent?: string;
   zone?: string;
-  /** Coarse pointer: a body move waits for a long press before it arms, and the tile lifts. */
+  /** Coarse pointer: a body move waits for a long press before it arms. */
   coarse?: boolean;
   /** The vertically scrolling hours container, for edge auto-scroll and scroll compensation. */
   getScrollContainer?: () => HTMLElement | null;
 }
 
-type DragMode = 'move' | 'resize';
-
+/**
+ * A movable planner tile (task / habit block, app event, blocked time): CalendarBlock plus the
+ * spec §5.2 gesture model.
+ *
+ * - Drag: the tile follows the raw pointer (`translate(dx,dy) scale(1.05) rotate(-0.8deg)`, no
+ *   geometry transition), while a dashed ghost (`drag-ghost`) previews the snapped target with a
+ *   "Sat · 12:15 AM" pill (`drag-label`).
+ * - Release: `onCommit` fires and the transform is dropped IN THE SAME RENDER that the target
+ *   geometry arrives (the caller holds it — WeekGrid's pending overrides — until the data agrees),
+ *   with the spring transition on. Transform and left/top animate together, so the tile springs
+ *   from the drop point into the slot: there is no frame where it paints its new top from a stale
+ *   offset (the R10/R11 release jump). Without a held target the same render springs it home.
+ * - Resize: the height follows the pointer exactly; the ghost shows the snapped end.
+ */
 export function InteractiveBlock(props: InteractiveBlockProps) {
-  const { dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, leftPct = 0, widthPct = 100, startLabel, title, kind, pinned, onCommit, onUnpin, onDelete, onClick, deleteLabel = 'Delete block', dayCount = 7, accent, zone = 'UTC', coarse = false, getScrollContainer } = props;
-  // Refs hold the authoritative drag state; mutated directly so pointer handlers always
-  // see the latest values regardless of React's batching/commit schedule.
-  const modeRef = useRef<DragMode | null>(null);
-  const startYRef = useRef<number>(0);
-  const startXRef = useRef<number>(0);
-  const colWidthRef = useRef<number>(0);
-  // State is used only to trigger re-renders for the snapped CSS preview.
-  const [moveMin, setMoveMin] = useState(0);
-  const [growMin, setGrowMin] = useState(0);
-  const [dayDelta, setDayDelta] = useState(0);
-  // activeDrag: true only while a drag is in progress (cleared on pointer-up/cancel)
-  const [activeDrag, setActiveDrag] = useState(false);
-  // Held preview: persists the committed deltas after pointer-up until props change or timeout
-  const [heldMove, setHeldMove] = useState(0);
-  const [heldGrow, setHeldGrow] = useState(0);
-  const [heldDay, setHeldDay] = useState(0);
-  const [heldColWidth, setHeldColWidth] = useState(0);
-  // `landing`: the single frame where the committed top/height first paints. We keep the
-  // transition OFF for that frame so the transform→0 + top→newTop swap paints with NO
-  // animation (they cancel → no movement), THEN restore the replan glide a frame later.
-  const [landing, setLanding] = useState(false);
-  // Mirror of "is a held preview active" readable synchronously inside the layout effect
-  // (whose deps are only [startMs,endMs] — it must not list the held state or it would
-  // re-run and clear the preview the instant pointer-up sets it).
-  const heldActiveRef = useRef(false);
-  // Safety timeout ref for held preview
-  const heldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const rafRef = useRef<number | null>(null);
-  // Touch gesture arming. On a fine pointer `pressRef` is 'armed' from pointerdown, so every
-  // branch below collapses to today's behaviour.
-  const pressRef = useRef<PressState>(IDLE);
-  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const captureRef = useRef<{ el: HTMLElement; pointerId: number } | null>(null);
-  // scrollTop at drag start: auto-scroll moves the grid under a still finger, and that motion
-  // has to become part of the drag delta or the block would stay put while the view slides.
-  const scrollStartRef = useRef(0);
-  // The rAF loop scrolls the grid even when the finger is still, so it must also refresh the
-  // preview — otherwise the tile rides the content away from the finger and pointer-up would
-  // commit a position the held preview never showed. `dayDelta` is untouched: vertical scroll
-  // never changes x. (`snappedDy` is declared below; the closure only runs post-render.)
-  const edgeScroll = useEdgeAutoScroll(
-    () => getScrollContainer?.() ?? null,
-    (y) => {
-      const min = snappedDy(y);
-      if (modeRef.current === 'move') setMoveMin(min);
-      else if (modeRef.current) setGrowMin(min);
-    },
-  );
+  const { blockKey, dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, leftPct = 0, widthPct = 100, lane = 0, lanes = 1, startLabel, title, kind, pinned, source = null, started = false, selected = false, onCommit, onPreview, describedBy, hidden = false, landDelayMs, enterDelayMs, onUnpin, onDelete, onClick, deleteLabel = 'Delete block', dayCount = 7, accent, zone = 'UTC', coarse = false, getScrollContainer } = props;
+  const startMin = (startMs - dayStartMs) / MS_PER_MIN;
+  const endMin = (endMs - dayStartMs) / MS_PER_MIN;
+  const durationMin = endMin - startMin;
 
-  // Clear the held preview when startMs/endMs change (the optimistic commit landed).
-  // CRITICAL: clearing it here would, on its own, restore `transition-[top,height]` on the
-  // very render that moves `top` to its new value — the browser then animates top old→new
-  // while transform snaps to 0, i.e. the block jumps back to the start and glides to the
-  // end. So when this clear follows a real drag (heldActiveRef), we enter `landing`: keep
-  // the transition off for the landed paint, then drop `landing` next frame.
-  useLayoutEffect(() => {
-    if (heldTimerRef.current) {
-      clearTimeout(heldTimerRef.current);
-      heldTimerRef.current = null;
+  const [settling, setSettling] = useState(false);
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (settleTimer.current) clearTimeout(settleTimer.current); }, []);
+  const settle = () => {
+    setSettling(true);
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    settleTimer.current = setTimeout(() => { settleTimer.current = null; setSettling(false); }, SETTLE_FALLBACK_MS);
+  };
+  const onTransitionEnd = (e: ReactTransitionEvent<HTMLDivElement>) => {
+    // transitionend bubbles from the tile's children (the grip pill, hover ×); only ours counts.
+    if (e.target !== e.currentTarget || !SETTLE_PROPS.has(e.propertyName)) return;
+    if (settleTimer.current) { clearTimeout(settleTimer.current); settleTimer.current = null; }
+    setSettling(false);
+  };
+
+  const moveInput = (d: LiveDrag): MoveInput => ({
+    origDay: dayIndex, origStartMin: startMin, durationMin, dx: d.dx, dy: d.dy, colWidth: d.colWidth, dayCount, scale: d.scale,
+  });
+
+  const commit = (s: number, e: number) => {
+    settle();
+    onCommit({ startsAt: toIso(s), endsAt: toIso(e), pinned: true });
+  };
+
+  // ---- keyboard (spec §5.2): instant preview, ONE debounced commit, never dropped or doubled ----
+  const toast = useToast();
+  const keyPending = useRef<{ startMs: number; endMs: number } | null>(null);
+  const keyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushKeys = () => {
+    if (keyTimer.current) { clearTimeout(keyTimer.current); keyTimer.current = null; }
+    const p = keyPending.current;
+    keyPending.current = null;
+    if (p) onCommit({ startsAt: toIso(p.startMs), endsAt: toIso(p.endMs), pinned: true });
+  };
+  // Unmount (paged away, filtered out of the data) flushes rather than drops the pending edit.
+  const flushRef = useRef(flushKeys);
+  flushRef.current = flushKeys;
+  useEffect(() => () => flushRef.current(), []);
+
+  // How the body got focus. A mouse click / touch focuses the button too, and the arrow keys must
+  // then keep scrolling the hours rather than move (and pin) the tile the user merely clicked —
+  // nor may Delete remove it. Set on every press, cleared on blur, so a Tab back in is keyboard.
+  // Focus a script moves here (the detail card handing focus back as it closes) takes the last
+  // input's modality: after a click on the card's ✕ it is pointer focus, after Escape keyboard.
+  // (Not `:focus-visible`: browsers may start matching it on the very keypress we are reading.)
+  const pointerFocus = useRef(false);
+  useEffect(() => { trackInputModality(); }, []);
+
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (pointerFocus.current) return;
+    // Delete only — Backspace is too easy to hit for a confirmation-free delete.
+    if (e.key === 'Delete' && onDelete) {
+      e.preventDefault();
+      flushKeys();
+      onDelete();
+      return;
     }
-    const wasHeld = heldActiveRef.current;
-    heldActiveRef.current = false;
-    setHeldMove(0);
-    setHeldGrow(0);
-    setHeldDay(0);
-    setHeldColWidth(0);
-    if (wasHeld) {
-      setLanding(true);
-      const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : null;
-      if (raf) {
-        rafRef.current = raf(() => { rafRef.current = raf(() => setLanding(false)); });
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    const change = keyboardChange(e.key, e.shiftKey, { dayIndex, startMin, endMin }, dayCount);
+    if (!change) return;
+    e.preventDefault(); // arrows would otherwise scroll the hours
+    if ('edge' in change) { toast.show(EDGE_HINT); return; }
+    if (change.dayIndex === dayIndex && change.startMin === startMin && change.endMin === endMin) return;
+    const times = targetTimes({ dayStartMs, dayDelta: change.dayIndex - dayIndex, startMin: change.startMin, endMin: change.endMin, zone });
+    keyPending.current = times;
+    onPreview?.(times.startMs, times.endMs);
+    if (keyTimer.current) clearTimeout(keyTimer.current);
+    keyTimer.current = setTimeout(flushKeys, KEY_COMMIT_DEBOUNCE_MS);
+  };
+
+  const drag = useBlockDrag({
+    dayCount,
+    coarse,
+    getScrollContainer,
+    onTap: () => onClick?.(false),
+    // A pointer gesture starts from what the user sees: land any pending keyboard edit first.
+    onGrab: flushKeys,
+    onRelease: (d) => {
+      if (d.mode === 'move') {
+        const t = moveTarget(moveInput(d));
+        if (t.dayIndex === dayIndex && t.startMin === startMin) return; // dropped where it was
+        const times = targetTimes({ dayStartMs, dayDelta: t.dayIndex - dayIndex, startMin: t.startMin, endMin: t.startMin + durationMin, zone });
+        commit(times.startMs, times.endMs);
       } else {
-        setLanding(false);
+        const { endMin: newEnd } = resizeTarget({ startMin, origEndMin: endMin, dy: d.dy, scale: d.scale });
+        if (newEnd === endMin) return; // zero-delta no-op
+        commit(startMs, dayStartMs + newEnd * MS_PER_MIN);
       }
-    }
-  }, [startMs, endMs]);
+    },
+  });
 
-  // Clean up timer / rAF on unmount
-  useEffect(() => {
-    return () => {
-      if (heldTimerRef.current) clearTimeout(heldTimerRef.current);
-      if (rafRef.current != null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(rafRef.current);
-      if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
-      const cap = captureRef.current;
-      if (cap) cap.el.removeEventListener('touchmove', blockTouchScroll);
+  const live = drag.live;
+  const motion: BlockMotion = live ? (live.mode === 'move' ? 'dragging' : 'resizing') : 'idle';
+  const scale = live?.scale ?? 1;
+
+  // Live target + ghost (layer coordinates: the ghost is a sibling of the tile in the block layer).
+  let shownStart = startLabel;
+  let ghost: { top: string; height: string; left: string; width: string; label: string; labelInside: boolean } | null = null;
+  let style: CSSProperties = {
+    top: `${topPct}%`,
+    height: `${heightPct}%`,
+    left: blockLeftCss(leftPct, lane, lanes),
+    width: blockWidthCss(widthPct, lane, lanes),
+  };
+  if (live?.mode === 'move') {
+    const t = moveTarget(moveInput(live));
+    const col = shiftDays(dayStartMs, t.dayIndex - dayIndex, zone);
+    const s = col + t.startMin * MS_PER_MIN;
+    shownStart = formatHm(s, zone);
+    const n = Math.max(1, dayCount);
+    ghost = {
+      top: `${minuteToPct(t.startMin)}%`,
+      // The block keeps its length; the part past the column end is clipped like the tile is.
+      height: `${minuteToPct(Math.min(WINDOW_END_MIN, t.startMin + durationMin)) - minuteToPct(t.startMin)}%`,
+      left: blockLeftCss((t.dayIndex / n) * 100, 0, 1),
+      width: blockWidthCss(100 / n, 0, 1),
+      label: moveLabel(col, s, zone),
+      labelInside: t.startMin < 30, // the pill above would clip at the top of the hours
     };
-  }, []);
-
-  const clearHeld = () => {
-    // Safety-timeout path (e.g. a failed mutation rolled back to identical props so the
-    // layout effect never fired): just drop the offset. No `landing` — letting the replan
-    // transition glide the block back to its original slot is the right feel for a rollback.
-    heldActiveRef.current = false;
-    setHeldMove(0);
-    setHeldGrow(0);
-    setHeldDay(0);
-    setHeldColWidth(0);
-    heldTimerRef.current = null;
-  };
-
-  const holdPreview = (hm: number, hg: number, hd: number, hw: number) => {
-    if (heldTimerRef.current) clearTimeout(heldTimerRef.current);
-    heldActiveRef.current = true;
-    setHeldMove(hm);
-    setHeldGrow(hg);
-    setHeldDay(hd);
-    setHeldColWidth(hw);
-    // Safety timeout: clear held preview after 1.5s (covers failed mutations that
-    // roll back to identical props — the layout effect won't fire in that case)
-    heldTimerRef.current = setTimeout(clearHeld, HELD_TIMEOUT_MS);
-  };
-
-  const clearPressTimer = () => {
-    if (pressTimerRef.current) { clearTimeout(pressTimerRef.current); pressTimerRef.current = null; }
-  };
-
-  const armDrag = (el: HTMLElement, pointerId: number) => {
-    // Idempotent: arming while a capture is already live would leak the previous element's
-    // touchmove listener and lose its capture handle. Releasing first makes re-arming safe.
-    releaseDrag();
-    if (typeof el.setPointerCapture === 'function') {
-      try { el.setPointerCapture(pointerId); } catch { /* jsdom / unsupported */ }
-    }
-    el.addEventListener('touchmove', blockTouchScroll, { passive: false });
-    captureRef.current = { el, pointerId };
-    setActiveDrag(true);
-  };
-
-  const releaseDrag = () => {
-    const cap = captureRef.current;
-    captureRef.current = null;
-    if (!cap) return;
-    cap.el.removeEventListener('touchmove', blockTouchScroll);
-    if (typeof cap.el.releasePointerCapture === 'function') {
-      try { cap.el.releasePointerCapture(cap.pointerId); } catch { /* not captured */ }
-    }
-  };
-
-  const begin = (mode: DragMode) => (e: ReactPointerEvent<HTMLElement>) => {
-    e.stopPropagation();
-    // A second finger landing while the first already owns a capture is ignored outright: the
-    // drag refs (startY/startX/mode) are single-slot, so letting pointer 2 re-seed them would
-    // make pointer 1's move/up compute its delta against pointer 2's origin and commit a bogus
-    // time. First pointer down wins until it lifts or cancels.
-    if (captureRef.current !== null) return;
-    const el = e.currentTarget;
-    const pointerId = e.pointerId;
-    // Deferral is decided per *event*, not per device: `coarse` is the primary-pointer media
-    // query, so an iPad with a trackpad reports coarse while the mouse drag in hand is fine.
-    // A mouse therefore never waits; a touch always does (including on a fine-primary
-    // touchscreen laptop, which is the behaviour we want anyway). Only a body *move* defers —
-    // the resize handle is an unambiguous target and drags immediately on touch too.
-    const deferred = (coarse || e.pointerType === 'touch') && e.pointerType !== 'mouse' && mode === 'move';
-    pressRef.current = beginPress(finite(e.clientX), finite(e.clientY), deferred);
-    modeRef.current = mode;
-    startYRef.current = finite(e.clientY);
-    startXRef.current = finite(e.clientX);
-    colWidthRef.current = mode === 'move' ? (el.parentElement?.getBoundingClientRect().width ?? 0) : 0;
-    scrollStartRef.current = getScrollContainer?.()?.scrollTop ?? 0;
-    clearPressTimer();
-    if (isArmed(pressRef.current)) { armDrag(el, pointerId); return; }
-    pressTimerRef.current = setTimeout(() => {
-      pressTimerRef.current = null;
-      pressRef.current = pressArm(pressRef.current);
-      if (isArmed(pressRef.current)) armDrag(el, pointerId);
-    }, LONG_PRESS_MS);
-  };
-
-  /** How far the hours container has scrolled since the drag began (0 without a container). */
-  const scrollDelta = (): number => {
-    const el = getScrollContainer?.();
-    return el ? el.scrollTop - scrollStartRef.current : 0;
-  };
-
-  const snappedDy = (clientY: number): number =>
-    snapMinutes(pxToMinutes(finite(clientY) - startYRef.current + scrollDelta()));
-
-  const snappedDx = (clientX: number): number => {
-    const w = colWidthRef.current;
-    if (w <= 0) return 0;
-    return clampDayDelta(dayIndex, Math.round((finite(clientX) - startXRef.current) / w), dayCount - 1);
-  };
-
-  const onPointerMove = (e: ReactPointerEvent<HTMLElement>) => {
-    if (!modeRef.current) return;
-    pressRef.current = pressMove(pressRef.current, finite(e.clientX), finite(e.clientY));
-    if (pressRef.current.phase === 'idle') {
-      // Travelled before the long press armed → the user is scrolling. Hand the gesture back.
-      clearPressTimer();
-      releaseDrag();
-      edgeScroll.stop();
-      resetDragState();
-      return;
-    }
-    if (!isArmed(pressRef.current)) return; // still counting down: no preview, no capture
-    edgeScroll.update(finite(e.clientY));
-    const min = snappedDy(e.clientY);
-    if (modeRef.current === 'move') { setMoveMin(min); setDayDelta(snappedDx(e.clientX)); setGrowMin(0); }
-    else { setGrowMin(min); setMoveMin(0); setDayDelta(0); }
-  };
-
-  const resetDragState = () => {
-    modeRef.current = null;
-    startYRef.current = 0;
-    startXRef.current = 0;
-    colWidthRef.current = 0;
-    setActiveDrag(false);
-    setMoveMin(0);
-    setGrowMin(0);
-    setDayDelta(0);
-  };
-
-  const onPointerUp = (e: ReactPointerEvent<HTMLElement>) => {
-    clearPressTimer();
-    releaseDrag();
-    edgeScroll.stop();
-    if (isTap(pressRef.current)) {
-      // Released before the long press armed: a tap opens the drawer, it never commits.
-      const tappedMode = modeRef.current;
-      pressRef.current = endPress();
-      resetDragState();
-      if (tappedMode === 'move') onClick?.();
-      return;
-    }
-    pressRef.current = endPress();
-    const deltaMin = snappedDy(e.clientY);
-    const deltaDays = modeRef.current === 'move' ? snappedDx(e.clientX) : 0;
-    const mode = modeRef.current;
-    // Capture current live drag deltas and column width before resetting
-    const captureMoveMin = moveMin;
-    const captureGrowMin = growMin;
-    const captureDayDelta = dayDelta;
-    const captureColWidth = colWidthRef.current;
-
-    resetDragState();
-
-    if (!mode) return;
-
-    const startMin = (startMs - dayStartMs) / MS_PER_MIN;
-    const endMin = (endMs - dayStartMs) / MS_PER_MIN;
-
-    if (mode === 'move') {
-      if (deltaMin === 0 && deltaDays === 0) { onClick?.(); return; } // a click, not a drag: no held preview
-      const moved = clampToWindow(startMin + deltaMin, endMin - startMin);
-      // Zone-aware: column starts are wall-clock anchors (midnight, or the configured day start),
-      // so a cross-day drag must preserve the wall clock rather than add a flat 24h.
-      const dayStart = shiftDays(dayStartMs, deltaDays, zone);
-      // Transfer to held preview before firing mutation
-      holdPreview(captureMoveMin, 0, captureDayDelta, captureColWidth);
-      onCommit({ startsAt: toIso(dayStart + moved.startMin * MS_PER_MIN), endsAt: toIso(dayStart + moved.endMin * MS_PER_MIN), pinned: true });
-    } else {
-      const newEndMin = Math.min(WINDOW_END_MIN, Math.max(startMin + MIN_DURATION_MIN, endMin + deltaMin));
-      if (newEndMin === endMin) return; // zero-delta no-op: no held preview
-      // Transfer to held preview before firing mutation
-      holdPreview(0, captureGrowMin, 0, 0);
-      onCommit({ startsAt: toIso(startMs), endsAt: toIso(dayStartMs + newEndMin * MS_PER_MIN), pinned: true });
-    }
-  };
-
-  const onPointerCancel = () => { clearPressTimer(); releaseDrag(); edgeScroll.stop(); pressRef.current = endPress(); resetDragState(); };
-
-  // During active drag, use live state deltas; otherwise show held preview
-  const effectiveMoveMin = activeDrag ? moveMin : heldMove;
-  const effectiveGrowMin = activeDrag ? growMin : heldGrow;
-  const effectiveDayDelta = activeDrag ? dayDelta : heldDay;
-  const effectiveColWidth = activeDrag ? colWidthRef.current : heldColWidth;
-
-  // The drag label shows only during active drag AND when there is a non-zero live delta.
-  const showDragLabel = activeDrag && (moveMin !== 0 || growMin !== 0 || dayDelta !== 0);
-
-  const previewStart = startMs + effectiveMoveMin * MS_PER_MIN;
-  const previewEnd = effectiveGrowMin !== 0 ? endMs + effectiveGrowMin * MS_PER_MIN : endMs + effectiveMoveMin * MS_PER_MIN;
-
-  const accentStyles = accentStyle(accent, kind, pinned);
-
-  const transformX = effectiveDayDelta * effectiveColWidth;
-  const transformY = minutesToPx(effectiveMoveMin);
-  const heightDelta = minutesToPx(effectiveGrowMin);
-
-  // Transition classes:
-  // - active drag: transition-transform duration-75 (fluid ticks), no top/height transition (no lag)
-  // - held (post-drag, before props land) OR landing (the committed paint): transition-none, so
-  //   the transform→0 + top→newTop swap paints with no animation — kills the jump-to-initial.
-  // - idle: transition-[top,height] duration-300 ease-out (replan animations for actual replans)
-  const held = heldMove !== 0 || heldGrow !== 0 || heldDay !== 0;
-  // Visual lift while a touch drag is live: shadow + a hair of scale, so the tile reads as
-  // "picked up". Scale rides the inline transform because an inline transform beats a utility.
-  const lifted = coarse && activeDrag;
-  const transitionClass = activeDrag
-    ? 'transition-transform duration-75'
-    : (held || landing)
-      ? 'transition-none'
-      : 'transition-[top,height] duration-300 ease-out';
+    // The tile itself follows the raw pointer (layout px), lifted and tilted.
+    style = { ...style, transform: `translate(${live.dx / scale}px, ${live.dy / scale}px) scale(1.05) rotate(-0.8deg)` };
+  } else if (live?.mode === 'resize') {
+    const { endMin: snappedEnd } = resizeTarget({ startMin, origEndMin: endMin, dy: live.dy, scale });
+    const rawPx = Math.max(MIN_RAW_HEIGHT_PX, (heightPct / 100) * GRID_COLUMN_PX + live.dy / scale);
+    style = { ...style, height: `${rawPx}px` };
+    ghost = {
+      top: `${topPct}%`,
+      height: `${minuteToPct(Math.min(WINDOW_END_MIN, snappedEnd)) - minuteToPct(startMin)}%`,
+      left: style.left as string,
+      width: style.width as string,
+      label: resizeLabel(snappedEnd - startMin, dayStartMs + snappedEnd * MS_PER_MIN, zone),
+      labelInside: startMin < 30,
+    };
+  }
 
   return (
-    <div
-      data-testid="event-block"
-      data-kind={kind}
-      data-pinned={pinned}
-      title={`${startLabel} ${title}`}
-      onPointerDown={begin('move')}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerCancel}
-      className={`group ${BASE} ${activeDrag ? 'cursor-grabbing' : 'cursor-grab'} select-none ${coarse ? 'touch-pan-y' : ''} ${lifted ? 'shadow-pop' : ''} ${variantClass(kind, pinned, accent)} ${transitionClass}`}
-      style={{ top: `${topPct}%`, height: `calc(${heightPct}% + ${heightDelta}px)`, left: `calc(${leftPct}% + 2px)`, width: `calc(${widthPct}% - 4px)`, transform: `translate(${transformX}px, ${transformY}px)${lifted ? ' scale(1.02)' : ''}`, ...accentStyles }}
-    >
-      {onDelete && !activeDrag && (
-        <button
-          type="button"
-          aria-label={deleteLabel}
-          title="Delete"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className={`${DELETE_BTN_CLASS} ${coarse ? 'flex' : 'hidden group-hover:flex'}`}
-        >
-          ×
-        </button>
-      )}
-      {pinned && (
-        onUnpin
-          ? (
-            <button
-              type="button"
-              aria-label="Unpin"
-              title="Unpin — let the scheduler move this"
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => { e.stopPropagation(); onUnpin(); }}
-              // `relative z-10` keeps this in-flow button above the absolutely-positioned resize
-              // hit area, which on a coarse pointer covers the bottom 24px of a short tile.
-              className="relative z-10 mr-0.5 cursor-pointer border-0 bg-transparent p-0 leading-none"
-            >
-              🔒
-            </button>
-          )
-          : <span aria-hidden="true">🔒 </span>
-      )}
-      <span className="font-medium">{startLabel}</span> {title}
-      {showDragLabel && (
-        <span data-testid="drag-label" className="absolute right-1 top-0.5 rounded bg-ink/70 px-1 text-[10px] font-semibold text-white">
-          {formatHm(previewStart, zone)} – {formatHm(previewEnd, zone)}
-        </span>
-      )}
-      {/* The tile's appearance is unchanged (the handle is a pure hit area). `touch-none` on it
-          means a finger that lands here is a resize from the first pixel — no long press. */}
-      <span
-        data-testid="resize-handle"
-        onPointerDown={begin('resize')}
-        className={`absolute inset-x-0 bottom-0 cursor-ns-resize ${resizeHandleClass(heightPct, coarse)} ${coarse ? 'touch-none' : ''}`}
+    <>
+      <CalendarBlock
+        blockKey={blockKey}
+        title={title}
+        kind={kind}
+        source={source}
+        pinned={pinned}
+        started={started}
+        accent={accent}
+        startLabel={shownStart}
+        whenLabel={`${weekdayLabel(startMs, zone)} ${formatHm(startMs, zone)} – ${formatHm(endMs, zone)}`}
+        durationMin={durationMin}
+        dayIndex={dayIndex}
+        selected={selected}
+        coarse={coarse}
+        onDelete={live ? undefined : onDelete}
+        deleteLabel={deleteLabel}
+        onUnpin={onUnpin}
+        // Pointer presses are discriminated by the drag machinery (a press under the threshold →
+        // onClick), so the body's own click only counts when the keyboard produced it (detail 0).
+        // A real mouse click after a short drag must never select.
+        onBodyClick={(e) => { if (e.detail === 0) onClick?.(true); }}
+        onBodyKeyDown={onKeyDown}
+        onBodyBlur={() => { pointerFocus.current = false; flushKeys(); }}
+        onBodyFocus={() => { if (lastInputModality() === 'pointer') pointerFocus.current = true; }}
+        describedBy={describedBy}
+        {...drag.handlers}
+        onPointerDown={(e) => { pointerFocus.current = true; drag.handlers.onPointerDown(e); }}
+        motion={motion}
+        pressed={drag.pressed}
+        settling={settling}
+        hidden={hidden}
+        landDelayMs={landDelayMs}
+        enterDelayMs={enterDelayMs}
+        onTransitionEnd={onTransitionEnd}
+        className={`${live ? '' : 'cursor-grab'} select-none ${coarse ? 'touch-pan-y' : ''}`}
+        style={style}
+        // `touch-none` on the handle: a finger that lands there is a resize from the first pixel.
+        resize={{ onPointerDown: (e) => { pointerFocus.current = true; drag.resizeHandlers.onPointerDown(e); }, className: `${resizeHandleClass(heightPct, coarse)} ${coarse ? 'touch-none' : ''}` }}
       />
-    </div>
+      {ghost && (
+        <div
+          data-testid="drag-ghost"
+          aria-hidden="true"
+          className="pointer-events-none absolute z-[4] rounded-event border-[1.5px] border-dashed border-accent-fg bg-accent-fg/[.08] transition-[top,left] duration-[140ms] ease-out"
+          style={{ top: ghost.top, height: ghost.height, left: ghost.left, width: ghost.width }}
+        >
+          <span
+            data-testid="drag-label"
+            className={`absolute ${ghost.labelInside ? 'left-1 top-1' : '-top-6 left-0'} whitespace-nowrap rounded-pill bg-accent px-2 py-[3px] text-[11px] font-bold text-on-accent shadow-[0_6px_14px_-6px_rgb(var(--c-accent-glow)/0.9)]`}
+          >
+            {ghost.label}
+          </span>
+        </div>
+      )}
+    </>
   );
 }

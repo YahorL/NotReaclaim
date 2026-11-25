@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import type { SchedulePreview, CalendarEvent, Task } from '../../api/types';
 import { startOfWeek, dayColumns } from '../planner/weekModel';
 import {
-  hoursByDay, summary, meetingCount, taskCompletion, donutSegments, formatHours, chartScaleMs, HOUR_MS,
+  hoursByDay, summary, meetingCount, taskCompletion, donutSegments, formatHours, formatHoursNumber, axisScale,
+  dayTable, donutArcs, HOUR_MS,
 } from './statsModel';
 
 const NOW = Date.parse('2026-01-07T12:00:00.000Z'); // Wednesday
@@ -88,19 +89,65 @@ describe('taskCompletion', () => {
 });
 
 describe('donutSegments', () => {
-  it('produces cumulative percentages in task,meeting,habit order', () => {
+  it('produces cumulative percentages in meeting,habit,task order (the chart stack and legend order)', () => {
     expect(donutSegments({ taskMs: 2 * HOUR_MS, meetingMs: HOUR_MS, habitMs: HOUR_MS })).toEqual([
-      { kind: 'task', ms: 2 * HOUR_MS, fromPct: 0, toPct: 50 },
-      { kind: 'meeting', ms: HOUR_MS, fromPct: 50, toPct: 75 },
-      { kind: 'habit', ms: HOUR_MS, fromPct: 75, toPct: 100 },
+      { kind: 'meeting', ms: HOUR_MS, fromPct: 0, toPct: 25 },
+      { kind: 'habit', ms: HOUR_MS, fromPct: 25, toPct: 50 },
+      { kind: 'task', ms: 2 * HOUR_MS, fromPct: 50, toPct: 100 },
     ]);
   });
   it('omits zero-ms kinds and returns [] when total is 0', () => {
     expect(donutSegments({ taskMs: HOUR_MS, meetingMs: 0, habitMs: HOUR_MS })).toEqual([
-      { kind: 'task', ms: HOUR_MS, fromPct: 0, toPct: 50 },
-      { kind: 'habit', ms: HOUR_MS, fromPct: 50, toPct: 100 },
+      { kind: 'habit', ms: HOUR_MS, fromPct: 0, toPct: 50 },
+      { kind: 'task', ms: HOUR_MS, fromPct: 50, toPct: 100 },
     ]);
     expect(donutSegments({ taskMs: 0, meetingMs: 0, habitMs: 0 })).toEqual([]);
+  });
+});
+
+describe('donutArcs', () => {
+  const C = 100;
+  it('a single slice is the full ring with no gap', () => {
+    expect(donutArcs([{ kind: 'habit', ms: HOUR_MS, fromPct: 0, toPct: 100 }], C, 10)).toEqual([
+      { kind: 'habit', dashArray: '100 100', dashOffset: -0 },
+    ]);
+  });
+  it('several slices each lose the gap and start at their cumulative offset', () => {
+    const arcs = donutArcs([
+      { kind: 'meeting', ms: 3, fromPct: 0, toPct: 60 },
+      { kind: 'habit', ms: 2, fromPct: 60, toPct: 100 },
+    ], C, 10);
+    expect(arcs).toEqual([
+      { kind: 'meeting', dashArray: '50 100', dashOffset: -0 },
+      { kind: 'habit', dashArray: '30 100', dashOffset: -60 },
+    ]);
+  });
+  it('a slice smaller than the gap never gets a negative length', () => {
+    const arcs = donutArcs([
+      { kind: 'meeting', ms: 99, fromPct: 0, toPct: 99 },
+      { kind: 'task', ms: 1, fromPct: 99, toPct: 100 },
+    ], C, 10);
+    expect(arcs[1]).toEqual({ kind: 'task', dashArray: '0 100', dashOffset: -99 });
+  });
+});
+
+describe('dayTable', () => {
+  const perDay = [
+    { task: HOUR_MS, meeting: 2 * HOUR_MS, habit: 0 },
+    { task: 0, meeting: 0, habit: 1.5 * HOUR_MS },
+  ];
+  it('gives one row per day with each series and the day total, formatted like the chart labels', () => {
+    const t = dayTable(perDay, ['Mon', 'Tue'], ['Monday', 'Tuesday']);
+    expect(t.rows).toEqual([
+      { short: 'Mon', long: 'Monday', meetingMs: 2 * HOUR_MS, habitMs: 0, taskMs: HOUR_MS, totalMs: 3 * HOUR_MS, meeting: '2h', habit: '0h', task: '1h', total: '3h' },
+      { short: 'Tue', long: 'Tuesday', meetingMs: 0, habitMs: 1.5 * HOUR_MS, taskMs: 0, totalMs: 1.5 * HOUR_MS, meeting: '0h', habit: '1.5h', task: '0h', total: '1.5h' },
+    ]);
+  });
+  it('sums every series into a totals row', () => {
+    expect(dayTable(perDay, ['Mon', 'Tue'], ['Monday', 'Tuesday']).totals).toEqual({
+      meetingMs: 2 * HOUR_MS, habitMs: 1.5 * HOUR_MS, taskMs: HOUR_MS, totalMs: 4.5 * HOUR_MS,
+      meeting: '2h', habit: '1.5h', task: '1h', total: '4.5h',
+    });
   });
 });
 
@@ -112,10 +159,25 @@ describe('formatHours', () => {
   });
 });
 
-describe('chartScaleMs', () => {
-  it('is the max of 8h and the busiest day total', () => {
-    expect(chartScaleMs([{ task: 0, meeting: 0, habit: 0 }])).toBe(8 * HOUR_MS);
-    expect(chartScaleMs([{ task: 10 * HOUR_MS, meeting: 0, habit: 0 }])).toBe(10 * HOUR_MS);
+describe('formatHoursNumber', () => {
+  it('is formatHours without the unit (the KPI tiles set the unit smaller)', () => {
+    expect(formatHoursNumber(25.7 * HOUR_MS)).toBe('25.7');
+    expect(formatHoursNumber(0)).toBe('0');
+  });
+});
+
+describe('axisScale', () => {
+  it('picks a round step with at most 4 intervals covering the busiest day', () => {
+    expect(axisScale(5.8 * HOUR_MS)).toEqual({ topMs: 6 * HOUR_MS, ticksMs: [0, 2, 4, 6].map((h) => h * HOUR_MS) });
+    expect(axisScale(3.9 * HOUR_MS)).toEqual({ topMs: 4 * HOUR_MS, ticksMs: [0, 1, 2, 3, 4].map((h) => h * HOUR_MS) });
+    expect(axisScale(24 * HOUR_MS).ticksMs.map((t) => t / HOUR_MS)).toEqual([0, 6, 12, 18, 24]);
+  });
+  it('an exact multiple stays the top, and an empty week still has a 1h axis', () => {
+    expect(axisScale(4 * HOUR_MS).topMs).toBe(4 * HOUR_MS);
+    expect(axisScale(0)).toEqual({ topMs: HOUR_MS, ticksMs: [0, HOUR_MS] });
+  });
+  it('falls back to the largest step past the candidate list', () => {
+    expect(axisScale(100 * HOUR_MS).topMs).toBe(108 * HOUR_MS); // 12h steps, 9 intervals
   });
 });
 

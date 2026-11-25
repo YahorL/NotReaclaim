@@ -22,4 +22,12 @@ describe('QuickAdd', () => {
     fireEvent.click(screen.getByRole('button', { name: /add/i }));
     expect(onAdd).toHaveBeenCalledWith('Run');
   });
+
+  it('names the input by its label (falling back to the placeholder)', () => {
+    const { unmount } = render(<QuickAdd placeholder="Add a habit…" label="New habit name" onAdd={vi.fn()} />);
+    expect(screen.getByRole('textbox', { name: 'New habit name' })).toBeInTheDocument();
+    unmount();
+    render(<QuickAdd placeholder="Add a task…" onAdd={vi.fn()} />);
+    expect(screen.getByRole('textbox', { name: 'Add a task…' })).toBeInTheDocument();
+  });
 });

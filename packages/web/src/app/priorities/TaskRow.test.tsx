@@ -55,6 +55,12 @@ describe('TaskRow subtask checklist', () => {
     expect(screen.getByTestId('card-subtask-s2')).not.toBeChecked();
   });
 
+  it('names each checkbox after its subtask (the title sits outside the label)', () => {
+    renderRow({ ...base, subtasks: twoSubtasks } as Task);
+    expect(screen.getByRole('checkbox', { name: 'first step' })).toBe(screen.getByTestId('card-subtask-s1'));
+    expect(screen.getByRole('checkbox', { name: 'second step' })).toBe(screen.getByTestId('card-subtask-s2'));
+  });
+
   it('strikes through done subtasks', () => {
     renderRow({ ...base, subtasks: twoSubtasks } as Task);
     expect(screen.getByText('first step').className).toContain('line-through');
@@ -154,15 +160,93 @@ describe('TaskRow card subtask drag handles', () => {
 });
 
 describe('TaskRow sortable wiring', () => {
-  it('carries the sortable attributes when draggable and none when not', () => {
+  it('puts the drag handle on a labelled grip when draggable, and renders no grip when not', () => {
     const { unmount } = renderRow(base as Task);
-    expect(screen.getByTestId('task-row')).toHaveAttribute('aria-roledescription', 'sortable');
-    // dnd-kit defaults a draggable to role="button"; on the card that nests the ✓ button, the
-    // kebab menu and the subtask checkboxes inside a button role, so the card keeps role=group.
-    expect(screen.getByTestId('task-row')).toHaveAttribute('role', 'group');
+    const grip = screen.getByRole('button', { name: 'Drag T' });
+    expect(grip).toHaveAttribute('aria-roledescription', 'sortable');
+    // The grip is the touch activator; the card body keeps native page scrolling on touch.
+    expect(grip.className).toContain('touch-none');
+    expect(screen.getByTestId('task-row').className).toContain('touch-pan-y');
+    // The card is not itself a dnd-kit button: its ✓, kebab and checklist stay plain controls.
+    expect(screen.getByTestId('task-row')).not.toHaveAttribute('role');
     unmount();
     renderRow(base as Task, { draggable: false });
-    expect(screen.getByTestId('task-row')).not.toHaveAttribute('aria-roledescription');
+    expect(screen.queryByRole('button', { name: /^Drag / })).toBeNull();
+  });
+
+  it('a click on the grip does not open the editor', () => {
+    const onEdit = vi.fn();
+    renderRow(base as Task, { onEdit });
+    fireEvent.click(screen.getByRole('button', { name: 'Drag T' }));
+    expect(onEdit).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('T'));
+    expect(onEdit).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('TaskRow card states', () => {
+  it('exposes bucket, done and muted as data attributes', () => {
+    const { unmount } = render(
+      <TaskRow
+        task={{ ...base, status: 'completed' } as Task} columnKey="completed" nextMs={null} now={0} zone="UTC"
+        draggable={false} onComplete={noop} onEdit={noop} onDelete={noop} onToggleSubtask={noop} onReorderSubtask={noop}
+      />,
+    );
+    const done = screen.getByTestId('task-row');
+    expect(done).toHaveAttribute('data-bucket', 'completed');
+    expect(done).toHaveAttribute('data-done', 'true');
+    expect(done).not.toHaveAttribute('data-muted');
+    expect(screen.getByRole('button', { name: /^Complete / })).toHaveAttribute('aria-pressed', 'true');
+    unmount();
+    render(
+      <TaskRow
+        task={base as Task} columnKey="backlog" nextMs={null} now={0} zone="UTC" muted
+        onComplete={noop} onEdit={noop} onDelete={noop} onToggleSubtask={noop} onReorderSubtask={noop}
+      />,
+    );
+    const muted = screen.getByTestId('task-row');
+    expect(muted).toHaveAttribute('data-bucket', 'backlog');
+    expect(muted).toHaveAttribute('data-muted', 'true');
+    expect(muted).not.toHaveAttribute('data-done');
+    expect(screen.getByRole('button', { name: /^Complete / })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('shows a duration chip for tasks of a minute or more', () => {
+    const { unmount } = renderRow({ ...base, durationMs: 90 * 60_000 } as Task);
+    expect(screen.getByTestId('duration-chip')).toHaveTextContent('1h 30m');
+    unmount();
+    renderRow(base as Task); // durationMs: 1
+    expect(screen.queryByTestId('duration-chip')).toBeNull();
+  });
+
+  it('the kebab menu offers Edit and Delete', () => {
+    const onEdit = vi.fn();
+    renderRow(base as Task, { onEdit });
+    const kebab = screen.getByRole('button', { name: 'task menu' });
+    expect(kebab).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(kebab);
+    expect(kebab).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit' }));
+    expect(onEdit).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('menuitem', { name: 'Delete' })).toBeNull();
+  });
+
+  it('the kebab is a menu button: first item focused, arrows move, Escape returns focus', () => {
+    renderRow(base as Task);
+    const kebab = screen.getByRole('button', { name: 'task menu' });
+    expect(kebab).toHaveAttribute('aria-haspopup', 'menu');
+    fireEvent.keyDown(kebab, { key: 'ArrowDown' });
+    const menu = screen.getByRole('menu');
+    expect(kebab).toHaveAttribute('aria-controls', menu.id);
+    expect(screen.getByRole('menuitem', { name: 'Edit' })).toHaveFocus();
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(screen.getByRole('menuitem', { name: 'Delete' })).toHaveFocus();
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(screen.getByRole('menuitem', { name: 'Edit' })).toHaveFocus();
+    fireEvent.keyDown(menu, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(kebab).toHaveFocus();
   });
 });
 
@@ -177,6 +261,6 @@ describe('TaskRow labels in the settings zone', () => {
         onToggleSubtask={noop} onReorderSubtask={noop}
       />,
     );
-    expect(screen.getByText('Due 1/8 · Next: Today 8:30pm')).toBeInTheDocument();
+    expect(screen.getByText('Due 1/8 · Next: Today 8:30 PM')).toBeInTheDocument();
   });
 });

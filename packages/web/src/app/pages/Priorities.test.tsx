@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { act, createEvent, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { Task, SchedulePreview } from '../../api/types';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 import { installMatchMedia, type FakeMatchMedia } from '../../test/matchMedia';
@@ -15,6 +15,16 @@ const task = (over: Partial<Task> = {}): Task => ({
 });
 
 const preview: SchedulePreview = { blocks: [], unscheduled: [] };
+
+/**
+ * Ends a jsdom mouse drag. dnd-kit keeps a capture-phase click blocker on the document for 50ms
+ * after a drag ends (it swallows the click a real release produces), and jsdom shares `document`
+ * across the tests of a file — so wait it out, or the next test's first click is eaten.
+ */
+async function releaseDrag(): Promise<void> {
+  fireEvent.mouseUp(document, { clientX: 40, clientY: 40 });
+  await act(() => new Promise((r) => { setTimeout(r, 60); }));
+}
 
 function makeApi(over = {}) {
   return fakeApiClient({
@@ -43,14 +53,14 @@ describe('Priorities board', () => {
     renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ updateTask }) });
     await waitFor(() => expect(screen.getByText('Critical thing')).toBeInTheDocument());
     const row = screen.getByText('Critical thing').closest('[data-testid="task-row"]')!;
-    fireEvent.click(within(row as HTMLElement).getByRole('button', { name: 'complete' }));
+    fireEvent.click(within(row as HTMLElement).getByRole('button', { name: /^Complete / }));
     await waitFor(() => expect(updateTask).toHaveBeenCalledWith('c1', { status: 'completed' }));
   });
 
   it('filters by search text', async () => {
     renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
     await waitFor(() => expect(screen.getByText('Critical thing')).toBeInTheDocument());
-    fireEvent.change(screen.getByPlaceholderText(/search for something/i), { target: { value: 'low' } });
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search tasks' }), { target: { value: 'low' } });
     expect(screen.queryByText('Critical thing')).toBeNull();
     expect(screen.getByText('Low thing')).toBeInTheDocument();
   });
@@ -59,7 +69,7 @@ describe('Priorities board', () => {
     renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
     await waitFor(() => expect(screen.getByText('Done thing')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /filter/i }));
-    fireEvent.click(screen.getByRole('button', { name: /hide completed/i }));
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /hide completed/i }));
     expect(screen.queryByText('Done thing')).toBeNull();
   });
 
@@ -67,7 +77,7 @@ describe('Priorities board', () => {
     renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
     await waitFor(() => expect(screen.getByTestId('column-critical')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /columns/i }));
-    fireEvent.click(screen.getByRole('button', { name: /^critical$/i }));
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /^critical$/i }));
     expect(screen.queryByTestId('column-critical')).toBeNull();
     expect(screen.getByTestId('column-low')).toBeInTheDocument();
   });
@@ -76,8 +86,15 @@ describe('Priorities board', () => {
     renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
     await waitFor(() => expect(screen.getByText('Critical thing')).toBeInTheDocument());
     const col = screen.getByTestId('column-critical');
-    fireEvent.click(within(col).getByRole('button', { name: 'Collapse' }));
+    const toggle = within(col).getByRole('button', { name: 'Collapse Critical' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(toggle);
     expect(within(col).queryByText('Critical thing')).toBeNull();
+    // Collapsed = header only: name and count stay visible, the chevron now expands.
+    expect(within(col).getByRole('heading', { name: 'Critical' })).toBeInTheDocument();
+    expect(within(col).getByRole('button', { name: 'Expand Critical' })).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(within(col).getByRole('button', { name: 'Expand Critical' }));
+    expect(within(col).getByText('Critical thing')).toBeInTheDocument();
   });
 
   it('opens the edit drawer from the row menu and deletes', async () => {
@@ -86,7 +103,7 @@ describe('Priorities board', () => {
     await waitFor(() => expect(screen.getByText('Low thing')).toBeInTheDocument());
     const row = screen.getByText('Low thing').closest('[data-testid="task-row"]')! as HTMLElement;
     fireEvent.click(within(row).getByRole('button', { name: /task menu/i }));
-    fireEvent.click(within(row).getByRole('button', { name: 'Delete' }));
+    fireEvent.click(within(row).getByRole('menuitem', { name: 'Delete' }));
     await waitFor(() => expect(deleteTask).toHaveBeenCalledWith('l1'));
   });
 
@@ -104,7 +121,7 @@ describe('Priorities board', () => {
     fireEvent.click(screen.getByText('Low thing'));
     expect(screen.getByTestId('task-drawer')).toBeInTheDocument();
     // Type a query that matches no task ("Low thing" disappears from columns)
-    fireEvent.change(screen.getByPlaceholderText(/search for something/i), { target: { value: 'zzz' } });
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search tasks' }), { target: { value: 'zzz' } });
     // The task is gone from the board but editing derives from the unfiltered query,
     // so the drawer must still be present
     expect(screen.queryByText('Low thing')).toBeNull();
@@ -147,7 +164,7 @@ describe('Priorities board', () => {
     renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
     await waitFor(() => expect(screen.getByTestId('column-completed')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /filter/i }));
-    fireEvent.click(screen.getByRole('button', { name: /hide completed/i }));
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /hide completed/i }));
     expect(screen.queryByTestId('column-completed')).toBeNull();
     expect(screen.queryByText('Done thing')).toBeNull();
   });
@@ -158,7 +175,7 @@ describe('Priorities board', () => {
     await waitFor(() => expect(screen.getByTestId('column-completed')).toBeInTheDocument());
     const col = screen.getByTestId('column-completed');
     const row = within(col).getByTestId('task-row');
-    fireEvent.click(within(row as HTMLElement).getByRole('button', { name: 'complete' }));
+    fireEvent.click(within(row as HTMLElement).getByRole('button', { name: /^Complete / }));
     await waitFor(() => expect(updateTask).toHaveBeenCalledWith('d1', { status: 'pending' }));
   });
 
@@ -174,22 +191,41 @@ describe('Priorities board', () => {
     expect(screen.queryByTestId('task-drawer')).not.toBeInTheDocument();
   });
 
-  it('board cards are dnd-kit sortables, except in the Completed column', async () => {
+  it('board cards are dnd-kit sortables via their grip, except in the Completed column', async () => {
     renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
     await waitFor(() => expect(screen.getByText('Low thing')).toBeInTheDocument());
-    const active = screen.getByText('Low thing').closest('[data-testid="task-row"]')!;
-    expect(active).toHaveAttribute('aria-roledescription', 'sortable');
+    expect(screen.getByRole('button', { name: 'Drag Low thing' })).toHaveAttribute('aria-roledescription', 'sortable');
     const doneRow = within(screen.getByTestId('column-completed')).getByTestId('task-row');
-    expect(doneRow).not.toHaveAttribute('aria-roledescription');
+    expect(within(doneRow).queryByRole('button', { name: /^Drag / })).toBeNull();
     expect(doneRow).not.toHaveAttribute('draggable');
+    expect(doneRow).toHaveAttribute('data-done', 'true');
+  });
+
+  it('heads each column with its name and task count, and says "Drop tasks here" when empty', async () => {
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
+    await waitFor(() => expect(screen.getByTestId('column-critical')).toBeInTheDocument());
+    expect(screen.getByRole('region', { name: 'High priority' })).toBeInTheDocument();
+    expect(screen.getByTestId('column-count-critical')).toHaveTextContent('1');
+    expect(screen.getByTestId('column-count-high')).toHaveTextContent('0');
+    expect(screen.getByTestId('column-empty-high')).toHaveTextContent('Drop tasks here');
+    expect(screen.getByTestId('column-empty-backlog')).toHaveTextContent('Drop tasks here');
+    // While searching, an empty column says why it is empty instead.
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search tasks' }), { target: { value: 'low' } });
+    expect(screen.getByTestId('column-empty-critical')).toHaveTextContent('No matching tasks');
   });
 
   it('sizes the columns to a phone and snaps the pane to them', async () => {
     renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
     await waitFor(() => expect(screen.getByTestId('column-critical')).toBeInTheDocument());
     const column = screen.getByTestId('column-critical');
-    // min(): 372px on any viewport wider than ~438px, so desktop is unchanged.
-    expect(column.className).toContain('w-[min(372px,85vw)]');
+    const board = screen.getByTestId('board');
+    // Below md each grid column is min(372px, 85vw): about one column per phone screen.
+    expect(board.classList.contains('auto-cols-[min(372px,85vw)]')).toBe(true);
+    // md+: columns share the width at ≥260px (prototype auto-fit minimum), scrolling when they can't.
+    expect(board.classList.contains('md:auto-cols-[minmax(260px,1fr)]')).toBe(true);
+    // Wide desktop: 300px minimum, so four priority columns fill a 1440 view (design 07).
+    expect(board).toHaveClass('min-[1380px]:auto-cols-[minmax(300px,1fr)]');
+    expect(board.classList.contains('grid-flow-col')).toBe(true);
     expect(column.className).toContain('snap-start');
     const pane = column.closest('.overflow-auto') as HTMLElement;
     expect(pane.className).toContain('snap-x');
@@ -197,7 +233,261 @@ describe('Priorities board', () => {
     expect(pane.className).toContain('md:snap-none');  // no snapping under a mouse
     expect(pane.className).toContain('overscroll-contain');
     // The snap gutter matches the pane's own padding, so column 1 keeps its inset after a snap.
-    expect(pane.className).toContain('scroll-pl-[30px]');
+    expect(pane.classList.contains('scroll-pl-4')).toBe(true);
+    expect(pane.classList.contains('px-4')).toBe(true);
+  });
+});
+
+describe('Priorities board moves', () => {
+  const gripOf = (title: string) => screen.getByRole('button', { name: `Drag ${title}` });
+
+  it('ArrowRight on a grip moves the card to the next priority, persists it, announces it and keeps focus', async () => {
+    const updateTask = vi.fn(async () => task());
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ updateTask }) });
+    await waitFor(() => expect(screen.getByText('Critical thing')).toBeInTheDocument());
+    gripOf('Critical thing').focus();
+    fireEvent.keyDown(gripOf('Critical thing'), { key: 'ArrowRight' });
+    // Shown at once (held + optimistic), not after the PATCH and its refetch. (The fake server
+    // does not persist, so the post-success refetch would move it back — assert before that.)
+    expect(within(screen.getByTestId('column-high')).getByText('Critical thing')).toBeInTheDocument();
+    expect(within(screen.getByTestId('column-critical')).queryByText('Critical thing')).toBeNull();
+    expect(screen.getByTestId('board-announcer')).toHaveTextContent('Moved Critical thing to High priority, position 1.');
+    // The card remounted in another column; focus followed it to its new grip.
+    expect(document.activeElement).toBe(gripOf('Critical thing'));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith('c1', { priority: 2, sortOrder: 0 }));
+  });
+
+  it('ArrowDown / ArrowUp reorder within a column through sortOrder', async () => {
+    const updateTask = vi.fn(async () => task());
+    const listTasks = vi.fn(async () => [
+      task({ id: 'a', title: 'First', priority: 2, sortOrder: 0 }),
+      task({ id: 'b', title: 'Second', priority: 2, sortOrder: 10 }),
+      task({ id: 'c', title: 'Third', priority: 2, sortOrder: 20 }),
+    ]);
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateTask }) });
+    await waitFor(() => expect(screen.getByText('First')).toBeInTheDocument());
+    fireEvent.keyDown(gripOf('First'), { key: 'ArrowDown' });
+    const order = () => within(screen.getByTestId('column-high')).getAllByTestId('task-row').map((r) => r.getAttribute('data-task-id'));
+    expect(order()).toEqual(['b', 'a', 'c']);
+    expect(screen.getByTestId('board-announcer')).toHaveTextContent('Moved First to High priority, position 2.');
+    expect(document.activeElement).toBe(gripOf('First'));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith('a', { sortOrder: 15 }));
+  });
+
+  it('a refetch already in flight cannot undo the next move (it is cancelled before the write)', async () => {
+    const initial = [
+      task({ id: 'a', title: 'First', priority: 2, sortOrder: 0 }),
+      task({ id: 'b', title: 'Second', priority: 2, sortOrder: 10 }),
+      task({ id: 'c', title: 'Third', priority: 2, sortOrder: 20 }),
+    ];
+    // The server's state after move 1 only (a between b and c).
+    const afterMove1 = [initial[1]!, { ...initial[0]!, sortOrder: 15 }, initial[2]!];
+    let resolveRefetch: (v: Task[]) => void = () => {};
+    const listTasks = vi.fn()
+      .mockResolvedValueOnce(initial)
+      .mockImplementation(() => new Promise<Task[]>((r) => { resolveRefetch = r; }));
+    // PATCH 1 succeeds (its invalidation starts a refetch); PATCH 2 stays in flight.
+    const updateTask = vi.fn()
+      .mockResolvedValueOnce(task())
+      .mockImplementation(() => new Promise(() => {}));
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateTask }) });
+    await waitFor(() => expect(screen.getByText('First')).toBeInTheDocument());
+    const order = () => within(screen.getByTestId('column-high')).getAllByTestId('task-row').map((r) => r.getAttribute('data-task-id'));
+
+    fireEvent.keyDown(gripOf('First'), { key: 'ArrowDown' });
+    await waitFor(() => expect(listTasks).toHaveBeenCalledTimes(2)); // refetch after PATCH 1, pending
+    fireEvent.keyDown(gripOf('First'), { key: 'ArrowDown' });
+    expect(order()).toEqual(['b', 'c', 'a']);
+    await waitFor(() => expect(updateTask).toHaveBeenCalledTimes(2));
+    expect(updateTask).toHaveBeenLastCalledWith('a', { sortOrder: 21 });
+
+    // The stale response (pre-move-2) arrives: it must not move the card back.
+    await act(async () => { resolveRefetch(afterMove1); await Promise.resolve(); });
+    await act(() => new Promise((r) => { setTimeout(r, 20); }));
+    expect(order()).toEqual(['b', 'c', 'a']);
+    expect(document.activeElement).toBe(gripOf('First'));
+  });
+
+  it('a held arrow key (auto-repeat) moves once, not once per repeat', async () => {
+    const updateTask = vi.fn(async () => task());
+    const listTasks = vi.fn(async () => [
+      task({ id: 'a', title: 'First', priority: 2, sortOrder: 0 }),
+      task({ id: 'b', title: 'Second', priority: 2, sortOrder: 10 }),
+      task({ id: 'c', title: 'Third', priority: 2, sortOrder: 20 }),
+    ]);
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateTask }) });
+    await waitFor(() => expect(screen.getByText('First')).toBeInTheDocument());
+    fireEvent.keyDown(gripOf('First'), { key: 'ArrowDown' });
+    const repeat = createEvent.keyDown(gripOf('First'), { key: 'ArrowDown', repeat: true });
+    fireEvent(gripOf('First'), repeat);
+    fireEvent.keyDown(gripOf('First'), { key: 'ArrowDown', repeat: true });
+    expect(repeat.defaultPrevented).toBe(true); // still no page scroll
+    const order = () => within(screen.getByTestId('column-high')).getAllByTestId('task-row').map((r) => r.getAttribute('data-task-id'));
+    expect(order()).toEqual(['b', 'a', 'c']);
+    await waitFor(() => expect(updateTask).toHaveBeenCalledTimes(1));
+    await act(() => new Promise((r) => { setTimeout(r, 20); }));
+    expect(updateTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('moves persist one PATCH at a time, in order (the next is sent once the previous settles)', async () => {
+    let resolveFirst: (t: Task) => void = () => {};
+    const updateTask = vi.fn()
+      .mockImplementationOnce(() => new Promise<Task>((r) => { resolveFirst = r; }))
+      .mockImplementation(async () => task());
+    const listTasks = vi.fn(async () => [
+      task({ id: 'a', title: 'First', priority: 2, sortOrder: 0 }),
+      task({ id: 'b', title: 'Second', priority: 2, sortOrder: 10 }),
+      task({ id: 'c', title: 'Third', priority: 2, sortOrder: 20 }),
+    ]);
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateTask }) });
+    await waitFor(() => expect(screen.getByText('First')).toBeInTheDocument());
+    fireEvent.keyDown(gripOf('First'), { key: 'ArrowDown' });
+    await waitFor(() => expect(updateTask).toHaveBeenCalledTimes(1));
+    fireEvent.keyDown(gripOf('First'), { key: 'ArrowDown' });
+    await act(() => new Promise((r) => { setTimeout(r, 20); }));
+    expect(updateTask).toHaveBeenCalledTimes(1); // queued behind the first
+    await act(async () => { resolveFirst(task()); });
+    await waitFor(() => expect(updateTask).toHaveBeenCalledTimes(2));
+    expect(updateTask.mock.calls.map((c) => c[1])).toEqual([{ sortOrder: 15 }, { sortOrder: 21 }]);
+  });
+
+  it('leaving the page while a move is queued still sends it, in order, without errors', async () => {
+    let resolveFirst: (t: Task) => void = () => {};
+    const updateTask = vi.fn()
+      .mockImplementationOnce(() => new Promise<Task>((r) => { resolveFirst = r; }))
+      .mockImplementation(async () => task());
+    const listTasks = vi.fn(async () => [
+      task({ id: 'a', title: 'First', priority: 2, sortOrder: 0 }),
+      task({ id: 'b', title: 'Second', priority: 2, sortOrder: 10 }),
+      task({ id: 'c', title: 'Third', priority: 2, sortOrder: 20 }),
+    ]);
+    const { unmount } = renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateTask }) });
+    await waitFor(() => expect(screen.getByText('First')).toBeInTheDocument());
+    fireEvent.keyDown(gripOf('First'), { key: 'ArrowDown' });
+    await waitFor(() => expect(updateTask).toHaveBeenCalledTimes(1));
+    fireEvent.keyDown(gripOf('First'), { key: 'ArrowDown' });
+    fireEvent.keyDown(gripOf('First'), { key: 'ArrowRight' });
+    unmount(); // the queue lives in the mutation cache, not in the page
+    await act(async () => { resolveFirst(task()); });
+    await waitFor(() => expect(updateTask).toHaveBeenCalledTimes(3));
+    expect(updateTask.mock.calls.map((c) => c[1])).toEqual([{ sortOrder: 15 }, { sortOrder: 21 }, expect.objectContaining({ priority: 3 })]);
+  });
+
+  it('when two queued moves both fail, the board rolls back to before the first (not to between them)', async () => {
+    const initial = [
+      task({ id: 'a', title: 'First', priority: 2, sortOrder: 0 }),
+      task({ id: 'b', title: 'Second', priority: 2, sortOrder: 10 }),
+      task({ id: 'c', title: 'Third', priority: 2, sortOrder: 20 }),
+    ];
+    // Later refetches never answer, so what shows is the rollback itself, not the server's list.
+    const listTasks = vi.fn().mockResolvedValueOnce(initial).mockImplementation(() => new Promise<Task[]>(() => {}));
+    let rejectFirst: (e: Error) => void = () => {};
+    const updateTask = vi.fn()
+      .mockImplementationOnce(() => new Promise<Task>((_r, j) => { rejectFirst = j; }))
+      .mockImplementation(async () => { throw new Error('boom'); });
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateTask }) });
+    await waitFor(() => expect(screen.getByText('First')).toBeInTheDocument());
+    const order = () => within(screen.getByTestId('column-high')).getAllByTestId('task-row').map((r) => r.getAttribute('data-task-id'));
+    fireEvent.keyDown(gripOf('First'), { key: 'ArrowDown' });
+    await waitFor(() => expect(updateTask).toHaveBeenCalledTimes(1));
+    fireEvent.keyDown(gripOf('First'), { key: 'ArrowDown' });
+    await waitFor(() => expect(order()).toEqual(['b', 'c', 'a']));
+    await act(async () => { rejectFirst(new Error('boom')); });
+    await waitFor(() => expect(updateTask).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(order()).toEqual(['a', 'b', 'c']));
+  });
+
+  it('ArrowUp on the top card and ArrowLeft from the first column do nothing', async () => {
+    const updateTask = vi.fn(async () => task());
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ updateTask }) });
+    await waitFor(() => expect(screen.getByText('Critical thing')).toBeInTheDocument());
+    fireEvent.keyDown(gripOf('Critical thing'), { key: 'ArrowUp' });
+    fireEvent.keyDown(gripOf('Critical thing'), { key: 'ArrowLeft' });
+    expect(updateTask).not.toHaveBeenCalled();
+  });
+
+  it('a move into a collapsed column expands it', async () => {
+    const updateTask = vi.fn(async () => task());
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ updateTask }) });
+    await waitFor(() => expect(screen.getByText('Critical thing')).toBeInTheDocument());
+    fireEvent.click(within(screen.getByTestId('column-high')).getByRole('button', { name: 'Collapse High priority' }));
+    fireEvent.keyDown(gripOf('Critical thing'), { key: 'ArrowRight' });
+    const high = screen.getByTestId('column-high');
+    expect(within(high).getByRole('button', { name: 'Collapse High priority' })).toHaveAttribute('aria-expanded', 'true');
+    expect(within(high).getByText('Critical thing')).toBeInTheDocument();
+  });
+
+  it('rolls the move back when the PATCH fails', async () => {
+    const updateTask = vi.fn(async () => { throw new Error('boom'); });
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ updateTask }) });
+    await waitFor(() => expect(screen.getByText('Critical thing')).toBeInTheDocument());
+    fireEvent.keyDown(gripOf('Critical thing'), { key: 'ArrowRight' });
+    await waitFor(() => expect(updateTask).toHaveBeenCalled());
+    await waitFor(() => expect(within(screen.getByTestId('column-critical')).getByText('Critical thing')).toBeInTheDocument());
+  });
+
+  it('a mouse drag lifts a tilted clone and leaves a placeholder; releasing on nothing moves nothing', async () => {
+    const updateTask = vi.fn(async () => task());
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ updateTask }) });
+    await waitFor(() => expect(screen.getByText('Low thing')).toBeInTheDocument());
+    const card = screen.getByText('Low thing').closest('[data-testid="task-row"]') as HTMLElement;
+    fireEvent.mouseDown(card, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.mouseMove(document, { clientX: 40, clientY: 40 });
+    await waitFor(() => expect(screen.getByTestId('board-drag-overlay')).toBeInTheDocument());
+    expect(screen.getByTestId('board-drag-overlay')).toHaveTextContent('Low thing');
+    expect(screen.getByTestId('board-drag-overlay').style.transform).toBe('rotate(-1.5deg) scale(1.03)');
+    expect(card).toHaveAttribute('data-placeholder', 'true');
+    expect(card).toHaveAttribute('data-dragging', 'true');
+    await releaseDrag();
+    expect(card).not.toHaveAttribute('data-placeholder');
+    expect(updateTask).not.toHaveBeenCalled();
+  });
+
+  it('a mouse press on the card\'s ✓ button never starts a drag', async () => {
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
+    await waitFor(() => expect(screen.getByText('Low thing')).toBeInTheDocument());
+    const card = screen.getByText('Low thing').closest('[data-testid="task-row"]') as HTMLElement;
+    fireEvent.mouseDown(within(card).getByRole('button', { name: /^Complete / }), { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.mouseMove(document, { clientX: 40, clientY: 40 });
+    expect(screen.queryByTestId('board-drag-overlay')).toBeNull();
+    await releaseDrag();
+  });
+});
+
+describe('Priorities page states', () => {
+  it('announces loading while the tasks query is pending', async () => {
+    const listTasks = vi.fn(() => new Promise<Task[]>(() => {}));
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks }) });
+    expect(await screen.findByRole('status')).toHaveTextContent('Loading tasks…');
+    expect(screen.queryByTestId('board')).toBeNull();
+  });
+
+  it('shows an alert with a Retry that refetches when the tasks query fails', async () => {
+    let fail = true;
+    const listTasks = vi.fn(async () => {
+      if (fail) throw new Error('down');
+      return [task({ id: 'c1', title: 'Critical thing', priority: 1 })];
+    });
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks }) });
+    const alert = await screen.findByRole('alert', {}, { timeout: 5000 });
+    expect(alert).toHaveTextContent("Couldn't load tasks.");
+    fail = false;
+    fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText('Critical thing')).toBeInTheDocument();
+  });
+
+  it('un-snaps the board pane for the duration of a drag', async () => {
+    renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
+    await waitFor(() => expect(screen.getByText('Low thing')).toBeInTheDocument());
+    const pane = screen.getByTestId('board').closest('.overflow-auto') as HTMLElement;
+    expect(pane.classList.contains('snap-mandatory')).toBe(true);
+    const card = screen.getByText('Low thing').closest('[data-testid="task-row"]') as HTMLElement;
+    fireEvent.mouseDown(card, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.mouseMove(document, { clientX: 40, clientY: 40 });
+    await waitFor(() => expect(pane.classList.contains('snap-none')).toBe(true));
+    expect(pane.classList.contains('snap-mandatory')).toBe(false);
+    await releaseDrag();
+    expect(pane.classList.contains('snap-mandatory')).toBe(true);
   });
 });
 

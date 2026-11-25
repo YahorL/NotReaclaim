@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
 import type { Task } from '../../api/types';
 import { ApiError } from '../../api/client';
-import { useTasksQuery, useSchedulePreviewQuery, useUpdateTaskMutation, useDeleteTaskMutation, useUpdateSubtaskMutation } from '../../api/queries';
+import { useTasksQuery, useSchedulePreviewQuery, useUpdateTaskMutation, useMoveTaskMutation, useDeleteTaskMutation, useUpdateSubtaskMutation } from '../../api/queries';
 import { TaskDrawer } from '../tasks/TaskDrawer';
 import { useTimezone } from '../settings/useTimezone';
-import { DrawerHost } from '../components/DrawerHost';
+import { DrawerHost, DESKTOP_DRAWER_SLOT } from '../components/DrawerHost';
 import { useCompactWidth } from '../lib/useMediaQuery';
 import { Toolbar } from '../priorities/Toolbar';
 import { Board, type BoardColumn } from '../priorities/Board';
@@ -18,6 +18,7 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
   const updateM = useUpdateTaskMutation();
   const deleteM = useDeleteTaskMutation();
   const subtaskM = useUpdateSubtaskMutation();
+  const moveM = useMoveTaskMutation();
   const compact = useCompactWidth();
   const zone = useTimezone();
   const onToggleSubtask = (subtaskId: string, done: boolean) => subtaskM.mutate({ id: subtaskId, patch: { done } });
@@ -79,7 +80,11 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
       taskId, task: t, to, index,
       columnTasks: columns.find((c) => c.key === to)?.tasks ?? [],
     });
-    if (patch) updateM.mutate({ id: taskId, patch });
+    if (!patch) return;
+    // Optimistic, so a second arrow press computes from the moved state and focus can follow the
+    // card; serialized and rolled back at the mutation level (see useMoveTaskMutation). Board
+    // already paints the move synchronously (its held arrangement).
+    moveM.mutate({ id: taskId, patch });
   };
 
   return (
@@ -90,12 +95,12 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
         colsVisible={colsVisible} setColsVisible={setColsVisible}
       />
       <div className={boardPaneClass(dragging)}>
-        {tasksQ.isLoading && <p className="text-sm text-inkSoft">Loading tasks…</p>}
+        {tasksQ.isLoading && <p role="status" className="px-1 py-2 text-[14px] text-fg-2">Loading tasks…</p>}
         {tasksQ.isError && (
-          <p className="text-sm">
-            <span className="text-crit">Couldn't load tasks.</span>{' '}
-            <button type="button" onClick={() => void tasksQ.refetch()} className="rounded border border-line px-2">Retry</button>
-          </p>
+          <div role="alert" className="glass flex flex-wrap items-center gap-3 rounded-panel px-4 py-3 text-[14px]">
+            <span className="text-danger">Couldn't load tasks.</span>
+            <button type="button" onClick={() => void tasksQ.refetch()} className="btn-glass h-9 rounded-pill px-4 text-[13px] font-medium">Retry</button>
+          </div>
         )}
         {!tasksQ.isLoading && !tasksQ.isError && (
           <Board
@@ -103,11 +108,12 @@ export function Priorities({ now = () => Date.now() }: { now?: () => number }) {
             onMove={onMove} onComplete={onComplete} onEdit={(t) => setEditingId(t.id)} onDelete={onDelete}
             onToggleSubtask={onToggleSubtask} onReorderSubtask={onReorderSubtask}
             onDragActiveChange={setDragging}
+            filtered={query.trim() !== ''}
           />
         )}
       </div>
       {editing && (
-        <DrawerHost compact={compact} label="Edit task" onClose={() => setEditingId(null)} desktopClass="fixed right-3 top-[84px] z-50">
+        <DrawerHost compact={compact} label="Edit task" onClose={() => setEditingId(null)} desktopClass={`${DESKTOP_DRAWER_SLOT} z-50`}>
           {/* Keyed by id: the drawer seeds its form once at mount — see Planner. */}
           <TaskDrawer
             key={editing.id}

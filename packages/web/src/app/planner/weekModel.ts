@@ -107,9 +107,9 @@ export function isToday(now: number, dayStartMs: number): boolean {
   return now >= dayStartMs && now < dayStartMs + MS_PER_DAY;
 }
 
-/** One hour = 58px tall in the grid body (must match WeekGrid's h-[58px] rows). */
-export const HOUR_ROW_PX = 58;
-/** Fixed day-column pixel height: one 58px row per hour of the window (24 * 58 = 1392). */
+/** One hour = 60px tall in the grid body (must match WeekGrid's h-[60px] rows). */
+export const HOUR_ROW_PX = 60;
+/** Fixed day-column pixel height: one 60px row per hour of the window (24 * 60 = 1440). */
 export const GRID_COLUMN_PX = (WINDOW_SPAN_MIN / 60) * HOUR_ROW_PX;
 
 /** Time-gutter width (px) — must match WeekGrid's first column. */
@@ -171,9 +171,9 @@ export function hourRowLabel(index: number, dayStartMinute = 0): string {
   const min = (dayStartMinute + index * 60) % (24 * 60);
   const h = Math.floor(min / 60);
   const m = min % 60;
-  const period = h < 12 ? 'a' : 'p';
+  const period = h < 12 ? 'AM' : 'PM';
   const base = h % 12 === 0 ? 12 : h % 12;
-  return m === 0 ? `${base}${period}` : `${base}:${String(m).padStart(2, '0')}${period}`;
+  return m === 0 ? `${base} ${period}` : `${base}:${String(m).padStart(2, '0')} ${period}`;
 }
 
 /** Zone midnight (00:00) of the day containing `ms`. Calendar-date semantics — for a shifted
@@ -188,14 +188,21 @@ export function shiftDays(ms: number, days: number, zone: string): number {
   return DateTime.fromMillis(ms, { zone }).plus({ days }).toMillis();
 }
 
-/** Time-of-day label (e.g. "09:00 AM") of `ms` rendered in `zone`. */
+/** Time-of-day label (e.g. "9:00 AM", no leading zero — the design's tile/ghost form) of `ms` rendered in `zone`. */
+/**
+ * The UI is English-only, so every time label is formatted in one fixed locale (12-hour,
+ * "9:00 AM") instead of the browser's: a 24-hour browser locale used to mix "16:15" tiles and
+ * ghost pills with the en-US detail card, Next-up card and panel labels.
+ */
+export const TIME_LOCALE = 'en-US';
+
 export function formatHm(ms: number, zone: string): string {
-  return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: zone });
+  return new Date(ms).toLocaleTimeString(TIME_LOCALE, { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: zone });
 }
 
 /** 3-letter weekday (e.g. "Mon") of `ms` in `zone`. */
 export function weekdayLabel(ms: number, zone: string): string {
-  return new Date(ms).toLocaleDateString([], { weekday: 'short', timeZone: zone });
+  return new Date(ms).toLocaleDateString(TIME_LOCALE, { weekday: 'short', timeZone: zone });
 }
 
 /** Day-of-month number of `ms` in `zone`. */
@@ -212,6 +219,37 @@ export function snapClickToSlot(fraction: number): number {
 /** Clamp a horizontal day delta so dayIndex + delta stays within the rendered columns (0..lastIndex). */
 export function clampDayDelta(dayIndex: number, delta: number, lastIndex = 6): number {
   return Math.max(-dayIndex, Math.min(lastIndex - dayIndex, delta)) || 0;
+}
+
+/**
+ * Where a MOVED block starts: `startMin + deltaMin`; the caller keeps the block's length.
+ * - A block that FITS the column stays inside it (interactions.md §1:
+ *   `clamp(start, dayStart, dayEnd − duration)`): a 23:00–24:00 block pressed ↓ stays put, and a
+ *   4h block dragged to the bottom lands at 20:00–24:00, never across the column end.
+ * - A block that ALREADY runs past the column end (an overnight 23:00–07:00 block, or one crossing
+ *   a `dayStartMinute` column boundary) is never squeezed back in: only its start is clamped, to
+ *   [WINDOW_START_MIN, WINDOW_END_MIN − SLOT_MIN], so it keeps its hours.
+ * Never moves against the direction of `deltaMin`: an off-grid start already in the last slot stays
+ * put on ↓.
+ */
+export function moveStartMin(startMin: number, durationMin: number, deltaMin: number): number {
+  if (deltaMin === 0) return startMin;
+  const fits = startMin + durationMin <= WINDOW_END_MIN;
+  const maxStart = fits ? WINDOW_END_MIN - durationMin : WINDOW_END_MIN - SLOT_MIN;
+  const clamped = Math.min(maxStart, Math.max(WINDOW_START_MIN, startMin + deltaMin));
+  return deltaMin > 0 ? Math.max(startMin, clamped) : Math.min(startMin, clamped);
+}
+
+/**
+ * Where a bottom-edge RESIZE ends: `endMin + deltaMin`, at least one slot long, and never grown
+ * past the column end — unless the block already ends past it, in which case it is never SHORTENED
+ * for that (a click on an overnight tile's handle must not cut it to 24:00). A zero delta is a
+ * no-op before any clamping, and the end never moves against the direction of `deltaMin`.
+ */
+export function resizeEndMin(startMin: number, endMin: number, deltaMin: number): number {
+  if (deltaMin === 0) return endMin;
+  const target = Math.min(Math.max(WINDOW_END_MIN, endMin), Math.max(startMin + SLOT_MIN, endMin + deltaMin));
+  return deltaMin > 0 ? Math.max(endMin, target) : Math.min(endMin, target);
 }
 
 /** Keep [startMin, startMin+durationMin] inside the [WINDOW_START_MIN, WINDOW_END_MIN] window. */
@@ -234,26 +272,32 @@ export function popoverAlign(dayIndex: number, dayCount: number): 'left' | 'righ
 /** Toolbar label for the rendered window: one date in the 1-day view, `first – last` otherwise. */
 export function rangeLabel(days: number[], zone: string): string {
   if (days.length === 0) return '';
-  const fmt = (ms: number) => new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric', timeZone: zone });
+  const fmt = (ms: number) => new Date(ms).toLocaleDateString(TIME_LOCALE, { month: 'short', day: 'numeric', timeZone: zone });
   const first = days[0]!;
   const last = days[days.length - 1]!;
   return first === last ? fmt(first) : `${fmt(first)} – ${fmt(last)}`;
 }
 
 /**
- * Minutes a tile must span before a coarse pointer earns the enlarged resize target. Below it a
- * 24px handle would cover the whole tile (a 15-min block is 14.5px tall) and eat the tap that
- * should open the drawer.
+ * Minutes a tile must span before it earns more than the 6px resize bar. Below it a bigger handle
+ * would cover most of the tile (a 15-min block is 15px tall) and eat the press that should move
+ * it or open it.
  */
 export const COARSE_RESIZE_MIN_SPAN_MIN = 30;
 
-/** Literal Tailwind height class for the resize hit area. It is invisible — only the target grows. */
-export function resizeHandleClass(heightPct: number, coarse: boolean): 'h-1.5' | 'h-6' {
-  if (!coarse) return 'h-1.5';
+/**
+ * Literal Tailwind height class for the resize hit area (invisible — only the target grows; the
+ * grip pill is drawn by CalendarBlock). Fine pointer: the design's 10px handle. Coarse pointer: a
+ * bigger target that still never reaches the lower half of the tile, so a long-press move started
+ * low on a tile is a move, not a resize (P3 note) — 12px on 30–59 min tiles, 16px from an hour.
+ */
+export function resizeHandleClass(heightPct: number, coarse: boolean): 'h-1.5' | 'h-2.5' | 'h-3' | 'h-4' {
   // The percent → minutes roundtrip is lossy: an exactly-30-minute tile comes back as
   // 29.999999999999993, so compare with a tolerance far below one minute.
-  const spanMin = (heightPct / 100) * WINDOW_SPAN_MIN;
-  return spanMin >= COARSE_RESIZE_MIN_SPAN_MIN - 1e-6 ? 'h-6' : 'h-1.5';
+  const spanMin = (heightPct / 100) * WINDOW_SPAN_MIN + 1e-6;
+  if (spanMin < COARSE_RESIZE_MIN_SPAN_MIN) return 'h-1.5';
+  if (!coarse) return 'h-2.5';
+  return spanMin >= 60 ? 'h-4' : 'h-3';
 }
 
 /** Minimum horizontal travel before a day-header drag counts as a page swipe. */

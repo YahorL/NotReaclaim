@@ -1,31 +1,34 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect } from 'vitest';
+import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { NavLinkItem, NavSection } from './NavItem';
+import { NavLinkItem } from './NavItem';
 
-describe('NavItem', () => {
-  it('NavLinkItem renders a link and is active on its route', () => {
-    render(
-      <MemoryRouter initialEntries={['/priorities']}>
-        <NavLinkItem to="/priorities" label="Priorities" />
-      </MemoryRouter>,
-    );
+function renderAt(path: string) {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <NavLinkItem to="/" end label="Planner" icon={<svg aria-hidden="true" />} />
+      <NavLinkItem to="/priorities" label="Priorities" icon={<svg aria-hidden="true" />} />
+    </MemoryRouter>,
+  );
+}
+
+describe('NavLinkItem', () => {
+  it('is an icon-only link named by its label, with a tooltip label', () => {
+    renderAt('/priorities');
     const link = screen.getByRole('link', { name: 'Priorities' });
     expect(link).toHaveAttribute('href', '/priorities');
-    expect(link.className).toContain('bg-sidebarHover');
+    expect(link).toHaveAttribute('data-label', 'Priorities');
+    expect(link.textContent).toBe('');
   });
 
-  it('NavSection exposes aria-expanded reflecting open state', () => {
-    const { rerender } = render(<NavSection label="Time blocking" open onToggle={() => {}} />);
-    expect(screen.getByRole('button', { name: /time blocking/i })).toHaveAttribute('aria-expanded', 'true');
-    rerender(<NavSection label="Time blocking" open={false} onToggle={() => {}} />);
-    expect(screen.getByRole('button', { name: /time blocking/i })).toHaveAttribute('aria-expanded', 'false');
-  });
-
-  it('NavSection toggles via onToggle and reflects open state', () => {
-    const onToggle = vi.fn();
-    render(<NavSection label="Time blocking" open onToggle={onToggle} />);
-    fireEvent.click(screen.getByRole('button', { name: /time blocking/i }));
-    expect(onToggle).toHaveBeenCalledTimes(1);
+  it('marks only the current route active (aria-current + data-active)', () => {
+    renderAt('/priorities');
+    const active = screen.getByRole('link', { name: 'Priorities' });
+    expect(active).toHaveAttribute('aria-current', 'page');
+    expect(active).toHaveAttribute('data-active', 'true');
+    // `end` keeps "/" from matching every route.
+    const planner = screen.getByRole('link', { name: 'Planner' });
+    expect(planner).not.toHaveAttribute('aria-current');
+    expect(planner).not.toHaveAttribute('data-active');
   });
 });

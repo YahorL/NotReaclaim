@@ -13,9 +13,10 @@ describe('Hours page', () => {
     await waitFor(() => expect(screen.getByTestId('categories-section')).toBeInTheDocument());
   });
 
-  it('renders a page heading', () => {
+  // The page title ("Your hours") is the shell header's now (routeHeader); the page drops its own.
+  it('leaves the page title to the shell header', () => {
     const api = fakeApiClient({ listCategories: vi.fn().mockResolvedValue([]) } as never);
     renderWithProviders(<Hours />, { api });
-    expect(screen.getByRole('heading', { name: /hours/i })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 2, name: 'Hours' })).toBeNull();
   });
 });

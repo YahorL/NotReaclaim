@@ -12,12 +12,13 @@ export function useNowNextControls(now: () => number) {
   const nowMs = now();
   const zone = useTimezone();
   const { running, nextBlock } = useCurrentOrNext(nowMs);
+  const nextTime = nextBlock ? relativeDayTimeLabel(Date.parse(nextBlock.startsAt), nowMs, zone) : null;
   return {
     running,
     nextBlock,
-    nextLabel: nextBlock
-      ? `Next: ${nextBlock.title} · ${relativeDayTimeLabel(Date.parse(nextBlock.startsAt), nowMs, zone)}`
-      : null,
+    /** "Today 4:30 PM" in the settings zone. */
+    nextTime,
+    nextLabel: nextBlock ? `Next · ${nextBlock.title} · ${nextTime}` : null,
     start: () => {
       if (nextBlock) startBlock.mutate(nextBlock.id);
     },

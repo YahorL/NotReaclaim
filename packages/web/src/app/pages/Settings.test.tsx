@@ -51,6 +51,18 @@ describe('Settings page', () => {
     expect(wrapper!.className).toContain('max-w-');
   });
 
+  it('offers the Appearance theme choice and the Account section', async () => {
+    const api = fakeApiClient({ getSettings: async () => settings() } as never);
+    renderWithProviders(<SettingsPage />, { api });
+    await waitFor(() => expect(screen.getByTestId('settings-form')).toBeInTheDocument());
+    const appearance = screen.getByTestId('appearance-section');
+    expect(within(appearance).getByRole('radiogroup', { name: 'Theme' })).toBeInTheDocument();
+    expect(within(appearance).getAllByRole('radio').map((r) => r.textContent)).toEqual(['System', 'Light', 'Dark']);
+    expect(screen.getByTestId('account-section')).toBeInTheDocument();
+    // Appearance applies instantly, so it lives outside the Save form
+    expect(within(screen.getByTestId('settings-form')).queryByRole('radiogroup', { name: 'Theme' })).toBeNull();
+  });
+
   it('shows the build version footer with the injected sha and date', async () => {
     const api = fakeApiClient({ getSettings: async () => settings() } as never);
     renderWithProviders(<SettingsPage version={{ version: 'a1b2c3d', buildDate: '2026-08-12' }} />, { api });

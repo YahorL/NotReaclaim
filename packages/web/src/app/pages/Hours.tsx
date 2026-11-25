@@ -2,9 +2,8 @@ import { CategoriesSection } from '../settings/CategoriesSection';
 
 export function Hours() {
   return (
-    <div className="p-4">
-      <div className="mx-auto w-full max-w-[720px]">
-        <h2 className="mb-4 text-[22px] font-extrabold tracking-[-.3px] text-ink">Hours</h2>
+    <div className="px-4 pb-6 pt-4 md:px-1 md:pt-0">
+      <div className="mx-auto w-full max-w-[900px]">
         <CategoriesSection />
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useId, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { ApiError } from '../../api/client';
 import { useCreateTaskMutation, useSettingsQuery, useCategoriesQuery, useCreateCategoryMutation } from '../../api/queries';
 import { Icons } from './icons';
@@ -14,10 +14,44 @@ import { PriorityPicker } from '../components/PriorityPicker';
 import { PrimaryButton } from '../components/Buttons';
 import { FIELD_ERROR } from '../components/formStyles';
 import { useFormState } from '../components/useFormState';
+import { useFocusTrap } from '../components/Sheet';
+import { CHECKBOX, INPUT } from '../forms/controls';
+import { usePrefersReducedMotion } from '../../theme/usePrefersReducedMotion';
+import { useToast } from './ToastProvider';
+import { useRecentlyCreated } from './RecentlyCreated';
 
 const FALLBACK_WORKING_HOURS = [{ weekday: 1, startMinute: 540, endMinute: 1020 }];
 
-export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () => void; now?: () => number }) {
+/** `--dur-modal-out`: the exit plays this long before the dialog unmounts. */
+export const MODAL_EXIT_MS = 220;
+
+/** Glass field card with a real `<label>` for its one control (Hours, Schedule after, Due date). */
+function LabelledField({ label, htmlFor, children }: { label: string; htmlFor: string; children: ReactNode }) {
+  return (
+    <div className="glass-card flex min-w-0 flex-col gap-2 rounded-field px-4 py-3 transition-colors focus-within:border-focus">
+      <label htmlFor={htmlFor} className="text-[13px] font-medium text-fg-2">{label}</label>
+      {children}
+    </div>
+  );
+}
+
+export interface NewTaskModalProps {
+  onClose: () => void;
+  now?: () => number;
+  /**
+   * The control that opened the dialog (header New task, mobile +); focus returns there on close.
+   * Passed by the shell because a click does not focus a button in Safari (and jsdom), so the
+   * focus trap's own render-time capture of `document.activeElement` would be <body>.
+   */
+  opener?: RefObject<HTMLElement | null>;
+}
+
+/**
+ * New task dialog (spec §4.3, interactions §3). Esc / ✕ / Cancel / backdrop and a successful
+ * create all go through one idempotent `requestClose`: the backdrop and dialog play their exit
+ * (`data-closing`, 220ms) and only then does the shell unmount it — at once under reduced motion.
+ */
+export function NewTaskModal({ onClose, now = () => Date.now(), opener }: NewTaskModalProps) {
   const settingsQ = useSettingsQuery();
   const createM = useCreateTaskMutation();
   // Memoised on the two numbers so useValueChange sees a stable seed between settings changes.
@@ -58,116 +92,238 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
   const { ok, errors } = validateNewTaskForm(form, zone);
   const error = createM.error instanceof ApiError ? createM.error : null;
 
-  const submit = () => {
-    if (!ok) return;
-    createM.mutate(toCreateTaskInput(form, zone), { onSuccess: () => onClose() });
+  // ---- closing --------------------------------------------------------------------------------
+  const reduced = usePrefersReducedMotion();
+  const [closing, setClosing] = useState(false);
+  const closingRef = useRef(false);
+  const exitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The shell re-renders mid-exit with a new arrow; always call the latest one.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => () => { if (exitTimer.current) clearTimeout(exitTimer.current); }, []);
+
+  const requestClose = () => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    if (reduced) { onCloseRef.current(); return; }
+    setClosing(true);
+    exitTimer.current = setTimeout(() => { exitTimer.current = null; onCloseRef.current(); }, MODAL_EXIT_MS);
   };
+
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+  // Explicit initial focus: `autoFocus` alone loses to StrictMode's double-run effect (spec §10 P2).
+  const trapKeyDown = useFocusTrap(dialogRef, { onEscape: requestClose, restoreTo: opener, initialFocus: () => nameRef.current });
+
+  // A press that started inside the dialog and was released over the backdrop (selecting text in
+  // a field) dispatches its click on the backdrop: only a press that began there closes.
+  const pressOnBackdrop = useRef<boolean | null>(null);
+
+  // ---- submit ---------------------------------------------------------------------------------
+  // A ref, not `isPending`: two Enters in one tick both see the pre-mutate render.
+  const submitting = useRef(false);
+  const toast = useToast();
+  const { markCreated } = useRecentlyCreated();
+  const submit = () => {
+    if (!ok || submitting.current || closingRef.current) return;
+    submitting.current = true;
+    createM.mutate(toCreateTaskInput(form, zone), {
+      // The planner panel glows the new card (data-fresh) once the tasks refetch lists it.
+      onSuccess: (created) => {
+        toast.show('Task created', { icon: 'check' });
+        markCreated(created.id);
+        requestClose();
+      },
+      onError: () => { submitting.current = false; },
+    });
+  };
+
+  const onNameKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+    e.preventDefault();
+    submit();
+  };
+
+  const canAddCategory = newCatName.trim() !== '' && !createCategoryM.isPending;
+  const addCategory = () => {
+    if (!canAddCategory) return;
+    const windows = settingsQ.data?.workingHours ?? FALLBACK_WORKING_HOURS;
+    createCategoryM.mutate({ name: newCatName.trim(), windows }, {
+      onSuccess: (cat) => { set('categoryId', cat.id); setCreatingCat(false); setNewCatName(''); },
+    });
+  };
+  const onCategoryKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); addCategory(); }
+    // Escape backs out of the inline field only; the dialog's trap must not see it.
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setCreatingCat(false); setNewCatName(''); }
+  };
+
+  const titleId = useId();
+  const nameId = useId();
+  const splitLabelId = useId();
+  const splitHintId = useId();
+  const hoursId = useId();
+  const afterId = useId();
+  const dueId = useId();
 
   return (
     /* pt: MobileTopBar is 56px (h-14), the desktop TopBar 70px. px-4 stays on both — 16px
        gutters are what makes this "near-full-screen" rather than edge-to-edge. */
-    <div className="fixed inset-0 z-50 flex animate-fade items-start justify-center overflow-y-auto bg-[rgba(24,26,42,.35)] px-4 pt-14 md:pt-[70px]" onClick={onClose}>
-      <div className="w-full max-w-[500px] min-h-[calc(100dvh_-_88px)] animate-pop rounded-[18px] bg-card px-[22px] pb-[22px] pt-5 shadow-modal md:min-h-0" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-end">
-          <button type="button" aria-label="Close" onClick={onClose} className="p-1 text-inkSoft"><Icons.close size={22} /></button>
-        </div>
-
-        <div className="mb-[18px] mt-0.5 flex items-center gap-3">
-          <div className="flex flex-1 items-center gap-2.5 rounded-[11px] border-2 border-indigo px-3.5 py-3 ring-[3px] ring-indigoSoft">
-            <Icons.emoji size={22} className="text-indigo" />
-            <input autoFocus value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="Task name…" className="flex-1 text-[18px] font-semibold text-ink outline-none" />
-          </div>
-        </div>
-
-        <div className="mb-3.5 flex flex-wrap items-center gap-3 gap-y-3 md:flex-nowrap">
-          <div className="basis-[195px]">
-            <FieldBox label="Duration"><DurationStepper label="duration" valueMs={form.durationMs} onChange={(ms) => set('durationMs', ms)} /></FieldBox>
-          </div>
-          {/* Plain label, not a FieldBox: a bordered box costs ~30px the row doesn't have, and the Split toggle beside it is unboxed too. */}
-          <div className="flex shrink-0 flex-col gap-1">
-            <span className="text-[13px] font-semibold text-inkSoft">Priority</span>
-            <PriorityPicker value={form.priority} onChange={(p) => set('priority', p)} />
-          </div>
-          <button type="button" onClick={() => set('split', !form.split)} className="ml-auto flex shrink-0 items-center gap-2.5">
-            <span className={`flex h-6 w-6 items-center justify-center rounded-md ${form.split ? 'bg-indigo text-white' : 'border-2 border-[#c7cad6]'}`}>{form.split && <Icons.check size={17} />}</span>
-            <span className="text-[18px] font-bold text-ink">Split up</span>
+    <div
+      data-testid="new-task-backdrop"
+      data-closing={closing || undefined}
+      onPointerDown={(e) => { pressOnBackdrop.current = e.target === e.currentTarget; }}
+      onClick={(e) => {
+        const startedInside = pressOnBackdrop.current === false;
+        pressOnBackdrop.current = null;
+        if (e.target === e.currentTarget && !startedInside) requestClose();
+      }}
+      className={`fixed inset-0 z-[58] flex items-start justify-center overflow-y-auto bg-overlay px-4 pb-6 pt-14 backdrop-blur-[8px] md:pt-[70px] ${closing ? 'pointer-events-none animate-bd-out' : 'animate-bd-in'}`}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onKeyDown={trapKeyDown}
+        data-closing={closing || undefined}
+        className={`glass-dialog flex min-h-[calc(100dvh_-_88px)] w-full max-w-[600px] flex-col gap-3.5 rounded-[26px] p-[22px] outline-none md:min-h-0 ${closing ? 'animate-modal-out' : 'animate-modal-in'}`}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <h2 id={titleId} className="text-[20px] font-semibold tracking-[-0.01em] text-fg">New task</h2>
+          <button type="button" aria-label="Close" onClick={requestClose} className="btn-glass grid h-[38px] w-[38px] shrink-0 place-items-center rounded-full text-fg coarse:h-11 coarse:w-11">
+            <Icons.close size={16} className="[stroke-width:2]" />
           </button>
         </div>
 
-        {/* Two 195px-min steppers do not fit side by side in a 358px content box at 390px, so the
-            pair stacks on a phone and keeps its desktop row from md up. */}
-        <div className="mb-3.5 flex flex-col gap-2 md:flex-row md:gap-4">
-          <FieldBox label="Min duration"><DurationStepper label="min" disabled={!form.split} valueMs={form.minChunkMs} onChange={(ms) => set('minChunkMs', ms)} /></FieldBox>
-          <FieldBox label="Max duration"><DurationStepper label="max" disabled={!form.split} valueMs={form.maxChunkMs} onChange={(ms) => set('maxChunkMs', ms)} /></FieldBox>
+        <div className="flex h-[60px] shrink-0 items-center gap-3 rounded-field border-[1.5px] border-meeting/60 bg-fg/[.04] px-[18px] text-fg-2 transition-[border-color,box-shadow] duration-200 focus-within:border-meeting focus-within:shadow-[0_0_0_4px_rgb(var(--c-meeting)/0.22)]">
+          <Icons.emoji size={22} className="shrink-0" />
+          <label htmlFor={nameId} className="sr-only">Task name</label>
+          <input
+            id={nameId}
+            ref={nameRef}
+            autoFocus
+            autoComplete="off"
+            value={form.title}
+            onChange={(e) => set('title', e.target.value)}
+            onKeyDown={onNameKeyDown}
+            placeholder="Task name…"
+            className="min-w-0 flex-1 bg-transparent text-[20px] font-medium text-fg outline-none placeholder:text-fg-3"
+          />
         </div>
 
-        <div className="mb-2 rounded-[11px] border-[1.5px] border-line px-3.5 py-2.5">
-          <span className="text-[13px] font-semibold text-inkSoft">Hours</span>
-          <div className="flex items-center gap-2">
-            <Icons.info size={19} className="text-indigo" />
+        <div data-testid="duration-priority-row" className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <FieldBox label="Duration">
+            <div className="pt-1.5"><DurationStepper label="duration" valueMs={form.durationMs} onChange={(ms) => set('durationMs', ms)} /></div>
+          </FieldBox>
+          <div className="flex min-w-0 flex-col gap-2 px-0.5 py-2.5">
+            <span aria-hidden="true" className="text-[13px] font-medium text-fg-2">Priority</span>
+            <PriorityPicker value={form.priority} onChange={(p) => set('priority', p)} />
+          </div>
+        </div>
+
+        <label className="flex cursor-pointer items-center gap-3 px-1 py-0.5">
+          <input
+            type="checkbox"
+            checked={form.split}
+            onChange={(e) => set('split', e.target.checked)}
+            aria-labelledby={splitLabelId}
+            aria-describedby={splitHintId}
+            className={`${CHECKBOX} checked:animate-pop-check`}
+          />
+          <span className="flex flex-col gap-0.5">
+            <span id={splitLabelId} className="text-[15px] text-fg">Split up</span>
+            <span id={splitHintId} className="text-[12px] text-fg-2">Let the planner spread this task over several blocks</span>
+          </span>
+        </label>
+
+        {/* Only rendered while Split is on (slides in with `expand`); off sends min = max = duration. */}
+        {form.split && (
+          <div data-testid="chunk-row" className="grid animate-expand grid-cols-1 gap-3 sm:grid-cols-2">
+            <FieldBox label="Min duration">
+              <div className="pt-1.5"><DurationStepper label="min" valueMs={form.minChunkMs} onChange={(ms) => set('minChunkMs', ms)} /></div>
+            </FieldBox>
+            <FieldBox label="Max duration">
+              <div className="pt-1.5"><DurationStepper label="max" valueMs={form.maxChunkMs} onChange={(ms) => set('maxChunkMs', ms)} /></div>
+            </FieldBox>
+          </div>
+        )}
+
+        <LabelledField label="Hours" htmlFor={hoursId}>
+          <div className="flex items-center gap-3">
             <select
+              id={hoursId}
               data-testid="category-select"
               value={form.categoryId ?? ''}
               onChange={(e) => set('categoryId', e.target.value || null)}
-              className="flex-1 bg-transparent text-[18px] font-bold text-ink outline-none"
+              className={`${INPUT} h-10 min-w-0 flex-1 px-3 text-[15px]`}
             >
               {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-            <button type="button" aria-label="Add new category" data-testid="new-category-btn" onClick={() => setCreatingCat(true)} className="text-[13px] font-bold text-indigo">+ New</button>
+            <button
+              type="button"
+              aria-label="Add new category"
+              data-testid="new-category-btn"
+              onClick={() => setCreatingCat(true)}
+              className="shrink-0 whitespace-nowrap rounded-pill px-1 py-1 text-[13px] font-semibold text-accent-fg hover:underline coarse:px-3 coarse:py-3"
+            >+ New</button>
           </div>
           {creatingCat && (
-            <div className="mt-2 flex items-center gap-2">
+            <div className="flex animate-expand items-center gap-2">
               <input
                 data-testid="new-category-name"
+                aria-label="New category name"
                 autoFocus
                 value={newCatName}
                 onChange={(e) => setNewCatName(e.target.value)}
+                onKeyDown={onCategoryKeyDown}
                 placeholder="Category name…"
-                className="flex-1 rounded border border-line px-2 py-1 text-[14px] outline-none"
+                className={`${INPUT} h-9 min-w-0 flex-1 px-3 text-[14px]`}
               />
               <button
                 type="button"
                 data-testid="new-category-confirm"
-                disabled={!newCatName.trim() || createCategoryM.isPending}
-                onClick={() => {
-                  const windows = settingsQ.data?.workingHours ?? FALLBACK_WORKING_HOURS;
-                  createCategoryM.mutate({ name: newCatName.trim(), windows }, {
-                    onSuccess: (cat) => { set('categoryId', cat.id); setCreatingCat(false); setNewCatName(''); },
-                  });
-                }}
-                className="rounded bg-indigo px-2.5 py-1 text-[13px] font-bold text-white disabled:opacity-50"
+                disabled={!canAddCategory}
+                onClick={addCategory}
+                className="btn-accent h-9 shrink-0 rounded-pill px-4 text-[13px] font-semibold"
               >Add</button>
             </div>
           )}
-        </div>
+        </LabelledField>
 
-        <div className="mb-4 flex gap-4">
-          <FieldBox label="Schedule after">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <LabelledField label="Schedule after" htmlFor={afterId}>
             <input
+              id={afterId}
               type="datetime-local"
               data-testid="schedule-after"
               value={form.notBeforeLocal}
               onChange={(e) => set('notBeforeLocal', e.target.value)}
-              className="w-full min-w-0 text-[15px] font-bold text-ink outline-none"
+              className={`${INPUT} h-10 w-full min-w-0 px-3 text-[15px]`}
             />
             {errors.notBeforeLocal && <p data-testid="err-notBeforeLocal" className={FIELD_ERROR}>{errors.notBeforeLocal}</p>}
-          </FieldBox>
-          <FieldBox label="Due date">
+          </LabelledField>
+          <LabelledField label="Due date" htmlFor={dueId}>
             <input
+              id={dueId}
               type="datetime-local"
               data-testid="due-date"
               value={form.dueByLocal}
               onChange={(e) => set('dueByLocal', e.target.value)}
-              className="w-full min-w-0 text-[15px] font-bold text-ink outline-none"
+              className={`${INPUT} h-10 w-full min-w-0 px-3 text-[15px]`}
             />
-            <p className="mt-1 text-[11px] text-inkSoft">Leave empty for no deadline</p>
+            <p className="text-[12px] text-fg-2">Leave empty for no deadline</p>
             {errors.dueByLocal && <p data-testid="err-dueByLocal" className={FIELD_ERROR}>{errors.dueByLocal}</p>}
-          </FieldBox>
+          </LabelledField>
         </div>
 
-        {error && <p data-testid="modal-error" className="mb-2 text-[12px] text-crit">{error.message}</p>}
+        {error && <p data-testid="modal-error" role="alert" className="text-[13px] text-danger">{error.message}</p>}
 
-        <div className="flex items-center justify-end">
+        <div className="mt-auto flex items-center justify-end gap-3 pt-1 md:mt-0">
+          <button type="button" onClick={requestClose} className="btn-glass inline-flex h-[46px] items-center rounded-pill px-6 text-[15px] font-medium text-fg">
+            Cancel
+          </button>
           <PrimaryButton large type="button" disabled={!ok || createM.isPending} onClick={submit}>
             Create
           </PrimaryButton>

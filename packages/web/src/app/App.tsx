@@ -11,8 +11,10 @@ import { Settings } from './pages/Settings';
 import { Stats } from './pages/Stats';
 import { Buffers } from './pages/Buffers';
 import { Hours } from './pages/Hours';
+import { useThemeSync } from '../theme/useTheme';
 
 export function App() {
+  useThemeSync();
   return (
     <Routes>
       <Route path="/signin" element={<SignIn />} />

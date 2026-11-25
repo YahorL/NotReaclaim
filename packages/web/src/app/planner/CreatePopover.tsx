@@ -90,7 +90,8 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
     // click — which would then land on the day column underneath and re-open the form at
     // another slot. That is exactly the "I can't close it" report this sheet fixes.
     if (compact) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    // A surface above the popover (the search palette) that already handled Escape keeps it.
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented) onClose(); };
     const onDown = (e: PointerEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
     document.addEventListener('keydown', onKey);
     document.addEventListener('pointerdown', onDown);
@@ -126,7 +127,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
   };
 
   const tabCls = (active: boolean) =>
-    `flex-1 rounded-[8px] px-2 py-1.5 text-[14px] font-bold ${active ? 'bg-indigo text-white' : 'text-inkSoft hover:bg-bg'}`;
+    `h-9 flex-1 rounded-pill px-2 text-[14px] transition-colors ${active ? 'bg-fg/[.14] text-fg shadow-[inset_0_1px_0_rgb(255_255_255/0.2)]' : 'text-fg-2 hover:text-fg'}`;
 
   return (
     // Compact: plain content inside a `Sheet` — the sheet supplies the backdrop, the ✕, Escape,
@@ -137,20 +138,20 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
       onClick={(e) => e.stopPropagation()}
       className={compact
         ? 'p-2'
-        : `absolute z-40 w-[340px] animate-pop rounded-[14px] border border-line bg-card p-4 shadow-pop ${align === 'left' ? 'left-1' : 'right-1'}`}
+        : `glass-dialog pointer-events-auto absolute z-40 w-[340px] animate-pop rounded-panel p-4 ${align === 'left' ? 'left-1' : 'right-1'}`}
       style={compact ? undefined : { top: `${Math.min(topPct, 78)}%` }}
     >
-      <div className="mb-2 flex gap-1 rounded-[10px] bg-bg p-1">
-        <button type="button" data-testid="mode-event" onClick={() => { setMode('event'); setTaskId(''); }} className={tabCls(mode === 'event')}>Event</button>
-        <button type="button" data-testid="mode-task" onClick={() => setMode('task')} className={tabCls(mode === 'task')}>Task</button>
-        <button type="button" data-testid="mode-blocked" onClick={() => { setMode('blocked'); setTaskId(''); }} className={tabCls(mode === 'blocked')}>Blocked</button>
+      <div role="group" aria-label="Entry type" className="mb-3 flex gap-1 rounded-pill bg-fg/[.05] p-1">
+        <button type="button" data-testid="mode-event" aria-pressed={mode === 'event'} onClick={() => { setMode('event'); setTaskId(''); }} className={tabCls(mode === 'event')}>Event</button>
+        <button type="button" data-testid="mode-task" aria-pressed={mode === 'task'} onClick={() => setMode('task')} className={tabCls(mode === 'task')}>Task</button>
+        <button type="button" data-testid="mode-blocked" aria-pressed={mode === 'blocked'} onClick={() => { setMode('blocked'); setTaskId(''); }} className={tabCls(mode === 'blocked')}>Blocked</button>
       </div>
       {mode === 'task' && (
         <select
           data-testid="task-select"
           value={taskId}
           onChange={(e) => setTaskId(e.target.value)}
-          className="mb-2 w-full rounded-[9px] border-[1.5px] border-line bg-card px-3 py-2 text-[15px] font-semibold outline-none focus:border-indigo"
+          className="mb-2 h-10 w-full px-3 text-[15px] rounded-input border border-fg/10 bg-fg/[.05] text-fg outline-none transition-colors focus:border-focus"
         >
           <option value="">➕ New task</option>
           {activeTasks.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
@@ -164,59 +165,59 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
           placeholder={mode === 'event' ? 'Event name…' : mode === 'blocked' ? 'Blocked (optional)…' : 'Task name…'}
-          className="mb-2 w-full rounded-[9px] border-[1.5px] border-line px-3 py-2 text-[15px] font-semibold outline-none focus:border-indigo"
+          className="mb-2 h-10 w-full px-3 text-[15px] font-medium rounded-input border border-fg/10 bg-fg/[.05] text-fg outline-none transition-colors focus:border-focus placeholder:text-fg-3"
         />
       )}
       {showNewTaskFields && (
         <>
           <div className="mb-2">
-            <label className="mb-0.5 block text-[11px] font-semibold text-inkSoft">Due date</label>
+            <label className="mb-1 block text-[12px] text-fg-2">Due date</label>
             <input
               type="datetime-local"
               data-testid="create-due"
               required
               value={dueLocal}
               onChange={(e) => setDueLocal(e.target.value)}
-              className="w-full rounded-[9px] border-[1.5px] border-line px-3 py-1.5 text-[13px] font-semibold outline-none focus:border-indigo"
+              className="h-9 w-full px-3 text-[13px] rounded-input border border-fg/10 bg-fg/[.05] text-fg outline-none transition-colors focus:border-focus"
             />
-            {dueIso === undefined && <p data-testid="create-due-error" className="mt-0.5 text-[11px] text-crit">Enter a valid due date</p>}
+            {dueIso === undefined && <p data-testid="create-due-error" className="mt-0.5 text-[11px] text-danger">Enter a valid due date</p>}
           </div>
           <div className="mb-2">
-            <label className="mb-0.5 block text-[11px] font-semibold text-inkSoft">Hours</label>
+            <label className="mb-1 block text-[12px] text-fg-2">Hours</label>
             <select
               data-testid="create-category"
               value={categoryId ?? ''}
               onChange={(e) => setCategoryId(e.target.value || null)}
-              className="w-full rounded-[9px] border-[1.5px] border-line px-3 py-1.5 text-[13px] font-semibold outline-none focus:border-indigo"
+              className="h-9 w-full px-3 text-[13px] rounded-input border border-fg/10 bg-fg/[.05] text-fg outline-none transition-colors focus:border-focus"
             >
               <option value="">— none —</option>
               {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
           <div className="mb-2">
-            <label className="mb-0.5 block text-[11px] font-semibold text-inkSoft">Schedule after</label>
+            <label className="mb-1 block text-[12px] text-fg-2">Schedule after</label>
             <input
               type="datetime-local"
               data-testid="create-after"
               value={afterLocal}
               onChange={(e) => setAfterLocal(e.target.value)}
-              className="w-full rounded-[9px] border-[1.5px] border-line px-3 py-1.5 text-[13px] font-semibold outline-none focus:border-indigo"
+              className="h-9 w-full px-3 text-[13px] rounded-input border border-fg/10 bg-fg/[.05] text-fg outline-none transition-colors focus:border-focus"
             />
-            {afterIso === undefined && <p data-testid="create-after-error" className="mt-0.5 text-[11px] text-crit">Enter a valid date or leave it empty</p>}
+            {afterIso === undefined && <p data-testid="create-after-error" className="mt-0.5 text-[11px] text-danger">Enter a valid date or leave it empty</p>}
           </div>
         </>
       )}
-      <div className="mb-1 rounded-[9px] border-[1.5px] border-line px-2.5 py-1.5">
+      <div className="mb-1.5 rounded-input border border-fg/10 px-2.5 py-1.5">
         <DurationStepper label="slot" size={22} valueMs={durationMs} onChange={(ms) => setDurationMs(Math.max(SLOT_MIN * MS_PER_MIN, Math.min(ms, maxDurationMs)))} />
       </div>
-      <p data-testid="slot-label" className="mb-2 text-[13px] font-semibold text-inkSoft">{formatHm(startMs, zone)} – {formatHm(endMs, zone)}</p>
-      {apiError && <p data-testid="create-error" className="mb-2 text-[11px] text-crit">{apiError.message}</p>}
+      <p data-testid="slot-label" className="mb-3 text-[13px] tabular-nums text-fg-2">{formatHm(startMs, zone)} – {formatHm(endMs, zone)}</p>
+      {apiError && <p data-testid="create-error" className="mb-2 text-[11px] text-danger">{apiError.message}</p>}
       <button
         type="button"
         data-testid="create-submit"
         disabled={!canSubmit}
         onClick={submit}
-        className="w-full rounded-[20px] bg-indigo py-2 text-[14px] font-bold text-white disabled:opacity-50"
+        className="btn-accent h-10 w-full rounded-pill text-[14px] font-semibold"
       >
         {mode === 'blocked' ? 'Block time' : mode === 'event' ? 'Create event' : existingChosen ? 'Schedule task' : 'Create task'}
       </button>

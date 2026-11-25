@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
-import { Sheet } from './Sheet';
+import { createEvent, render, screen, fireEvent } from '@testing-library/react';
+import { useRef } from 'react';
+import { Sheet, useFocusTrap, type FocusTrapOptions } from './Sheet';
 
 describe('Sheet', () => {
   it('renders a labelled dialog anchored to the bottom edge', () => {
@@ -53,7 +54,9 @@ describe('Sheet collapsed for a drag', () => {
     render(<Sheet label="Tasks" onClose={onClose} collapsed><p>body</p></Sheet>);
     const backdrop = screen.getByTestId('sheet-backdrop');
     expect(backdrop.className).toContain('pointer-events-none');
-    expect(backdrop.className).not.toContain('bg-black/30');
+    // No dimming overlay while it is a strip over the live grid.
+    expect(backdrop).toHaveAttribute('data-collapsed', 'true');
+    expect(backdrop.className).not.toContain('bg-overlay');
     fireEvent.click(backdrop);
     expect(onClose).not.toHaveBeenCalled();
   });
@@ -158,7 +161,8 @@ describe('Sheet variants', () => {
     const sheet = screen.getByTestId('sheet');
     expect(sheet.className).toContain('h-dvh');
     expect(sheet.className).not.toContain('h-[70dvh]');
-    expect(sheet.className).not.toContain('rounded-t-[18px]');
+    expect(sheet.className).not.toContain('rounded-t-');
+    expect(sheet).toHaveAttribute('data-full-screen', 'true');
   });
 
   it('scrolls its body only when asked to', () => {
@@ -178,5 +182,74 @@ describe('Sheet variants', () => {
     // and from this phase on, sheets contain drawers. Regression guard for 92e0c8a M1.
     render(<Sheet label="Tasks" onClose={vi.fn()}><p>body</p></Sheet>);
     expect(screen.getByTestId('sheet').className).not.toContain('translate-y');
+  });
+});
+
+describe('useFocusTrap options', () => {
+  function Trapped(props: Omit<FocusTrapOptions, 'initialFocus'> & { focusSecond?: boolean }) {
+    const ref = useRef<HTMLDivElement>(null);
+    const second = useRef<HTMLButtonElement>(null);
+    const onKeyDown = useFocusTrap(ref, { ...props, initialFocus: props.focusSecond ? () => second.current : undefined });
+    return (
+      <div ref={ref} tabIndex={-1} data-testid="trap" onKeyDown={onKeyDown}>
+        <button type="button">first</button>
+        <button type="button" ref={second}>second</button>
+        <select aria-label="Category"><option>a</option></select>
+        <input aria-label="Due" type="datetime-local" />
+        <input aria-label="Name" type="text" />
+      </div>
+    );
+  }
+
+  it('focuses the container by default and initialFocus when given', () => {
+    const { unmount } = render(<Trapped />);
+    expect(document.activeElement).toBe(screen.getByTestId('trap'));
+    unmount();
+    render(<Trapped focusSecond />);
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'second' }));
+  });
+
+  it('restores focus to restoreTo instead of the render-time opener', () => {
+    const opener = document.createElement('button');
+    const target = document.createElement('button');
+    document.body.append(opener, target);
+    opener.focus();
+    const restoreTo = { current: target };
+    const { unmount } = render(<Trapped restoreTo={restoreTo} />);
+    unmount();
+    expect(document.activeElement).toBe(target);
+    opener.remove(); target.remove();
+  });
+
+  it('calls onEscape for Escape pressed inside', () => {
+    const onEscape = vi.fn();
+    render(<Trapped onEscape={onEscape} />);
+    fireEvent.keyDown(screen.getByRole('button', { name: 'first' }), { key: 'Escape' });
+    expect(onEscape).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Name' }), { key: 'Escape' });
+    expect(onEscape).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([['Category'], ['Due']])('the first Escape in a native picker (%s) only closes the picker; a second in a row closes the surface', (name) => {
+    const onEscape = vi.fn();
+    render(<Trapped onEscape={onEscape} />);
+    const picker = screen.getByLabelText(name);
+    const first = createEvent.keyDown(picker, { key: 'Escape' });
+    fireEvent(picker, first);
+    expect(onEscape).not.toHaveBeenCalled();
+    // Still marked handled, so document-level Escape listeners underneath stand down.
+    expect(first.defaultPrevented).toBe(true);
+    fireEvent.keyDown(picker, { key: 'Escape' });
+    expect(onEscape).toHaveBeenCalledTimes(1);
+  });
+
+  it('any other key between two Escapes in a picker re-arms it', () => {
+    const onEscape = vi.fn();
+    render(<Trapped onEscape={onEscape} />);
+    const picker = screen.getByLabelText('Category');
+    fireEvent.keyDown(picker, { key: 'Escape' });
+    fireEvent.keyDown(picker, { key: 'ArrowDown' });
+    fireEvent.keyDown(picker, { key: 'Escape' });
+    expect(onEscape).not.toHaveBeenCalled();
   });
 });

@@ -1,7 +1,9 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import type { Task, SchedulePreview } from '../../api/types';
+import { useEffect } from 'react';
 import { PlannerTaskPanel } from './PlannerTaskPanel';
+import { RecentlyCreatedProvider, useRecentlyCreated } from '../shell/RecentlyCreated';
 
 const NOW = Date.parse('2026-01-07T12:00:00.000Z');
 
@@ -35,8 +37,8 @@ describe('PlannerTaskPanel', () => {
       task({ id: 'a', title: 'Critical thing', priority: 1, durationMs: 7_200_000 }),
       task({ id: 'b', title: 'Low thing', priority: 4 }),
     ]);
-    expect(screen.getByText('Critical')).toBeInTheDocument();
-    expect(screen.getByText('Low priority')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /critical/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /low priority/i })).toBeInTheDocument();
     expect(screen.getByText('Critical thing')).toBeInTheDocument();
     expect(screen.getByText('2h')).toBeInTheDocument(); // 7.2M ms → 2h chip
   });
@@ -70,18 +72,84 @@ describe('PlannerTaskPanel', () => {
     };
     renderPanel([task({ id: 'a', title: 'Risky' })], preview);
     expect(screen.getByTestId('panel-at-risk')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Not scheduled' })).toBeInTheDocument();
   });
 
-  it('switches to a flat Tasks tab', () => {
+  it('switches to a flat All tasks tab', () => {
     renderPanel([
       task({ id: 'a', title: 'Critical thing', priority: 1 }),
       task({ id: 'b', title: 'Low thing', priority: 4 }),
     ]);
-    fireEvent.click(screen.getByRole('button', { name: 'tasks' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'All tasks' }));
+    expect(screen.getByRole('tab', { name: 'All tasks' })).toHaveAttribute('aria-selected', 'true');
     // Bucket headers gone in the flat view; both tasks still listed
-    expect(screen.queryByText('Critical')).toBeNull();
+    expect(screen.queryByRole('heading', { name: /critical/i })).toBeNull();
     expect(screen.getByText('Critical thing')).toBeInTheDocument();
     expect(screen.getByText('Low thing')).toBeInTheDocument();
+  });
+
+  it('exposes the two views as tabs and moves between them with the arrow keys', () => {
+    renderPanel([task()]);
+    const pri = screen.getByRole('tab', { name: 'Priorities' });
+    const all = screen.getByRole('tab', { name: 'All tasks' });
+    expect(screen.getByRole('tablist')).toBeInTheDocument();
+    expect(pri).toHaveAttribute('aria-selected', 'true');
+    expect(pri).toHaveAttribute('tabindex', '0');
+    expect(all).toHaveAttribute('tabindex', '-1');
+    pri.focus();
+    fireEvent.keyDown(pri, { key: 'ArrowRight' });
+    expect(all).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(all);
+    fireEvent.keyDown(all, { key: 'ArrowLeft' });
+    expect(pri).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel')).toHaveAccessibleName('Priorities');
+  });
+
+  it('All tasks sorts by due date (undated last), and labels each row with its priority', () => {
+    renderPanel([
+      task({ id: 'u', title: 'Undated', dueBy: null, priority: 1 }),
+      task({ id: 'l', title: 'Later', dueBy: '2026-01-20T00:00:00.000Z', priority: 1 }),
+      task({ id: 's', title: 'Sooner', dueBy: '2026-01-09T00:00:00.000Z', priority: 4 }),
+    ]);
+    fireEvent.click(screen.getByRole('tab', { name: 'All tasks' }));
+    const cards = screen.getAllByTestId('panel-task');
+    expect(cards.map((c) => c.getAttribute('data-task-id'))).toEqual(['s', 'l', 'u']);
+    expect(within(cards[0]!).getByTestId('panel-priority')).toHaveTextContent('Low');
+    expect(within(cards[2]!).getByTestId('panel-priority')).toHaveTextContent('Critical');
+    expect(cards[2]).toHaveTextContent('No deadline');
+  });
+
+  it('Priorities groups show five tiles and a "Show N more" toggle', () => {
+    renderPanel(Array.from({ length: 7 }, (_, i) => task({ id: `h${i}`, title: `High ${i}`, priority: 2, sortOrder: i })));
+    expect(screen.getAllByTestId('panel-task')).toHaveLength(5);
+    const more = screen.getByTestId('panel-show-more-high');
+    expect(more).toHaveTextContent('Show 2 more');
+    expect(more).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(more);
+    expect(screen.getAllByTestId('panel-task')).toHaveLength(7);
+    expect(more).toHaveTextContent('Show less');
+    fireEvent.click(more);
+    expect(screen.getAllByTestId('panel-task')).toHaveLength(5);
+  });
+
+  it('no Show more for a group of five or fewer', () => {
+    renderPanel(Array.from({ length: 5 }, (_, i) => task({ id: `h${i}`, priority: 2 })));
+    expect(screen.queryByTestId('panel-show-more-high')).toBeNull();
+  });
+
+  it('the tab can be controlled from outside (summary card "+N more")', () => {
+    const onTabChange = vi.fn();
+    const { rerender } = render(
+      <PlannerTaskPanel tasks={[task()]} preview={undefined} nowMs={NOW} zone="UTC" tab="priorities" onTabChange={onTabChange}
+        onComplete={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'All tasks' }));
+    expect(onTabChange).toHaveBeenCalledWith('tasks');
+    rerender(
+      <PlannerTaskPanel tasks={[task()]} preview={undefined} nowMs={NOW} zone="UTC" tab="tasks" onTabChange={onTabChange}
+        onComplete={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} />,
+    );
+    expect(screen.getByRole('tab', { name: 'All tasks' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('shows an empty state when there are no active tasks', () => {
@@ -150,7 +218,7 @@ describe('PlannerTaskPanel', () => {
 describe('PlannerTaskPanel labels in the settings zone', () => {
   it('reads the due day and the next-block time in the settings zone (Auckland)', () => {
     // NOW (12:00Z Jan 7) is 01:00 on Jan 8 in Auckland. 11:30Z Jan 10 is 00:30 on Jan 11 there;
-    // 13:00Z Jan 8 is 02:00 on Jan 9 there ("Tomorrow", where the browser zone says 1:00pm).
+    // 13:00Z Jan 8 is 02:00 on Jan 9 there ("Tomorrow", where the browser zone says 1:00 PM).
     const preview = {
       blocks: [{ sourceType: 'task', sourceId: 't1', start: Date.parse('2026-01-08T13:00:00.000Z'), end: Date.parse('2026-01-08T14:00:00.000Z') }],
       unscheduled: [],
@@ -161,6 +229,105 @@ describe('PlannerTaskPanel labels in the settings zone', () => {
         onComplete={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()}
       />,
     );
-    expect(screen.getByText('Due Jan 11 · Next: Tomorrow 2:00am')).toBeInTheDocument();
+    expect(screen.getByText('Due Jan 11')).toBeInTheDocument();
+    expect(screen.getByTestId('panel-next')).toHaveTextContent('Next: Tomorrow 2:00 AM');
+  });
+});
+
+describe('PlannerTaskPanel tick-off motion', () => {
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('ticking pops the check and draws the strike while the completion saves', () => {
+    const onComplete = vi.fn();
+    renderPanel([task({ id: 'a', title: 'Do it' })], undefined, { onComplete });
+    const check = screen.getByRole('button', { name: 'Complete Do it' });
+    expect(check).not.toHaveAttribute('data-ticked');
+    expect(screen.getByTestId('panel-task-title').className).toContain('bg-[length:0_1.5px]');
+    fireEvent.click(check);
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(check).toHaveAttribute('data-ticked', 'true');
+    expect(check.className).toContain('animate-pop-check');
+    expect(screen.getByTestId('panel-task-title').className).toContain('bg-[length:100%_1.5px]');
+  });
+
+  it('un-ticks if the task is still listed a while later (the save failed)', () => {
+    vi.useFakeTimers();
+    renderPanel([task({ id: 'a', title: 'Do it' })]);
+    const check = screen.getByRole('button', { name: 'Complete Do it' });
+    fireEvent.click(check);
+    act(() => { vi.advanceTimersByTime(4100); });
+    expect(check).not.toHaveAttribute('data-ticked');
+  });
+});
+
+describe('PlannerTaskPanel fresh glow', () => {
+  function MarkOnMount({ id }: { id: string }) {
+    const { markCreated } = useRecentlyCreated();
+    useEffect(() => { markCreated(id); }, [id, markCreated]);
+    return null;
+  }
+
+  it('marks only the just-created task card data-fresh (lime glow)', () => {
+    render(
+      <RecentlyCreatedProvider>
+        <MarkOnMount id="b" />
+        <PlannerTaskPanel
+          tasks={[task({ id: 'a', title: 'Older' }), task({ id: 'b', title: 'Brand new' })]}
+          preview={undefined} nowMs={NOW} zone="UTC"
+          onComplete={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()}
+        />
+      </RecentlyCreatedProvider>,
+    );
+    const cards = screen.getAllByTestId('panel-task');
+    const fresh = cards.find((c) => c.dataset.taskId === 'b')!;
+    const older = cards.find((c) => c.dataset.taskId === 'a')!;
+    expect(fresh).toHaveAttribute('data-fresh', 'true');
+    expect(older).not.toHaveAttribute('data-fresh');
+  });
+
+  it('unfolds the group when the fresh task sorts behind "Show N more"', () => {
+    const many = Array.from({ length: 7 }, (_, i) => task({ id: `t${i}`, title: `Task ${i}`, priority: 2, sortOrder: i }));
+    const { rerender } = render(
+      <RecentlyCreatedProvider>
+        <PlannerTaskPanel tasks={many.slice(0, 6)} preview={undefined} nowMs={NOW} zone="UTC"
+          onComplete={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} />
+      </RecentlyCreatedProvider>,
+    );
+    expect(screen.getByTestId('panel-show-more-high')).toHaveAttribute('aria-expanded', 'false');
+    // The dialog marks it fresh before the tasks refetch lists it.
+    rerender(
+      <RecentlyCreatedProvider>
+        <MarkOnMount id="t6" />
+        <PlannerTaskPanel tasks={many.slice(0, 6)} preview={undefined} nowMs={NOW} zone="UTC"
+          onComplete={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} />
+      </RecentlyCreatedProvider>,
+    );
+    rerender(
+      <RecentlyCreatedProvider>
+        <MarkOnMount id="t6" />
+        <PlannerTaskPanel tasks={many} preview={undefined} nowMs={NOW} zone="UTC"
+          onComplete={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} />
+      </RecentlyCreatedProvider>,
+    );
+    expect(screen.getByTestId('panel-show-more-high')).toHaveAttribute('aria-expanded', 'true');
+    const fresh = screen.getAllByTestId('panel-task').find((c) => c.dataset.taskId === 't6');
+    expect(fresh).toHaveAttribute('data-fresh', 'true');
+  });
+
+  it('leaves the group folded when the fresh task is above the fold', () => {
+    const many = Array.from({ length: 7 }, (_, i) => task({ id: `t${i}`, title: `Task ${i}`, priority: 2, sortOrder: i }));
+    render(
+      <RecentlyCreatedProvider>
+        <MarkOnMount id="t0" />
+        <PlannerTaskPanel tasks={many} preview={undefined} nowMs={NOW} zone="UTC"
+          onComplete={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} />
+      </RecentlyCreatedProvider>,
+    );
+    expect(screen.getByTestId('panel-show-more-high')).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('nothing is fresh without the shell provider', () => {
+    renderPanel([task({ id: 'a' })]);
+    expect(screen.getByTestId('panel-task')).not.toHaveAttribute('data-fresh');
   });
 });

@@ -116,4 +116,100 @@ describe('Buffers page', () => {
     await waitFor(() => expect(screen.getByTestId('form-error')).toHaveTextContent(/couldn't save/i));
     expect(screen.queryByTestId('saved')).not.toBeInTheDocument();
   });
+
+  it('the − / + steppers move a buffer by 5 minutes and floor at 0', async () => {
+    const api = fakeApiClient({ getSettings: async () => settings() } as never);
+    renderWithProviders(<Buffers />, { api });
+    await waitFor(() => expect((screen.getByTestId('meeting-buffer') as HTMLInputElement).value).toBe('5'));
+    fireEvent.click(screen.getByRole('button', { name: 'Increase buffer around meetings' }));
+    expect((screen.getByTestId('meeting-buffer') as HTMLInputElement).value).toBe('10');
+    fireEvent.click(screen.getByRole('button', { name: 'Decrease buffer around meetings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Decrease buffer around meetings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Decrease buffer around meetings' }));
+    expect((screen.getByTestId('meeting-buffer') as HTMLInputElement).value).toBe('0');
+    fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '7' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Increase gap between tasks' }));
+    expect((screen.getByTestId('task-buffer') as HTMLInputElement).value).toBe('10');
+  });
+
+  it('has no upper clamp: stepping past 60 keeps going and saves', async () => {
+    const putSettings = vi.fn(async () => settings());
+    const api = fakeApiClient({ getSettings: async () => settings({ taskBufferMs: 3_600_000 }), putSettings } as never);
+    renderWithProviders(<Buffers />, { api });
+    await waitFor(() => expect((screen.getByTestId('task-buffer') as HTMLInputElement).value).toBe('60'));
+    fireEvent.click(screen.getByRole('button', { name: 'Increase gap between tasks' }));
+    fireEvent.click(screen.getByTestId('save'));
+    await waitFor(() => expect(putSettings).toHaveBeenCalledWith(expect.objectContaining({ taskBufferMs: 65 * 60_000 })));
+  });
+
+  it('labels each number field and describes it with its helper text', async () => {
+    const api = fakeApiClient({ getSettings: async () => settings() } as never);
+    renderWithProviders(<Buffers />, { api });
+    const input = await screen.findByLabelText('Buffer around meetings');
+    expect(input).toBe(screen.getByTestId('meeting-buffer'));
+    expect(input).toHaveAccessibleDescription('Minutes kept free before and after each meeting');
+  });
+
+  it('shows "Unsaved changes" after an edit; a successful save swaps it for "Saved"; a later edit brings it back', async () => {
+    const putSettings = vi.fn(async () => settings({ taskBufferMs: 900_000 }));
+    // The refetch after the save still returns the old values: the status must not depend on it.
+    const api = fakeApiClient({ getSettings: async () => settings(), putSettings } as never);
+    renderWithProviders(<Buffers />, { api });
+    await waitFor(() => expect((screen.getByTestId('task-buffer') as HTMLInputElement).value).toBe('10'));
+    expect(screen.queryByTestId('unsaved')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '15' } });
+    expect(screen.getByRole('status')).toHaveTextContent('Unsaved changes');
+    fireEvent.click(screen.getByTestId('save'));
+    await waitFor(() => expect(screen.getByTestId('saved')).toBeInTheDocument());
+    expect(screen.queryByTestId('unsaved')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '20' } });
+    expect(screen.getByTestId('unsaved')).toBeInTheDocument();
+    expect(screen.queryByTestId('saved')).not.toBeInTheDocument();
+    // editing back to the saved value is clean again
+    fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '15' } });
+    expect(screen.queryByTestId('unsaved')).not.toBeInTheDocument();
+  });
+
+  it('a failed save leaves the edit unsaved', async () => {
+    const putSettings = vi.fn().mockRejectedValue(new ApiError(400, 'validation_error', 'nope'));
+    const api = fakeApiClient({ getSettings: async () => settings(), putSettings } as never);
+    renderWithProviders(<Buffers />, { api });
+    await waitFor(() => expect((screen.getByTestId('task-buffer') as HTMLInputElement).value).toBe('10'));
+    fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '15' } });
+    fireEvent.click(screen.getByTestId('save'));
+    await waitFor(() => expect(screen.getByTestId('form-error')).toBeInTheDocument());
+    expect(screen.getByTestId('unsaved')).toBeInTheDocument();
+  });
+
+  it('the preview follows the edited values', async () => {
+    const api = fakeApiClient({ getSettings: async () => settings() } as never);
+    renderWithProviders(<Buffers />, { api });
+    await waitFor(() => expect(screen.getByTestId('legend-buffer')).toHaveTextContent('Buffer · 5 min'));
+    expect(screen.getByTestId('legend-gap')).toHaveTextContent('Gap · 10 min');
+    const meetingWidth = () => screen.getAllByTestId('preview-segment').find((s) => s.dataset.kind === 'meeting')!.style.width;
+    const before = parseFloat(meetingWidth());
+    fireEvent.click(screen.getByRole('button', { name: 'Increase buffer around meetings' }));
+    expect(screen.getByTestId('legend-buffer')).toHaveTextContent('Buffer · 10 min');
+    expect(parseFloat(meetingWidth())).toBeLessThan(before);
+  });
+
+  it('the preview strip fits its card instead of scrolling (phone width)', async () => {
+    const api = fakeApiClient({ getSettings: async () => settings() } as never);
+    renderWithProviders(<Buffers />, { api });
+    await waitFor(() => expect(screen.getByTestId('legend-buffer')).toHaveTextContent('Buffer · 5 min'));
+    const strip = screen.getByTestId('preview-strip');
+    // Layout guarantee: no fixed minimum width and no horizontal scroller around the segments.
+    expect(strip.className).not.toMatch(/min-w-\[/);
+    expect(strip.parentElement!.className).not.toMatch(/overflow-x-auto/);
+    expect(strip).toHaveClass('min-w-0');
+    const total = screen.getAllByTestId('preview-segment').reduce((a, s) => a + parseFloat(s.style.width), 0);
+    expect(total).toBeCloseTo(100, 5);
+  });
+
+  it('leaves the page title to the shell header (no duplicate card heading)', async () => {
+    const api = fakeApiClient({ getSettings: async () => settings() } as never);
+    renderWithProviders(<Buffers />, { api });
+    await waitFor(() => expect(screen.getByTestId('meeting-buffer')).toBeInTheDocument());
+    expect(screen.queryByRole('heading', { name: /scheduling buffers/i })).toBeNull();
+  });
 });

@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
 import { useApi } from './ApiProvider';
 import type { ApiClient } from './client';
@@ -154,6 +155,49 @@ export function useUpdateTaskMutation() {
 }
 export function useDeleteTaskMutation() {
   return useApiMutation((api, id: string) => api.deleteTask(id), TASK_ROOTS);
+}
+
+const TASK_MOVE_KEY = ['tasks', 'move'] as const;
+
+/**
+ * A board move (Priorities drag or arrow keys): `patch` is the task's new priority / status /
+ * sortOrder, computed by the board from the arrangement it already shows.
+ *
+ * - Optimistic at once (`onMutate` runs immediately even while queued), after cancelling any tasks
+ *   refetch in flight — its pre-move response would otherwise land on top and step the card back.
+ * - Serialized: `scope` sends one PATCH at a time, in press order, so a run of moves can never
+ *   commit out of order and leave a stale sortOrder / priority behind.
+ * - Rollback and invalidation are MUTATION-level: TanStack runs per-`mutate` callbacks only for the
+ *   latest call, so a failed earlier move used to stay applied. A run of queued moves settles as
+ *   one: when the last settles, any failure rolls the cache back to before the run's first move,
+ *   and the tasks + schedule refetch once (not between moves, which would flash pre-move state).
+ */
+export function useMoveTaskMutation() {
+  const api = useApi();
+  const qc = useQueryClient();
+  const run = useRef<{ snapshots: Array<[QueryKey, unknown]>; failed: boolean } | null>(null);
+  return useMutation({
+    mutationKey: TASK_MOVE_KEY,
+    scope: { id: 'task-move' },
+    mutationFn: ({ id, patch }: { id: string; patch: UpdateTaskInput }) => api.updateTask(id, patch),
+    onMutate: async ({ id, patch }) => {
+      await qc.cancelQueries({ queryKey: queryKeys.tasksRoot });
+      const snapshots = qc.getQueriesData<unknown>({ queryKey: queryKeys.tasksRoot });
+      if (run.current === null) run.current = { snapshots, failed: false };
+      qc.setQueriesData<unknown>({ queryKey: queryKeys.tasksRoot }, (old: unknown) => (Array.isArray(old)
+        ? (old as Array<{ id: string }>).map((x) => (x.id === id ? { ...x, ...patch } : x))
+        : old));
+    },
+    onError: () => { if (run.current) run.current.failed = true; },
+    onSettled: () => {
+      // This mutation still counts as pending inside its own onSettled.
+      if (qc.isMutating({ mutationKey: TASK_MOVE_KEY }) > 1) return;
+      const r = run.current;
+      run.current = null;
+      if (r?.failed) for (const [key, data] of r.snapshots) qc.setQueryData(key, data);
+      for (const queryKey of TASK_ROOTS) void qc.invalidateQueries({ queryKey });
+    },
+  });
 }
 
 export function useCreateHabitMutation() {

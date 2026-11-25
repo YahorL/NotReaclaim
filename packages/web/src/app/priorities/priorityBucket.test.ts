@@ -19,9 +19,9 @@ describe('priorityToBucket', () => {
 describe('relativeDayTimeLabel', () => {
   const NOW = Date.parse('2026-01-07T12:00:00.000Z'); // Wednesday
   it('uses Today / Tomorrow / weekday (TZ=UTC)', () => {
-    expect(relativeDayTimeLabel(Date.parse('2026-01-07T17:00:00.000Z'), NOW, 'UTC')).toBe('Today 5:00pm');
-    expect(relativeDayTimeLabel(Date.parse('2026-01-08T09:30:00.000Z'), NOW, 'UTC')).toBe('Tomorrow 9:30am');
-    expect(relativeDayTimeLabel(Date.parse('2026-01-10T08:15:00.000Z'), NOW, 'UTC')).toBe('Sat 8:15am');
+    expect(relativeDayTimeLabel(Date.parse('2026-01-07T17:00:00.000Z'), NOW, 'UTC')).toBe('Today 5:00 PM');
+    expect(relativeDayTimeLabel(Date.parse('2026-01-08T09:30:00.000Z'), NOW, 'UTC')).toBe('Tomorrow 9:30 AM');
+    expect(relativeDayTimeLabel(Date.parse('2026-01-10T08:15:00.000Z'), NOW, 'UTC')).toBe('Sat 8:15 AM');
   });
 });
 
@@ -111,16 +111,16 @@ describe('relativeDayTimeLabel in the settings zone', () => {
   const NOW = Date.parse('2026-01-07T12:00:00.000Z'); // Wed 07:00 in New York, Wed 21:00 in Tokyo
   it('New York: day and time are read in the settings zone', () => {
     // 02:00Z on Jan 8 is 21:00 on Jan 7 in New York.
-    expect(relativeDayTimeLabel(Date.parse('2026-01-08T02:00:00.000Z'), NOW, 'America/New_York')).toBe('Today 9:00pm');
+    expect(relativeDayTimeLabel(Date.parse('2026-01-08T02:00:00.000Z'), NOW, 'America/New_York')).toBe('Today 9:00 PM');
     // 03:00Z on Sat Jan 10 is Fri 22:00 in New York.
-    expect(relativeDayTimeLabel(Date.parse('2026-01-10T03:00:00.000Z'), NOW, 'America/New_York')).toBe('Fri 10:00pm');
+    expect(relativeDayTimeLabel(Date.parse('2026-01-10T03:00:00.000Z'), NOW, 'America/New_York')).toBe('Fri 10:00 PM');
   });
   it('Tokyo: an afternoon UTC time is already tomorrow', () => {
-    expect(relativeDayTimeLabel(Date.parse('2026-01-07T16:00:00.000Z'), NOW, 'Asia/Tokyo')).toBe('Tomorrow 1:00am');
+    expect(relativeDayTimeLabel(Date.parse('2026-01-07T16:00:00.000Z'), NOW, 'Asia/Tokyo')).toBe('Tomorrow 1:00 AM');
   });
   it('DST: tomorrow across the New York spring-forward night', () => {
     const satNoon = Date.parse('2026-03-07T17:00:00.000Z'); // Sat 12:00 EST
-    expect(relativeDayTimeLabel(Date.parse('2026-03-09T03:30:00.000Z'), satNoon, 'America/New_York')).toBe('Tomorrow 11:30pm');
+    expect(relativeDayTimeLabel(Date.parse('2026-03-09T03:30:00.000Z'), satNoon, 'America/New_York')).toBe('Tomorrow 11:30 PM');
   });
 });
 

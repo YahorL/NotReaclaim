@@ -66,36 +66,90 @@ export type DonutKind = 'task' | 'meeting' | 'habit';
 
 /** Kind → chart swatch background. Literal class strings so Tailwind can see them. */
 export const KIND_BAR_BG: Record<DonutKind, string> = {
-  task: 'bg-kind-taskBar',
-  meeting: 'bg-kind-meetingBar',
-  habit: 'bg-kind-habitBar',
+  task: 'bg-chart-task',
+  meeting: 'bg-chart-meet',
+  habit: 'bg-chart-habit',
 };
+/** Kind → SVG stroke (the donut arcs). */
+export const KIND_STROKE: Record<DonutKind, string> = {
+  task: 'stroke-chart-task',
+  meeting: 'stroke-chart-meet',
+  habit: 'stroke-chart-habit',
+};
+export const KIND_LABEL: Record<DonutKind, string> = { meeting: 'Meetings', habit: 'Habits', task: 'Tasks' };
+/** One order everywhere: chart stack (top → bottom), legend, table columns, donut. */
+export const KIND_ORDER: DonutKind[] = ['meeting', 'habit', 'task'];
+
 export interface DonutSegment { kind: DonutKind; ms: number; fromPct: number; toPct: number }
 
 export function donutSegments(s: { taskMs: number; meetingMs: number; habitMs: number }): DonutSegment[] {
   const total = s.taskMs + s.meetingMs + s.habitMs;
   if (total <= 0) return [];
-  const ordered: { kind: DonutKind; ms: number }[] = [
-    { kind: 'task', ms: s.taskMs },
-    { kind: 'meeting', ms: s.meetingMs },
-    { kind: 'habit', ms: s.habitMs },
-  ];
+  const msOf: Record<DonutKind, number> = { meeting: s.meetingMs, habit: s.habitMs, task: s.taskMs };
   const out: DonutSegment[] = [];
   let acc = 0;
-  for (const seg of ordered) {
-    if (seg.ms <= 0) continue;
+  for (const kind of KIND_ORDER) {
+    const ms = msOf[kind];
+    if (ms <= 0) continue;
     const fromPct = (acc / total) * 100;
-    acc += seg.ms;
-    out.push({ kind: seg.kind, ms: seg.ms, fromPct, toPct: (acc / total) * 100 });
+    acc += ms;
+    out.push({ kind, ms, fromPct, toPct: (acc / total) * 100 });
   }
   return out;
 }
 
-export function formatHours(ms: number): string {
-  const h = Math.round(ms / (HOUR_MS / 10)) / 10; // 1-decimal hours
-  return `${h}h`;
+export interface DonutArc { kind: DonutKind; dashArray: string; dashOffset: number }
+
+/**
+ * SVG stroke-dash geometry for each segment on a circle of circumference `c`: every arc loses
+ * `gap` (the round caps then meet), never going below zero length; a lone segment is the full
+ * ring. Pair with `animate-donut-draw` + `--donut-c: c` (spec §10 P1 contract).
+ */
+export function donutArcs(segments: DonutSegment[], c: number, gap: number): DonutArc[] {
+  const g = segments.length > 1 ? gap : 0;
+  return segments.map((s) => {
+    const len = Math.max(0, (c * (s.toPct - s.fromPct)) / 100 - g);
+    return { kind: s.kind, dashArray: `${round1(len)} ${round1(c)}`, dashOffset: -round1((c * s.fromPct) / 100) };
+  });
 }
 
-export function chartScaleMs(perDay: KindMs[]): number {
-  return Math.max(8 * HOUR_MS, ...perDay.map((d) => d.task + d.meeting + d.habit));
+const round1 = (n: number): number => Math.round(n * 10) / 10;
+
+export function formatHoursNumber(ms: number): string {
+  return String(Math.round(ms / (HOUR_MS / 10)) / 10); // 1-decimal hours
+}
+
+export function formatHours(ms: number): string {
+  return `${formatHoursNumber(ms)}h`;
+}
+
+const STEPS_H = [1, 2, 3, 4, 6, 8, 12];
+const MAX_INTERVALS = 4;
+
+/** Y axis for the busiest day: the smallest round step with ≤ 4 intervals (12h past that). */
+export function axisScale(maxMs: number): { topMs: number; ticksMs: number[] } {
+  const hours = Math.max(0, maxMs) / HOUR_MS;
+  const step = STEPS_H.find((st) => Math.ceil(hours / st) <= MAX_INTERVALS) ?? STEPS_H[STEPS_H.length - 1]!;
+  const intervals = Math.max(1, Math.ceil(hours / step));
+  const ticksMs = Array.from({ length: intervals + 1 }, (_, i) => i * step * HOUR_MS);
+  return { topMs: intervals * step * HOUR_MS, ticksMs };
+}
+
+export interface SeriesMs { meetingMs: number; habitMs: number; taskMs: number; totalMs: number }
+export interface SeriesLabels { meeting: string; habit: string; task: string; total: string }
+export type DayRow = { short: string; long: string } & SeriesMs & SeriesLabels;
+
+function withLabels(v: SeriesMs): SeriesMs & SeriesLabels {
+  return { ...v, meeting: formatHours(v.meetingMs), habit: formatHours(v.habitMs), task: formatHours(v.taskMs), total: formatHours(v.totalMs) };
+}
+
+/** The chart's data as rows — the chart labels and the Table view both read this, so they cannot diverge. */
+export function dayTable(perDay: KindMs[], shortLabels: string[], longLabels: string[]): { rows: DayRow[]; totals: SeriesMs & SeriesLabels } {
+  const rows = perDay.map((d, i) => ({
+    short: shortLabels[i] ?? '',
+    long: longLabels[i] ?? '',
+    ...withLabels({ meetingMs: d.meeting, habitMs: d.habit, taskMs: d.task, totalMs: d.meeting + d.habit + d.task }),
+  }));
+  const sum = (k: keyof SeriesMs) => rows.reduce((a, r) => a + r[k], 0);
+  return { rows, totals: withLabels({ meetingMs: sum('meetingMs'), habitMs: sum('habitMs'), taskMs: sum('taskMs'), totalMs: sum('totalMs') }) };
 }

@@ -28,19 +28,21 @@ export function bucketToPriority(bucket: BucketKey): 1 | 2 | 3 | 4 {
   }
 }
 
-export interface ColumnMeta { label: string; dot: string; leftBorder: string }
+/** `dot`: the priority's fill; `glow`: the soft halo the glass column header gives its dot. */
+export interface ColumnMeta { label: string; dot: string; glow: string }
 
 // Tailwind needs these literal class strings present in source to generate them.
 export const BUCKET_META: Record<BucketKey, ColumnMeta> = {
-  critical: { label: 'Critical', dot: 'bg-crit', leftBorder: 'border-l-crit' },
-  high: { label: 'High priority', dot: 'bg-high', leftBorder: 'border-l-high' },
-  medium: { label: 'Medium priority', dot: 'bg-med', leftBorder: 'border-l-med' },
-  low: { label: 'Low priority', dot: 'bg-low', leftBorder: 'border-l-low' },
+  critical: { label: 'Critical', dot: 'bg-pri-crit', glow: 'shadow-[0_0_12px_rgb(var(--c-pri-crit))]' },
+  high: { label: 'High priority', dot: 'bg-pri-high', glow: 'shadow-[0_0_12px_rgb(var(--c-pri-high))]' },
+  medium: { label: 'Medium priority', dot: 'bg-pri-med', glow: 'shadow-[0_0_12px_rgb(var(--c-pri-med))]' },
+  low: { label: 'Low priority', dot: 'bg-pri-low', glow: 'shadow-[0_0_12px_rgb(var(--c-pri-low))]' },
 };
 
 const EXTRA_COLUMN_META: Record<'backlog' | 'completed', ColumnMeta> = {
-  backlog: { label: 'Backlog', dot: 'bg-[#aeb2c0]', leftBorder: 'border-l-[#aeb2c0]' },
-  completed: { label: 'Completed', dot: 'bg-low', leftBorder: 'border-l-low' },
+  // Backlog is "no priority yet": a neutral dot with no halo.
+  backlog: { label: 'Backlog', dot: 'bg-fg-3', glow: '' },
+  completed: { label: 'Completed', dot: 'bg-pri-low', glow: 'shadow-[0_0_12px_rgb(var(--c-pri-low))]' },
 };
 
 export function columnMeta(key: BoardColumnKey): ColumnMeta {
@@ -51,11 +53,10 @@ export function columnMeta(key: BoardColumnKey): ColumnMeta {
 function timeLabel(d: Date, zone: string): string {
   return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: zone })
     .format(d)
-    .replace(/\s+/g, '')
-    .toLowerCase();
+    .replace(/\s+/g, ' ');
 }
 
-/** "Today 5:00pm" / "Tomorrow 9:30am" / "Sat 8:15am" — day and time read in `zone`. */
+/** "Today 5:00 PM" / "Tomorrow 9:30 AM" / "Sat 8:15 AM" — day and time read in `zone`. */
 export function relativeDayTimeLabel(ms: number, now: number, zone: string): string {
   const d = new Date(ms);
   const day = (t: number) => DateTime.fromMillis(t, { zone }).startOf('day');
@@ -75,7 +76,7 @@ export function dueShort(iso: string | null, zone: string): string {
 /** Planner panel due label: "Due Jan 9" (in `zone`), or null for an undated task. */
 export function dueLabel(iso: string | null, zone: string): string | null {
   if (!iso) return null;
-  return `Due ${new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', timeZone: zone })}`;
+  return `Due ${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: zone }).format(new Date(iso))}`;
 }
 
 /** Within-bucket display order: user sortOrder, then due date. */

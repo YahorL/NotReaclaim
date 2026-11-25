@@ -1,13 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, createEvent } from '@testing-library/react';
-import { InteractiveBlock } from './InteractiveBlock';
-import { minutesToPx } from './weekModel';
+import { InteractiveBlock, KEY_COMMIT_DEBOUNCE_MS, EDGE_HINT } from './InteractiveBlock';
+import { ToastProvider } from '../shell/ToastProvider';
+import { minutesToPx, minuteToPct } from './weekModel';
+import { blockLeftCss, blockWidthCss } from './blockLayout';
 import { LONG_PRESS_MS } from './longPress';
 
 const DAY = Date.parse('2026-01-05T00:00:00.000Z'); // local midnight (TZ=UTC)
 const START = Date.parse('2026-01-05T09:00:00.000Z');
 const END = Date.parse('2026-01-05T10:00:00.000Z');
-const PX_PER_60MIN = minutesToPx(60); // 58px/hr (was (60/960)*GRID_COLUMN_PX)
+const PX_PER_60MIN = minutesToPx(60); // one hour row (HOUR_ROW_PX)
 
 function renderBlock(onCommitOrOver: Parameters<typeof InteractiveBlock>[0]['onCommit'] | Partial<Parameters<typeof InteractiveBlock>[0]> = vi.fn()) {
   const defaults = {
@@ -22,18 +24,38 @@ function renderBlock(onCommitOrOver: Parameters<typeof InteractiveBlock>[0]['onC
   return props.onCommit;
 }
 
-function renderBlockInColumn(onCommit = vi.fn(), dayIndex = 0, colWidth = 120) {
-  const { container } = render(
-    <div>
-      <InteractiveBlock
-        dayStartMs={DAY} dayIndex={dayIndex} startMs={START} endMs={END}
-        topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
-        onCommit={onCommit}
-      />
+/** jsdom has no TransitionEvent, so an init `propertyName` is dropped; define it on the event. */
+function fireTransitionEnd(el: Element, propertyName: string) {
+  const ev = createEvent.transitionEnd(el);
+  Object.defineProperty(ev, 'propertyName', { value: propertyName });
+  fireEvent(el, ev);
+}
+
+/** The value a browser (and jsdom) serialises a `calc()` string back as — percentages are rounded. */
+function cssCalc(value: string): string {
+  const el = document.createElement('div');
+  el.style.left = value;
+  return el.style.left;
+}
+
+/** A fake block layer spanning `dayCount` columns of `colWidth` px (the layer, not the block's parent column, is measured). */
+function mockLayerWidth(layer: HTMLElement, width: number) {
+  vi.spyOn(layer, 'getBoundingClientRect').mockReturnValue({ width, height: 1440, top: 0, left: 0, right: width, bottom: 1440, x: 0, y: 0, toJSON: () => ({}) } as DOMRect);
+}
+
+function renderBlockInColumn(onCommit = vi.fn(), dayIndex = 0, colWidth = 120, dayCount = 7) {
+  render(
+    <div data-testid="block-layer">
+      <div>
+        <InteractiveBlock
+          dayStartMs={DAY} dayIndex={dayIndex} startMs={START} endMs={END}
+          topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
+          onCommit={onCommit} dayCount={dayCount}
+        />
+      </div>
     </div>,
   );
-  const column = container.firstChild as HTMLElement;
-  vi.spyOn(column, 'getBoundingClientRect').mockReturnValue({ width: colWidth, height: 928, top: 0, left: 0, right: colWidth, bottom: 928, x: 0, y: 0, toJSON: () => ({}) } as DOMRect);
+  mockLayerWidth(screen.getByTestId('block-layer'), colWidth * dayCount);
   return onCommit;
 }
 
@@ -76,38 +98,128 @@ describe('InteractiveBlock', () => {
     expect(onCommit).not.toHaveBeenCalled();
   });
 
-  const fmt = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-  it('preview snaps to the 15-min grid while moving (sub-step drag → no offset)', () => {
+  it('under the 5px threshold a mouse press is still a click: no lift, no ghost', () => {
     renderBlock();
     const el = screen.getByTestId('event-block');
     fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
-    fireEvent.pointerMove(el, { clientX: 50, clientY: 107, pointerId: 1 }); // 7px ≈ 7.2min → snaps to 0
-    expect(el.style.transform).toBe('translate(0px, 0px)');
-    expect(screen.queryByTestId('drag-label')).not.toBeInTheDocument();
+    fireEvent.pointerMove(el, { clientX: 52, clientY: 102, pointerId: 1 });
+    expect(el).not.toHaveAttribute('data-dragging');
+    expect(el.style.transform).toBe('');
+    expect(screen.queryByTestId('drag-ghost')).not.toBeInTheDocument();
   });
 
-  it('preview ticks one 15-min step and shows the live time label', () => {
+  it('while dragging the tile follows the raw pointer, lifted and tilted, transitions off', () => {
     renderBlock();
     const el = screen.getByTestId('event-block');
     fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
-    fireEvent.pointerMove(el, { clientX: 50, clientY: 120, pointerId: 1 }); // 20px ≈ 20.7min → snaps to 15 → 14.5px
-    expect(el.style.transform).toBe('translate(0px, 14.5px)');
-    expect(screen.getByTestId('drag-label')).toHaveTextContent(
-      `${fmt(START + 15 * 60_000)} – ${fmt(END + 15 * 60_000)}`,
-    );
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 107, pointerId: 1 }); // 7px: past the threshold, under a slot
+    expect(el).toHaveAttribute('data-dragging', 'true');
+    expect(el.style.transform).toBe('translate(0px, 7px) scale(1.05) rotate(-0.8deg)');
+    expect(el.className).not.toContain('[transition:');
+    // 7 minutes snaps to no change: the ghost sits on the original slot.
+    expect(screen.getByTestId('drag-ghost').style.top).toBe(`${minuteToPct(9 * 60)}%`);
   });
 
-  it('resize preview snaps and shows the live label with the start unchanged', () => {
+  it('the ghost sits at the snapped target with a "<day> · <start>" pill; the tile shows the snapped time', () => {
+    renderBlock();
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 120, pointerId: 1 }); // 20px ≈ 20min → snaps to 15
+    expect(el.style.transform).toBe('translate(0px, 20px) scale(1.05) rotate(-0.8deg)');
+    const ghost = screen.getByTestId('drag-ghost');
+    expect(ghost.style.top).toBe(`${minuteToPct(9 * 60 + 15)}%`);
+    // The ghost keeps the block's length (1h), wherever the target lands.
+    expect(Number.parseFloat(ghost.style.height)).toBeCloseTo(minuteToPct(60) - minuteToPct(0), 6);
+    expect(screen.getByTestId('drag-label').textContent).toMatch(/^Mon · 9:15\sAM$/);
+    expect(el.textContent).toMatch(/9:15\sAM/);
+  });
+
+  it('resize: the height follows the pointer exactly, the ghost shows the snapped end', () => {
     renderBlock();
     const handle = screen.getByTestId('resize-handle');
     fireEvent.pointerDown(handle, { clientY: 200, pointerId: 1 });
-    fireEvent.pointerMove(handle, { clientY: 200 + PX_PER_60MIN, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientY: 200 + minutesToPx(70), pointerId: 1 });
     const el = screen.getByTestId('event-block');
-    expect(el.style.height).toBe('calc(5% + 58px)');
-    expect(screen.getByTestId('drag-label')).toHaveTextContent(
-      `${fmt(START)} – ${fmt(END + 60 * 60_000)}`,
-    );
+    expect(el).toHaveAttribute('data-resizing', 'true');
+    expect(el.style.height).toBe(`${(5 / 100) * 1440 + minutesToPx(70)}px`); // raw, unsnapped
+    const ghost = screen.getByTestId('drag-ghost');
+    expect(ghost.style.top).toBe('10%');
+    expect(Number.parseFloat(ghost.style.height)).toBeCloseTo(minuteToPct(9 * 60 + 135) - minuteToPct(9 * 60), 6); // 60 + 70 → 135 min
+    expect(screen.getByTestId('drag-label').textContent).toMatch(/^2h 15m · ends 11:15\sAM$/);
+  });
+
+  it('a click on an overnight tile\'s resize handle commits nothing (it is never cut to the column end)', () => {
+    const onCommit = renderBlock({ startMs: DAY + 23 * 3_600_000, endMs: DAY + 31 * 3_600_000, topPct: minuteToPct(23 * 60), heightPct: minuteToPct(24 * 60) - minuteToPct(23 * 60) });
+    const handle = screen.getByTestId('resize-handle');
+    fireEvent.pointerDown(handle, { clientY: 500, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientY: 500, pointerId: 1 });
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('a 4h block dragged past the bottom of the column is clamped to end at the column end (no cross-midnight save)', () => {
+    const onCommit = renderBlock({ startMs: DAY + 18 * 3_600_000, endMs: DAY + 22 * 3_600_000, topPct: minuteToPct(18 * 60), heightPct: minuteToPct(4 * 60) - minuteToPct(0) });
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 100 + minutesToPx(6 * 60), pointerId: 1 });
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 100 + minutesToPx(6 * 60), pointerId: 1 });
+    expect(onCommit).toHaveBeenCalledWith({ startsAt: '2026-01-05T20:00:00.000Z', endsAt: '2026-01-06T00:00:00.000Z', pinned: true });
+  });
+
+  it('dragging an overnight tile down 15 minutes keeps its length (no jump back into the column)', () => {
+    const onCommit = renderBlock({ startMs: DAY + 23 * 3_600_000, endMs: DAY + 31 * 3_600_000, topPct: minuteToPct(23 * 60), heightPct: minuteToPct(24 * 60) - minuteToPct(23 * 60) });
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 100 + minutesToPx(15), pointerId: 1 });
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 100 + minutesToPx(15), pointerId: 1 });
+    expect(onCommit).toHaveBeenCalledWith({ startsAt: '2026-01-05T23:15:00.000Z', endsAt: '2026-01-06T07:15:00.000Z', pinned: true });
+  });
+
+  it('a resize commits at least one 15-minute slot', () => {
+    const onCommit = renderBlock();
+    const handle = screen.getByTestId('resize-handle');
+    fireEvent.pointerDown(handle, { clientY: 500, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientY: 500 - 3 * PX_PER_60MIN, pointerId: 1 });
+    expect(screen.getByTestId('drag-label').textContent).toMatch(/^15m · ends 9:15\sAM$/);
+    fireEvent.pointerUp(handle, { clientY: 500 - 3 * PX_PER_60MIN, pointerId: 1 });
+    expect(onCommit).toHaveBeenCalledWith({ startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T09:15:00.000Z', pinned: true });
+  });
+
+  it('a resize never runs past the end of the column', () => {
+    const onCommit = renderBlock();
+    const handle = screen.getByTestId('resize-handle');
+    fireEvent.pointerDown(handle, { clientY: 100, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientY: 100 + 30 * PX_PER_60MIN, pointerId: 1 });
+    expect(onCommit).toHaveBeenCalledWith({ startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-06T00:00:00.000Z', pinned: true });
+  });
+
+  it('a zero-delta resize commits nothing and never selects', () => {
+    const onClick = vi.fn();
+    const onCommit = renderBlock({ onClick });
+    const handle = screen.getByTestId('resize-handle');
+    fireEvent.pointerDown(handle, { clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientY: 105, pointerId: 1 }); // 5 min → snaps to 0
+    fireEvent.pointerUp(handle, { clientY: 105, pointerId: 1 });
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('the grip widens while resizing (22 → 30px pill, via the wrapper\'s data-resizing)', () => {
+    renderBlock();
+    const handle = screen.getByTestId('resize-handle');
+    expect(handle.className).toContain('after:w-[22px]');
+    expect(handle.className).toContain('group-data-[resizing=true]:after:w-[30px]');
+    fireEvent.pointerDown(handle, { clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientY: 130, pointerId: 1 });
+    expect(screen.getByTestId('event-block')).toHaveAttribute('data-resizing', 'true');
+  });
+
+  it('resize never shrinks the raw height below 12px', () => {
+    renderBlock();
+    const handle = screen.getByTestId('resize-handle');
+    fireEvent.pointerDown(handle, { clientY: 500, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientY: 0, pointerId: 1 });
+    expect(screen.getByTestId('event-block').style.height).toBe('12px');
   });
 
   it('a second pointer landing mid-drag is ignored — the first pointer keeps the gesture', () => {
@@ -133,13 +245,35 @@ describe('InteractiveBlock', () => {
     });
   });
 
-  it('label disappears after release', () => {
+  it('ghost and label disappear after release', () => {
     renderBlock();
     const el = screen.getByTestId('event-block');
     fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
     fireEvent.pointerMove(el, { clientX: 50, clientY: 120, pointerId: 1 });
     fireEvent.pointerUp(el, { clientX: 50, clientY: 120, pointerId: 1 });
+    expect(screen.queryByTestId('drag-ghost')).not.toBeInTheDocument();
     expect(screen.queryByTestId('drag-label')).not.toBeInTheDocument();
+  });
+
+  it('a drag released back where it started commits nothing and is not a click', () => {
+    const onClick = vi.fn();
+    const onCommit = renderBlock({ onClick });
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 160, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 101, pointerId: 1 });
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 101, pointerId: 1 });
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('ignores a secondary-button press', () => {
+    const onCommit = renderBlock();
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1, button: 2 });
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
+    expect(onCommit).not.toHaveBeenCalled();
   });
 });
 
@@ -149,8 +283,24 @@ describe('InteractiveBlock cross-day move', () => {
     const el = screen.getByTestId('event-block');
     fireEvent.pointerDown(el, { clientX: 100, clientY: 100, pointerId: 1 });
     fireEvent.pointerMove(el, { clientX: 230, clientY: 100, pointerId: 1 }); // dx=130 → round(130/120)=1
-    expect(el.style.transform).toBe('translate(120px, 0px)');
+    expect(el.style.transform).toBe('translate(130px, 0px) scale(1.05) rotate(-0.8deg)'); // raw pointer
+    const ghost = screen.getByTestId('drag-ghost');
+    expect(ghost.style.left).toBe(cssCalc(blockLeftCss((1 / 7) * 100, 0, 1))); // snapped to Tuesday
+    expect(ghost.style.width).toBe(cssCalc(blockWidthCss(100 / 7, 0, 1)));
+    expect(screen.getByTestId('drag-label').textContent).toMatch(/^Tue · 9:00\sAM$/);
     fireEvent.pointerUp(el, { clientX: 230, clientY: 100, pointerId: 1 });
+    expect(onCommit).toHaveBeenCalledWith({
+      startsAt: '2026-01-06T09:00:00.000Z', endsAt: '2026-01-06T10:00:00.000Z', pinned: true,
+    });
+  });
+
+  it('measures one column as the layer width over the day count (3-day window)', () => {
+    const onCommit = renderBlockInColumn(vi.fn(), 0, 200, 3);
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 100, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientX: 310, clientY: 100, pointerId: 1 }); // dx=210 → round(210/200)=1
+    expect(screen.getByTestId('drag-ghost').style.left).toBe(cssCalc(blockLeftCss((1 / 3) * 100, 0, 1)));
+    fireEvent.pointerUp(el, { clientX: 310, clientY: 100, pointerId: 1 });
     expect(onCommit).toHaveBeenCalledWith({
       startsAt: '2026-01-06T09:00:00.000Z', endsAt: '2026-01-06T10:00:00.000Z', pinned: true,
     });
@@ -171,7 +321,7 @@ describe('InteractiveBlock cross-day move', () => {
     const el = screen.getByTestId('event-block');
     fireEvent.pointerDown(el, { clientX: 100, clientY: 100, pointerId: 1 });
     fireEvent.pointerMove(el, { clientX: 400, clientY: 100, pointerId: 1 });
-    expect(el.style.transform).toBe('translate(0px, 0px)');
+    expect(screen.getByTestId('drag-ghost').style.left).toBe(cssCalc(blockLeftCss((6 / 7) * 100, 0, 1))); // stays on Sunday
     fireEvent.pointerUp(el, { clientX: 400, clientY: 100, pointerId: 1 });
     expect(onCommit).not.toHaveBeenCalled(); // day clamped to 0 + no vertical delta = no-op
   });
@@ -189,18 +339,17 @@ describe('InteractiveBlock cross-day move across a DST transition', () => {
   it('keeps the wall-clock time when dragging onto the spring-forward day', () => {
     // America/New_York, planner day start 03:00 → column anchors are 08:00Z (EST) then 07:00Z (EDT)
     const onCommit = vi.fn();
-    const { container } = render(
-      <div>
+    render(
+      <div data-testid="block-layer">
         <InteractiveBlock
           dayStartMs={Date.parse('2026-03-07T08:00:00.000Z')} dayIndex={0}
           startMs={Date.parse('2026-03-07T14:00:00.000Z')} endMs={Date.parse('2026-03-07T15:00:00.000Z')}
           topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
-          zone="America/New_York" onCommit={onCommit}
+          zone="America/New_York" onCommit={onCommit} dayCount={2}
         />
       </div>,
     );
-    const column = container.firstChild as HTMLElement;
-    vi.spyOn(column, 'getBoundingClientRect').mockReturnValue({ width: 120, height: 928, top: 0, left: 0, right: 120, bottom: 928, x: 0, y: 0, toJSON: () => ({}) } as DOMRect);
+    mockLayerWidth(screen.getByTestId('block-layer'), 240); // 2 columns × 120px
     const el = screen.getByTestId('event-block');
     fireEvent.pointerDown(el, { clientX: 100, clientY: 100, pointerId: 1 });
     fireEvent.pointerUp(el, { clientX: 230, clientY: 100, pointerId: 1 }); // +1 column
@@ -211,117 +360,86 @@ describe('InteractiveBlock cross-day move across a DST transition', () => {
   });
 });
 
-describe('InteractiveBlock held preview (flicker fix)', () => {
-  it('after pointerUp with a 15-min move, the transform STILL shows the moved offset (held)', () => {
-    renderBlock();
-    const el = screen.getByTestId('event-block');
-    // Move down by ~20px which snaps to 15 min
-    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
-    fireEvent.pointerMove(el, { clientX: 50, clientY: 120, pointerId: 1 }); // snaps to 15 min
-    fireEvent.pointerUp(el, { clientX: 50, clientY: 120, pointerId: 1 });
-    // After release, the transform should still reflect the held preview (not reset to 0)
-    expect(el.style.transform).toBe(`translate(0px, ${minutesToPx(15)}px)`);
-  });
+describe('InteractiveBlock release (spring into the slot, no jump)', () => {
+  const props = {
+    dayStartMs: DAY, dayIndex: 0, startMs: START, endMs: END,
+    topPct: 10, heightPct: 5, startLabel: '09:00', title: 'Write spec', kind: 'task' as const, pinned: false,
+  };
 
-  it('after rerendering with new startMs/endMs props, the transform resets to 0 (cleared)', () => {
-    const { rerender } = render(
-      <InteractiveBlock
-        dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
-        topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
-        onCommit={vi.fn()}
-      />,
-    );
+  it('in the release render the transform is gone and the spring transition is back on', () => {
+    // The caller (WeekGrid) moves the target geometry in on this same render; the transform and
+    // top/left then transition together, so the tile springs from the drop point into the slot.
+    render(<InteractiveBlock {...props} onCommit={vi.fn()} />);
     const el = screen.getByTestId('event-block');
     fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
-    fireEvent.pointerMove(el, { clientX: 50, clientY: 120, pointerId: 1 }); // snaps to 15 min
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 120, pointerId: 1 });
+    expect(el.className).not.toContain('[transition:');
     fireEvent.pointerUp(el, { clientX: 50, clientY: 120, pointerId: 1 });
-    // Held preview is active
-    expect(el.style.transform).toBe(`translate(0px, ${minutesToPx(15)}px)`);
-    // Rerender with new props (simulating optimistic update landing)
-    const NEW_START = START + 15 * 60_000;
-    const NEW_END = END + 15 * 60_000;
-    rerender(
-      <InteractiveBlock
-        dayStartMs={DAY} dayIndex={0} startMs={NEW_START} endMs={NEW_END}
-        topPct={10} heightPct={5} startLabel="09:15" title="Write spec" kind="task" pinned={false}
-        onCommit={vi.fn()}
-      />,
-    );
-    // After props change, held preview should clear → transform back to 0
-    expect(el.style.transform).toBe('translate(0px, 0px)');
+    expect(el.style.transform).toBe('');
+    expect(el).not.toHaveAttribute('data-dragging');
+    expect(el.className).toContain('[transition:top_var(--dur-move)_var(--ease-spring)');
   });
 
-  it('zero-delta click still resets immediately (no held preview on no-op)', () => {
+  it('after props update the wrapper has no transform and carries data-settling until transitionend', () => {
+    const { rerender } = render(<InteractiveBlock {...props} onCommit={vi.fn()} />);
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 120, pointerId: 1 });
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 120, pointerId: 1 });
+    rerender(<InteractiveBlock {...props} startMs={START + 15 * 60_000} endMs={END + 15 * 60_000} topPct={11.5} onCommit={vi.fn()} />);
+    expect(el.style.transform).toBe('');
+    expect(el.style.top).toBe('11.5%');
+    expect(el).toHaveAttribute('data-settling', 'true');
+    // A child's transitionend (the grip pill) bubbles up and must not count.
+    fireTransitionEnd(screen.getByTestId('resize-handle'), 'top');
+    expect(el).toHaveAttribute('data-settling', 'true');
+    fireTransitionEnd(el, 'opacity'); // not a geometry property
+    expect(el).toHaveAttribute('data-settling', 'true');
+    fireTransitionEnd(el, 'top');
+    expect(el).not.toHaveAttribute('data-settling');
+  });
+
+  it('data-settling falls back to a timeout when no transitionend arrives', () => {
+    vi.useFakeTimers();
+    try {
+      render(<InteractiveBlock {...props} onCommit={vi.fn()} />);
+      const el = screen.getByTestId('event-block');
+      fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+      fireEvent.pointerUp(el, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
+      expect(el).toHaveAttribute('data-settling', 'true');
+      act(() => { vi.advanceTimersByTime(1000); });
+      expect(el).not.toHaveAttribute('data-settling');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a click (no drag) never settles and never carries a transform', () => {
     renderBlock();
     const el = screen.getByTestId('event-block');
     fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
     fireEvent.pointerUp(el, { clientX: 50, clientY: 100, pointerId: 1 });
-    // No-op move — no held preview
-    expect(el.style.transform).toBe('translate(0px, 0px)');
+    expect(el.style.transform).toBe('');
+    expect(el).not.toHaveAttribute('data-settling');
   });
 
-  it('drag label disappears on release even with held preview', () => {
-    renderBlock();
+  it('an idle block glides on a data change (replan) — the spring is always on when not dragging', () => {
+    const { rerender } = render(<InteractiveBlock {...props} onCommit={vi.fn()} />);
     const el = screen.getByTestId('event-block');
-    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
-    fireEvent.pointerMove(el, { clientX: 50, clientY: 120, pointerId: 1 });
-    expect(screen.getByTestId('drag-label')).toBeInTheDocument();
-    fireEvent.pointerUp(el, { clientX: 50, clientY: 120, pointerId: 1 });
-    expect(screen.queryByTestId('drag-label')).not.toBeInTheDocument();
+    rerender(<InteractiveBlock {...props} startMs={START + 60 * 60_000} endMs={END + 60 * 60_000} topPct={20} onCommit={vi.fn()} />);
+    expect(el.className).toContain('[transition:top_var(--dur-move)_var(--ease-spring)');
+    expect(el.style.transform).toBe('');
   });
 
-  // The "jump from initial to final" fix. The drag preview lives in `transform` while the
-  // committed position arrives in `top`. If the replan transition (transition-[top,height])
-  // were active on the render that moves top to its new value, the browser would animate top
-  // old→new while transform snaps to 0 — the block jumps back to the start then glides to the
-  // end. So the block must stay transition-none through the *landed paint* (held → landing).
-  it('stays transition-none through the held preview AND the landed commit (no jump)', () => {
-    const { rerender } = render(
-      <InteractiveBlock
-        dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
-        topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
-        onCommit={vi.fn()}
-      />,
-    );
+  it('a resize release drops the raw height for the target in one render (spring-strong settle)', () => {
+    render(<InteractiveBlock {...props} onCommit={vi.fn()} />);
+    const handle = screen.getByTestId('resize-handle');
     const el = screen.getByTestId('event-block');
-    expect(el.className).toContain('transition-[top,height]'); // idle replan glide
-    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
-    fireEvent.pointerMove(el, { clientX: 50, clientY: 120, pointerId: 1 });
-    fireEvent.pointerUp(el, { clientX: 50, clientY: 120, pointerId: 1 });
-    // Held: no transition
-    expect(el.className).toContain('transition-none');
-    // Commit lands (new props after a drag) → `landing` keeps the transition off for the
-    // painted frame, so top jumps to newTop with transform 0 and nothing animates.
-    rerender(
-      <InteractiveBlock
-        dayStartMs={DAY} dayIndex={0} startMs={START + 15 * 60_000} endMs={END + 15 * 60_000}
-        topPct={11.5} heightPct={5} startLabel="09:15" title="Write spec" kind="task" pinned={false}
-        onCommit={vi.fn()}
-      />,
-    );
-    expect(el.className).toContain('transition-none');
-    expect(el.className).not.toContain('transition-[top,height]');
-  });
-
-  // A replan (props change with NO preceding drag) must keep the glide — `landing` only
-  // engages when a held preview was being cleared.
-  it('keeps the replan glide when props change without a drag', () => {
-    const { rerender } = render(
-      <InteractiveBlock
-        dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
-        topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
-        onCommit={vi.fn()}
-      />,
-    );
-    const el = screen.getByTestId('event-block');
-    rerender(
-      <InteractiveBlock
-        dayStartMs={DAY} dayIndex={0} startMs={START + 60 * 60_000} endMs={END + 60 * 60_000}
-        topPct={20} heightPct={5} startLabel="10:00" title="Write spec" kind="task" pinned={false}
-        onCommit={vi.fn()}
-      />,
-    );
-    expect(el.className).toContain('transition-[top,height]');
+    fireEvent.pointerDown(handle, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientY: 200 + PX_PER_60MIN, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientY: 200 + PX_PER_60MIN, pointerId: 1 });
+    expect(el.style.height).toBe('5%');
+    expect(el.className).toContain('height_var(--dur-resize)_var(--ease-spring-strong)');
   });
 });
 
@@ -447,36 +565,46 @@ describe('InteractiveBlock click (drag/click discrimination)', () => {
 
 describe('InteractiveBlock accent tinting', () => {
   const ACCENT = '#5b62e3';
+  const renderAccent = (pinned: boolean) => render(
+    <InteractiveBlock
+      dayStartMs={Date.parse('2026-01-05T00:00:00.000Z')} dayIndex={0}
+      startMs={Date.parse('2026-01-05T09:00:00.000Z')} endMs={Date.parse('2026-01-05T10:00:00.000Z')}
+      topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={pinned}
+      onCommit={vi.fn()} accent={ACCENT}
+    />,
+  );
 
   it('movable task with accent: borderColor + color inline styles', () => {
-    render(
-      <InteractiveBlock
-        dayStartMs={Date.parse('2026-01-05T00:00:00.000Z')} dayIndex={0}
-        startMs={Date.parse('2026-01-05T09:00:00.000Z')} endMs={Date.parse('2026-01-05T10:00:00.000Z')}
-        topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
-        onCommit={vi.fn()} accent={ACCENT}
-      />,
-    );
+    renderAccent(false);
     const el = screen.getByTestId('event-block');
     expect(el.style.borderColor).toBe('rgb(91, 98, 227)');
     expect(el.style.color).toBe('rgb(91, 98, 227)');
-    expect(el.className).toContain('border-dashed');
-    expect(el.className).not.toContain('border-low');
+    expect(el).toHaveAttribute('data-pinned', 'false');
   });
 
-  it('pinned task with accent: backgroundColor inline style, keeps white text', () => {
-    render(
-      <InteractiveBlock
-        dayStartMs={Date.parse('2026-01-05T00:00:00.000Z')} dayIndex={0}
-        startMs={Date.parse('2026-01-05T09:00:00.000Z')} endMs={Date.parse('2026-01-05T10:00:00.000Z')}
-        topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned
-        onCommit={vi.fn()} accent={ACCENT}
-      />,
-    );
+  it('pinned task with accent: same border + text tint, no fill colour (pinned stays dashed)', () => {
+    renderAccent(true);
     const el = screen.getByTestId('event-block');
-    expect(el.style.backgroundColor).toBe('rgb(91, 98, 227)');
-    expect(el.className).not.toContain('bg-low');
-    expect(el.className).toContain('text-white');
+    expect(el.style.borderColor).toBe('rgb(91, 98, 227)');
+    expect(el.style.backgroundColor).toBe('');
+    expect(el).toHaveAttribute('data-pinned', 'true');
+  });
+});
+
+describe('InteractiveBlock keyboard activation', () => {
+  it('a keyboard click on the body (detail 0) calls onClick', () => {
+    const onClick = vi.fn();
+    renderBlock({ onClick });
+    fireEvent.click(screen.getByTestId('block-body'), { detail: 0 });
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('a pointer click on the body (detail ≥ 1) is left to the drag machinery', () => {
+    // A native click can follow a short drag that ended over the tile; it must not select.
+    const onClick = vi.fn();
+    renderBlock({ onClick });
+    fireEvent.click(screen.getByTestId('block-body'), { detail: 1 });
+    expect(onClick).not.toHaveBeenCalled();
   });
 });
 
@@ -526,14 +654,27 @@ describe('InteractiveBlock on a coarse pointer', () => {
     });
   });
 
-  it('an armed coarse block lifts and stops the browser owning the gesture', () => {
+  it('an armed coarse block lifts at once, before any travel', () => {
     render(<InteractiveBlock {...coarseProps} onCommit={vi.fn()} />);
     const el = screen.getByTestId('event-block');
     expect(el.className).toContain('touch-pan-y');
     fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
     act(() => { vi.advanceTimersByTime(LONG_PRESS_MS); });
-    expect(el.className).toContain('shadow-pop');
-    expect(el.style.transform).toContain('scale(1.02)');
+    expect(el).toHaveAttribute('data-dragging', 'true');
+    expect(el.className).toContain('shadow-lift');
+    expect(el.style.transform).toContain('scale(1.05)');
+  });
+
+  it('a long press lifted in place and released is a tap, not a commit', () => {
+    const onCommit = vi.fn();
+    const onClick = vi.fn();
+    render(<InteractiveBlock {...coarseProps} onCommit={onCommit} onClick={onClick} />);
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    act(() => { vi.advanceTimersByTime(LONG_PRESS_MS); });
+    fireEvent.pointerUp(el, { clientX: 51, clientY: 101, pointerId: 1 });
+    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(onCommit).not.toHaveBeenCalled();
   });
 
   // jsdom has no PointerEvent, so a `pointerType` passed in fireEvent's init is dropped (the
@@ -563,16 +704,21 @@ describe('InteractiveBlock on a coarse pointer', () => {
     expect(el.className).not.toContain('touch-pan-y');
     fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
     fireEvent.pointerMove(el, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
+    expect(el.style.transform).toContain('scale(1.05)'); // past the threshold at once — no long press
     fireEvent.pointerUp(el, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
-    expect(el.style.transform).not.toContain('scale');
     expect(onCommit).toHaveBeenCalledTimes(1);
   });
 
-  it('gives a tall tile a 24px, scroll-proof resize target', () => {
+  it('gives a tall tile a 16px, scroll-proof resize target', () => {
     render(<InteractiveBlock {...coarseProps} heightPct={4.1667} onCommit={vi.fn()} />); // 60 min
     const handle = screen.getByTestId('resize-handle');
-    expect(handle.className).toContain('h-6');
+    expect(handle.className).toContain('h-4');
     expect(handle.className).toContain('touch-none');
+  });
+
+  it('shows the grip without a hover on touch', () => {
+    render(<InteractiveBlock {...coarseProps} heightPct={4.1667} onCommit={vi.fn()} />);
+    expect(screen.getByTestId('resize-handle')).toHaveAttribute('data-grip-visible', 'true');
   });
 
   it('keeps the small target on a 15-minute tile', () => {
@@ -607,9 +753,8 @@ describe('InteractiveBlock on a coarse pointer', () => {
   it('shows the delete button without a hover on touch', () => {
     render(<InteractiveBlock {...coarseProps} onCommit={vi.fn()} onDelete={vi.fn()} />);
     const btn = screen.getByRole('button', { name: /delete block/i, hidden: true });
-    expect(btn.className).toContain('flex');
+    expect(btn).toHaveAttribute('data-always-visible', 'true');
     expect(btn.className).not.toContain('hidden');
-    expect(btn.className).not.toContain('group-hover:flex');
   });
 });
 
@@ -622,7 +767,6 @@ describe('InteractiveBlock scroll compensation', () => {
     } as unknown as HTMLElement;
   }
 
-  const fmt = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   it('folds the container scroll during a drag into the committed move', () => {
     const onCommit = vi.fn();
@@ -675,19 +819,17 @@ describe('InteractiveBlock scroll compensation', () => {
       const el = screen.getByTestId('event-block');
       fireEvent.pointerDown(el, { clientX: 50, clientY: 560, pointerId: 1 });
       fireEvent.pointerMove(el, { clientX: 50, clientY: 590, pointerId: 1 });
-      // 30px of finger travel ≈ 31 min → snapped to +30.
-      expect(screen.getByTestId('drag-label')).toHaveTextContent(
-        `${fmt(START + 30 * 60_000)} – ${fmt(END + 30 * 60_000)}`,
-      );
+      // 30px of finger travel = 30 min → snapped to +30.
+      expect(screen.getByTestId('drag-label').textContent).toMatch(/^Mon · 9:30\sAM$/);
 
       // Now the finger stops. One auto-scroll frame fires — and nothing else.
       const step = 12; // edgeScrollStep(590, 0, 600)
       act(() => { frames.splice(0).forEach((cb) => cb(0)); });
       expect(scroller.scrollTop).toBe(step);
-      // 30px of finger + 12px of scroll ≈ 43 min → snapped to +45, with no new pointermove.
-      expect(screen.getByTestId('drag-label')).toHaveTextContent(
-        `${fmt(START + 45 * 60_000)} – ${fmt(END + 45 * 60_000)}`,
-      );
+      // 30px of finger + 12px of scroll = 42 min → snapped to +45, with no new pointermove.
+      expect(screen.getByTestId('drag-label').textContent).toMatch(/^Mon · 9:45\sAM$/);
+      // The tile itself rides the scroll too: 30px of finger + 12px of scroll.
+      expect(screen.getByTestId('event-block').style.transform).toBe('translate(0px, 42px) scale(1.05) rotate(-0.8deg)');
 
       // And the commit agrees with what the preview showed — no landing jump.
       fireEvent.pointerUp(el, { clientX: 50, clientY: 590, pointerId: 1 });
@@ -701,3 +843,283 @@ describe('InteractiveBlock scroll compensation', () => {
   });
 });
 
+
+describe('InteractiveBlock keyboard move / resize', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+  const props = {
+    dayStartMs: DAY, dayIndex: 0, startMs: START, endMs: END,
+    topPct: 10, heightPct: 5, startLabel: '09:00', title: 'Write spec', kind: 'task' as const, pinned: false,
+  };
+  const body = () => screen.getByTestId('block-body');
+
+  it('ArrowDown previews at once and commits once the keys go quiet', () => {
+    const onCommit = vi.fn();
+    const onPreview = vi.fn();
+    render(<InteractiveBlock {...props} onCommit={onCommit} onPreview={onPreview} />);
+    fireEvent.keyDown(body(), { key: 'ArrowDown' });
+    expect(onPreview).toHaveBeenCalledWith(START + 15 * 60_000, END + 15 * 60_000);
+    expect(onCommit).not.toHaveBeenCalled();
+    act(() => { vi.advanceTimersByTime(KEY_COMMIT_DEBOUNCE_MS); });
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onCommit).toHaveBeenCalledWith({ startsAt: '2026-01-05T09:15:00.000Z', endsAt: '2026-01-05T10:15:00.000Z', pinned: true });
+  });
+
+  it('key repeat restarts the debounce: one commit for a burst', () => {
+    const onCommit = vi.fn();
+    render(<InteractiveBlock {...props} onCommit={onCommit} />);
+    fireEvent.keyDown(body(), { key: 'ArrowDown' });
+    act(() => { vi.advanceTimersByTime(KEY_COMMIT_DEBOUNCE_MS - 50); });
+    fireEvent.keyDown(body(), { key: 'ArrowDown' });
+    act(() => { vi.advanceTimersByTime(KEY_COMMIT_DEBOUNCE_MS - 50); });
+    expect(onCommit).not.toHaveBeenCalled();
+    act(() => { vi.advanceTimersByTime(100); });
+    expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it('Shift+ArrowDown lengthens by 15 minutes', () => {
+    const onCommit = vi.fn();
+    render(<InteractiveBlock {...props} onCommit={onCommit} />);
+    fireEvent.keyDown(body(), { key: 'ArrowDown', shiftKey: true });
+    act(() => { vi.advanceTimersByTime(KEY_COMMIT_DEBOUNCE_MS); });
+    expect(onCommit).toHaveBeenCalledWith({ startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T10:15:00.000Z', pinned: true });
+  });
+
+  it('ArrowRight crosses to the next day (wall-clock)', () => {
+    const onCommit = vi.fn();
+    render(<InteractiveBlock {...props} onCommit={onCommit} />);
+    fireEvent.keyDown(body(), { key: 'ArrowRight' });
+    act(() => { vi.advanceTimersByTime(KEY_COMMIT_DEBOUNCE_MS); });
+    expect(onCommit).toHaveBeenCalledWith({ startsAt: '2026-01-06T09:00:00.000Z', endsAt: '2026-01-06T10:00:00.000Z', pinned: true });
+  });
+
+  it('blur flushes the pending commit at once — exactly one, never a second from the timer', () => {
+    const onCommit = vi.fn();
+    render(<InteractiveBlock {...props} onCommit={onCommit} />);
+    fireEvent.keyDown(body(), { key: 'ArrowDown' });
+    fireEvent.blur(body());
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    act(() => { vi.advanceTimersByTime(2 * KEY_COMMIT_DEBOUNCE_MS); });
+    expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it('unmount flushes the pending commit', () => {
+    const onCommit = vi.fn();
+    const { unmount } = render(<InteractiveBlock {...props} onCommit={onCommit} />);
+    fireEvent.keyDown(body(), { key: 'ArrowDown' });
+    unmount();
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    act(() => { vi.advanceTimersByTime(2 * KEY_COMMIT_DEBOUNCE_MS); });
+    expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it('a pointer press flushes the pending keyboard commit before any drag', () => {
+    const onCommit = vi.fn();
+    render(<InteractiveBlock {...props} onCommit={onCommit} />);
+    fireEvent.keyDown(body(), { key: 'ArrowDown' });
+    fireEvent.pointerDown(screen.getByTestId('event-block'), { clientX: 50, clientY: 100, pointerId: 1 });
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onCommit).toHaveBeenLastCalledWith({ startsAt: '2026-01-05T09:15:00.000Z', endsAt: '2026-01-05T10:15:00.000Z', pinned: true });
+  });
+
+  it('a clamped key is a no-op (no preview, no commit)', () => {
+    const onCommit = vi.fn();
+    const onPreview = vi.fn();
+    render(<InteractiveBlock {...props} startMs={DAY} endMs={DAY + 60 * 60_000} topPct={0} onCommit={onCommit} onPreview={onPreview} />);
+    fireEvent.keyDown(body(), { key: 'ArrowUp' });
+    act(() => { vi.advanceTimersByTime(KEY_COMMIT_DEBOUNCE_MS); });
+    expect(onPreview).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('at the edge of the rendered days, toasts the paging hint and commits nothing', () => {
+    const onCommit = vi.fn();
+    render(<ToastProvider><InteractiveBlock {...props} onCommit={onCommit} /></ToastProvider>);
+    fireEvent.keyDown(body(), { key: 'ArrowLeft' });
+    act(() => { vi.advanceTimersByTime(KEY_COMMIT_DEBOUNCE_MS); });
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(screen.getByTestId('toast-region')).toHaveTextContent(EDGE_HINT);
+  });
+
+  it('arrows are prevented (they would scroll the hours); other keys are left alone', () => {
+    render(<InteractiveBlock {...props} onCommit={vi.fn()} />);
+    const down = createEvent.keyDown(body(), { key: 'ArrowDown' });
+    fireEvent(body(), down);
+    expect(down.defaultPrevented).toBe(true);
+    const tab = createEvent.keyDown(body(), { key: 'Tab' });
+    fireEvent(body(), tab);
+    expect(tab.defaultPrevented).toBe(false);
+  });
+
+  it('a 23:00–24:00 block: ↓ is clamped at the column end and commits nothing (never 23:15–00:15)', () => {
+    const onCommit = vi.fn();
+    const onPreview = vi.fn();
+    const late = { ...props, startMs: DAY + 23 * 3_600_000, endMs: DAY + 24 * 3_600_000, topPct: minuteToPct(23 * 60), heightPct: minuteToPct(24 * 60) - minuteToPct(23 * 60) };
+    render(<InteractiveBlock {...late} onCommit={onCommit} onPreview={onPreview} />);
+    fireEvent.keyDown(body(), { key: 'ArrowDown' });
+    act(() => { vi.advanceTimersByTime(KEY_COMMIT_DEBOUNCE_MS); });
+    expect(onPreview).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('an overnight block (23:00–07:00): ↓ moves it 15 minutes keeping all 8 hours; Shift+↓ never truncates it', () => {
+    const onCommit = vi.fn();
+    const night = { ...props, startMs: DAY + 23 * 3_600_000, endMs: DAY + 31 * 3_600_000, topPct: minuteToPct(23 * 60), heightPct: minuteToPct(24 * 60) - minuteToPct(23 * 60) };
+    render(<InteractiveBlock {...night} onCommit={onCommit} />);
+    fireEvent.keyDown(body(), { key: 'ArrowDown', shiftKey: true }); // already past the column: no-op
+    act(() => { vi.advanceTimersByTime(KEY_COMMIT_DEBOUNCE_MS); });
+    expect(onCommit).not.toHaveBeenCalled();
+    fireEvent.keyDown(body(), { key: 'ArrowDown' });
+    act(() => { vi.advanceTimersByTime(KEY_COMMIT_DEBOUNCE_MS); });
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onCommit).toHaveBeenCalledWith({ startsAt: '2026-01-05T23:15:00.000Z', endsAt: '2026-01-06T07:15:00.000Z', pinned: true });
+  });
+
+  it('Delete removes the block', () => {
+    const onDelete = vi.fn();
+    render(<InteractiveBlock {...props} onCommit={vi.fn()} onDelete={onDelete} />);
+    fireEvent.keyDown(body(), { key: 'Delete' });
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it('Backspace never deletes (no confirmation behind it)', () => {
+    const onDelete = vi.fn();
+    render(<InteractiveBlock {...props} onCommit={vi.fn()} onDelete={onDelete} />);
+    const ev = createEvent.keyDown(body(), { key: 'Backspace' });
+    fireEvent(body(), ev);
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
+  it('after a mouse click focused the block, arrows scroll the page (no move, no pin) and Delete does nothing', () => {
+    const onCommit = vi.fn();
+    const onPreview = vi.fn();
+    const onDelete = vi.fn();
+    render(<InteractiveBlock {...props} onCommit={onCommit} onPreview={onPreview} onDelete={onDelete} />);
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(body(), { clientX: 50, clientY: 100, pointerId: 1, pointerType: 'mouse' });
+    fireEvent.focus(body());
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 100, pointerId: 1, pointerType: 'mouse' });
+    const down = createEvent.keyDown(body(), { key: 'ArrowDown' });
+    fireEvent(body(), down);
+    fireEvent.keyDown(body(), { key: 'Delete' });
+    act(() => { vi.advanceTimersByTime(KEY_COMMIT_DEBOUNCE_MS); });
+    expect(down.defaultPrevented).toBe(false);
+    expect(onPreview).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onDelete).not.toHaveBeenCalled();
+  });
+
+  it('a press on the resize handle also counts as pointer focus', () => {
+    const onPreview = vi.fn();
+    render(<InteractiveBlock {...props} onCommit={vi.fn()} onPreview={onPreview} />);
+    const handle = screen.getByTestId('resize-handle');
+    fireEvent.pointerDown(handle, { clientY: 100, pointerId: 1, pointerType: 'mouse' });
+    fireEvent.pointerUp(handle, { clientY: 100, pointerId: 1, pointerType: 'mouse' });
+    fireEvent.keyDown(body(), { key: 'ArrowDown' });
+    expect(onPreview).not.toHaveBeenCalled();
+  });
+
+  it('focus a script hands back right after a click elsewhere (the detail card\'s ✕) counts as pointer focus', () => {
+    const onPreview = vi.fn();
+    render(<InteractiveBlock {...props} onCommit={vi.fn()} onPreview={onPreview} />);
+    fireEvent.pointerDown(document.body, { pointerId: 1, pointerType: 'mouse' }); // the ✕ press
+    act(() => { body().focus(); }); // closeDetail's focus restore
+    fireEvent.keyDown(body(), { key: 'ArrowDown' });
+    expect(onPreview).not.toHaveBeenCalled();
+  });
+
+  it('focus a script hands back after a key (Escape on the card) is keyboard focus', () => {
+    const onPreview = vi.fn();
+    render(<InteractiveBlock {...props} onCommit={vi.fn()} onPreview={onPreview} />);
+    fireEvent.pointerDown(document.body, { pointerId: 1, pointerType: 'mouse' });
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    act(() => { body().focus(); });
+    fireEvent.keyDown(body(), { key: 'ArrowDown' });
+    expect(onPreview).toHaveBeenCalledTimes(1);
+  });
+
+  it('once a pointer-focused block blurs, Tabbing back in makes the arrows move it again', () => {
+    const onPreview = vi.fn();
+    render(<InteractiveBlock {...props} onCommit={vi.fn()} onPreview={onPreview} />);
+    fireEvent.pointerDown(body(), { clientX: 50, clientY: 100, pointerId: 1, pointerType: 'mouse' });
+    fireEvent.pointerUp(screen.getByTestId('event-block'), { clientX: 50, clientY: 100, pointerId: 1, pointerType: 'mouse' });
+    fireEvent.blur(body());
+    fireEvent.keyDown(document.body, { key: 'Tab' });
+    fireEvent.focus(body());
+    fireEvent.keyDown(body(), { key: 'ArrowDown' });
+    expect(onPreview).toHaveBeenCalledWith(START + 15 * 60_000, END + 15 * 60_000);
+  });
+
+  it('the accessible name mentions the arrow keys and points at the shared instructions', () => {
+    render(<InteractiveBlock {...props} onCommit={vi.fn()} describedBy="planner-block-keys" />);
+    expect(body()).toHaveAccessibleName(/movable: drag or use arrow keys, Shift\+arrows to resize$/);
+    expect(body()).toHaveAttribute('aria-describedby', 'planner-block-keys');
+  });
+});
+
+describe('InteractiveBlock vs. stray text selections', () => {
+  it('a press clears a selection that would otherwise become a native drag of that text', () => {
+    renderBlock();
+    const range = document.createRange();
+    range.selectNodeContents(screen.getByTestId('block-body'));
+    window.getSelection()!.removeAllRanges(); // jsdom ignores addRange while a (collapsed) range from an earlier focus() remains
+    window.getSelection()!.addRange(range);
+    expect(window.getSelection()!.isCollapsed).toBe(false);
+    fireEvent.pointerDown(screen.getByTestId('event-block'), { clientX: 50, clientY: 100, pointerId: 1 });
+    expect(window.getSelection()!.isCollapsed).toBe(true);
+  });
+
+  it('a tile is never a native drag source', () => {
+    renderBlock();
+    const ev = createEvent.dragStart(screen.getByTestId('event-block'));
+    fireEvent(screen.getByTestId('event-block'), ev);
+    expect(ev.defaultPrevented).toBe(true);
+    expect(screen.getByTestId('event-block').className).toContain('select-none');
+  });
+});
+
+describe('InteractiveBlock lost pointer capture', () => {
+  it('losing the capture mid-drag (no pointerup) cancels: tile drops, nothing commits, the next press works', () => {
+    const onCommit = renderBlock();
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
+    expect(el).toHaveAttribute('data-dragging', 'true');
+    // jsdom has no PointerEvent: React reads pointerId off the event object.
+    fireEvent(el, Object.assign(new Event('lostpointercapture', { bubbles: true }), { pointerId: 1 }));
+    expect(el).not.toHaveAttribute('data-dragging');
+    expect(el).not.toHaveAttribute('data-pressed');
+    expect(screen.queryByTestId('drag-ghost')).not.toBeInTheDocument();
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
+    expect(onCommit).not.toHaveBeenCalled();
+    // A fresh press is not ignored.
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 2 });
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 2 });
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 2 });
+    expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it('a capture lost by a CHILD (the browser\'s implicit touch capture handed to the tile) does not cancel', () => {
+    renderBlock();
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
+    const lost = new Event('lostpointercapture', { bubbles: true });
+    Object.assign(lost, { pointerId: 1 });
+    fireEvent(screen.getByTestId('block-body'), lost);
+    expect(el).toHaveAttribute('data-dragging', 'true');
+  });
+});
+
+describe('InteractiveBlock press state', () => {
+  it('marks a press that has not become a drag yet (the layer must not re-insert it)', () => {
+    renderBlock();
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    expect(el).toHaveAttribute('data-pressed', 'true');
+    expect(el).not.toHaveAttribute('data-dragging');
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    expect(el).not.toHaveAttribute('data-pressed');
+  });
+});

@@ -36,7 +36,8 @@ describe('Stats page', () => {
     await waitFor(() => expect(screen.getByText('Total scheduled')).toBeInTheDocument());
     expect(screen.getByText('Task time')).toBeInTheDocument();
     expect(screen.getByText('Tasks done')).toBeInTheDocument();
-    expect(screen.getByText('1 / 2')).toBeInTheDocument();
+    expect(screen.getByText('Tasks done').closest('[data-testid="stat-card"]')).toHaveTextContent('1 / 2');
+    expect(screen.getByRole('progressbar', { name: 'Tasks done' })).toHaveAttribute('aria-valuenow', '50');
     expect(screen.getByTestId('hours-by-day')).toBeInTheDocument();
     expect(screen.getByTestId('time-split')).toBeInTheDocument();
   });
@@ -51,12 +52,12 @@ describe('Stats page', () => {
     expect(screen.queryByText('Total scheduled')).toBeNull();
   });
 
-  it('wraps the stat cards 2×2 below md and rows them at md+', async () => {
+  it('lays the stat cards out 2×2, then 4-up from lg (never a 3 + 1 wrap)', async () => {
     renderWithProviders(<Stats now={() => NOW} />, { api: api() });
     await waitFor(() => expect(screen.getByText('Total scheduled')).toBeInTheDocument());
     const row = screen.getAllByTestId('stat-card')[0]!.parentElement!;
-    expect(row.className).toContain('grid-cols-2');
-    expect(row.className).toContain('md:flex');
+    expect(row).toHaveClass('grid', 'grid-cols-2', 'lg:grid-cols-4');
+    expect(row.className).not.toMatch(/flex-wrap/);
   });
 
   it('stacks the charts vertically below md and side-by-side at md+', async () => {

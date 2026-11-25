@@ -4,9 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>NotReclaim</title>
+    <script>
+      // Pre-paint theme (no flash). Mirrors readPref + resolveTheme in src/theme/theme.ts — the source of truth.
+      (function () {
+        var t = 'dark';
+        try { var p = window.localStorage.getItem('nr.theme'); if (p === 'light' || p === 'dark') t = p; else p = null; } catch (e) { p = null; }
+        if (!p) { try { if (typeof window.matchMedia === 'function' && !window.matchMedia('(prefers-color-scheme: dark)').matches) t = 'light'; } catch (e) {} }
+        document.documentElement.setAttribute('data-theme', t);
+        document.documentElement.style.colorScheme = t;
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Mulish:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   </head>
   <body>
     <div id="root"></div>

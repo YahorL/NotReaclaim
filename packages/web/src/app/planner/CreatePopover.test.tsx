@@ -17,7 +17,7 @@ describe('CreatePopover', () => {
   it('shows the snapped slot label and defaults to a 30-min event', () => {
     renderWithProviders(<CreatePopover {...baseProps} />, { api: fakeApiClient() });
     expect(screen.getByTestId('create-popover')).toBeInTheDocument();
-    expect(screen.getByTestId('slot-label').textContent).toMatch(/09:00.*09:30/);
+    expect(screen.getByTestId('slot-label').textContent).toMatch(/^9:00 AM – 9:30 AM$/);
   });
 
   it('creates an event and closes', async () => {
@@ -107,6 +107,15 @@ describe('CreatePopover', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('keeps an Escape that a surface above it (the search palette) already handled', () => {
+    const onClose = vi.fn();
+    renderWithProviders(<CreatePopover {...baseProps} onClose={onClose} />, { api: fakeApiClient() });
+    const handled = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    handled.preventDefault();
+    document.dispatchEvent(handled);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it('caps the duration so the slot cannot extend past the 24:00 window end', () => {
     renderWithProviders(<CreatePopover {...baseProps} startMin={1425} />, { api: fakeApiClient() });
     expect(screen.getByTestId('slot-label').textContent).toMatch(/11:45 PM.*12:00 AM|23:45.*00:00/); // 23:45 – 24:00 (15 min max)
@@ -164,6 +173,16 @@ describe('CreatePopover', () => {
     const popover = screen.getByTestId('create-popover');
     expect(popover.className).toContain('right-1');
     expect(popover.className).not.toContain('left-1');
+  });
+
+  it('the Event / Task / Blocked segments report which one is active', () => {
+    renderWithProviders(<CreatePopover {...baseProps} />, { api: fakeApiClient() });
+    expect(screen.getByRole('group', { name: 'Entry type' })).toBeInTheDocument();
+    expect(screen.getByTestId('mode-event')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('mode-task')).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(screen.getByTestId('mode-blocked'));
+    expect(screen.getByTestId('mode-blocked')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('mode-event')).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('popover has w-[340px] width class', () => {
@@ -369,7 +388,7 @@ describe('CreatePopover as a bottom sheet', () => {
 
   it('compact keeps the same form and the snapped slot', () => {
     renderWithProviders(<CreatePopover {...baseProps} compact />, { api: fakeApiClient() });
-    expect(screen.getByTestId('slot-label').textContent).toMatch(/09:00.*09:30/);
+    expect(screen.getByTestId('slot-label').textContent).toMatch(/^9:00 AM – 9:30 AM$/);
     expect(screen.getByTestId('mode-event')).toBeInTheDocument();
     expect(screen.getByTestId('mode-task')).toBeInTheDocument();
     expect(screen.getByTestId('mode-blocked')).toBeInTheDocument();

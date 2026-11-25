@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type { ScheduledBlock } from '../../api/types';
 import {
   startOfWeek, dayColumns, addWeeks, classifyBlock, placeInDay, nowLine, isToday,
@@ -99,8 +99,8 @@ describe('isToday', () => {
 
 describe('grid geometry', () => {
   it('exports the fixed column geometry constants', () => {
-    expect(HOUR_ROW_PX).toBe(58);
-    expect(GRID_COLUMN_PX).toBe(((WINDOW_END_MIN - WINDOW_START_MIN) / 60) * 58); // 24 * 58 = 1392
+    expect(HOUR_ROW_PX).toBe(60);
+    expect(GRID_COLUMN_PX).toBe(((WINDOW_END_MIN - WINDOW_START_MIN) / 60) * 60); // 24 * 60 = 1440
   });
 
   it('snapMinutes rounds to the nearest step (default 15)', () => {
@@ -112,7 +112,7 @@ describe('grid geometry', () => {
   });
 
   it('pxToMinutes maps the column height to the full window span', () => {
-    expect(pxToMinutes(GRID_COLUMN_PX)).toBe(WINDOW_END_MIN - WINDOW_START_MIN); // 1392px -> 1440 min
+    expect(pxToMinutes(GRID_COLUMN_PX)).toBe(WINDOW_END_MIN - WINDOW_START_MIN); // 1440px -> 1440 min
     expect(Math.round(pxToMinutes(HOUR_ROW_PX))).toBe(60); // one row -> 60 min
     expect(pxToMinutes(0)).toBe(0);
     expect(pxToMinutes(-GRID_COLUMN_PX)).toBe(-(WINDOW_END_MIN - WINDOW_START_MIN));
@@ -127,11 +127,11 @@ describe('grid geometry', () => {
 
 describe('minutesToPx', () => {
   it('is the inverse of pxToMinutes', () => {
-    expect(minutesToPx(60)).toBeCloseTo(58);
-    expect(minutesToPx(15)).toBeCloseTo(14.5);
+    expect(minutesToPx(60)).toBeCloseTo(60);
+    expect(minutesToPx(15)).toBeCloseTo(15);
     expect(pxToMinutes(minutesToPx(37))).toBeCloseTo(37);
     expect(minutesToPx(0)).toBe(0);
-    expect(minutesToPx(-30)).toBeCloseTo(-29);
+    expect(minutesToPx(-30)).toBeCloseTo(-30);
   });
 });
 
@@ -227,9 +227,19 @@ describe('weekModel timezone-aware (America/New_York)', () => {
     expect(shiftDays(noonZ, 1, Z)).toBe(Date.parse('2026-06-19T16:00:00.000Z'));
   });
   it('formats labels in the zone', () => {
-    expect(formatHm(Date.parse('2026-06-18T13:00:00.000Z'), Z)).toBe('09:00 AM'); // 13:00Z = 9am EDT
+    expect(formatHm(Date.parse('2026-06-18T13:00:00.000Z'), Z)).toBe('9:00 AM'); // 13:00Z = 9am EDT; no leading zero (design form)
     expect(weekdayLabel(Date.parse('2026-06-18T13:00:00.000Z'), Z)).toBe('Thu');
     expect(dayOfMonth(Date.parse('2026-06-18T13:00:00.000Z'), Z)).toBe(18);
+  });
+  it('formats in a fixed 12-hour locale, not the browser default (a 24h browser read "16:15")', () => {
+    const time = vi.spyOn(Date.prototype, 'toLocaleTimeString');
+    const date = vi.spyOn(Date.prototype, 'toLocaleDateString');
+    expect(formatHm(Date.parse('2026-06-18T20:15:00.000Z'), Z)).toBe('4:15 PM');
+    weekdayLabel(Date.parse('2026-06-18T20:15:00.000Z'), Z);
+    expect(time.mock.calls[0]?.[0]).toBe('en-US');
+    expect(time.mock.calls[0]?.[1]).toMatchObject({ hour12: true });
+    expect(date.mock.calls[0]?.[0]).toBe('en-US');
+    time.mockRestore(); date.mockRestore();
   });
   it('places a 09:00-EDT block against the zone midnight at 540/1440', () => {
     const dayStart = localMidnight(noonZ, Z);
@@ -322,9 +332,9 @@ describe('dayStartMinute — shifted day boundary (Review 20)', () => {
   });
 
   it('rotates the hour-gutter labels to start at the day-start hour', () => {
-    expect([0, 9, 12, 13, 23].map((h) => hourRowLabel(h))).toEqual(['12a', '9a', '12p', '1p', '11p']);
-    expect([0, 1, 20, 21, 23].map((h) => hourRowLabel(h, 180))).toEqual(['3a', '4a', '11p', '12a', '2a']);
-    expect(hourRowLabel(0, 210)).toBe('3:30a');
+    expect([0, 9, 12, 13, 23].map((h) => hourRowLabel(h))).toEqual(['12 AM', '9 AM', '12 PM', '1 PM', '11 PM']);
+    expect([0, 1, 20, 21, 23].map((h) => hourRowLabel(h, 180))).toEqual(['3 AM', '4 AM', '11 PM', '12 AM', '2 AM']);
+    expect(hourRowLabel(0, 210)).toBe('3:30 AM');
   });
 });
 
@@ -393,21 +403,29 @@ describe('rangeLabel', () => {
 describe('resizeHandleClass', () => {
   const pct = (min: number) => (min / (WINDOW_END_MIN - WINDOW_START_MIN)) * 100;
 
-  it('a fine pointer always gets the 6px bar', () => {
-    expect(resizeHandleClass(pct(60), false)).toBe('h-1.5');
-    expect(resizeHandleClass(pct(15), false)).toBe('h-1.5');
+  it('a fine pointer gets the design\'s 10px handle on tiles of 30 minutes or more', () => {
+    expect(resizeHandleClass(pct(30), false)).toBe('h-2.5');
+    expect(resizeHandleClass(pct(60), false)).toBe('h-2.5');
   });
 
-  it('a coarse pointer gets the 24px target on tiles of 30 minutes or more', () => {
-    expect(resizeHandleClass(pct(30), true)).toBe('h-6');
-    expect(resizeHandleClass(pct(60), true)).toBe('h-6');
-    expect(resizeHandleClass(pct(480), true)).toBe('h-6');
+  it('a coarse pointer gets a bigger target that never covers the lower half of a tile', () => {
+    // P3 note: a 24px handle covered the bottom half of a 45-min tile, so a long-press move
+    // started there resized instead. 12px on 30–59 min (≤ 40%), 16px from an hour (≤ 27%).
+    expect(resizeHandleClass(pct(30), true)).toBe('h-3');
+    expect(resizeHandleClass(pct(45), true)).toBe('h-3');
+    expect(resizeHandleClass(pct(60), true)).toBe('h-4');
+    expect(resizeHandleClass(pct(480), true)).toBe('h-4');
   });
 
-  it('keeps the small target on short tiles a 24px handle would swallow', () => {
+  it('keeps a 6px bar on short tiles on any pointer, so the tile body stays grabbable', () => {
     expect(resizeHandleClass(pct(15), true)).toBe('h-1.5');
     expect(resizeHandleClass(pct(29), true)).toBe('h-1.5');
+    expect(resizeHandleClass(pct(15), false)).toBe('h-1.5');
     expect(COARSE_RESIZE_MIN_SPAN_MIN).toBe(30);
+  });
+
+  it('treats an exactly-30-minute tile as 30 (lossy percent round-trip)', () => {
+    expect(resizeHandleClass((30 / 1440) * 100, true)).toBe('h-3');
   });
 });
 
