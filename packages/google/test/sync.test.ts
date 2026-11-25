@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { syncPrimaryCalendar } from '../src/sync.js';
+import { GoogleTimeoutError } from '../src/errors.js';
 import {
   FakeGoogleClient,
   fakeSyncStateRepo,
@@ -92,6 +93,15 @@ describe('syncPrimaryCalendar', () => {
     expect(client.listCalls[1]!.syncToken).toBeUndefined();
     expect(client.listCalls[1]!.timeMin).toBeTruthy();
     expect(d.syncState.upserts[0]).toMatchObject({ syncToken: 'tok-fresh' });
+  });
+
+  it('a timed-out listing fails the sync instead of being mistaken for a 410 (no full resync)', async () => {
+    const client = new FakeGoogleClient();
+    client.listEvents = async (args) => { client.listCalls.push(args); throw new GoogleTimeoutError(15_000); };
+    const d = deps(client, makeSyncState({ syncToken: 'kept' }));
+    await expect(syncPrimaryCalendar(d, 'u1', 4000)).rejects.toBeInstanceOf(GoogleTimeoutError);
+    expect(client.listCalls).toHaveLength(1);
+    expect(d.syncState.upserts).toEqual([]);
   });
 
   it('full resync purges the mirrored rows of the calendar before upserting', async () => {

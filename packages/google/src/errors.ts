@@ -25,6 +25,19 @@ export class GoogleApiError extends Error {
   }
 }
 
+/**
+ * A Calendar API request got no complete answer within the client's timeout. It is a failed
+ * Google call like any other GoogleApiError (the server answers 502; a poll cycle logs it and
+ * the next cycle retries) — never a revoked grant or an expired sync token. `status` is the
+ * conventional 504 (gateway timeout); Google itself sent nothing.
+ */
+export class GoogleTimeoutError extends GoogleApiError {
+  constructor(public readonly timeoutMs: number) {
+    super(504, `no response within ${timeoutMs} ms`);
+    this.name = 'GoogleTimeoutError';
+  }
+}
+
 /** OAuth/token failure. May be transient (outage, timeout) — see GoogleGrantRevokedError. */
 export class GoogleAuthError extends Error {
   constructor(message: string) {

@@ -1,13 +1,17 @@
 import { OAuth2Client } from 'google-auth-library';
 import type { GoogleClient, GoogleEvent, GoogleEventWrite, GoogleTokens, ListEventsArgs, ListEventsResult } from './client.js';
-import { GoogleApiError, GoogleAuthError, GoogleGrantRevokedError, SyncTokenExpiredError } from './errors.js';
+import { GoogleApiError, GoogleAuthError, GoogleGrantRevokedError, GoogleTimeoutError, SyncTokenExpiredError } from './errors.js';
 
 const SCOPES = ['openid', 'email', 'https://www.googleapis.com/auth/calendar'];
 const CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
+/** Every Google request (Calendar and OAuth) is cut off after this long. */
+const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 
 export interface GoogleClientConfig {
   clientId: string;
   clientSecret: string;
+  /** Per-request timeout; defaults to 15 s. Injectable so tests need not wait for it. */
+  requestTimeoutMs?: number;
 }
 
 interface RawGoogleEvent {
@@ -72,44 +76,75 @@ function toEventBody(event: GoogleEventWrite) {
   };
 }
 
+/** A Calendar response whose body has already been read in full. */
+interface CalendarResponse {
+  status: number;
+  json<T>(): T;
+}
+
 /**
  * One Calendar REST call with Bearer auth; `json`, when given, is sent as a JSON body.
  * A non-ok response throws GoogleApiError unless its status is in `handled`, in which case
- * it is returned for the caller to interpret.
+ * it is returned for the caller to interpret. The whole exchange — headers AND body — must
+ * finish within `timeoutMs`, else it throws GoogleTimeoutError: a hung request would otherwise
+ * stall the poll cycle (and every later one, behind its re-entrancy guard) indefinitely.
  */
 async function calendarFetch(
+  timeoutMs: number,
   accessToken: string,
   url: string | URL,
   init: { method?: string; json?: unknown } = {},
   handled: number[] = [],
-): Promise<Response> {
+): Promise<CalendarResponse> {
   const hasBody = init.json !== undefined;
-  const res = await fetch(url, {
-    ...(init.method ? { method: init.method } : {}),
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
-    },
-    ...(hasBody ? { body: JSON.stringify(init.json) } : {}),
-  });
-  if (!res.ok && !handled.includes(res.status)) throw new GoogleApiError(res.status, await res.text());
-  return res;
+  const signal = AbortSignal.timeout(timeoutMs);
+  let res: Response;
+  let body: string;
+  try {
+    res = await fetch(url, {
+      ...(init.method ? { method: init.method } : {}),
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
+      },
+      ...(hasBody ? { body: JSON.stringify(init.json) } : {}),
+      signal,
+    });
+    body = await res.text();
+  } catch (error) {
+    if (signal.aborted) throw new GoogleTimeoutError(timeoutMs);
+    throw error;
+  }
+  if (!res.ok && !handled.includes(res.status)) throw new GoogleApiError(res.status, body);
+  return { status: res.status, json: <T>() => JSON.parse(body) as T };
 }
 
 async function writeEvent(
+  timeoutMs: number,
   method: 'PUT' | 'PATCH',
   accessToken: string,
   calendarId: string,
   googleEventId: string,
   event: GoogleEventWrite,
 ): Promise<void> {
-  await calendarFetch(accessToken, eventPath(calendarId, googleEventId), { method, json: toEventBody(event) });
+  await calendarFetch(timeoutMs, accessToken, eventPath(calendarId, googleEventId), { method, json: toEventBody(event) });
 }
 
 /** Real GoogleClient backed by google-auth-library (OAuth) and fetch (Calendar REST). */
 export function createGoogleClient(config: GoogleClientConfig): GoogleClient {
+  const timeoutMs = config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+  // The OAuth calls (refresh, code exchange, id-token certs) go through google-auth-library's
+  // own transport, which honours `timeout`; a timed-out refresh surfaces as a plain (transient)
+  // GoogleAuthError — it has no invalid_grant response, so it is never taken for a revocation.
   const oauth = (redirectUri?: string) =>
-    new OAuth2Client({ clientId: config.clientId, clientSecret: config.clientSecret, redirectUri });
+    new OAuth2Client({
+      clientId: config.clientId,
+      clientSecret: config.clientSecret,
+      redirectUri,
+      transporterOptions: { timeout: timeoutMs },
+    });
+  const call = (accessToken: string, url: string | URL, init?: { method?: string; json?: unknown }, handled?: number[]) =>
+    calendarFetch(timeoutMs, accessToken, url, init, handled);
 
   return {
     getConsentUrl(redirectUri, state) {
@@ -167,14 +202,14 @@ export function createGoogleClient(config: GoogleClientConfig): GoogleClient {
       if (timeMax && !syncToken) url.searchParams.set('timeMax', timeMax);
       if (pageToken) url.searchParams.set('pageToken', pageToken);
 
-      const res = await calendarFetch(accessToken, url, {}, [410]);
+      const res = await call(accessToken, url, {}, [410]);
       if (res.status === 410) throw new SyncTokenExpiredError();
 
-      const data = (await res.json()) as {
+      const data = res.json<{
         items?: RawGoogleEvent[];
         nextPageToken?: string;
         nextSyncToken?: string;
-      };
+      }>();
       return {
         events: (data.items ?? []).map(mapEvent),
         nextPageToken: data.nextPageToken,
@@ -183,20 +218,20 @@ export function createGoogleClient(config: GoogleClientConfig): GoogleClient {
     },
 
     async createCalendar(accessToken, summary) {
-      const res = await calendarFetch(accessToken, `${CALENDAR_API}/calendars`, { method: 'POST', json: { summary } });
-      const data = (await res.json()) as { id: string };
+      const res = await call(accessToken, `${CALENDAR_API}/calendars`, { method: 'POST', json: { summary } });
+      const data = res.json<{ id: string }>();
       return { calendarId: data.id };
     },
 
     async insertEvent(accessToken, calendarId, event: GoogleEventWrite) {
-      const res = await calendarFetch(accessToken, eventsPath(calendarId), { method: 'POST', json: toEventBody(event) });
-      const data = (await res.json()) as { id: string };
+      const res = await call(accessToken, eventsPath(calendarId), { method: 'POST', json: toEventBody(event) });
+      const data = res.json<{ id: string }>();
       return { googleEventId: data.id };
     },
 
     /** Full replace (PUT): only for events NotReclaim wholly owns, e.g. scheduled blocks. */
     updateEvent(accessToken, calendarId, googleEventId, event: GoogleEventWrite) {
-      return writeEvent('PUT', accessToken, calendarId, googleEventId, event);
+      return writeEvent(timeoutMs, 'PUT', accessToken, calendarId, googleEventId, event);
     },
 
     /**
@@ -204,12 +239,12 @@ export function createGoogleClient(config: GoogleClientConfig): GoogleClient {
      * attendees, reminders — intact. Use this for events the user can also edit in Google.
      */
     patchEvent(accessToken, calendarId, googleEventId, event: GoogleEventWrite) {
-      return writeEvent('PATCH', accessToken, calendarId, googleEventId, event);
+      return writeEvent(timeoutMs, 'PATCH', accessToken, calendarId, googleEventId, event);
     },
 
     async deleteEvent(accessToken, calendarId, googleEventId) {
       // Already gone (404/410) counts as deleted.
-      await calendarFetch(accessToken, eventPath(calendarId, googleEventId), { method: 'DELETE' }, [404, 410]);
+      await call(accessToken, eventPath(calendarId, googleEventId), { method: 'DELETE' }, [404, 410]);
     },
   };
 }

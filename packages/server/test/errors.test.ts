@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { ZodError, z } from 'zod';
 import { NotFoundError, ConflictError } from '@notreclaim/db';
 import { SettingsRequiredError } from '@notreclaim/core';
-import { GoogleNotConnectedError, GoogleApiError, GoogleAuthError, GoogleGrantRevokedError } from '@notreclaim/google';
+import { GoogleNotConnectedError, GoogleApiError, GoogleAuthError, GoogleGrantRevokedError, GoogleTimeoutError } from '@notreclaim/google';
 import { mapDomainError } from '../src/errors.js';
 
 describe('mapDomainError', () => {
@@ -41,6 +41,10 @@ describe('mapDomainError', () => {
   it('prints a body-level (path-less) issue as the bare message', () => {
     const result = z.object({}).refine(() => false, { message: 'empty update' }).safeParse({});
     expect(mapDomainError((result as { error: ZodError }).error).message).toBe('empty update');
+  });
+
+  it('maps a Google request timeout like any failed Google call (502), not a broken connection', () => {
+    expect(mapDomainError(new GoogleTimeoutError(15_000))).toMatchObject({ status: 502, code: 'google_api_error' });
   });
 
   it('replaces Google\'s raw auth message with an actionable one', () => {

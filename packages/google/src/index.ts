@@ -2,6 +2,7 @@ export {
   GoogleNotConnectedError,
   SyncTokenExpiredError,
   GoogleApiError,
+  GoogleTimeoutError,
   GoogleAuthError,
   GoogleGrantRevokedError,
 } from './errors.js';
