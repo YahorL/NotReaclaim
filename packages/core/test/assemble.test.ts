@@ -12,6 +12,25 @@ describe('assembleScheduleInput', () => {
       .rejects.toThrow(SettingsRequiredError);
   });
 
+  // A zone stored before PUT /settings validated it would otherwise throw on every schedule read.
+  it('plans a stored invalid time zone exactly as UTC instead of throwing, and flags it', async () => {
+    const now = utc('2026-01-05T08:00:00'); // Monday
+    const evening = makeCategory({ id: 'cat-eve', name: 'Personal', isDefault: false, windows: [{ weekday: 1, startMinute: 1080, endMinute: 1320 }] as never });
+    const repos = (timezone: string) => fakeRepos({
+      settings: makeSettings({ timezone }),
+      categories: [makeCategory(), evening],
+      tasks: [makeTask({ id: 't1', categoryId: 'cat-eve' }), makeTask({ id: 't2' })],
+      habits: [makeHabit({ id: 'h1', eligibleDays: [1, 2, 3], preferredStartMinute: 540, preferredEndMinute: 600 })],
+    });
+    const asUtc = await assembleScheduleInput(repos('UTC'), 'u1', now);
+    expect(asUtc.timezoneFallbackFrom).toBeNull();
+    for (const bad of ['Not/AZone', 'local', '+03:00', '']) {
+      const input = await assembleScheduleInput(repos(bad), 'u1', now);
+      expect(input.timezoneFallbackFrom, bad).toBe(bad);
+      expect({ ...input, timezoneFallbackFrom: null }, bad).toEqual(asUtc);
+    }
+  });
+
   it('includes only active habits and pending/scheduled tasks', async () => {
     const now = utc('2026-01-05T00:00:00'); // Monday
     const input = await assembleScheduleInput(

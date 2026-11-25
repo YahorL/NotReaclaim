@@ -17,7 +17,7 @@ import type {
   TaskStatus,
 } from '@notreclaim/db';
 import { toFixedEvent, toFlexibleTask, toScheduledBlock } from '@notreclaim/db/mappers';
-import { expandWorkingWindows, horizonEndMs, type WorkingHourEntry } from './time-windows.js';
+import { expandWorkingWindows, horizonEndMs, isValidTimezone, type WorkingHourEntry } from './time-windows.js';
 import { expandHabit } from './habit-expansion.js';
 import { SettingsRequiredError } from './errors.js';
 import { computeSpentMs } from './spent.js';
@@ -42,7 +42,15 @@ const SCHEDULABLE_TASK_STATUSES: TaskStatus[] = ['pending', 'scheduled'];
  * core carries the distinction so `computeDesiredSchedule` can keep them out of the
  * unscheduled warning. `schedule()` ignores the extra field.
  */
-export type AssembledScheduleInput = ScheduleInput & { undatedTaskIds: string[] };
+export type AssembledScheduleInput = ScheduleInput & {
+  undatedTaskIds: string[];
+  /**
+   * The stored `settings.timezone` when it is not a valid IANA zone (only possible for rows
+   * saved before PUT /settings validated it), in which case everything was planned in UTC;
+   * null when the stored zone was used. Core does not log: a caller with a logger can.
+   */
+  timezoneFallbackFrom: string | null;
+};
 
 /** Assemble a complete engine ScheduleInput from persisted user data. */
 export async function assembleScheduleInput(
@@ -53,13 +61,18 @@ export async function assembleScheduleInput(
   const settings = await repos.settings.getByUserId(userId);
   if (!settings) throw new SettingsRequiredError(userId);
 
+  // An invalid stored zone would make every schedule read throw; plan in UTC until the user
+  // picks a valid zone (settings writes are validated, so this only affects legacy rows).
+  const zoneValid = isValidTimezone(settings.timezone);
+  const timezone = zoneValid ? settings.timezone : 'UTC';
+
   const horizonDays = settings.horizonDays;
   const horizonStart = new Date(now);
   const horizonEnd = new Date(horizonEndMs(now, horizonDays));
 
   const workingWindows = expandWorkingWindows(
     settings.workingHours as unknown as WorkingHourEntry[],
-    settings.timezone,
+    timezone,
     now,
     horizonDays,
   );
@@ -70,7 +83,7 @@ export async function assembleScheduleInput(
     const expanded =
       c.windows === null
         ? workingWindows
-        : expandWorkingWindows(c.windows as unknown as WorkingHourEntry[], settings.timezone, now, horizonDays);
+        : expandWorkingWindows(c.windows as unknown as WorkingHourEntry[], timezone, now, horizonDays);
     expandedByCategoryId.set(c.id, expanded);
   }
   const defaultCategoryId = categories.find((c) => c.isDefault)?.id ?? null;
@@ -159,7 +172,7 @@ export async function assembleScheduleInput(
       .filter((b) => b.habitId === h.id && !b.pinned && b.startedAt == null && b.startsAt.getTime() >= now)
       .map((b) => ({ start: b.startsAt.getTime(), end: b.endsAt.getTime() }))
       .sort((a, b) => a.start - b.start);
-    const engineHabit = expandHabit(h, settings.timezone, now, horizonDays, existingSlots);
+    const engineHabit = expandHabit(h, timezone, now, horizonDays, existingSlots);
 
     // An occurrence whose start has passed is history — missed or done, the app has no
     // habit-completion concept — so its day is retired instead of being re-planned at
@@ -225,5 +238,6 @@ export async function assembleScheduleInput(
     habits,
     blockBufferMs: settings.taskBufferMs ?? 0,
     undatedTaskIds,
+    timezoneFallbackFrom: zoneValid ? null : settings.timezone,
   };
 }
