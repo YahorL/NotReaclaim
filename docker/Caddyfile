@@ -10,6 +10,7 @@
 	# API-only paths (no client/SPA route collides with these) → always proxied.
 	# /auth/google/callback is here on purpose: Google redirects the BROWSER to it,
 	# so it must reach the server (it must NOT be subject to content negotiation).
+	# Keep in sync with packages/server/src/app.ts route registration and packages/web/vite.config.ts (dev proxy).
 	@api path /auth/google* /auth/login /auth/register /auth/set-password /auth/email /subtasks* /schedule* /calendar* /categories* /ws*
 	handle @api {
 		reverse_proxy server:3000
