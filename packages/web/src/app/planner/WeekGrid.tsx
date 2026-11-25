@@ -462,7 +462,7 @@ export function WeekGrid(props: WeekGridProps) {
             <div data-testid="hour-gutter">
               {HOURS.map((h) => (
                 <div key={h} className="relative h-[60px]">
-                  <span className={`absolute -top-[8px] whitespace-nowrap text-fg-3 ${compact ? 'right-[6px] text-[10px]' : 'right-[10px] text-[12px]'}`}>{hourRowLabel(h, dayStartMinute)}</span>
+                  <span className={`absolute -top-[8px] whitespace-nowrap ${compact ? 'right-[6px] text-[10px] text-fg-2' : 'right-[10px] text-[12px] text-fg-3'}`}>{hourRowLabel(h, dayStartMinute)}</span>
                 </div>
               ))}
             </div>
