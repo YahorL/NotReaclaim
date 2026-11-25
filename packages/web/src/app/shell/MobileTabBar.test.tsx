@@ -24,8 +24,12 @@ describe('MobileTabBar', () => {
 
   it('marks only the tab for the current route as active', () => {
     renderWithProviders(<MobileTabBar />, { initialEntries: ['/priorities'] });
-    expect(screen.getByRole('link', { name: 'Priorities' }).className).toContain('text-indigo');
+    const active = screen.getByRole('link', { name: 'Priorities' });
+    expect(active).toHaveAttribute('aria-current', 'page');
+    expect(active.querySelector('[data-active]')).not.toBeNull();
     // `end` on the Planner tab keeps "/" from matching every route.
-    expect(screen.getByRole('link', { name: 'Planner' }).className).not.toContain('text-indigo');
+    const planner = screen.getByRole('link', { name: 'Planner' });
+    expect(planner).not.toHaveAttribute('aria-current');
+    expect(planner.querySelector('[data-active]')).toBeNull();
   });
 });

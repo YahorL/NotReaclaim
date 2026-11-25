@@ -9,56 +9,42 @@ interface MobileTopBarProps {
   now?: () => number;
 }
 
+const PILL = 'glass-card min-w-0 truncate rounded-pill px-3 py-1.5 text-[13px] text-fg-2';
+const ACTION = 'inline-flex shrink-0 items-center gap-1 rounded-pill px-3 py-1.5 text-[13px] font-semibold coarse:py-2.5';
+
 /**
- * ~56px chrome for phones: page title, a truncated one-line Now/Next pill with its
+ * ~56px glass chrome for phones: page title, a truncated one-line Now/Next pill with its
  * Start/Stop button, and a `+` that opens NewTaskModal. Search and the avatar menu are
- * dropped here — sign-out lives in a Settings row on mobile. Hidden at md+, where the
- * full TopBar takes over.
+ * dropped here — sign-out lives in a Settings row on mobile, and the search palette is reachable
+ * from a hardware keyboard (`/`, Ctrl/Cmd+K). Hidden at md+, where the full TopBar takes over.
  */
 export function MobileTopBar({ onNewTask, now = Date.now }: MobileTopBarProps): ReactElement {
   const { pathname } = useLocation();
   const { running, nextBlock, nextLabel, start, stop, openPlanner } = useNowNextControls(now);
 
   return (
-    <header data-testid="mobile-top-bar" className="flex h-14 shrink-0 items-center gap-2 bg-bg px-3 md:hidden">
-      <h1 className="shrink-0 text-[19px] font-extrabold tracking-[-.5px] text-ink">{routeTitle(pathname)}</h1>
+    <header
+      data-testid="mobile-top-bar"
+      className="glass flex h-14 shrink-0 items-center gap-2 rounded-none border-x-0 border-t-0 px-3 md:hidden"
+    >
+      <h1 className="shrink-0 text-[19px] font-semibold tracking-[-.3px] text-fg">{routeTitle(pathname)}</h1>
 
       {running ? (
         <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5">
-          <button
-            type="button"
-            data-testid="mobile-current-task"
-            onClick={openPlanner}
-            className="min-w-0 truncate rounded-[9px] bg-card px-2.5 py-1.5 text-[13px] font-semibold text-ink/70"
-          >
-            Now: {running.title}
+          <button type="button" data-testid="mobile-current-task" onClick={openPlanner} className={PILL}>
+            <span className="font-medium text-fg">Now</span> · {running.title}
           </button>
-          <button
-            type="button"
-            data-testid="mobile-stop-task"
-            onClick={stop}
-            className="shrink-0 rounded-[9px] bg-crit px-3 py-1.5 text-[13px] font-bold text-white coarse:py-2.5"
-          >
-            Stop
+          <button type="button" data-testid="mobile-stop-task" onClick={stop} className={`btn-glass ${ACTION} text-danger`}>
+            <Icons.stop size={13} /> Stop
           </button>
         </div>
       ) : nextBlock ? (
         <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5">
-          <button
-            type="button"
-            data-testid="mobile-next-task"
-            onClick={openPlanner}
-            className="min-w-0 truncate rounded-[9px] bg-card px-2.5 py-1.5 text-[13px] font-semibold text-ink/70"
-          >
+          <button type="button" data-testid="mobile-next-task" onClick={openPlanner} className={PILL}>
             {nextLabel}
           </button>
-          <button
-            type="button"
-            data-testid="mobile-next-task-start"
-            onClick={start}
-            className="shrink-0 rounded-[9px] bg-indigo px-3 py-1.5 text-[13px] font-bold text-white coarse:py-2.5"
-          >
-            Start
+          <button type="button" data-testid="mobile-next-task-start" onClick={start} className={`btn-accent ${ACTION}`}>
+            <Icons.play size={13} /> Start
           </button>
         </div>
       ) : (
@@ -70,9 +56,9 @@ export function MobileTopBar({ onNewTask, now = Date.now }: MobileTopBarProps): 
         data-testid="mobile-new-task"
         aria-label="New task"
         onClick={onNewTask}
-        className="shrink-0 rounded-[9px] p-2 text-ink coarse:p-3"
+        className="btn-primary shrink-0 rounded-full p-2 coarse:p-3"
       >
-        <Icons.plus size={22} />
+        <Icons.plus size={20} />
       </button>
     </header>
   );

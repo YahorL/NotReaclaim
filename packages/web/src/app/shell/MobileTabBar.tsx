@@ -14,17 +14,18 @@ interface Tab {
 const TABS: Tab[] = [
   { to: '/', label: 'Planner', icon: 'planner', end: true },
   { to: '/priorities', label: 'Priorities', icon: 'priorities' },
-  { to: '/habits', label: 'Habits', icon: 'timeblock' },
+  { to: '/habits', label: 'Habits', icon: 'habits' },
   { to: '/stats', label: 'Stats', icon: 'stats' },
   { to: '/settings', label: 'Settings', icon: 'settings' },
 ];
 
+/** Glass bottom tab bar (below md). The active tab gets the lime accent pill behind its icon. */
 export function MobileTabBar(): ReactElement {
   return (
     <nav
       data-testid="mobile-tab-bar"
       aria-label="Primary"
-      className="fixed inset-x-0 bottom-0 z-40 flex border-t border-line bg-card pb-[env(safe-area-inset-bottom)] md:hidden"
+      className="glass fixed inset-x-0 bottom-0 z-40 flex rounded-none border-x-0 border-b-0 pb-[env(safe-area-inset-bottom)] md:hidden"
     >
       {TABS.map((tab) => {
         const Icon = Icons[tab.icon];
@@ -34,14 +35,24 @@ export function MobileTabBar(): ReactElement {
             to={tab.to}
             end={tab.end ?? false}
             className={({ isActive }) =>
-              [
-                'flex h-14 flex-1 flex-col items-center justify-center gap-1',
-                isActive ? 'font-bold text-indigo' : 'font-semibold text-inkSoft',
-              ].join(' ')
+              isActive
+                ? 'flex h-14 flex-1 flex-col items-center justify-center gap-1 font-semibold text-fg'
+                : 'flex h-14 flex-1 flex-col items-center justify-center gap-1 font-medium text-fg-2'
             }
           >
-            <Icon size={21} />
-            <span className="text-[10px] leading-none">{tab.label}</span>
+            {({ isActive }) => (
+              <>
+                <span
+                  data-active={isActive || undefined}
+                  className={isActive
+                    ? 'flex h-7 w-12 items-center justify-center rounded-pill bg-accent text-on-accent shadow-accent'
+                    : 'flex h-7 w-12 items-center justify-center rounded-pill'}
+                >
+                  <Icon size={19} />
+                </span>
+                <span className="text-[10px] leading-none">{tab.label}</span>
+              </>
+            )}
           </NavLink>
         );
       })}
