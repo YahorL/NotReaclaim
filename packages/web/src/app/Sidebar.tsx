@@ -14,7 +14,7 @@ export function Sidebar() {
     <nav
       data-testid="sidebar"
       aria-label="Main"
-      className="glass relative z-30 hidden w-[76px] shrink-0 flex-col items-center gap-2.5 self-stretch rounded-panel py-3.5 md:flex"
+      className="glass relative z-30 hidden w-[76px] shrink-0 flex-col items-center gap-2.5 self-stretch rounded-panel py-3.5 md:flex [@media(max-height:760px)]:gap-1.5 [@media(max-height:760px)]:py-2.5"
     >
       <Logo />
       <div role="group" aria-label="Plan" className={RAIL_GROUP}>
@@ -22,13 +22,13 @@ export function Sidebar() {
         <NavLinkItem to="/priorities" label="Priorities" icon={<Icons.priorities size={20} />} />
         <NavLinkItem to="/stats" label="Stats" icon={<Icons.stats size={20} />} />
       </div>
-      <span aria-hidden="true" className="mt-1.5 text-[10px] uppercase tracking-[0.12em] text-fg-3">Time</span>
+      <span aria-hidden="true" className="mt-1.5 [@media(max-height:760px)]:mt-0 text-[10px] uppercase tracking-[0.12em] text-fg-3">Time</span>
       <div role="group" aria-label="Time management" className={RAIL_GROUP}>
         <NavLinkItem to="/habits" label="Habits" icon={<Icons.habits size={20} />} />
         <NavLinkItem to="/buffers" label="Buffers" icon={<Icons.buffers size={20} />} />
         <NavLinkItem to="/hours" label="Hours" icon={<Icons.hours size={20} />} />
       </div>
-      <span aria-hidden="true" className="min-h-6 flex-1" />
+      <span aria-hidden="true" className="min-h-6 flex-1 [@media(max-height:760px)]:min-h-0" />
       <ThemeSwitch />
       <div className={RAIL_GROUP}>
         <NavLinkItem to="/settings" label="Settings" icon={<Icons.settings size={20} />} />

@@ -272,6 +272,7 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
   - The `data-testid="sidebar"` element is the `<nav aria-label="Main">` itself (`hidden md:flex` kept). It has `rounded-panel` (22px, matching the screenshots; `--radius-rail` 38px is unused) and `relative z-30`.
   - It has no overflow clipping, so the `::after` tooltips (`data-label`) can overhang the content column.
   - Wells and the theme knob have no token. They use a literal `[[data-theme=light]_&]:` variant (`RAIL_GROUP` in `NavItem.tsx`). There are no new tokens: `index.css`/the config stay frozen.
+  - On short viewports (`[@media(max-height:760px)]:` variants) the items, logo, gaps and spacer compact, so Settings stays on screen down to ~620px tall (measured live at 650px). The old 280px sidebar scrolled. The rail can't, because overflow would clip the tooltips. Below ~620px the bottom items clip; P8 should decide whether that matters.
   - `NavLinkItem` sets `data-active` via `useMatch`. `NavSection` and the collapsible group are deleted.
   - The legacy `sidebar*` colours and `.dark-scroll` now have no users; P8 removes them.
 - **ThemeSwitch.** `aria-pressed` follows the **resolved** theme, so exactly one button is pressed under "system". Clicking a button stores an explicit pref.

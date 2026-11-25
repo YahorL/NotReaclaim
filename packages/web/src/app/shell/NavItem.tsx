@@ -13,7 +13,9 @@ export const RAIL_TOOLTIP =
 export const RAIL_GROUP =
   'flex flex-col items-center gap-1 rounded-pill border border-fg/[.06] bg-black/[.22] p-[5px] shadow-[inset_0_1px_3px_rgba(0,0,0,0.35)] [[data-theme=light]_&]:bg-black/[.05] [[data-theme=light]_&]:shadow-[inset_0_1px_2px_rgba(0,0,0,0.08)]';
 
-const ITEM = 'relative flex h-[46px] w-[46px] items-center justify-center rounded-full transition-[background-color,color,box-shadow] duration-200';
+// Short viewports (≤760px tall) compact the rail so Settings stays on screen: the rail cannot
+// scroll, because overflow would clip the tooltips.
+const ITEM = 'relative flex h-[46px] w-[46px] [@media(max-height:760px)]:h-10 [@media(max-height:760px)]:w-10 items-center justify-center rounded-full transition-[background-color,color,box-shadow] duration-200';
 const ITEM_IDLE = `${ITEM} text-fg/[.62] hover:bg-fg/[.09] hover:text-fg ${RAIL_TOOLTIP}`;
 const ITEM_ACTIVE = `${ITEM} bg-accent text-on-accent shadow-accent ${RAIL_TOOLTIP}`;
 

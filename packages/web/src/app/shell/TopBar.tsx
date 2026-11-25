@@ -60,7 +60,7 @@ export function TopBar({ onNewTask, onSearch, now = Date.now, sidebarHidden, onT
               onClick={openPlanner}
               className={PILL_LABEL}
             >
-              <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-accent" />
+              <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-accent-fg" />
               <span className="font-medium text-fg">Now</span>
               <span aria-hidden="true">·</span>
               <span className="max-w-[24ch] truncate text-fg">{running.title}</span>
