@@ -81,6 +81,50 @@ describe('detectDrift', () => {
     expect(store.all()[0]!.pinned).toBe(false);
   });
 
+  it('skips a repeated event id whose LAST copy is all-day, even if an earlier copy is timed', async () => {
+    // The listing can carry the same id twice; the last copy wins (as for cancellation).
+    // An all-day last copy has no timed span to compare, so the earlier timed copy must
+    // not be used to move and pin the block.
+    const store = fakeScheduledBlockStore([
+      makeScheduledBlock({ id: 'b1', googleEventId: 'g1', engineKey: 'task:t:0',
+        startsAt: new Date('2026-01-05T10:00:00.000Z'), endsAt: new Date('2026-01-05T11:00:00.000Z') }),
+    ]);
+    const client = new FakeGoogleClient();
+    client.listQueue = [{ events: [
+      gEvent('g1', '2026-01-05T12:00:00.000Z', '2026-01-05T13:00:00.000Z'),
+      { id: 'g1', status: 'confirmed', summary: 'all day', start: { date: '2026-01-05' }, end: { date: '2026-01-06' } },
+    ] }];
+
+    const result = await detectDrift({ client, scheduledBlocks: store }, 'u1', 'cal-auto', 'access', NOW, HORIZON_END);
+
+    expect(result).toMatchObject({ pinned: 0, removed: 0 });
+    const b = store.all()[0]!;
+    expect(b.pinned).toBe(false);
+    expect(b.startsAt.toISOString()).toBe('2026-01-05T10:00:00.000Z');
+    expect(b.engineKey).toBe('task:t:0');
+  });
+
+  it('pins from a repeated event id whose LAST copy is timed, even if an earlier copy is all-day', async () => {
+    const store = fakeScheduledBlockStore([
+      makeScheduledBlock({ id: 'b1', googleEventId: 'g1', engineKey: 'task:t:0',
+        startsAt: new Date('2026-01-05T10:00:00.000Z'), endsAt: new Date('2026-01-05T11:00:00.000Z') }),
+    ]);
+    const client = new FakeGoogleClient();
+    client.listQueue = [{ events: [
+      { id: 'g1', status: 'confirmed', summary: 'all day', start: { date: '2026-01-05' }, end: { date: '2026-01-06' } },
+      gEvent('g1', '2026-01-05T12:00:00.000Z', '2026-01-05T13:00:00.000Z'),
+    ] }];
+
+    const result = await detectDrift({ client, scheduledBlocks: store }, 'u1', 'cal-auto', 'access', NOW, HORIZON_END);
+
+    expect(result).toMatchObject({ pinned: 1, removed: 0 });
+    const b = store.all()[0]!;
+    expect(b.pinned).toBe(true);
+    expect(b.startsAt.toISOString()).toBe('2026-01-05T12:00:00.000Z');
+    expect(b.endsAt.toISOString()).toBe('2026-01-05T13:00:00.000Z');
+    expect(b.engineKey).toBeNull();
+  });
+
   it('reports what Google currently holds so the caller can push app-side changes', async () => {
     const store = fakeScheduledBlockStore([]);
     const client = new FakeGoogleClient();

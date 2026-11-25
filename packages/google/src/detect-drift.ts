@@ -82,6 +82,9 @@ export async function detectDrift(
       removed += 1;
       continue;
     }
+    // Judge the LAST listed copy (as above): an all-day last copy must not fall back to an
+    // earlier timed copy of the same id that `observed` may still hold.
+    if (!event.start?.dateTime || !event.end?.dateTime) continue;
     const state = observed.get(block.googleEventId);
     if (!state) continue; // all-day: no timed span to compare
 
