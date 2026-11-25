@@ -97,7 +97,7 @@
 
   --x-card-bg: rgba(255, 255, 255, 0.03);
   --x-card-border: rgba(255, 255, 255, 0.06);
-  --x-card-shadow: none;
+  --x-card-shadow: 0 0 #0000; /* not `none`: it sits inside Tailwind's comma-separated box-shadow list */
   --x-card-hover: linear-gradient(160deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.03) 55%);
 
   --x-btn-bg: rgba(255, 255, 255, 0.06);
