@@ -288,7 +288,7 @@ describe('useWebSocket: catching up after the connection comes back', () => {
     }
   });
 
-  it('StrictMode\'s mount → cleanup → remount is not a reconnect (nor is a late open on the discarded socket)', () => {
+  it('StrictMode\'s mount → cleanup → remount is not a reconnect, even if the never-opened discarded socket opens late', () => {
     const qc = new QueryClient();
     const spy = vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
     const { sockets, makeSocket } = socketFactory();
@@ -307,6 +307,26 @@ describe('useWebSocket: catching up after the connection comes back', () => {
     vi.advanceTimersByTime(2000);
     sockets[2]!.emit('open', {});
     expect(invalidatedRoots(spy)).toEqual(ALL_ROOTS);
+  });
+
+  it('a late open on a reconnect socket discarded by unmount or sign-out refreshes nothing and starts no timer', () => {
+    for (const end of ['unmount', 'sign-out'] as const) {
+      const qc = new QueryClient();
+      const spy = vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+      const { sockets, makeSocket } = socketFactory();
+      const { rerender, unmount } = renderHook(({ token }) => useWebSocket({ token, makeSocket }), {
+        wrapper: wrapper(qc), initialProps: { token: 'jwt' as string | null },
+      });
+      sockets[0]!.emit('open', {}); // this run has opened once, so its next open is a "reopen"
+      sockets[0]!.emit('close', {});
+      vi.advanceTimersByTime(2000); // reconnecting: sockets[1] is connecting
+      if (end === 'unmount') unmount(); else rerender({ token: null });
+      expect(sockets[1]!.closed).toBe(true);
+      sockets[1]!.emit('open', {}); // the discarded socket opens anyway
+      expect(spy).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+      if (end === 'sign-out') unmount();
+    }
   });
 
   it('the first open with a new token (sign-out, sign-in) is a first open', () => {
