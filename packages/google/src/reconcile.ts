@@ -5,6 +5,7 @@ import {
   horizonEndMs,
   SettingsRequiredError,
   type BlocksRepo,
+  type Exclusive,
   type ReplanCounts,
   type ScheduleMirror,
   type SchedulingRepositories,
@@ -21,6 +22,12 @@ export interface ReconcileDeps {
   users: Pick<UserRepository, 'findById' | 'update'>;
   scheduledBlocks: BlocksRepo;
   schedulingRepos: SchedulingRepositories;
+  /**
+   * Runs the compute + apply phase as one critical section (the server passes its per-user
+   * lock, shared with the block routes). Token refresh, the calendar check and drift
+   * detection stay outside it. Default: no lock.
+   */
+  exclusive?: Exclusive;
 }
 
 /** Same counts as a local replan; `pinned`/`removed` here are detectDrift's pulls from Google. */
@@ -48,8 +55,6 @@ export async function reconcile(deps: ReconcileDeps, userId: string, now: number
     horizonEnd,
   );
 
-  const desired = await computeDesiredSchedule(deps.schedulingRepos, userId, now);
-
   const insert: ScheduleMirror['create'] = async (block) => {
     const { googleEventId } = await deps.client.insertEvent(accessToken, calendarId, toGoogleEventWrite(block));
     return { googleEventId, googleCalendarId: calendarId };
@@ -68,11 +73,16 @@ export async function reconcile(deps: ReconcileDeps, userId: string, now: number
     },
   };
 
-  // `observed` is Google's pre-apply state: it lets the pinned pass push exactly the blocks
-  // the app moved, once, instead of re-writing every pinned event on every poll cycle.
-  const { created, updated, deleted, pinnedSynced, pinnedFailed, attached, attachFailed } = await applyDesiredSchedule(
-    deps.scheduledBlocks, userId, desired, { now, horizonEnd, mirror, mirrorSnapshot: observed },
-  );
+  // Compute reads the blocks and apply writes from that read (with a Google call before most
+  // writes), so both run inside `exclusive`: a block route's write can then never land
+  // between them and be overwritten, swept, or pushed stale to Google.
+  const exclusive = deps.exclusive ?? ((fn) => fn());
+  const { created, updated, deleted, pinnedSynced, pinnedFailed, attached, attachFailed } = await exclusive(async () => {
+    const desired = await computeDesiredSchedule(deps.schedulingRepos, userId, now);
+    // `observed` is Google's pre-apply state: it lets the pinned pass push exactly the blocks
+    // the app moved, once, instead of re-writing every pinned event on every poll cycle.
+    return applyDesiredSchedule(deps.scheduledBlocks, userId, desired, { now, horizonEnd, mirror, mirrorSnapshot: observed });
+  });
 
   return { created, updated, deleted, pinned, removed, pinnedSynced, pinnedFailed, attached, attachFailed };
 }

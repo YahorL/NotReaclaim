@@ -101,7 +101,14 @@ export class FakeGoogleClient implements GoogleClient {
     return { googleEventId: `g-evt-${this.insertCount}` };
   }
 
+  /**
+   * Opt-in hook, awaited at the top of every updateEvent before it is recorded: lets a test act
+   * while a PUT is "in flight" (e.g. commit a route write in the middle of an apply).
+   */
+  onUpdateEvent: ((googleEventId: string) => void | Promise<void>) | null = null;
+
   async updateEvent(_accessToken: string, calendarId: string, googleEventId: string, event: GoogleEventWrite): Promise<void> {
+    await this.onUpdateEvent?.(googleEventId);
     this.updatedEvents.push({ calendarId, googleEventId, event });
   }
 
@@ -241,13 +248,22 @@ export function makeScheduledBlock(over: Partial<ScheduledBlock> = {}): Schedule
   };
 }
 
+/** Opt-in realism for concurrency tests; the defaults keep the historical live-reference behaviour. */
+export interface FakeBlockStoreOptions {
+  /** Reads hand out COPIES (a snapshot, like rows off the wire), so a later write cannot change what a reader holds. */
+  snapshotReads?: boolean;
+  /** Every update stamps `updatedAt = new Date(clock())` when it RUNS, like Prisma's @updatedAt. */
+  clock?: () => number;
+}
+
 /** Stateful in-memory ScheduledBlock repository (reflects mutations). */
-export function fakeScheduledBlockStore(seed: ScheduledBlock[] = []) {
+export function fakeScheduledBlockStore(seed: ScheduledBlock[] = [], opts: FakeBlockStoreOptions = {}) {
   let blocks = [...seed];
   let counter = seed.length;
+  const read = (): ScheduledBlock[] => (opts.snapshotReads ? blocks.map((b) => ({ ...b })) : [...blocks]);
   return {
     async listByUserInRange(): Promise<ScheduledBlock[]> {
-      return [...blocks];
+      return read();
     },
     async create(userId: string, data: CreateScheduledBlockInput): Promise<ScheduledBlock> {
       counter += 1;
@@ -270,14 +286,14 @@ export function fakeScheduledBlockStore(seed: ScheduledBlock[] = []) {
     async update(_userId: string, id: string, data: UpdateScheduledBlockInput): Promise<ScheduledBlock> {
       const block = blocks.find((b) => b.id === id);
       if (!block) throw new Error(`block ${id} not found`);
-      Object.assign(block, data);
-      return block;
+      Object.assign(block, data, opts.clock ? { updatedAt: new Date(opts.clock()) } : {});
+      return opts.snapshotReads ? { ...block } : block;
     },
     async delete(_userId: string, id: string): Promise<void> {
       blocks = blocks.filter((b) => b.id !== id);
     },
     all(): ScheduledBlock[] {
-      return [...blocks];
+      return read();
     },
   };
 }
