@@ -112,6 +112,18 @@ describe('Habits page summary', () => {
     expect(strip).toHaveTextContent('1paused');
   });
 
+  it('keeps the three stats on one row at phone width (smaller numbers, tighter gaps below sm)', async () => {
+    // Found live at 390px: 44px numbers with 24px gaps wrapped "paused" onto a second row and
+    // left the second divider dangling at the end of the first.
+    renderWithProviders(<Habits />, { api: makeApi({ listHabits: vi.fn(async () => [habit({})]) }) });
+    const strip = await screen.findByTestId('habit-summary');
+    expect(strip.className).toContain('gap-4');
+    expect(strip.className).toContain('sm:gap-6');
+    const value = within(strip).getByText('1');
+    expect(value.className).toContain('text-[34px]');
+    expect(value.className).toContain('sm:text-[44px]');
+  });
+
   it('names the quick-add input', async () => {
     renderWithProviders(<Habits />, { api: makeApi() });
     expect(await screen.findByRole('textbox', { name: 'New habit name' })).toBeInTheDocument();

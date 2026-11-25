@@ -35,7 +35,7 @@ export function Habits() {
     <div className="px-4 pb-6 pt-4 md:px-1 md:pt-0">
       <div className="mx-auto flex w-full max-w-[900px] flex-col gap-4">
         {loaded && (
-          <section data-testid="habit-summary" aria-label="Habit summary" className="glass flex animate-rise flex-wrap items-center gap-6 rounded-panel px-6 py-[22px]">
+          <section data-testid="habit-summary" aria-label="Habit summary" className="glass flex animate-rise flex-wrap items-center gap-4 rounded-panel px-5 py-[22px] sm:gap-6 sm:px-6">
             <Stat value={String(summary.active)} label={summary.active === 1 ? 'active habit' : 'active habits'} />
             <span aria-hidden="true" className="h-12 w-px bg-fg/10" />
             <Stat value={summary.weeklyLabel} label="booked per week" />
@@ -85,7 +85,7 @@ export function Habits() {
 function Stat({ value, label }: { value: string; label: string }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="text-[44px] font-light leading-none tracking-[-0.03em] tabular-nums">{value}</span>
+      <span className="text-[34px] font-light leading-none tracking-[-0.03em] tabular-nums sm:text-[44px]">{value}</span>
       <span className="text-[13px] text-fg-2">{label}</span>
     </div>
   );
