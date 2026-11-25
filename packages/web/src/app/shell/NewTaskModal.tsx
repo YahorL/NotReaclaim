@@ -55,6 +55,7 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
     }
   }, [categories, form.categoryId]);
 
+  const [titleTouched, setTitleTouched] = useState(false);
   const { ok, errors } = validateNewTaskForm(form, zone);
   const error = createM.error instanceof ApiError ? createM.error : null;
 
@@ -72,11 +73,16 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
           <button type="button" aria-label="Close" onClick={onClose} className="p-1 text-inkSoft"><Icons.close size={22} /></button>
         </div>
 
-        <div className="mb-[18px] mt-0.5 flex items-center gap-3">
-          <div className="flex flex-1 items-center gap-2.5 rounded-[11px] border-2 border-indigo px-3.5 py-3 ring-[3px] ring-indigoSoft">
-            <Icons.emoji size={22} className="text-indigo" />
-            <input autoFocus value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="Task name…" className="flex-1 text-[18px] font-semibold text-ink outline-none" />
+        <div className="mb-[18px] mt-0.5">
+          <div className="flex items-center gap-3">
+            <div className="flex flex-1 items-center gap-2.5 rounded-[11px] border-2 border-indigo px-3.5 py-3 ring-[3px] ring-indigoSoft">
+              <Icons.emoji size={22} className="text-indigo" />
+              <input autoFocus value={form.title} onChange={(e) => { setTitleTouched(true); set('title', e.target.value); }} placeholder="Task name…" className="flex-1 text-[18px] font-semibold text-ink outline-none" />
+            </div>
           </div>
+          {/* Gated on a first edit: the modal OPENS with an empty title, and a red line before the
+              user has typed anything would scold them for not having started yet. */}
+          {titleTouched && errors.title && <p data-testid="err-title" className={FIELD_ERROR}>{errors.title}</p>}
         </div>
 
         <div className="mb-3.5 flex flex-wrap items-center gap-3 gap-y-3 md:flex-nowrap">
@@ -98,7 +104,10 @@ export function NewTaskModal({ onClose, now = () => Date.now() }: { onClose: () 
             pair stacks on a phone and keeps its desktop row from md up. */}
         <div className="mb-3.5 flex flex-col gap-2 md:flex-row md:gap-4">
           <FieldBox label="Min duration"><DurationStepper label="min" disabled={!form.split} valueMs={form.minChunkMs} onChange={(ms) => set('minChunkMs', ms)} /></FieldBox>
-          <FieldBox label="Max duration"><DurationStepper label="max" disabled={!form.split} valueMs={form.maxChunkMs} onChange={(ms) => set('maxChunkMs', ms)} /></FieldBox>
+          <FieldBox label="Max duration">
+            <DurationStepper label="max" disabled={!form.split} valueMs={form.maxChunkMs} onChange={(ms) => set('maxChunkMs', ms)} />
+            {errors.maxChunkMs && <p data-testid="err-maxChunkMs" className={FIELD_ERROR}>{errors.maxChunkMs}</p>}
+          </FieldBox>
         </div>
 
         <div className="mb-2 rounded-[11px] border-[1.5px] border-line px-3.5 py-2.5">

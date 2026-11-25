@@ -43,6 +43,39 @@ describe('NewTaskModal', () => {
     expect(screen.getByRole('button', { name: /^create$/i })).toBeDisabled();
   });
 
+  it('says why Create is disabled when min chunk > max chunk (the drawer wording)', () => {
+    renderWithProviders(<NewTaskModal now={() => NOW} onClose={vi.fn()} />, { api: fakeApiClient(api() as never) });
+    fireEvent.change(screen.getByPlaceholderText(/task name/i), { target: { value: 'Write spec' } });
+    expect(screen.queryByTestId('err-maxChunkMs')).toBeNull();
+    // Fallback seed is 30 / 120 min: step min up to 135 min, past max.
+    for (let i = 0; i < 7; i++) fireEvent.click(screen.getByRole('button', { name: 'increase min' }));
+    expect(screen.getByRole('button', { name: /^create$/i })).toBeDisabled();
+    const err = screen.getByTestId('err-maxChunkMs');
+    expect(err).toHaveTextContent('Max chunk must be ≥ min chunk');
+    expect(err).toHaveClass('text-crit');
+    // It sits with the Max duration field, like the date errors sit with theirs.
+    expect(screen.getByText('Max duration').parentElement).toContainElement(err);
+  });
+
+  it('hides the chunk-order error when Split is off (unsplit chunks collapse to the duration)', () => {
+    renderWithProviders(<NewTaskModal now={() => NOW} onClose={vi.fn()} />, { api: fakeApiClient(api() as never) });
+    for (let i = 0; i < 7; i++) fireEvent.click(screen.getByRole('button', { name: 'increase min' }));
+    expect(screen.getByTestId('err-maxChunkMs')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /split up/i }));
+    expect(screen.queryByTestId('err-maxChunkMs')).toBeNull();
+  });
+
+  it('shows "Title is required" once the user has typed and cleared the name, not on a fresh modal', () => {
+    renderWithProviders(<NewTaskModal now={() => NOW} onClose={vi.fn()} />, { api: fakeApiClient(api() as never) });
+    expect(screen.queryByTestId('err-title')).toBeNull();
+    const input = screen.getByPlaceholderText(/task name/i);
+    fireEvent.change(input, { target: { value: 'W' } });
+    expect(screen.queryByTestId('err-title')).toBeNull();
+    fireEvent.change(input, { target: { value: '  ' } });
+    expect(screen.getByTestId('err-title')).toHaveTextContent('Title is required');
+    expect(screen.getByTestId('err-title')).toHaveClass('text-crit');
+  });
+
   it('with Split off, sends min=max=duration', async () => {
     const createTask = vi.fn(async () => task());
     renderWithProviders(<NewTaskModal now={() => NOW} onClose={vi.fn()} />, { api: fakeApiClient(api(createTask) as never) });
