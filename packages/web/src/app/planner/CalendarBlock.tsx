@@ -81,7 +81,7 @@ export type BlockMotion = 'idle' | 'dragging' | 'resizing';
  */
 const SPRING = '[transition:top_var(--dur-move)_var(--ease-spring),left_var(--dur-move)_var(--ease-spring),width_var(--dur-move)_var(--ease-spring),height_var(--dur-resize)_var(--ease-spring-strong),transform_var(--dur-move)_var(--ease-spring),opacity_.3s_ease,box-shadow_.25s_ease]';
 /** Picked up: no geometry transition (it follows the pointer), big shadow + accent ring. */
-const LIFTED = 'z-20 shadow-lift ring-[1.5px] ring-accent/70 transition-[box-shadow] duration-200';
+const LIFTED = 'z-20 shadow-lift ring-[1.5px] ring-accent-fg/70 transition-[box-shadow] duration-200';
 const MOTION_CLASS: Record<BlockMotion, string> = {
   idle: SPRING,
   dragging: `${LIFTED} cursor-grabbing`,

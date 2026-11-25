@@ -253,7 +253,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
         <div
           data-testid="drag-ghost"
           aria-hidden="true"
-          className="pointer-events-none absolute z-[4] rounded-event border-[1.5px] border-dashed border-accent bg-accent/[.08] transition-[top,left] duration-[140ms] ease-out"
+          className="pointer-events-none absolute z-[4] rounded-event border-[1.5px] border-dashed border-accent-fg bg-accent-fg/[.08] transition-[top,left] duration-[140ms] ease-out"
           style={{ top: ghost.top, height: ghost.height, left: ghost.left, width: ghost.width }}
         >
           <span
