@@ -69,6 +69,11 @@ function BuffersForm({ initial, firstTime, onSave, saving, justSaved, saveError 
     ...(meetingText !== baseline.meeting && { meetingBufferMs: Number(meetingText) * 60000 }),
     ...(taskText !== baseline.task && { taskBufferMs: Number(taskText) * 60000 }),
   };
+  // First-time setup stores nothing an untouched field could revert, so both go as shown (sending
+  // only the changed one would let a repeat save PUT the default 0 over the first save's value).
+  const toSend: Partial<BufferValues> = firstTime
+    ? { meetingBufferMs: Number(meetingText) * 60000, taskBufferMs: Number(taskText) * 60000 }
+    : changed;
   const canSave = ok && (firstTime || Object.keys(changed).length > 0);
   const edit = (set: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
     set(e.target.value);
@@ -78,7 +83,7 @@ function BuffersForm({ initial, firstTime, onSave, saving, justSaved, saveError 
     if (!canSave) return;
     setEditedSinceSave(false);
     const sent = { meeting: meetingText, task: taskText };
-    onSave(changed, () => setBaseline(sent));
+    onSave(toSend, () => setBaseline(sent));
   };
 
   return (

@@ -96,6 +96,22 @@ describe('Buffers page', () => {
       expect(patchSettings).toHaveBeenLastCalledWith({ meetingBufferMs: 420_000 });
     });
 
+    it('first-time setup sends both buffers as shown, so saving again before settings exist does not PUT 0 over the first save', async () => {
+      const putSettings = vi.fn(async () => settings());
+      const api = fakeApiClient({
+        getSettings: () => Promise.reject(new ApiError(404, 'not_found', 'not found')), putSettings,
+      } as never);
+      renderWithProviders(<Buffers />, { api });
+      await waitFor(() => expect(screen.getByTestId('task-buffer')).toBeInTheDocument());
+      fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '15' } });
+      fireEvent.click(screen.getByTestId('save'));
+      await waitFor(() => expect(putSettings).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(screen.getByTestId('saved')).toBeInTheDocument());
+      fireEvent.click(screen.getByTestId('save'));
+      await waitFor(() => expect(putSettings).toHaveBeenCalledTimes(2));
+      expect(putSettings).toHaveBeenLastCalledWith(expect.objectContaining({ meetingBufferMs: 0, taskBufferMs: 900_000 }));
+    });
+
     it('first-time setup can save with nothing edited (it creates the settings), with a PUT of the defaults', async () => {
       const putSettings = vi.fn(async () => settings());
       const api = fakeApiClient({
