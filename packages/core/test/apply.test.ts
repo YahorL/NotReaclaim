@@ -1050,3 +1050,94 @@ describe('applyDesiredSchedule reports isolated row failures', () => {
     expect(reports).toEqual([expect.objectContaining({ kind: 'create', engineKey: 'task:t1:0' })]);
   });
 });
+
+/**
+ * A row-scoped error the caller marks transient (Google: a 5xx or 429 answer) is isolated —
+ * but a run of them means Google itself is struggling, and each further call holds the user's
+ * lock (and may even have been applied on Google's side). So the apply aborts on the THIRD
+ * consecutive transient failure. The streak: only transient failures count; any successful
+ * external call resets it; other isolated failures leave it unchanged. One streak per apply,
+ * across the main loop and the first inserts (the pinned pass is not part of it).
+ */
+describe('applyDesiredSchedule: a streak of transient external failures aborts', () => {
+  const at = (hh: number) => ({
+    startsAt: new Date(`2026-01-05T${String(hh).padStart(2, '0')}:00:00.000Z`),
+    endsAt: new Date(`2026-01-05T${String(hh).padStart(2, '0')}:30:00.000Z`),
+  });
+  const row = (t: string, hh: number, over: Partial<DbScheduledBlock> = {}) =>
+    dbBlock({ id: `b-${t}`, taskId: t, engineKey: `task:${t}:0`, title: t, ...at(hh), ...over });
+  const mirrored = (t: string, hh: number) => row(t, hh, { googleEventId: `g-${t}`, googleCalendarId: 'cal1' });
+  const want = (t: string, hh: number) => eBlock({
+    id: `task:${t}:0`, sourceId: t, title: t, start: at(hh).startsAt.getTime(), end: at(hh).endsAt.getTime(),
+  });
+  /** Stand-ins for Google answers: `status` decides row-scoped (any) and transient (5xx/429). */
+  class Answer extends Error { constructor(readonly status: number) { super(`google ${status}`); } }
+  const isRowScoped = (err: unknown) => err instanceof Answer;
+  const isTransient = (err: unknown) => err instanceof Answer && (err.status === 429 || err.status >= 500);
+
+  /** A mirror whose n-th external call (any method) answers outcomes[n]: a status to throw, or 'ok'. */
+  function scripted(outcomes: Array<number | 'ok'>) {
+    let n = 0;
+    const calls: string[] = [];
+    const next = (label: string) => {
+      calls.push(label);
+      const o = outcomes[n++] ?? 'ok';
+      if (o !== 'ok') throw new Answer(o);
+    };
+    const mirror = {
+      create: vi.fn(async (block: { id: string }) => { next(`create ${block.id}`); return { googleEventId: `g-${block.id}`, googleCalendarId: 'cal1' }; }),
+      update: vi.fn(async (_b: unknown, existing: DbScheduledBlock) => { next(`update ${existing.id}`); return undefined; }),
+      delete: vi.fn(async (existing: DbScheduledBlock) => { next(`delete ${existing.id}`); }),
+    } as unknown as ScheduleMirror;
+    return { mirror, calls };
+  }
+  const five = (n: number) => [mirrored('t1', 13), mirrored('t2', 14), mirrored('t3', 15), mirrored('t4', 16), mirrored('t5', 17)].slice(0, n);
+  const moved = (n: number) => desired(['t1', 't2', 't3', 't4', 't5'].slice(0, n).map((t, i) => want(t, 8 + i)));
+
+  it('two transient failures, then a success, then two more: all isolated (the success resets the streak)', async () => {
+    const { mirror, calls } = scripted([500, 503, 'ok', 429, 500]);
+    const res = await applyDesiredSchedule(fakeRepo(five(5)), 'u1', moved(5), { now: NOW, horizonEnd: HORIZON, mirror, isRowScoped, isTransient });
+    expect(res).toMatchObject({ updated: 1, updateFailed: 4 });
+    expect(calls).toHaveLength(5);
+  });
+
+  it('three consecutive transient failures abort on the third, after exactly three external calls', async () => {
+    const { mirror, calls } = scripted([500, 502, 503, 'ok', 'ok']);
+    await expect(applyDesiredSchedule(fakeRepo(five(5)), 'u1', moved(5), { now: NOW, horizonEnd: HORIZON, mirror, isRowScoped, isTransient }))
+      .rejects.toMatchObject({ status: 503 });
+    expect(calls).toEqual(['update b-t1', 'update b-t2', 'update b-t3']);
+  });
+
+  it('429, 429, 403, 429: the 403 neither counts nor resets, so the fourth call aborts', async () => {
+    const { mirror, calls } = scripted([429, 429, 403, 429, 'ok']);
+    await expect(applyDesiredSchedule(fakeRepo(five(5)), 'u1', moved(5), { now: NOW, horizonEnd: HORIZON, mirror, isRowScoped, isTransient }))
+      .rejects.toMatchObject({ status: 429 });
+    expect(calls).toHaveLength(4);
+  });
+
+  it('one streak per apply: a first-insert 429, a move 500 and a create 500 in a row abort on the create', async () => {
+    const repo = fakeRepo([row('t1', 8) /* unchanged, never mirrored */, mirrored('t2', 14)]);
+    const { mirror, calls } = scripted([429, 500, 500]);
+    await expect(applyDesiredSchedule(repo, 'u1', desired([want('t1', 8), want('t2', 9), want('t3', 10)]), {
+      now: NOW, horizonEnd: HORIZON, mirror, isRowScoped, isTransient,
+    })).rejects.toMatchObject({ status: 500 });
+    expect(calls).toEqual(['create task:t1:0', 'update b-t2', 'create task:t3:0']);
+  });
+
+  it('a single transient failure on a first insert is still isolated', async () => {
+    const { mirror } = scripted([429]);
+    const res = await applyDesiredSchedule(fakeRepo([row('t1', 8), row('t2', 9)]), 'u1', desired([want('t1', 8), want('t2', 9)]), {
+      now: NOW, horizonEnd: HORIZON, mirror, isRowScoped, isTransient,
+    });
+    expect(res).toMatchObject({ attached: 1, attachFailed: 1 });
+  });
+
+  it('DB row-scoped failures never count: a local plan with three foreign-key failures in a row carries on', async () => {
+    const repo = fakeRepo([]);
+    repo.create.mockImplementation(async () => { throw Object.assign(new Error('fk'), { code: 'P2003' }); });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 8), want('t2', 9), want('t3', 10), want('t4', 11)]), {
+      now: NOW, horizonEnd: HORIZON, isTransient: () => true,
+    });
+    expect(res).toMatchObject({ created: 0, createFailed: 4 });
+  });
+});

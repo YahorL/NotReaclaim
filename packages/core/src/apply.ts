@@ -56,6 +56,12 @@ export interface ApplyScheduleOptions {
    */
   isRowScoped?: (err: unknown) => boolean;
   /**
+   * Of the caller's row-scoped errors, the ones that may be systemic rather than about the one
+   * row (Google: a 5xx or 429 answer). Each is isolated, but MAX_TRANSIENT_STREAK of them in
+   * a row abort the apply (see the diff loop). DB errors are never transient.
+   */
+  isTransient?: (err: unknown) => boolean;
+  /**
    * Told about every write failure the apply isolates, with the row and the error, so the
    * caller can log them: the counts deliberately carry no error objects (they are sent to
    * clients). Not reported (only counted): an event orphaned because its compensating delete
@@ -71,6 +77,14 @@ export interface RowFailure {
   engineKey: string | null;
   error: unknown;
 }
+
+/**
+ * Consecutive transient external failures (see ApplyScheduleOptions.isTransient) after which
+ * the apply aborts: a struggling external calendar is not called once per remaining row while
+ * the user's lock is held, and a 5xx may even have been applied remotely (the next cycle's
+ * drift would then pin that row at the remote time).
+ */
+const MAX_TRANSIENT_STREAK = 3;
 
 /**
  * A DB error that belongs to the one row being written, so the diff loop may skip that row
@@ -126,13 +140,19 @@ export async function applyDesiredSchedule(
   desired: ScheduleResult,
   opts: ApplyScheduleOptions,
 ): Promise<ApplyCounts> {
-  const { now, horizonEnd, mirror, mirrorSnapshot } = opts;
+  const { now, horizonEnd, mirrorSnapshot } = opts;
+  // The streak of transient external failures: only isTransient errors extend it, any
+  // successful external call in the diff loop resets it, other isolated failures leave it be.
+  let transientStreak = 0;
+  const mirror: ScheduleMirror | undefined = opts.mirror && resettingStreak(opts.mirror, () => { transientStreak = 0; });
   // Per-row isolation: a row whose write throws an error that belongs to that row alone is
   // skipped and counted, and the loop goes on. Every other error is rethrown, aborting the
   // apply at that row exactly as before isolation existed — so a database or network outage
   // stops at the first row instead of pushing every remaining row to Google with no DB write.
   const skipIfRowScoped = (err: unknown): void => {
-    if (!isRowScopedDbError(err) && !opts.isRowScoped?.(err)) throw err;
+    if (isRowScopedDbError(err)) return;
+    if (!opts.isRowScoped?.(err)) throw err;
+    if (opts.isTransient?.(err) && ++transientStreak >= MAX_TRANSIENT_STREAK) throw err;
   };
   const report = (kind: RowFailure['kind'], row: { id: string; engineKey: string | null } | null, engineKey: string | null, error: unknown) =>
     opts.onRowFailure?.({ kind, blockId: row?.id ?? null, engineKey: row?.engineKey ?? engineKey, error });
@@ -307,9 +327,9 @@ export async function applyDesiredSchedule(
     }
   }
 
-  const { synced: pinnedSynced, failed: pinnedFailed } = mirror
+  const { synced: pinnedSynced, failed: pinnedFailed } = opts.mirror
     ? await mirrorPinnedBlocks(scheduledBlocks, userId, existing, {
-      now, mirror, mirrorSnapshot, onFailure: (row, err) => report('pinned', row, null, err),
+      now, mirror: opts.mirror, mirrorSnapshot, onFailure: (row, err) => report('pinned', row, null, err),
     })
     : { synced: 0, failed: 0 };
 
@@ -433,6 +453,15 @@ async function storeInsertedIds(
   } catch {
     return 'orphaned';
   }
+}
+
+/** The mirror, with `onSuccess` called after each external call that succeeded. */
+function resettingStreak(mirror: ScheduleMirror, onSuccess: () => void): ScheduleMirror {
+  return {
+    create: async (block) => { const ids = await mirror.create(block); onSuccess(); return ids; },
+    update: async (block, existing) => { const ids = await mirror.update(block, existing); onSuccess(); return ids; },
+    delete: async (existing) => { await mirror.delete(existing); onSuccess(); },
+  };
 }
 
 /** A create the database refused outright: the row provably does not exist. */

@@ -22,9 +22,10 @@ import { GoogleApiError, GoogleTimeoutError } from './errors.js';
  * A Google error that belongs to the one event being written, so apply may skip that row and
  * carry on (on top of the row-scoped DB errors core already knows): Google ANSWERED, about
  * this event — any 4xx/5xx GoogleApiError except a 401 and a timeout.
- * - 429 and 5xx count as answers too. They come back fast (no lock-hold cost), the row is
- *   retried next cycle either way, and isolating them is the long-standing rule for first
- *   inserts (a rate-limited insert must not abort a first link's mass attach).
+ * - 429 and 5xx count as answers too: the row is retried next cycle either way, and
+ *   isolating them is the long-standing rule for first inserts (a rate-limited insert must
+ *   not abort a first link's mass attach). But they may be Google-wide, so they are also
+ *   transient (isTransientGoogleError): three in a row abort the apply.
  * - A 401 says the access token itself was rejected, so every later call would fail too.
  * - A timeout, a network failure (`fetch failed` surfaces as a plain TypeError), any auth
  *   error and anything unknown are not answers at all: they abort the apply, so a Google that
@@ -32,6 +33,15 @@ import { GoogleApiError, GoogleTimeoutError } from './errors.js';
  */
 function isRowScopedGoogleError(err: unknown): boolean {
   return err instanceof GoogleApiError && !(err instanceof GoogleTimeoutError) && err.status !== 401;
+}
+
+/**
+ * A row-scoped Google answer that may say Google itself is struggling: 429 or 5xx. Each takes
+ * up to the client's 15 s timeout and a 5xx write may even have been applied, so apply
+ * aborts after three in a row (any successful call resets the run).
+ */
+function isTransientGoogleError(err: unknown): boolean {
+  return err instanceof GoogleApiError && (err.status === 429 || err.status >= 500);
 }
 
 export interface ReconcileDeps {
@@ -102,7 +112,7 @@ export async function reconcile(deps: ReconcileDeps, userId: string, now: number
     // `observed` is Google's pre-apply state: it lets the pinned pass push exactly the blocks
     // the app moved, once, instead of re-writing every pinned event on every poll cycle.
     return applyDesiredSchedule(deps.scheduledBlocks, userId, desired, {
-      now, horizonEnd, mirror, mirrorSnapshot: observed, isRowScoped: isRowScopedGoogleError, onRowFailure: deps.onRowFailure,
+      now, horizonEnd, mirror, mirrorSnapshot: observed, isRowScoped: isRowScopedGoogleError, isTransient: isTransientGoogleError, onRowFailure: deps.onRowFailure,
     });
   });
 

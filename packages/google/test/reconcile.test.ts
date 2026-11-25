@@ -543,6 +543,24 @@ describe('reconcile: an error about one event is isolated to its row; anything e
     expect(startOf(store, 'c')).not.toBe('2026-01-05T15:00:00.000Z');
   });
 
+  it('two 5xx in a row then a success are isolated; three 5xx/429 in a row abort on the third', async () => {
+    const twoThenOk = seeded();
+    const attempts: string[] = [];
+    twoThenOk.client.onUpdateEvent = (id) => { attempts.push(id); if (id !== 'g-c') throw new GoogleApiError(503, 'backend error'); };
+    expect(await reconcile(twoThenOk.deps, 'u1', NOW)).toMatchObject({ updated: 1, updateFailed: 2 });
+    expect(attempts).toEqual(['g-a', 'g-b', 'g-c']);
+
+    const three = seeded();
+    const tried: string[] = [];
+    const third = new GoogleApiError(429, 'Rate Limit Exceeded');
+    three.client.onUpdateEvent = (id) => {
+      tried.push(id);
+      throw id === 'g-c' ? third : new GoogleApiError(500, 'backend error');
+    };
+    await expect(reconcile(three.deps, 'u1', NOW)).rejects.toBe(third);
+    expect(tried).toEqual(['g-a', 'g-b', 'g-c']);
+  });
+
   it('reports the isolated failure (row and error) through onRowFailure', async () => {
     const { client, deps } = seeded();
     const err = new GoogleApiError(403, 'forbidden');
