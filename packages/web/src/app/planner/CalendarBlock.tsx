@@ -105,6 +105,9 @@ export function CalendarBlock(props: CalendarBlockProps) {
     motion = 'idle', pressed = false, settling = false, shake = false, hidden = false, landDelayMs, enterDelayMs, onTransitionEnd, onBodyKeyDown, onBodyBlur, describedBy,
   } = props;
   const v = blockVariant({ kind, source, pinned, started, accent });
+  // 11px time label: dimmed on the translucent tiles, full strength on the violet meeting fill
+  // (white @ .8 on #6E4FF5 is 3.9:1, under the 4.5:1 small-text floor).
+  const timeDim = kind === 'meeting' ? '' : 'opacity-80';
   // A drag owns the transform; a landing animation would fight it.
   // Both keyframes end at opacity 1, which would override a filtered-out tile's opacity-0.
   const landing = landDelayMs !== undefined && motion === 'idle' && !hidden;
@@ -173,11 +176,11 @@ export function CalendarBlock(props: CalendarBlockProps) {
           {row ? (
             <>
               <span className="min-w-0 truncate text-[13px] font-medium leading-tight">{title}</span>
-              <span className="shrink-0 text-[11px] tabular-nums opacity-80">{startLabel}</span>
+              <span data-testid="block-time" className={`shrink-0 text-[11px] tabular-nums ${timeDim}`}>{startLabel}</span>
             </>
           ) : (
             <>
-              <span className="max-w-full shrink-0 overflow-hidden whitespace-nowrap text-[11px] leading-[14px] tabular-nums opacity-80">{startLabel}</span>
+              <span data-testid="block-time" className={`max-w-full shrink-0 overflow-hidden whitespace-nowrap text-[11px] leading-[14px] tabular-nums ${timeDim}`}>{startLabel}</span>
               {/* Word-wrapped, never broken mid-word: a narrow overlap lane clips instead of stacking letters. */}
               <span className="min-w-0 max-w-full overflow-hidden text-[13px] font-medium leading-tight">{title}</span>
             </>
