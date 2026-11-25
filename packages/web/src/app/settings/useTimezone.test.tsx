@@ -42,7 +42,7 @@ describe('resolveSettingsZone: the web half of core isValidTimezone (the server 
     expect(resolveSettingsZone(undefined, BROWSER)).toBe(BROWSER);
   });
 
-  it.each(['America/New_York', 'UTC', 'GMT', 'Etc/GMT+5', 'Asia/Calcutta', 'Europe/Kiev', 'US/Pacific', 'America/Argentina/Buenos_Aires'])(
+  it.each(['America/New_York', 'UTC', 'GMT', 'Etc/GMT+5', 'Asia/Calcutta', 'Europe/Kiev', 'US/Pacific', 'America/Argentina/Buenos_Aires', 'EST5EDT', 'GB', 'Zulu', 'GMT0'])(
     'a valid zone (%s) is used as is', (zone) => {
       expect(resolveSettingsZone(zone, BROWSER)).toBe(zone);
     },
@@ -57,6 +57,54 @@ describe('resolveSettingsZone: the web half of core isValidTimezone (the server 
   it('a zone in a real IANA area that this browser does not know → the browser zone (the server may know it)', () => {
     expect(isSupportedZone(NEWER_ZONE)).toBe(false);
     expect(resolveSettingsZone(NEWER_ZONE, BROWSER)).toBe(BROWSER);
+  });
+
+  // Not zone-shaped, or under Etc (which never gets new zones): the server rejects them, so UTC.
+  it.each(['Europe/', 'America/New_York ', 'Etc/Unknown', 'Etc/GMT+15', 'Europe//Paris', 'Europe/Pa ris'])(
+    'a string the server rejects even under a listed area (%j) → UTC', (zone) => {
+      expect(isSupportedZone(zone)).toBe(false);
+      expect(resolveSettingsZone(zone, BROWSER)).toBe('UTC');
+    },
+  );
+
+  // Documented residual: a made-up name in a real area cannot be told from a newer real zone.
+  it('residual: an unknown name under a real area (America/Fake) → the browser zone', () => {
+    expect(resolveSettingsZone('America/Fake', BROWSER)).toBe(BROWSER);
+  });
+
+  describe('a browser whose Intl lacks a zone the server accepts', () => {
+    // isSupportedZone caches per zone, so each test loads a fresh copy of the module.
+    const withIntlRejecting = async (rejected: readonly string[]) => {
+      const RealDTF = Intl.DateTimeFormat;
+      vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(function (locales?: string | string[], options?: Intl.DateTimeFormatOptions) {
+        if (options?.timeZone !== undefined && rejected.includes(options.timeZone)) {
+          throw new RangeError(`Invalid time zone specified: ${options.timeZone}`);
+        }
+        return new RealDTF(locales, options);
+      } as never);
+      vi.resetModules();
+      return (await import('./useTimezone')).resolveSettingsZone;
+    };
+    afterEach(() => { vi.restoreAllMocks(); });
+
+    const ALIASES = ['US/Pacific', 'Canada/Eastern', 'Brazil/East', 'Chile/Continental', 'Mexico/General'];
+    it.each(ALIASES)('a legacy alias under an alias area (%s) → the browser zone, not UTC', async (zone) => {
+      const resolve = await withIntlRejecting(ALIASES);
+      expect(resolve(zone, BROWSER)).toBe(BROWSER);
+    });
+
+    // Residual: a single-segment alias Intl does not know cannot be told apart from garbage.
+    const SINGLE = ['EST5EDT', 'GB', 'Zulu', 'GMT0'];
+    it.each(SINGLE)('residual: a single-segment alias (%s) this browser lacks → UTC', async (zone) => {
+      const resolve = await withIntlRejecting(SINGLE);
+      expect(resolve(zone, BROWSER)).toBe('UTC');
+    });
+
+    it('the stub really rejects (guards the two tables above)', async () => {
+      const resolve = await withIntlRejecting(['US/Pacific']);
+      expect(() => new Intl.DateTimeFormat('en-US', { timeZone: 'US/Pacific' })).toThrow(RangeError);
+      expect(resolve('Asia/Tokyo', BROWSER)).toBe('Asia/Tokyo');
+    });
   });
 });
 

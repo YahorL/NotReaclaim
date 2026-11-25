@@ -30,8 +30,19 @@ export function supportedZoneOr(zone: string | undefined, fallback: string): str
   return zone !== undefined && isSupportedZone(zone) ? zone : fallback;
 }
 
-/** The IANA areas new zones are still added under (a zone newer than the browser's ICU is in one). */
-const IANA_AREAS = new Set(['Africa', 'America', 'Antarctica', 'Arctic', 'Asia', 'Atlantic', 'Australia', 'Europe', 'Indian', 'Pacific', 'Etc']);
+/**
+ * The IANA areas a zone the server accepts but this browser's Intl may lack can sit in: the areas
+ * new zones are still added under (one newer than the browser's ICU), plus the legacy alias areas
+ * (`US/Pacific`, `Canada/Eastern`, …) an ICU build might omit. Not `Etc`: it never gets new zones,
+ * so a name there that Intl rejects (`Etc/Unknown`, `Etc/GMT+15`) is one the server rejects too.
+ */
+const IANA_AREAS = new Set([
+  'Africa', 'America', 'Antarctica', 'Arctic', 'Asia', 'Atlantic', 'Australia', 'Europe', 'Indian', 'Pacific',
+  'US', 'Canada', 'Brazil', 'Chile', 'Mexico',
+]);
+
+/** Shaped like an IANA name (`Area/Name`, `Area/Sub/Name`): no spaces, no empty segment. */
+const ZONE_NAME = /^[A-Za-z]+(\/[A-Za-z0-9_+-]+)+$/;
 
 /**
  * The zone to render a stored `settings.timezone` in, agreeing with the server, which plans in UTC
@@ -40,15 +51,20 @@ const IANA_AREAS = new Set(['Africa', 'America', 'Antarctica', 'Arctic', 'Asia',
  * - not loaded yet (`undefined`) → `browserZone`;
  * - `''` or a bare offset (`+03:00`, which Intl itself may accept) → UTC;
  * - a zone this browser's Intl knows → that zone;
- * - one it does not know: in a real IANA area it may just be newer than this browser's ICU (the
- *   server can still accept it) → `browserZone`, as before; anything else (`Not/AZone`, `local`,
- *   `New York`) is invalid on the server too → UTC.
+ * - one it does not know: a name-shaped `Area/Name` in one of `IANA_AREAS` may just be newer than
+ *   this browser's ICU, or an alias it omits (the server can still accept it) → `browserZone`;
+ *   anything else (`Not/AZone`, `local`, `New York`, `Europe/`, `Etc/Unknown`) is invalid on the
+ *   server too → UTC.
+ * Residual mismatches, accepted: a made-up name under a real area (`America/Fake`) renders in the
+ * browser zone while the server plans in UTC; a single-segment alias the server accepts but this
+ * browser lacks (`EST5EDT`, `GB`, `Zulu`, `GMT0`) cannot be told apart from garbage, so it renders
+ * in UTC while the server plans in that zone.
  */
 export function resolveSettingsZone(stored: string | undefined, browserZone: string): string {
   if (stored === undefined) return browserZone;
   if (stored === '' || /^[+-]/.test(stored)) return 'UTC';
   if (isSupportedZone(stored)) return stored;
-  return IANA_AREAS.has(stored.split('/')[0]!) && stored.includes('/') ? browserZone : 'UTC';
+  return ZONE_NAME.test(stored) && IANA_AREAS.has(stored.split('/')[0]!) ? browserZone : 'UTC';
 }
 
 /**
