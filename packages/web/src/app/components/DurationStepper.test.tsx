@@ -32,6 +32,18 @@ describe('DurationStepper', () => {
     expect(screen.getByTestId('duration-stepper')).toHaveAttribute('data-compact', 'true');
   });
 
+  it('wraps the buttons under the value instead of letting them overlap it', () => {
+    // Found live at 1024px on a touch pointer: in TaskDrawer's half column "1 hr 30 min" ran under
+    // two 44px buttons. The value never shrinks below its text; the button pair wraps as a unit.
+    render(<DurationStepper label="duration" size={22} valueMs={90 * 60_000} onChange={vi.fn()} />);
+    const stepper = screen.getByTestId('duration-stepper');
+    expect(stepper.className).toContain('flex-wrap');
+    expect(screen.getByTestId('duration-value').className).toContain('flex-[1_0_auto]');
+    const pair = screen.getByRole('button', { name: 'decrease duration' }).parentElement!;
+    expect(pair).toBe(screen.getByRole('button', { name: 'increase duration' }).parentElement);
+    expect(pair.className).toContain('ml-auto');
+  });
+
   it('grows both step buttons to a 44px target on a coarse pointer, at either size', () => {
     for (const size of [undefined, 22]) {
       const { unmount } = render(<DurationStepper label="duration" size={size} valueMs={15 * 60_000} onChange={vi.fn()} />);
