@@ -171,9 +171,9 @@ export function hourRowLabel(index: number, dayStartMinute = 0): string {
   const min = (dayStartMinute + index * 60) % (24 * 60);
   const h = Math.floor(min / 60);
   const m = min % 60;
-  const period = h < 12 ? 'a' : 'p';
+  const period = h < 12 ? 'AM' : 'PM';
   const base = h % 12 === 0 ? 12 : h % 12;
-  return m === 0 ? `${base}${period}` : `${base}:${String(m).padStart(2, '0')}${period}`;
+  return m === 0 ? `${base} ${period}` : `${base}:${String(m).padStart(2, '0')} ${period}`;
 }
 
 /** Zone midnight (00:00) of the day containing `ms`. Calendar-date semantics — for a shifted
@@ -189,13 +189,20 @@ export function shiftDays(ms: number, days: number, zone: string): number {
 }
 
 /** Time-of-day label (e.g. "9:00 AM", no leading zero — the design's tile/ghost form) of `ms` rendered in `zone`. */
+/**
+ * The UI is English-only, so every time label is formatted in one fixed locale (12-hour,
+ * "9:00 AM") instead of the browser's: a 24-hour browser locale used to mix "16:15" tiles and
+ * ghost pills with the en-US detail card, Next-up card and panel labels.
+ */
+export const TIME_LOCALE = 'en-US';
+
 export function formatHm(ms: number, zone: string): string {
-  return new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone: zone });
+  return new Date(ms).toLocaleTimeString(TIME_LOCALE, { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: zone });
 }
 
 /** 3-letter weekday (e.g. "Mon") of `ms` in `zone`. */
 export function weekdayLabel(ms: number, zone: string): string {
-  return new Date(ms).toLocaleDateString([], { weekday: 'short', timeZone: zone });
+  return new Date(ms).toLocaleDateString(TIME_LOCALE, { weekday: 'short', timeZone: zone });
 }
 
 /** Day-of-month number of `ms` in `zone`. */
@@ -234,7 +241,7 @@ export function popoverAlign(dayIndex: number, dayCount: number): 'left' | 'righ
 /** Toolbar label for the rendered window: one date in the 1-day view, `first – last` otherwise. */
 export function rangeLabel(days: number[], zone: string): string {
   if (days.length === 0) return '';
-  const fmt = (ms: number) => new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric', timeZone: zone });
+  const fmt = (ms: number) => new Date(ms).toLocaleDateString(TIME_LOCALE, { month: 'short', day: 'numeric', timeZone: zone });
   const first = days[0]!;
   const last = days[days.length - 1]!;
   return first === last ? fmt(first) : `${fmt(first)} – ${fmt(last)}`;

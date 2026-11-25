@@ -19,7 +19,7 @@ describe('NextUpCard', () => {
     renderWithProviders(<NextUpCard now={() => NOW} />, { api });
     expect(await screen.findByTestId('next-task')).toHaveTextContent('Next thing');
     const card = screen.getByTestId('next-up-card');
-    expect(card).toHaveTextContent('Next up · Today 3:29pm');
+    expect(card).toHaveTextContent('Next up · Today 3:29 PM');
     expect(card).toHaveTextContent('in 1h 29m');
     fireEvent.click(screen.getByTestId('next-task-start'));
     await waitFor(() => expect(startBlock).toHaveBeenCalledWith('nb'));
@@ -33,7 +33,7 @@ describe('NextUpCard', () => {
     });
     renderWithProviders(<NextUpCard now={() => NOW} />, { api });
     expect(await screen.findByTestId('current-task')).toHaveTextContent('Doing it');
-    expect(screen.getByTestId('next-up-card')).toHaveTextContent('Now · until 2:45pm');
+    expect(screen.getByTestId('next-up-card')).toHaveTextContent('Now · until 2:45 PM');
     expect(screen.getByTestId('next-up-card')).toHaveTextContent('45m left');
     expect(screen.queryByTestId('next-task-start')).toBeNull();
     fireEvent.click(screen.getByTestId('stop-task'));
@@ -45,7 +45,7 @@ describe('NextUpCard', () => {
       getSchedule: vi.fn(async () => [block(), block({ id: 'b2', title: 'Then this', taskId: 't2', startsAt: '2026-01-06T16:30:00.000Z', endsAt: '2026-01-06T17:00:00.000Z' })]),
     });
     renderWithProviders(<NextUpCard now={() => NOW} />, { api });
-    expect(await screen.findByTestId('next-up-following')).toHaveTextContent('Tomorrow 4:30pm · Then this');
+    expect(await screen.findByTestId('next-up-following')).toHaveTextContent('Tomorrow 4:30 PM · Then this');
   });
 
   it('empty state when nothing is scheduled next', async () => {

@@ -307,10 +307,10 @@ describe('WeekGrid', () => {
       days: cols, dayStartMinute: 180, blocks: [lateNight], events: [],
       nowMs: Date.parse('2026-01-07T01:30:00.000Z'),
     });
-    // gutter runs 3a → 2a
+    // gutter runs 3 AM → 2 AM
     const gutter = screen.getByTestId('hour-gutter').textContent!;
-    expect(gutter.startsWith('3a4a5a')).toBe(true);
-    expect(gutter.endsWith('1a2a')).toBe(true);
+    expect(gutter.startsWith('3 AM4 AM5 AM')).toBe(true);
+    expect(gutter.endsWith('1 AM2 AM')).toBe(true);
     // 01:00 on the 7th belongs to the 6th's column, 22h down
     const tile = within(screen.getByTestId('block-layer')).getByTestId('event-block');
     expect(tile.textContent).toMatch(/Late night/);

@@ -16,7 +16,7 @@ export function useNowNextControls(now: () => number) {
   return {
     running,
     nextBlock,
-    /** "Today 4:30pm" in the settings zone. */
+    /** "Today 4:30 PM" in the settings zone. */
     nextTime,
     nextLabel: nextBlock ? `Next · ${nextBlock.title} · ${nextTime}` : null,
     start: () => {

@@ -118,7 +118,7 @@ describe('TopBar Next-task indicator', () => {
     const api = fakeApiClient({ getSchedule: async () => [block({ title: 'A very long task title that must not stretch the header' })] });
     renderWithProviders(<TopBar onNewTask={() => {}} now={nowFn} />, { api, initialEntries: ['/priorities'] });
     const el = await screen.findByTestId('next-task');
-    expect(el.textContent).toMatch(/^Next·A very long.*·Today 2:00pm$/);
+    expect(el.textContent).toMatch(/^Next·A very long.*·Today 2:00 PM$/);
     const title = screen.getByText(/^A very long/);
     expect(title.className).toContain('truncate');
     expect(title.className).toContain('max-w-[24ch]');
@@ -259,12 +259,12 @@ describe('TopBar Next-task indicator', () => {
 describe('TopBar Next label in the settings zone', () => {
   it('renders the next block time in settings.timezone, not the browser zone', async () => {
     const api = fakeApiClient({
-      // 02:00Z on Jun 12 is 22:00 on Jun 11 in New York (EDT) — "Today", not "Tomorrow 2:00am".
+      // 02:00Z on Jun 12 is 22:00 on Jun 11 in New York (EDT) — "Today", not "Tomorrow 2:00 AM".
       getSchedule: async () => [block({ startsAt: '2026-06-12T02:00:00Z', endsAt: '2026-06-12T03:00:00Z' })],
       getSettings: vi.fn().mockResolvedValue({ id: 's', userId: 'u', timezone: 'America/New_York', workingHours: [], horizonDays: 14, defaultMinChunkMs: 1800000, defaultMaxChunkMs: 7200000, createdAt: '', updatedAt: '' }),
     } as never);
     renderWithProviders(<TopBar onNewTask={() => {}} now={nowFn} />, { api, initialEntries: ['/priorities'] });
-    await waitFor(() => expect(screen.getByTestId('next-task').textContent).toContain('Today 10:00pm'));
+    await waitFor(() => expect(screen.getByTestId('next-task').textContent).toContain('Today 10:00 PM'));
   });
 });
 

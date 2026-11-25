@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type { ScheduledBlock } from '../../api/types';
 import {
   startOfWeek, dayColumns, addWeeks, classifyBlock, placeInDay, nowLine, isToday,
@@ -231,6 +231,16 @@ describe('weekModel timezone-aware (America/New_York)', () => {
     expect(weekdayLabel(Date.parse('2026-06-18T13:00:00.000Z'), Z)).toBe('Thu');
     expect(dayOfMonth(Date.parse('2026-06-18T13:00:00.000Z'), Z)).toBe(18);
   });
+  it('formats in a fixed 12-hour locale, not the browser default (a 24h browser read "16:15")', () => {
+    const time = vi.spyOn(Date.prototype, 'toLocaleTimeString');
+    const date = vi.spyOn(Date.prototype, 'toLocaleDateString');
+    expect(formatHm(Date.parse('2026-06-18T20:15:00.000Z'), Z)).toBe('4:15 PM');
+    weekdayLabel(Date.parse('2026-06-18T20:15:00.000Z'), Z);
+    expect(time.mock.calls[0]?.[0]).toBe('en-US');
+    expect(time.mock.calls[0]?.[1]).toMatchObject({ hour12: true });
+    expect(date.mock.calls[0]?.[0]).toBe('en-US');
+    time.mockRestore(); date.mockRestore();
+  });
   it('places a 09:00-EDT block against the zone midnight at 540/1440', () => {
     const dayStart = localMidnight(noonZ, Z);
     const pos = placeInDay(Date.parse('2026-06-18T13:00:00.000Z'), Date.parse('2026-06-18T14:00:00.000Z'), dayStart)!;
@@ -322,9 +332,9 @@ describe('dayStartMinute — shifted day boundary (Review 20)', () => {
   });
 
   it('rotates the hour-gutter labels to start at the day-start hour', () => {
-    expect([0, 9, 12, 13, 23].map((h) => hourRowLabel(h))).toEqual(['12a', '9a', '12p', '1p', '11p']);
-    expect([0, 1, 20, 21, 23].map((h) => hourRowLabel(h, 180))).toEqual(['3a', '4a', '11p', '12a', '2a']);
-    expect(hourRowLabel(0, 210)).toBe('3:30a');
+    expect([0, 9, 12, 13, 23].map((h) => hourRowLabel(h))).toEqual(['12 AM', '9 AM', '12 PM', '1 PM', '11 PM']);
+    expect([0, 1, 20, 21, 23].map((h) => hourRowLabel(h, 180))).toEqual(['3 AM', '4 AM', '11 PM', '12 AM', '2 AM']);
+    expect(hourRowLabel(0, 210)).toBe('3:30 AM');
   });
 });
 

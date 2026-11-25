@@ -53,11 +53,10 @@ export function columnMeta(key: BoardColumnKey): ColumnMeta {
 function timeLabel(d: Date, zone: string): string {
   return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: zone })
     .format(d)
-    .replace(/\s+/g, '')
-    .toLowerCase();
+    .replace(/\s+/g, ' ');
 }
 
-/** "Today 5:00pm" / "Tomorrow 9:30am" / "Sat 8:15am" — day and time read in `zone`. */
+/** "Today 5:00 PM" / "Tomorrow 9:30 AM" / "Sat 8:15 AM" — day and time read in `zone`. */
 export function relativeDayTimeLabel(ms: number, now: number, zone: string): string {
   const d = new Date(ms);
   const day = (t: number) => DateTime.fromMillis(t, { zone }).startOf('day');
@@ -77,7 +76,7 @@ export function dueShort(iso: string | null, zone: string): string {
 /** Planner panel due label: "Due Jan 9" (in `zone`), or null for an undated task. */
 export function dueLabel(iso: string | null, zone: string): string | null {
   if (!iso) return null;
-  return `Due ${new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', timeZone: zone })}`;
+  return `Due ${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: zone }).format(new Date(iso))}`;
 }
 
 /** Within-bucket display order: user sortOrder, then due date. */

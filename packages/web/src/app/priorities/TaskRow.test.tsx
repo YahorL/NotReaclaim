@@ -237,6 +237,6 @@ describe('TaskRow labels in the settings zone', () => {
         onToggleSubtask={noop} onReorderSubtask={noop}
       />,
     );
-    expect(screen.getByText('Due 1/8 · Next: Today 8:30pm')).toBeInTheDocument();
+    expect(screen.getByText('Due 1/8 · Next: Today 8:30 PM')).toBeInTheDocument();
   });
 });

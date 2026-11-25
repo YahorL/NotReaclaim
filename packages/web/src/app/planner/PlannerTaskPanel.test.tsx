@@ -218,7 +218,7 @@ describe('PlannerTaskPanel', () => {
 describe('PlannerTaskPanel labels in the settings zone', () => {
   it('reads the due day and the next-block time in the settings zone (Auckland)', () => {
     // NOW (12:00Z Jan 7) is 01:00 on Jan 8 in Auckland. 11:30Z Jan 10 is 00:30 on Jan 11 there;
-    // 13:00Z Jan 8 is 02:00 on Jan 9 there ("Tomorrow", where the browser zone says 1:00pm).
+    // 13:00Z Jan 8 is 02:00 on Jan 9 there ("Tomorrow", where the browser zone says 1:00 PM).
     const preview = {
       blocks: [{ sourceType: 'task', sourceId: 't1', start: Date.parse('2026-01-08T13:00:00.000Z'), end: Date.parse('2026-01-08T14:00:00.000Z') }],
       unscheduled: [],
@@ -230,7 +230,7 @@ describe('PlannerTaskPanel labels in the settings zone', () => {
       />,
     );
     expect(screen.getByText('Due Jan 11')).toBeInTheDocument();
-    expect(screen.getByTestId('panel-next')).toHaveTextContent('Next: Tomorrow 2:00am');
+    expect(screen.getByTestId('panel-next')).toHaveTextContent('Next: Tomorrow 2:00 AM');
   });
 });
 
