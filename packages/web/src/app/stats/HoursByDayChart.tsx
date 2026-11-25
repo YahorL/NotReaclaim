@@ -45,7 +45,9 @@ export function HoursByDayChart({ perDay, shortLabels, longLabels }: { perDay: K
       </div>
 
       {view === 'chart' ? (
-        <div role="tabpanel" id={`${idBase}-panel-chart`} aria-labelledby={`${idBase}-tab-chart`} className="flex gap-2.5">
+        // pt-6: headroom for the total label above a bar that reaches the axis top (it sits ~20px
+        // above the bar). On this shared box, so the y-ticks and the plot shift together.
+        <div role="tabpanel" id={`${idBase}-panel-chart`} aria-labelledby={`${idBase}-tab-chart`} className="flex gap-2.5 pt-6">
           <div data-testid="y-ticks" aria-hidden="true" className="relative w-7 shrink-0" style={{ height: PLOT_PX }}>
             {ticksMs.map((t) => (
               <span key={t} className="absolute right-0 text-[11px] tabular-nums text-fg-2" style={{ bottom: px(t) - 7 }}>

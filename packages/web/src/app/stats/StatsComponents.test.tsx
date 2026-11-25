@@ -54,6 +54,14 @@ describe('HoursByDayChart', () => {
     expect(bars[0]!.style.height).toBe('238px');
   });
 
+  it('reserves headroom above the plot for the busiest bar\'s total label (it sits above the axis top)', () => {
+    const perDay = emptyWeek();
+    perDay[0] = { task: 3 * HOUR_MS, meeting: 0, habit: 0 };
+    render(<HoursByDayChart perDay={perDay} shortLabels={SHORT} longLabels={LONG} />);
+    // The y-ticks and the plot share this box, so the padding shifts both and keeps them aligned.
+    expect(screen.getByTestId('y-ticks').parentElement!.className).toContain('pt-6');
+  });
+
   it('stacks meetings over habits over tasks; only the topmost segment is the rounded one', () => {
     const perDay = emptyWeek();
     perDay[2] = { task: HOUR_MS, meeting: HOUR_MS, habit: HOUR_MS };
