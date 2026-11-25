@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, createEvent } from '@testing-library/react';
-import { InteractiveBlock } from './InteractiveBlock';
+import { InteractiveBlock, KEY_COMMIT_DEBOUNCE_MS, EDGE_HINT } from './InteractiveBlock';
+import { ToastProvider } from '../shell/ToastProvider';
 import { minutesToPx, minuteToPct } from './weekModel';
 import { blockLeftCss, blockWidthCss } from './blockLayout';
 import { LONG_PRESS_MS } from './longPress';
@@ -815,3 +816,124 @@ describe('InteractiveBlock scroll compensation', () => {
   });
 });
 
+
+describe('InteractiveBlock keyboard move / resize', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+  const props = {
+    dayStartMs: DAY, dayIndex: 0, startMs: START, endMs: END,
+    topPct: 10, heightPct: 5, startLabel: '09:00', title: 'Write spec', kind: 'task' as const, pinned: false,
+  };
+  const body = () => screen.getByTestId('block-body');
+
+  it('ArrowDown previews at once and commits once the keys go quiet', () => {
+    const onCommit = vi.fn();
+    const onPreview = vi.fn();
+    render(<InteractiveBlock {...props} onCommit={onCommit} onPreview={onPreview} />);
+    fireEvent.keyDown(body(), { key: 'ArrowDown' });
+    expect(onPreview).toHaveBeenCalledWith(START + 15 * 60_000, END + 15 * 60_000);
+    expect(onCommit).not.toHaveBeenCalled();
+    act(() => { vi.advanceTimersByTime(KEY_COMMIT_DEBOUNCE_MS); });
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onCommit).toHaveBeenCalledWith({ startsAt: '2026-01-05T09:15:00.000Z', endsAt: '2026-01-05T10:15:00.000Z', pinned: true });
+  });
+
+  it('key repeat restarts the debounce: one commit for a burst', () => {
+    const onCommit = vi.fn();
+    render(<InteractiveBlock {...props} onCommit={onCommit} />);
+    fireEvent.keyDown(body(), { key: 'ArrowDown' });
+    act(() => { vi.advanceTimersByTime(KEY_COMMIT_DEBOUNCE_MS - 50); });
+    fireEvent.keyDown(body(), { key: 'ArrowDown' });
+    act(() => { vi.advanceTimersByTime(KEY_COMMIT_DEBOUNCE_MS - 50); });
+    expect(onCommit).not.toHaveBeenCalled();
+    act(() => { vi.advanceTimersByTime(100); });
+    expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it('Shift+ArrowDown lengthens by 15 minutes', () => {
+    const onCommit = vi.fn();
+    render(<InteractiveBlock {...props} onCommit={onCommit} />);
+    fireEvent.keyDown(body(), { key: 'ArrowDown', shiftKey: true });
+    act(() => { vi.advanceTimersByTime(KEY_COMMIT_DEBOUNCE_MS); });
+    expect(onCommit).toHaveBeenCalledWith({ startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T10:15:00.000Z', pinned: true });
+  });
+
+  it('ArrowRight crosses to the next day (wall-clock)', () => {
+    const onCommit = vi.fn();
+    render(<InteractiveBlock {...props} onCommit={onCommit} />);
+    fireEvent.keyDown(body(), { key: 'ArrowRight' });
+    act(() => { vi.advanceTimersByTime(KEY_COMMIT_DEBOUNCE_MS); });
+    expect(onCommit).toHaveBeenCalledWith({ startsAt: '2026-01-06T09:00:00.000Z', endsAt: '2026-01-06T10:00:00.000Z', pinned: true });
+  });
+
+  it('blur flushes the pending commit at once — exactly one, never a second from the timer', () => {
+    const onCommit = vi.fn();
+    render(<InteractiveBlock {...props} onCommit={onCommit} />);
+    fireEvent.keyDown(body(), { key: 'ArrowDown' });
+    fireEvent.blur(body());
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    act(() => { vi.advanceTimersByTime(2 * KEY_COMMIT_DEBOUNCE_MS); });
+    expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it('unmount flushes the pending commit', () => {
+    const onCommit = vi.fn();
+    const { unmount } = render(<InteractiveBlock {...props} onCommit={onCommit} />);
+    fireEvent.keyDown(body(), { key: 'ArrowDown' });
+    unmount();
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    act(() => { vi.advanceTimersByTime(2 * KEY_COMMIT_DEBOUNCE_MS); });
+    expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it('a pointer press flushes the pending keyboard commit before any drag', () => {
+    const onCommit = vi.fn();
+    render(<InteractiveBlock {...props} onCommit={onCommit} />);
+    fireEvent.keyDown(body(), { key: 'ArrowDown' });
+    fireEvent.pointerDown(screen.getByTestId('event-block'), { clientX: 50, clientY: 100, pointerId: 1 });
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onCommit).toHaveBeenLastCalledWith({ startsAt: '2026-01-05T09:15:00.000Z', endsAt: '2026-01-05T10:15:00.000Z', pinned: true });
+  });
+
+  it('a clamped key is a no-op (no preview, no commit)', () => {
+    const onCommit = vi.fn();
+    const onPreview = vi.fn();
+    render(<InteractiveBlock {...props} startMs={DAY} endMs={DAY + 60 * 60_000} topPct={0} onCommit={onCommit} onPreview={onPreview} />);
+    fireEvent.keyDown(body(), { key: 'ArrowUp' });
+    act(() => { vi.advanceTimersByTime(KEY_COMMIT_DEBOUNCE_MS); });
+    expect(onPreview).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('at the edge of the rendered days, toasts the paging hint and commits nothing', () => {
+    const onCommit = vi.fn();
+    render(<ToastProvider><InteractiveBlock {...props} onCommit={onCommit} /></ToastProvider>);
+    fireEvent.keyDown(body(), { key: 'ArrowLeft' });
+    act(() => { vi.advanceTimersByTime(KEY_COMMIT_DEBOUNCE_MS); });
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(screen.getByTestId('toast-region')).toHaveTextContent(EDGE_HINT);
+  });
+
+  it('arrows are prevented (they would scroll the hours); other keys are left alone', () => {
+    render(<InteractiveBlock {...props} onCommit={vi.fn()} />);
+    const down = createEvent.keyDown(body(), { key: 'ArrowDown' });
+    fireEvent(body(), down);
+    expect(down.defaultPrevented).toBe(true);
+    const tab = createEvent.keyDown(body(), { key: 'Tab' });
+    fireEvent(body(), tab);
+    expect(tab.defaultPrevented).toBe(false);
+  });
+
+  it('Delete removes the block', () => {
+    const onDelete = vi.fn();
+    render(<InteractiveBlock {...props} onCommit={vi.fn()} onDelete={onDelete} />);
+    fireEvent.keyDown(body(), { key: 'Delete' });
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it('the accessible name mentions the arrow keys and points at the shared instructions', () => {
+    render(<InteractiveBlock {...props} onCommit={vi.fn()} describedBy="planner-block-keys" />);
+    expect(body()).toHaveAccessibleName(/movable: drag or use arrow keys, Shift\+arrows to resize$/);
+    expect(body()).toHaveAttribute('aria-describedby', 'planner-block-keys');
+  });
+});

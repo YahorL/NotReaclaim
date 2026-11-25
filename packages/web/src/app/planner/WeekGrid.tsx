@@ -34,6 +34,9 @@ function DayDropZone({ dayIndex, dayStartMs }: { dayIndex: number; dayStartMs: n
   );
 }
 
+/** Shared, visually hidden keyboard instructions every movable block body points at. */
+const BLOCK_HELP_ID = 'planner-block-keys';
+
 const HOURS = Array.from({ length: 24 }, (_, i) => i); // 24 hour rows, counted from the day start
 
 /** One hour row of grid line per 60px, drawn on the day columns (prototype `.col`). */
@@ -365,6 +368,10 @@ export function WeekGrid(props: WeekGridProps) {
                 </div>
               ))}
 
+              <p id={BLOCK_HELP_ID} className="sr-only">
+                Arrow keys move the block by 15 minutes or one day. Shift with Up or Down makes it shorter or longer.
+                Enter shows its details. Delete removes it.
+              </p>
               <div data-testid="block-layer" className="pointer-events-none absolute inset-0">
                 {items.map((it) => {
                   const g = layout.get(it.key);
@@ -381,6 +388,8 @@ export function WeekGrid(props: WeekGridProps) {
                         {...geometry}
                         startLabel={it.startLabel} title={it.title} kind={it.kind} pinned={it.pinned} started={it.started}
                         onCommit={(patch) => { hold(it.key, Date.parse(patch.startsAt), Date.parse(patch.endsAt)); onCommit(blockId, patch); }}
+                        onPreview={(s, e) => hold(it.key, s, e, false)}
+                        describedBy={BLOCK_HELP_ID}
                         onUnpin={it.pinned ? () => onCommit(blockId, { pinned: false }) : undefined}
                         onDelete={onDeleteBlock ? () => onDeleteBlock(blockId) : undefined}
                         onClick={(keyboard) => activate(it, keyboard)}
@@ -410,6 +419,8 @@ export function WeekGrid(props: WeekGridProps) {
                           hold(it.key, Date.parse(patch.startsAt), Date.parse(patch.endsAt));
                           onCommitEvent(ev.id, { startsAt: patch.startsAt, endsAt: patch.endsAt });
                         }}
+                        onPreview={onCommitEvent ? (s, e) => hold(it.key, s, e, false) : undefined}
+                        describedBy={BLOCK_HELP_ID}
                         onClick={(keyboard) => activate(it, keyboard)}
                         blockKey={it.key}
                         selected={selectedKey === it.key}

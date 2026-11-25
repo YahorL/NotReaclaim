@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState, type CSSProperties, type TransitionEvent as ReactTransitionEvent } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type TransitionEvent as ReactTransitionEvent } from 'react';
 import { CalendarBlock, type BlockMotion } from './CalendarBlock';
 import type { BlockKind } from './blockStyle';
 import { blockLeftCss, blockWidthCss } from './blockLayout';
 import { GRID_COLUMN_PX, minuteToPct, formatHm, weekdayLabel, resizeHandleClass, shiftDays } from './weekModel';
 import { moveTarget, resizeTarget, targetTimes, moveLabel, resizeLabel, type MoveInput } from './dragModel';
 import { useBlockDrag, type LiveDrag } from './useBlockDrag';
+import { keyboardChange } from './blockKeyboard';
+import { useToast } from '../shell/ToastProvider';
 import { MS_PER_MIN, toIso } from '../lib/time';
 
 /** Fallback for `data-settling` when no transitionend arrives (nothing moved, hidden tab, jsdom). */
@@ -12,6 +14,9 @@ const SETTLE_FALLBACK_MS = 900;
 /** Below this the raw resize height stops shrinking (prototype `max(12, h + dy)`). */
 const MIN_RAW_HEIGHT_PX = 12;
 const SETTLE_PROPS = new Set(['top', 'left', 'height', 'transform']);
+/** Arrow-key edits preview at once and commit once the keys go quiet (key-repeat must not flood). */
+export const KEY_COMMIT_DEBOUNCE_MS = 400;
+export const EDGE_HINT = 'Use the arrows above to see more days';
 
 export interface InteractiveBlockProps {
   dayStartMs: number;
@@ -34,6 +39,10 @@ export interface InteractiveBlockProps {
   started?: boolean;
   selected?: boolean;
   onCommit: (patch: { startsAt: string; endsAt: string; pinned: boolean }) => void;
+  /** Arrow-key preview before the debounced commit: the caller shows the block at these times. */
+  onPreview?: (startMs: number, endMs: number) => void;
+  /** id of the shared, visually hidden keyboard instructions. */
+  describedBy?: string;
   onUnpin?: () => void;
   onDelete?: () => void;
   /** Fired on a press that did not drag — never alongside onCommit — and on keyboard activation
@@ -67,7 +76,7 @@ export interface InteractiveBlockProps {
  * - Resize: the height follows the pointer exactly; the ghost shows the snapped end.
  */
 export function InteractiveBlock(props: InteractiveBlockProps) {
-  const { blockKey, dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, leftPct = 0, widthPct = 100, lane = 0, lanes = 1, startLabel, title, kind, pinned, source = null, started = false, selected = false, onCommit, onUnpin, onDelete, onClick, deleteLabel = 'Delete block', dayCount = 7, accent, zone = 'UTC', coarse = false, getScrollContainer } = props;
+  const { blockKey, dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, leftPct = 0, widthPct = 100, lane = 0, lanes = 1, startLabel, title, kind, pinned, source = null, started = false, selected = false, onCommit, onPreview, describedBy, onUnpin, onDelete, onClick, deleteLabel = 'Delete block', dayCount = 7, accent, zone = 'UTC', coarse = false, getScrollContainer } = props;
   const startMin = (startMs - dayStartMs) / MS_PER_MIN;
   const endMin = (endMs - dayStartMs) / MS_PER_MIN;
   const durationMin = endMin - startMin;
@@ -96,11 +105,48 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
     onCommit({ startsAt: toIso(s), endsAt: toIso(e), pinned: true });
   };
 
+  // ---- keyboard (spec §5.2): instant preview, ONE debounced commit, never dropped or doubled ----
+  const toast = useToast();
+  const keyPending = useRef<{ startMs: number; endMs: number } | null>(null);
+  const keyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushKeys = () => {
+    if (keyTimer.current) { clearTimeout(keyTimer.current); keyTimer.current = null; }
+    const p = keyPending.current;
+    keyPending.current = null;
+    if (p) onCommit({ startsAt: toIso(p.startMs), endsAt: toIso(p.endMs), pinned: true });
+  };
+  // Unmount (paged away, filtered out of the data) flushes rather than drops the pending edit.
+  const flushRef = useRef(flushKeys);
+  flushRef.current = flushKeys;
+  useEffect(() => () => flushRef.current(), []);
+
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if ((e.key === 'Delete' || e.key === 'Backspace') && onDelete) {
+      e.preventDefault();
+      flushKeys();
+      onDelete();
+      return;
+    }
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    const change = keyboardChange(e.key, e.shiftKey, { dayIndex, startMin, endMin }, dayCount);
+    if (!change) return;
+    e.preventDefault(); // arrows would otherwise scroll the hours
+    if ('edge' in change) { toast.show(EDGE_HINT); return; }
+    if (change.dayIndex === dayIndex && change.startMin === startMin && change.endMin === endMin) return;
+    const times = targetTimes({ dayStartMs, dayDelta: change.dayIndex - dayIndex, startMin: change.startMin, endMin: change.endMin, zone });
+    keyPending.current = times;
+    onPreview?.(times.startMs, times.endMs);
+    if (keyTimer.current) clearTimeout(keyTimer.current);
+    keyTimer.current = setTimeout(flushKeys, KEY_COMMIT_DEBOUNCE_MS);
+  };
+
   const drag = useBlockDrag({
     dayCount,
     coarse,
     getScrollContainer,
     onTap: () => onClick?.(false),
+    // A pointer gesture starts from what the user sees: land any pending keyboard edit first.
+    onGrab: flushKeys,
     onRelease: (d) => {
       if (d.mode === 'move') {
         const t = moveTarget(moveInput(d));
@@ -181,6 +227,9 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
         // onClick), so the body's own click only counts when the keyboard produced it (detail 0).
         // A real mouse click after a short drag must never select.
         onBodyClick={(e) => { if (e.detail === 0) onClick?.(true); }}
+        onBodyKeyDown={onKeyDown}
+        onBodyBlur={flushKeys}
+        describedBy={describedBy}
         {...drag.handlers}
         motion={motion}
         settling={settling}

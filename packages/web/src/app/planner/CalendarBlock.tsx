@@ -1,4 +1,4 @@
-import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode, TransitionEvent as ReactTransitionEvent } from 'react';
+import type { CSSProperties, FocusEvent as ReactFocusEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode, TransitionEvent as ReactTransitionEvent } from 'react';
 import { Icons } from '../shell/icons';
 import { blockVariant, type BlockKind } from './blockStyle';
 
@@ -37,6 +37,11 @@ export interface CalendarBlockProps {
   onUnpin?: () => void;
   /** Click on the body (a static tile's select; on movable tiles only keyboard activation). */
   onBodyClick?: (e: ReactMouseEvent<HTMLButtonElement>) => void;
+  /** Keys on the focused body: arrows move / resize (spec §5.2), Delete deletes. */
+  onBodyKeyDown?: (e: ReactKeyboardEvent<HTMLButtonElement>) => void;
+  onBodyBlur?: (e: ReactFocusEvent<HTMLButtonElement>) => void;
+  /** id of the planner's shared, visually hidden keyboard instructions. */
+  describedBy?: string;
   /** Pointer handlers for the drag machinery (InteractiveBlock) — on the wrapper. */
   onPointerDown?: PointerHandler;
   onPointerMove?: PointerHandler;
@@ -86,11 +91,11 @@ export function CalendarBlock(props: CalendarBlockProps) {
     blockKey, title, kind, source = null, pinned = false, started = false, accent, startLabel, whenLabel, durationMin,
     style, className = '', dayIndex, selected = false, coarse = false, onDelete, deleteLabel = 'Delete block',
     onUnpin, onBodyClick, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, resize, children,
-    motion = 'idle', settling = false, onTransitionEnd,
+    motion = 'idle', settling = false, onTransitionEnd, onBodyKeyDown, onBodyBlur, describedBy,
   } = props;
   const v = blockVariant({ kind, source, pinned, started, accent });
   const row = durationMin < ROW_LAYOUT_MAX_MIN;
-  const state = v.locked ? 'locked, synced from Google' : 'movable, drag to reschedule';
+  const state = v.locked ? 'locked, synced from Google' : 'movable: drag or use arrow keys, Shift+arrows to resize';
   const ariaLabel = [title, whenLabel, state].filter(Boolean).join(', ');
   const hasCluster = v.icon !== null || onDelete !== undefined;
   // Right padding for what is always visible in the corner cluster: the lock/pin, plus the ×
@@ -126,7 +131,10 @@ export function CalendarBlock(props: CalendarBlockProps) {
         type="button"
         data-testid="block-body"
         aria-label={ariaLabel}
+        aria-describedby={describedBy}
         onClick={onBodyClick}
+        onKeyDown={onBodyKeyDown}
+        onBlur={onBodyBlur}
         // A button vertically CENTRES content taller than itself, which pushed the time label of a
         // short tile above its top edge. The full-height inner wrapper never overflows the button,
         // so long titles clip at the bottom instead.

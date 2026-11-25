@@ -5,6 +5,7 @@ import { startOfWeek, dayColumns, minutesToPx } from './weekModel';
 import { blockLeftCss, blockWidthCss } from './blockLayout';
 import { within } from '@testing-library/react';
 import { WeekGrid, HOLD_TIMEOUT_MS, type WeekGridProps } from './WeekGrid';
+import { KEY_COMMIT_DEBOUNCE_MS } from './InteractiveBlock';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 
 const MON = startOfWeek(Date.parse('2026-01-05T12:00:00.000Z'), 'UTC'); // 2026-01-05
@@ -466,6 +467,74 @@ describe('WeekGrid held release target (no jump, rollback springs home)', () => 
     expect(tile()).toBe(before);
     expect(tile()).toHaveAttribute('data-day-index', '2');
     expect(tile().style.left).toBe(cssCalc(blockLeftCss((2 / 7) * 100, 0, 1)));
+  });
+});
+
+describe('WeekGrid keyboard moves', () => {
+  const base = { days, nowMs: WED_NOON, weekLabel: 'Jan 5 – 11', events: [] as CalendarEvent[], onPrev: vi.fn(), onToday: vi.fn(), onNext: vi.fn() };
+  const top = (min: number) => `${(min / 1440) * 100}%`;
+
+  it('three ArrowDown presses preview step by step and commit ONCE, 45 minutes later; focus stays', () => {
+    vi.useFakeTimers();
+    try {
+      const onCommit = vi.fn();
+      const { rerender } = render(<WeekGrid {...base} blocks={[block()]} onCommit={onCommit} />);
+      const body = screen.getByTestId('block-body');
+      body.focus();
+      for (let i = 1; i <= 3; i++) {
+        fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+        expect(screen.getByTestId('event-block').style.top).toBe(top(13 * 60 + 15 * i));
+      }
+      expect(onCommit).not.toHaveBeenCalled();
+      act(() => { vi.advanceTimersByTime(KEY_COMMIT_DEBOUNCE_MS); });
+      expect(onCommit).toHaveBeenCalledTimes(1);
+      expect(onCommit).toHaveBeenCalledWith('b1', { startsAt: '2026-01-05T13:45:00.000Z', endsAt: '2026-01-05T14:45:00.000Z', pinned: true });
+      // The optimistic data lands: same element, still focused, still in place.
+      rerender(<WeekGrid {...base} blocks={[block({ startsAt: '2026-01-05T13:45:00.000Z', endsAt: '2026-01-05T14:45:00.000Z', pinned: true })]} onCommit={onCommit} />);
+      expect(document.activeElement).toBe(body);
+      expect(screen.getByTestId('event-block').style.top).toBe(top(13 * 60 + 45));
+      // And the next press still moves it.
+      fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+      expect(screen.getByTestId('event-block').style.top).toBe(top(14 * 60));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('ArrowRight moves the focused block to the next column', () => {
+    vi.useFakeTimers();
+    try {
+      const onCommit = vi.fn();
+      render(<WeekGrid {...base} blocks={[block()]} onCommit={onCommit} />);
+      const body = screen.getByTestId('block-body');
+      body.focus();
+      fireEvent.keyDown(body, { key: 'ArrowRight' });
+      expect(screen.getByTestId('event-block')).toHaveAttribute('data-day-index', '1');
+      expect(document.activeElement).toBe(body);
+      fireEvent.blur(body);
+      expect(onCommit).toHaveBeenCalledWith('b1', { startsAt: '2026-01-06T13:00:00.000Z', endsAt: '2026-01-06T14:00:00.000Z', pinned: true });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('an app event moves with the keyboard through onCommitEvent (no pin)', () => {
+    vi.useFakeTimers();
+    try {
+      const onCommitEvent = vi.fn();
+      render(<WeekGrid {...base} blocks={[]} events={[event({ id: 'e9', title: 'Coffee', source: 'app', googleCalendarId: null, googleEventId: null })]} onCommit={vi.fn()} onCommitEvent={onCommitEvent} />);
+      fireEvent.keyDown(screen.getByTestId('block-body'), { key: 'ArrowUp' });
+      act(() => { vi.advanceTimersByTime(KEY_COMMIT_DEBOUNCE_MS); });
+      expect(onCommitEvent).toHaveBeenCalledWith('e9', { startsAt: '2026-01-07T09:45:00.000Z', endsAt: '2026-01-07T10:15:00.000Z' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('movable bodies point at the shared keyboard instructions', () => {
+    render(<WeekGrid {...base} blocks={[block()]} onCommit={vi.fn()} />);
+    const body = screen.getByTestId('block-body');
+    expect(body).toHaveAccessibleDescription(/Arrow keys move the block by 15 minutes or one day/);
   });
 });
 
