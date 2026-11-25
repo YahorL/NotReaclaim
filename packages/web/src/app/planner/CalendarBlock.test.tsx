@@ -26,11 +26,11 @@ describe('CalendarBlock', () => {
 
   it('keeps the 11px time label at full strength on the meeting fill (contrast), dimmed elsewhere', () => {
     const { unmount } = renderBlock();
-    // Contrast guarantee, not palette: white @ .8 on the violet fill is 3.9:1.
-    expect(screen.getByTestId('block-time').className).not.toMatch(/opacity-/);
+    // Contrast guarantee: white @ .8 on the violet fill is 3.9:1.
+    expect(screen.getByTestId('block-time')).not.toHaveAttribute('data-dimmed');
     unmount();
     renderBlock({ kind: 'task', source: null });
-    expect(screen.getByTestId('block-time')).toHaveClass('opacity-80');
+    expect(screen.getByTestId('block-time')).toHaveAttribute('data-dimmed', 'true');
   });
 
   it('a Google meeting is locked: data-locked, lock icon, no pin, no resize handle', () => {

@@ -176,11 +176,11 @@ export function CalendarBlock(props: CalendarBlockProps) {
           {row ? (
             <>
               <span className="min-w-0 truncate text-[13px] font-medium leading-tight">{title}</span>
-              <span data-testid="block-time" className={`shrink-0 text-[11px] tabular-nums ${timeDim}`}>{startLabel}</span>
+              <span data-testid="block-time" data-dimmed={timeDim ? 'true' : undefined} className={`shrink-0 text-[11px] tabular-nums ${timeDim}`}>{startLabel}</span>
             </>
           ) : (
             <>
-              <span data-testid="block-time" className={`max-w-full shrink-0 overflow-hidden whitespace-nowrap text-[11px] leading-[14px] tabular-nums ${timeDim}`}>{startLabel}</span>
+              <span data-testid="block-time" data-dimmed={timeDim ? 'true' : undefined} className={`max-w-full shrink-0 overflow-hidden whitespace-nowrap text-[11px] leading-[14px] tabular-nums ${timeDim}`}>{startLabel}</span>
               {/* Word-wrapped, never broken mid-word: a narrow overlap lane clips instead of stacking letters. */}
               <span className="min-w-0 max-w-full overflow-hidden text-[13px] font-medium leading-tight">{title}</span>
             </>
