@@ -24,4 +24,11 @@ describe('index.css component classes', () => {
       expect(componentsLayer).toMatch(new RegExp(`\\.${b}:active[^{]*\\{[^}]*scale\\(\\.96\\)`));
     }
   });
+
+  it('draws every focus outline in the theme-aware focus colour, not the accent fill', () => {
+    const all = readFileSync(join(__dirname, '..', 'index.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    const rules = [...all.matchAll(/([^{}]*:focus-visible)\s*\{([^}]*)\}/g)];
+    expect(rules.length).toBeGreaterThanOrEqual(2); // the base :focus-visible and .focus-ring
+    for (const [, , body] of rules) expect(body).toMatch(/outline:[^;]*var\(--c-focus\)/);
+  });
 });

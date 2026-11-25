@@ -91,7 +91,7 @@ Rules: (1) re-pointed legacy names make the codebase theme-able on day one of P1
 | `--font-sans` | `fontFamily.sans = ['Manrope', 'system-ui', 'sans-serif']` |
 | `--page-pad`, `--gap-*`, `--rail-width`, `--side-panel-basis` | literal Tailwind arbitrary values at the call site (`w-[76px]`, `basis-[330px]`, `gap-5`) — not worth config entries |
 
-Component classes (`@layer components` in `index.css`): `.glass`, `.glass-card`, `.btn-glass`, `.btn-primary`, `.btn-accent` (lime), `.chip`, `.block-meeting`, `.block-task`, `.block-habit`, `.block-blocked`, `.toast`, `.focus-ring` (`outline 2px accent offset 2px`). These are literal class names (JIT-safe) and keep multi-value tokens out of 200-char utility strings.
+Component classes (`@layer components` in `index.css`): `.glass`, `.glass-card`, `.btn-glass`, `.btn-primary`, `.btn-accent` (lime), `.chip`, `.block-meeting`, `.block-task`, `.block-habit`, `.block-blocked`, `.toast`, `.focus-ring` (`outline 2px` focus colour `--c-focus`, offset 2px — see §6). These are literal class names (JIT-safe) and keep multi-value tokens out of 200-char utility strings.
 
 ## 3. Block-type visual matrix (planner)
 
@@ -212,7 +212,7 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
 - Real `<button>`/`<a>`/`<input>`+`<label>`; every icon-only button has `aria-label`; decorative SVGs `aria-hidden` (already the `Ic` default).
 - Toggles `aria-pressed` (filters, theme buttons); tabs `role=tablist/tab` + `aria-selected` + arrow-key roving (panel tabs, Stats Chart|Table, Settings Appearance); radio pills `role=radiogroup/radio` + `aria-checked` (priority picker, colour swatches).
 - Contrast ≥ 4.5:1 for text: lime **text** uses `accent-fg` (olive in light); secondary text uses `fg-2` (.66) — `fg-3` (.55) only for ≥ 12px non-essential labels (gutter hours) — checked with the a11y-debugging skill in P8.
-- Focus: `:focus-visible` 2px accent outline offset 2 on everything (`.focus-ring` base style); blocks show the outline above the selection outline.
+- Focus: `:focus-visible` 2px outline offset 2 on everything (`.focus-ring` base style) in the theme-aware **focus token** `--c-focus` (Tailwind `focus`: `outline-focus`, `border-focus`) — never the accent fill. Dark = lime `#C6F432`; light = ink `#111214`, because the light lime fill `#D7FF3F` is ~1.1:1 on the light page/cards and olive `#3F4D00` is only ~1.9:1 on the meeting tile, where CalendarBlock draws the ring inset. Field boxes and inputs that drop their outline (`FieldBox`, CreatePopover, TaskDrawer subtask input) use a full-strength `border-focus` on focus. WCAG 1.4.11 ≥ 3:1 against `--c-page`, `--c-card` and `--c-meeting` in both themes is pinned by `tokens.test.ts`. Blocks show the outline above the selection outline.
 - Live regions: planner toast `role=status`; unscheduled card `role=status`; board announcements via dnd-kit; Google banner `role=alert`.
 - Touch targets ≥ 44px on coarse pointers (existing `coarse:` rules preserved); calendar blocks are exempt but have keyboard alternatives.
 - Dialog: NewTaskModal, TaskSearchPalette and AccountMenu trap/return focus (reuse `Sheet`'s focus logic where possible).
@@ -298,7 +298,7 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
 - **Primitives.**
   - The Sheet surface is `[background:var(--x-dialog-bg)]` + `shadow-modal`, **without** `.glass-dialog`, because a `backdrop-filter` (non-none in light) would make the sheet the containing block for `fixed` descendants.
   - The backdrop is `bg-overlay backdrop-blur-[8px]`, but only when not collapsed. `data-full-screen`/`data-collapsed` were added for tests.
-  - `DrawerPanel` desktop = `.glass-dialog rounded-panel`. `FieldBox` shows its focus cue as `focus-within:border-accent-fg/60` (olive in light, for contrast), because the controls inside have `outline-none`.
+  - `DrawerPanel` desktop = `.glass-dialog rounded-panel`. `FieldBox` shows its focus cue as `focus-within:border-focus` (the §6 focus token; was `accent-fg/60`, ~3:1 at best on light cards), because the controls inside have `outline-none`.
 - **Icons.** `planner`/`priorities`/`stats` glyphs were redrawn to the prototype paths. `pin`/`play`/`stop`/`user` are drawn in the same style, since the prototype has no glyph for them (and the location pin is excluded). `grip` is re-centred on the 24 grid.
 - **Mobile.** The tab bar and top bar are `.glass` with `rounded-none` and one-side borders. The active tab is a 48×28 accent pill behind the icon, plus `aria-current`/`data-active`. The Habits tab now uses the `habits` glyph.
 - **Left for later phases:**

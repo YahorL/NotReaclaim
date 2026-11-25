@@ -33,6 +33,8 @@ export default {
         'on-primary': ch('--c-on-primary'),
         accent: ch('--c-accent'),
         'accent-fg': ch('--c-accent-text'),
+        // Focus rings/borders: lime in dark, ink in light (the lime fill is ~1.1:1 on light).
+        focus: ch('--c-focus'),
         'accent-soft': raw('--x-accent-soft'),
         'accent-line': raw('--x-accent-line'),
         meeting: ch('--c-meeting'),

@@ -66,6 +66,7 @@ const THEMED: Record<string, string[]> = {
   '(chip)': ['--c-chip-fg', '--x-chip-bg', '--x-chip-border'],
   '(chart task)': ['--c-chart-task'],
   '(legacy shadows)': ['--x-shadow-pop', '--x-shadow-modal'],
+  '(focus)': ['--c-focus'],
 };
 
 /** Theme-independent design tokens, declared once on :root. */
@@ -118,4 +119,32 @@ describe('tokens.css', () => {
     expect(values.length).toBeGreaterThan(40);
     for (const [, name, value] of values) expect(value?.trim(), name).toMatch(/^\d{1,3} \d{1,3} \d{1,3}$/);
   });
+
+  // WCAG 1.4.11: a focus indicator needs ≥3:1 against what it sits on — the page, opaque cards and
+  // (CalendarBlock draws it inset) the solid meeting tile. Light lime was ~1.1:1 on the light page.
+  it.each([['dark', DARK], ['light', LIGHT]])('--c-focus reaches 3:1 on %s surfaces', (_name, selector) => {
+    const focus = channelsIn(selector, '--c-focus');
+    for (const surface of ['--c-page', '--c-card', '--c-meeting']) {
+      expect(contrast(focus, channelsIn(selector, surface)), surface).toBeGreaterThanOrEqual(3);
+    }
+  });
 });
+
+/** The `r g b` triplet `name` holds inside the rule whose selector list is exactly `selector`. */
+function channelsIn(selector: string, name: string): [number, number, number] {
+  const noComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const rule = [...noComments.matchAll(/([^{}]+)\{([^{}]*)\}/g)].find((m) => (m[1] ?? '').trim().replace(/\s+/g, ' ') === selector);
+  const value = rule?.[2]?.match(new RegExp(`${name}\\s*:\\s*(\\d+) (\\d+) (\\d+);`));
+  if (!value) throw new Error(`${name} not in ${selector}`);
+  return [Number(value[1]), Number(value[2]), Number(value[3])];
+}
+
+function luminance([r, g, b]: [number, number, number]): number {
+  const lin = (c: number) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+function contrast(a: [number, number, number], b: [number, number, number]): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
+  return (hi + 0.05) / (lo + 0.05);
+}

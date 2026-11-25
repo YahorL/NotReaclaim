@@ -150,7 +150,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
           data-testid="task-select"
           value={taskId}
           onChange={(e) => setTaskId(e.target.value)}
-          className="mb-2 h-10 w-full px-3 text-[15px] rounded-input border border-fg/10 bg-fg/[.05] text-fg outline-none transition-colors focus:border-accent-fg/60"
+          className="mb-2 h-10 w-full px-3 text-[15px] rounded-input border border-fg/10 bg-fg/[.05] text-fg outline-none transition-colors focus:border-focus"
         >
           <option value="">➕ New task</option>
           {activeTasks.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
@@ -164,7 +164,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
           placeholder={mode === 'event' ? 'Event name…' : mode === 'blocked' ? 'Blocked (optional)…' : 'Task name…'}
-          className="mb-2 h-10 w-full px-3 text-[15px] font-medium rounded-input border border-fg/10 bg-fg/[.05] text-fg outline-none transition-colors focus:border-accent-fg/60 placeholder:text-fg-3"
+          className="mb-2 h-10 w-full px-3 text-[15px] font-medium rounded-input border border-fg/10 bg-fg/[.05] text-fg outline-none transition-colors focus:border-focus placeholder:text-fg-3"
         />
       )}
       {showNewTaskFields && (
@@ -177,7 +177,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
               required
               value={dueLocal}
               onChange={(e) => setDueLocal(e.target.value)}
-              className="h-9 w-full px-3 text-[13px] rounded-input border border-fg/10 bg-fg/[.05] text-fg outline-none transition-colors focus:border-accent-fg/60"
+              className="h-9 w-full px-3 text-[13px] rounded-input border border-fg/10 bg-fg/[.05] text-fg outline-none transition-colors focus:border-focus"
             />
             {dueIso === undefined && <p data-testid="create-due-error" className="mt-0.5 text-[11px] text-danger">Enter a valid due date</p>}
           </div>
@@ -187,7 +187,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
               data-testid="create-category"
               value={categoryId ?? ''}
               onChange={(e) => setCategoryId(e.target.value || null)}
-              className="h-9 w-full px-3 text-[13px] rounded-input border border-fg/10 bg-fg/[.05] text-fg outline-none transition-colors focus:border-accent-fg/60"
+              className="h-9 w-full px-3 text-[13px] rounded-input border border-fg/10 bg-fg/[.05] text-fg outline-none transition-colors focus:border-focus"
             >
               <option value="">— none —</option>
               {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -200,7 +200,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
               data-testid="create-after"
               value={afterLocal}
               onChange={(e) => setAfterLocal(e.target.value)}
-              className="h-9 w-full px-3 text-[13px] rounded-input border border-fg/10 bg-fg/[.05] text-fg outline-none transition-colors focus:border-accent-fg/60"
+              className="h-9 w-full px-3 text-[13px] rounded-input border border-fg/10 bg-fg/[.05] text-fg outline-none transition-colors focus:border-focus"
             />
             {afterIso === undefined && <p data-testid="create-after-error" className="mt-0.5 text-[11px] text-danger">Enter a valid date or leave it empty</p>}
           </div>

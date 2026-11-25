@@ -4,7 +4,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { Icons } from './icons';
 import { useClickOutside } from '../components/useClickOutside';
 
-const ITEM = 'block w-full rounded-input px-3.5 py-2 text-left text-[15px] font-medium text-fg outline-none hover:bg-fg/[.07] focus-visible:bg-fg/[.07]';
+const ITEM = 'block w-full rounded-input px-3.5 py-2 text-left text-[15px] font-medium text-fg hover:bg-fg/[.07] focus-visible:bg-fg/[.07] focus-visible:outline-offset-[-2px]';
 
 /**
  * The header avatar: a generic person glyph (no name/email is known client-side) opening a

@@ -190,7 +190,7 @@ export function TaskDrawer({ task, zone, onSave, onCancel, saving = false, error
             value={newSubtask}
             onChange={(e) => setNewSubtask(e.target.value)}
             placeholder="Add subtask…"
-            className="min-w-0 flex-1 rounded-input border border-fg/10 bg-fg/[.05] px-2.5 py-1.5 text-[14px] text-fg outline-none focus:border-accent-fg/60"
+            className="min-w-0 flex-1 rounded-input border border-fg/10 bg-fg/[.05] px-2.5 py-1.5 text-[14px] text-fg outline-none focus:border-focus"
           />
           <button
             type="button"

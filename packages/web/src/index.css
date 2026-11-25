@@ -9,7 +9,7 @@
   html, body, #root { height: 100%; }
   body { @apply bg-page font-sans text-fg antialiased; }
   /* One visible focus style everywhere (spec §6); components may still add their own ring. */
-  :focus-visible { outline: 2px solid rgb(var(--c-accent)); outline-offset: 2px; }
+  :focus-visible { outline: 2px solid rgb(var(--c-focus)); outline-offset: 2px; }
 }
 
 /* Set on <html> for one frame by applyTheme (src/theme/theme.ts) so a theme flip swaps colours
@@ -108,7 +108,7 @@
   }
   .hatch { background: var(--x-hatch-bg); border: var(--x-blocked-border); }
   /* Forces the accent focus outline even where a utility (`outline-none`) removed it. */
-  .focus-ring:focus-visible { outline: 2px solid rgb(var(--c-accent)); outline-offset: 2px; }
+  .focus-ring:focus-visible { outline: 2px solid rgb(var(--c-focus)); outline-offset: 2px; }
 
   /* ---- planner blocks (spec §3) ---- */
   .block-meeting {

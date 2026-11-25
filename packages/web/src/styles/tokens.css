@@ -78,6 +78,7 @@
   --c-accent: 198 244 50;        /* --accent #C6F432 (fills) */
   --c-accent-text: 198 244 50;   /* --accent-text (lime as text) */
   --c-accent-glow: 198 244 50;   /* lime glows: .lime shadow, land/pulse/fresh keyframes */
+  --c-focus: 198 244 50;         /* focus rings/borders (WCAG 1.4.11 ≥3:1 on page, card, tiles) */
   --c-meeting: 110 79 245;       /* --meeting-bg (flat) #6E4FF5 */
   --c-on-meeting: 255 255 255;   /* --meeting-text */
   --c-today: 110 79 245;         /* --today-bg */
@@ -149,6 +150,7 @@
   --c-accent: 215 255 63;        /* #D7FF3F (fills only) */
   --c-accent-text: 63 77 0;      /* #3F4D00 olive: any lime-coloured TEXT on light */
   --c-accent-glow: 120 155 0;
+  --c-focus: 17 18 20;           /* ink: lime is ~1.1:1 here and olive ~1.9:1 on the inset ring over meeting tiles */
   --c-meeting: 83 97 240;        /* #5361F0 (flat end of the light meeting gradient) */
   --c-on-meeting: 255 255 255;
   --c-today: 215 255 63;
