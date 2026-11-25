@@ -9,8 +9,8 @@ Evidence labels: **[R]** verified by reading the code, **[E]** verified by a rea
 
 - A planner edit made while a background replan was running could be silently and permanently undone **[R]**. A replan reads the stored blocks once, then writes one row at a time with awaited Google calls in between (seconds, for a Google-connected user). The block routes were not serialised with it, so a replan that read the old state could move a just-dragged block back, delete it, or push its old time to Google, which the next cycle then re-imported as a "Google edit".
 - **Fix (option A′):** one per-user in-process FIFO lock (`server/src/user-lock.ts`), held around **compute + apply** in both replan paths and around each block route's read-modify-write. An edit that arrives mid-replan **waits** for the apply to finish and lands on top of its result. Token refresh, the Auto-scheduled calendar check and drift detection stay outside the lock.
-- **Second change (F7):** a row that fails to save in apply's diff loop is skipped and counted instead of aborting the user's whole replan. Connection-level Google failures still abort.
-- Remaining caveats: host-vs-Google clock skew inside drift's arbitration (§5), a true two-sided conflict (same event edited in the app and in Google at the same moment, window W1), and writers still outside the lock (task/habit cascades, drift, the inbound calendar sync; §8, §9).
+- **Second change (F7):** a row whose save fails with an error that belongs to that row alone (a Google answer about that one event, a row gone or a foreign key) is skipped, counted and logged instead of aborting the user's whole replan. Every other error — the database or the network going away, an unknown error — still aborts, as before (§6).
+- Remaining caveats: host-vs-Google clock skew inside drift's arbitration (§5), window W1 (a drift write racing an edit: a two-sided conflict, or a drag followed by an unpin; §1.4), and writers still outside the lock (task/habit cascades, drift, the inbound calendar sync; §8, §9).
 
 ## 1. Mechanism
 
@@ -54,7 +54,7 @@ For one replan R and one user write U to block B:
 | Window | U commits… | Effect |
 |---|---|---|
 | W0 | before drift's read #1 | no race |
-| W1 | between read #1 and drift's write for B | matters only if B's event was **also** edited in Google (two-sided conflict) |
+| W1 | between read #1 and drift's write for B | a two-sided conflict (B's event **also** edited in Google), or B made unpinned again while Google still holds an older time (see §3.4) |
 | W2 | between read #2 and read #3 | stale `desired`, fresh `existing`: transient duplicates and ghosts |
 | **W3** | between read #3 and R's write for B | **stale writes: the lossy window** |
 | W4 | after R's write for B | no race |
@@ -68,7 +68,7 @@ W3 for a Google user is one Google round trip per changed, created or swept row 
 2. The same while the engine drops the key: A5 deletes the block and its event.
 3. Start on an auto block in W3: A1 moves the running block to the engine's slot (spent time then computed from the wrong interval; started tasks are excluded from planning, so it is cemented), or A5 deletes it and the Start is lost.
 4. A second edit (drag, resize, Start, Stop) of a pinned block during the replan triggered by the first edit of the same block: A7 pushes the previous times; if Google stamps that push after the user's commit, the next cycle's drift reads it as a Google-side edit (D2) and writes the old times back.
-5. Start/Stop computing from a stale route-side `findById` (the route read, then a replan moved the row, then the route wrote): e.g. a block spanning from now to the engine's new end tomorrow.
+5. Start/Stop computing from a stale route-side `findById` (the route read, then a replan moved the row, then the route wrote from the old row): the result mixes two states of the block.
 
 **Self-healing** (via the follow-up replan R′, or the next poll/mutation): every W2 case (duplicate auto rows; ghost rows keyed by a deleted/unpinned row's uuid), W3 with unchanged desired, unmirrored inserts (A2/A6), POST pin, unpin.
 
@@ -96,7 +96,7 @@ W3 for a Google user is one Google round trip per changed, created or swept row 
   - `PATCH /schedule/:id`: `update` inside.
   - Start/Stop: `now = deps.now()` read at **arrival**; `findById` + compute (`startBlockPatch` / `stopBlockEndMs`) + `update` inside. 404/400 decided inside, replied after.
   - `DELETE /schedule/:id`: an unlocked `findById` peek (unknown id → 404 without touching the lock); the Google token is fetched **before** the lock and only if the peeked row is mirrored; inside: re-read, Google delete, row delete. A row gone at the re-read, or a NotFound on the final delete (drift runs outside the lock), answers **204**. If the row was mirrored by a replan while the request waited (no token fetched), it lets go, fetches a token, and retakes the lock once.
-  - `GET /schedule` manual sweep (`manual-sweep.ts`): candidates read outside; none → no lock. Otherwise one token lookup (only if a candidate is mirrored) outside, then under the lock a fresh read, and only candidates still `isDiscardableUnstarted` are deleted (row, then its event), one at a time.
+  - `GET /schedule` manual sweep (`manual-sweep.ts`): candidates read outside; none → no lock. Otherwise one token lookup (only if a candidate is mirrored) outside, then under the lock a fresh read, and only candidates still `isDiscardableUnstarted` are deleted (row, then its event), one at a time. If a candidate became mirrored while the sweep waited (a replan clocked before the row ended can mirror it: its pinned pass or a first insert) and no token was fetched, the sweep lets go, fetches one and retakes the lock once, like DELETE.
 - Google token lookups never run under the lock: a slow or hung refresh (google-auth-library's own timeout **[I]**) cannot hold up a user's edits. A failed lookup is kept and logged per row with the usual write-back warning.
 
 ### 3.3 Deadlock and starvation
@@ -111,13 +111,15 @@ W3 for a Google user is one Google round trip per changed, created or swept row 
 
 - W3: apply's read and all its writes (with their Google calls) sit in one critical section that excludes every block route.
 - W2: compute's read is inside the same section, so the duplicates and ghosts go too.
-- The Start/Stop stale read (§2 item 5).
+- The Start/Stop stale-read RACE (§2 item 5): both now compute from the row as the replan left it. The serial outcome is unchanged pre-existing Start semantics: if the replan moved the block (say to 09:00–10:00 tomorrow) and the user then presses Start, Start pulls the start to round15(now) and **keeps the block's end**, so the running block spans until tomorrow's 10:00 (pinned by `block-route-lock.test.ts`, "Start: clocked at ARRIVAL…"). Whether Start should keep the end is an open product question (§10).
 - The re-import case (§2 item 4): the user's commit now always follows Google's response to the push, so `row.updatedAt > event.updated` holds **if the host clock is not behind Google's** by more than that latency (§5).
 - The DELETE 404 race.
 
 Not preserved, but no longer silent: an edit (PATCH, Start, Stop) that waited while the replan **removed** its row (the engine dropped that key and swept the block) answers 404 and changes nothing; the optimistic UI rolls back to the replan's result, and no follow-up replan is enqueued. A drag cannot pin a block that no longer exists.
 
-Left open: W1 (drift writes racing a route write: matters only for a genuine two-sided conflict; closable by moving drift's row read and writes into the lock after the listing); writes by cascade (deleting a task or habit removes its blocks mid-apply — no longer an abort, see §6).
+Left open:
+- W1, drift's row read and writes racing a route write. Two ways it bites: a genuine two-sided conflict (the same event edited in the app and in Google at the same moment), and a **drag followed by an unpin** before the drag's replan reaches drift's row read — the row is then unpinned at the new time while Google still holds the old one, and drift (unpinned ⇒ Google wins) moves it back and pins it there. Closable by moving drift's row read and writes into the lock after the listing (a small split of `detectDrift`).
+- Writes by cascade: deleting a task or habit removes its blocks mid-apply (isolated per row, see §6).
 
 ### 3.5 Web companion
 
@@ -138,12 +140,19 @@ A route waiting on the lock widens the known snap-back race (a `schedule.updated
 ## 6. Per-row failure isolation in apply (F7)
 
 - Before: one row that failed to save in the main diff loop (a Google error, or a foreign-key error because its task was deleted a moment ago) aborted the whole apply, so later rows, the sweep, the pinned pass and `schedule.updated` were skipped — possibly on every cycle. The pinned pass and the first-insert ("attach") path already isolated per row.
-- Now every create (A4), update (A1/A2) and sweep delete (A5) is isolated: a failing row is skipped and counted, and the loop carries on. Google first still means a failed Google call skips that row's DB write. The order of writes for non-failing rows is unchanged.
-- New optional counts on `ApplyCounts`/`ReplanCounts`: `createFailed`, `updateFailed`, `deleteFailed`, **present only when non-zero** (a clean run keeps its long-standing shape). A failed DB write after the first insert of an **unchanged** row counts as `attachFailed`; for a **changed** row (insert + move in one write) it counts as `updateFailed`. They surface in the replan result, the `POST /schedule/replan` reply and the `schedule.updated` WS event; the web's `ReconcileResult` type needs no change.
-- Core has no logging (it is pure); failures surface only as counts, like the pinned pass.
-- A single-row Google error no longer fails `POST /schedule/replan` with a 502: it answers 200 with the count. 403/429 on one event are isolated, so the loop keeps calling Google for the remaining rows.
-- Still fatal: `ApplyScheduleOptions.isFatal` (default: nothing fatal), checked at every catch in the main loop, the first-insert ("attach") catches included — so a fatal error during a first-link insert now aborts instead of being counted. Google's `reconcile` passes `abortsApply`: any `GoogleAuthError` (a `GoogleGrantRevokedError` included — the token service is what flags `googleAuthBrokenAt`, during the refresh before apply, but should one ever come out of a mirror call it must reach the caller), a `GoogleApiError` 401 (the access token was rejected: every later call would fail too), and a `GoogleTimeoutError` (Google unreachable: isolating it would make every remaining row wait out its own 15 s timeout while the user's lock is held). Errors outside the loop (apply's read, compute, drift, the token refresh) are unaffected.
-- A create that fails after its Google insert leaves that event behind (the create may have committed with a lost reply, so it is not deleted blind) — the same orphan the old abort produced.
+- Now every create (A4), update (A1/A2), first insert and sweep delete (A5) isolates a failure **that belongs to that one row** — an allow-list — and aborts on everything else, exactly as before:
+  - core's default (`isRowScopedDbError`, exported): the db layer's `NotFoundError` and `ConflictError` (matched by `name`; core imports `@notreclaim/db` for types only) and a foreign-key violation (Prisma `P2003`, duck-typed on `code`; the repository translates only P2002/P2025). Used by both replan paths, so a local plan aborts on a database outage too.
+  - `ApplyScheduleOptions.isRowScoped` adds caller-specific ones. `reconcile` passes: a `GoogleApiError` that is neither a `GoogleTimeoutError` nor a 401 — Google **answered** about this event (400/403/404/409/410/412, and 429/5xx).
+  - Fatal, therefore: any other DB error (P1001 unreachable, a reset connection, a pool timeout, a restart during a deploy), a network failure (`fetch failed` arrives as a plain `TypeError`, often after undici's ~10 s connect timeout, without the client's own 15 s signal firing), a timeout, a 401, any `GoogleAuthError` (a `GoogleGrantRevokedError` included — it is raised by the token refresh before apply, which is what flags `googleAuthBrokenAt`), and anything unknown.
+  - Why an allow-list: with a deny-list, a database outage mid-apply let every remaining row make its Google call and then fail its DB write; the next cycle's drift took each Google/DB difference for a Google-side edit and pinned every block at a slot the user never chose, and failed creates left duplicate Google events. Now the apply stops at the first such row (one Google write without its DB write, as before isolation). A network failure no longer costs one connect timeout per row while the user's lock is held.
+  - Decision on 429/5xx: isolated. Google answered, quickly (no lock-hold cost); the row is retried next cycle either way; and isolating rate-limited/5xx **first inserts** is the existing rule (a first link's mass attach must not abort on one rejected insert), so one rule covers the whole loop. Cost: on a struggling Google the loop still makes one call per remaining changed row.
+- Write order for non-failing rows is unchanged. Google first still means a failed Google call skips that row's DB write.
+- Compensation where it is provably safe (best effort; a failed compensating delete only leaves the orphan it was meant to remove):
+  - a create whose Google insert succeeded but whose DB create was rejected with a foreign-key violation or a unique-key conflict (the row provably does not exist) deletes the just-inserted event; any other create failure leaves the event alone, since the row may have committed with a lost reply (and such a failure aborts anyway);
+  - a mirrored row whose Google move succeeded but whose DB update finds the row gone (`NotFoundError`, e.g. a cascade) deletes the event, as `storeInsertedIds` already did for a first insert.
+- Counts: `createFailed`, `updateFailed`, `deleteFailed` on `ApplyCounts`/`ReplanCounts`, **present only when non-zero** (a clean run keeps its long-standing shape). A failed first insert counts as `attachFailed` once the row's move has landed; a never-mirrored changed row whose insert **and** move fail counts once, as `updateFailed` (its plan did not apply at all). A failed DB write after the first insert of an unchanged row counts as `attachFailed`. The counts surface in the replan result, the `POST /schedule/replan` reply and the `schedule.updated` event; the web `ReconcileResult` type needs no change. A single-row Google answer no longer fails `POST /schedule/replan` with a 502: it answers 200 with the count.
+- Logging: apply reports each isolated failure (`kind` create/update/delete/attach/pinned, `blockId`, `engineKey`, `error`) through `ApplyScheduleOptions.onRowFailure`, forwarded by `planLocally` (6th argument) and `ReconcileDeps.onRowFailure`. `makeReplan` (`replan-router.ts`), which every replan passes through, warns **once per replan** when any `*Failed` count is non-zero, with the user id, the non-zero failed counts and the first failure of each kind (error name, message capped at 300 characters, HTTP `status` / DB `code`). Error objects never enter the counts, so neither the reply nor the realtime event carries them.
+- Not wired: `assembleScheduleInput`'s `timezoneFallbackFrom` (an invalid stored time zone planned as UTC). `computeDesiredSchedule` drops it, so reaching `makeReplan` would mean threading it through compute, `planLocally` and `reconcile`; left as a follow-up.
 
 ## 7. Tests
 
@@ -152,7 +161,7 @@ A route waiting on the lock widens the known snap-back race (a `schedule.updated
 - `google/test/reconcile-exclusive.test.ts`: the engine-diff overwrite through `reconcile` (drag during the first PUT); the stale pinned push re-imported by drift across two cycles (one fake clock stamping both sides in execution order); only compute + apply inside the section.
 - `server/test/block-route-lock.test.ts`: PATCH / POST / Start / Stop / DELETE issued while a replan holds the lock wait and then apply on top of its writes (Start/Stop clocked at arrival, computed from the fresh row); DELETE 204 when the row vanished; a DELETE or sweep whose token lookup hangs does not hold the lock; the sweep takes the lock only with candidates and re-checks them; a real `makeReplan` + `planLocally(…, exclusive)` and a concurrent drag share the lock both ways.
 - `server/test/write-order.test.ts`: traces updated where the order deliberately changed (DELETE peek + in-lock re-read, token before the lock, unknown-id 404 from the peek, vanished row 204; sweep token looked up once before its in-lock re-read).
-- `core/test/apply.test.ts` / `google/test/reconcile.test.ts` / `server/test/schedule.test.ts`: per-row isolation of create, update and delete (Google and DB failures), the fatal set, and the counts in the replan reply and event.
+- `core/test/apply.test.ts` / `google/test/reconcile.test.ts` / `server/test/schedule.test.ts` / `server/test/replan-router.test.ts`: the row-scoped allow-list (NotFound / Conflict / P2003 isolated; P1001, a reset connection, an unknown error, `fetch failed`, a timeout, a 401 and auth errors abort; 403/404/429/500 isolated), a database outage stopping after the first row's Google write with the next cycle pinning only that row, the compensations, the count-once rule, the failure reports, the once-per-replan warning, and that the reply and the event carry counts only.
 
 ## 8. Appendix: the poll-sync hazards (open, same family, not fixed here)
 
@@ -169,12 +178,15 @@ A route waiting on the lock widens the known snap-back race (a `schedule.updated
 - **W2 ghosts (fixed).** Engine pass-through blocks carry the row uuid as id; a row that stopped being pinned between assemble and apply made apply create an auto row keyed by that uuid. Compute now runs inside the lock.
 - **Resurrected orphan events (race removed; Google behaviour still unverified [I]).** Whether a PUT to a just-deleted event restores it was never probed; A′ removes the race that could issue one.
 - **Writers still outside the lock (open).** Task/habit deletes cascade to blocks mid-apply (now isolated per row instead of aborting); drift's writes (W1); the inbound sync (§8).
-- **Pinned-pass timeouts (open).** The pinned pass still isolates every error, timeouts included, so a Google outage can cost one 15 s timeout per pinned row while the lock is held; consider applying the same fatal set there. (The main loop, first inserts included, already aborts on them.)
-- **Silent persistent row failures (open).** Nothing logs non-zero `*Failed` counts; a row failing every cycle is visible only in the replan result. Consider a server-side warning when a replan reports failures.
-- **Orphaned event on a failed create after insert (open).** See §6.
+- **Pinned pass isolates everything (open).** The pinned pass (A6/A7) still catches every error, timeouts and network failures included, so a Google outage can cost one timeout per pinned row while the lock is held; consider the same row-scoped allow-list there. (The main loop, first inserts included, already aborts on them.)
+- **Silent persistent row failures (done).** A replan that skipped rows is now logged once (§6).
+- **Orphaned events (partly done).** Compensated where the row provably does not exist (§6); a create that fails for another reason after its insert still leaves its event, by design.
+- **Manual sweep orphaning an event (done).** The sweep now decides whether it needs a token from its in-lock re-read (§3.2).
+- **Duplicate submissions during long waits (open).** An edit can now wait for an in-flight apply (seconds after a reshuffle, longer on a first link), and nothing on that path times out. On the web, creating a block (drop from the panel / click-to-create) and Start are plain, non-optimistic mutations (`useCreateScheduledBlockMutation`, `useStartBlockMutation` in `api/queries.ts` **[R]**) and, per review, their controls are not disabled while pending **[I]**, so an impatient second click sends a second request that queues behind the first: a second pinned block, or a second Start. Consider disabling those controls while their request is pending.
 
 ## 10. Open questions for the owner
 
 1. **Same-moment conflicts (W1).** A block moved in the app and its event moved in Google at the same moment: today whichever lands last wins. Closing it means moving drift's row read and writes into the lock.
 2. **Deleted task blocks.** A deleted task block reappears on the next replan (accepted rule R10). Is "reappears later" still intended, or should a delete stick?
 3. **Appendix scope.** Fix the calendar-sync hazards (§8) as a follow-up branch, or ledger them?
+4. **Start keeps the block's end.** Start pulls the start to round15(now) and keeps the end, so a block the engine had placed far ahead becomes a running block until that far end (§3.4). Should Start instead keep the block's length (end = new start + duration), or cap it?
