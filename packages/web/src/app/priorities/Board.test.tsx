@@ -4,6 +4,7 @@ import { DndContext, useDndContext } from '@dnd-kit/core';
 import type { Task } from '../../api/types';
 import { Board, type BoardColumn } from './Board';
 import { Column } from './Column';
+import { resolveBoardDrop } from './boardDnd';
 
 const task = (over: Partial<Task> = {}): Task => ({
   id: 't1', userId: 'u1', title: 'Only card', priority: 2, sortOrder: 0, durationMs: 3_600_000,
@@ -60,38 +61,56 @@ describe('Board columns as drop targets', () => {
     expect(row.parentElement).toHaveClass('flex', 'flex-col', 'min-h-full');
   });
 
-  it('a collapsed column keeps to its header height (self-start), an expanded one stretches; Completed still rejects drops', () => {
-    let completedDisabled: boolean | undefined;
+  // Spec (P6 "Pointer DnD"): the column droppable is the whole grid cell, which stretches to the
+  // row height, so its empty area is a "drop at end" target — including on a collapsed column,
+  // which then expands (live-verified in P8, with the header card highlighted via data-drop-target
+  // while a card hovers anywhere in the cell). jsdom has no layout: that the pointer over the cell
+  // below a collapsed header resolves to `col:<key>` is verified live; these pin the rest.
+  it('a collapsed column still stretches and stays the column droppable; a drop on it lands at the end and expands it; Completed still rejects drops', () => {
+    const probed: Record<string, { node: HTMLElement | null | undefined; disabled: boolean | undefined }> = {};
     function Probe() {
-      completedDisabled = useDndContext().droppableContainers.get('col:completed')?.disabled;
+      const { droppableContainers } = useDndContext();
+      for (const id of ['col:high', 'col:completed']) {
+        const c = droppableContainers.get(id);
+        probed[id] = { node: c?.node.current, disabled: c?.disabled };
+      }
       return null;
     }
-    const columns: BoardColumn[] = [
-      { key: 'high', tasks: [task()] },
-      { key: 'completed', tasks: [] },
-    ];
-    render(<Board columns={columns} now={0} zone="UTC" nextMsFor={() => null} onMove={vi.fn()} {...handlers} />);
-    const high = screen.getByTestId('column-high');
-    const completed = screen.getByTestId('column-completed');
-    expect(high).not.toHaveClass('self-start');
-    expect(completed).not.toHaveClass('self-start');
-
-    // Collapsed, a column renders only its header: stretched, its droppable would cover the whole
-    // board height below that header with nothing to show it.
-    fireEvent.click(within(high).getByRole('button', { name: /^Collapse / }));
-    expect(high).toHaveClass('self-start');
-    fireEvent.click(within(completed).getByRole('button', { name: /^Collapse / }));
-    expect(completed).toHaveClass('self-start');
-
-    fireEvent.click(within(high).getByRole('button', { name: /^Expand / }));
-    expect(high).not.toHaveClass('self-start');
-
     render(
       <DndContext>
-        <Column columnKey="completed" tasks={[]} now={0} zone="UTC" nextMsFor={() => null} isTarget={false} {...columnProps} {...handlers} />
+        <Column columnKey="high" tasks={[task()]} now={0} zone="UTC" nextMsFor={() => null} isTarget={false} {...columnProps} collapsed {...handlers} />
+        <Column columnKey="completed" tasks={[]} now={0} zone="UTC" nextMsFor={() => null} isTarget={false} {...columnProps} collapsed {...handlers} />
         <Probe />
       </DndContext>,
     );
-    expect(completedDisabled).toBe(true);
+    const high = screen.getByTestId('column-high');
+    // Collapsed renders the header only, but the cell keeps the grid's default stretch.
+    expect(within(high).queryByTestId('task-row')).toBeNull();
+    expect(high).not.toHaveClass('self-start');
+    expect(probed['col:high']).toEqual({ node: high, disabled: false });
+    expect(probed['col:completed']).toEqual({ node: screen.getByTestId('column-completed'), disabled: true });
+
+    // A drop "on the column" (its cell, not a card) appends after the last card.
+    const cols = [
+      { key: 'critical' as const, tasks: [{ id: 'c1' }] },
+      { key: 'high' as const, tasks: [{ id: 'h1' }, { id: 'h2' }] },
+    ];
+    expect(resolveBoardDrop(cols, 'c1', 'col:high')).toEqual({ taskId: 'c1', to: 'high', index: 2 });
+  });
+
+  it('a move into a collapsed column (through the same commit a pointer drop uses) expands it', () => {
+    const onMove = vi.fn();
+    const columns: BoardColumn[] = [
+      { key: 'critical', tasks: [task({ id: 'c1', title: 'Mover', priority: 1 })] },
+      { key: 'high', tasks: [task({ id: 'h1', title: 'Stayer' })] },
+    ];
+    render(<Board columns={columns} now={0} zone="UTC" nextMsFor={() => null} onMove={onMove} {...handlers} />);
+    const high = screen.getByTestId('column-high');
+    fireEvent.click(within(high).getByRole('button', { name: 'Collapse High priority' }));
+    expect(high).not.toHaveClass('self-start');
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Drag Mover' }), { key: 'ArrowRight' });
+    expect(onMove).toHaveBeenCalledWith('c1', 'high', 0);
+    expect(within(high).getByRole('button', { name: 'Collapse High priority' })).toHaveAttribute('aria-expanded', 'true');
+    expect(within(high).getByText('Mover')).toBeInTheDocument();
   });
 });
