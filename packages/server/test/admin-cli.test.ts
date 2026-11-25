@@ -1,5 +1,8 @@
-import { describe, it, expect } from 'vitest';
-import { parseAdminArgs, resolveInviter, ADMIN_USAGE } from '../src/admin-cli.js';
+import { describe, it, expect, vi } from 'vitest';
+import {
+  parseAdminArgs, resolveInviter, ADMIN_USAGE, resolvePassword, AdminInputError, ARGV_PASSWORD_WARNING,
+  defaultAdminTimezone, pickFirstAdmin, runDeleteUser, type PasswordIO, type DeleteUserDeps,
+} from '../src/admin-cli.js';
 
 const errorOf = (argv: string[]): string => {
   const parsed = parseAdminArgs(argv);
@@ -14,7 +17,9 @@ describe('parseAdminArgs — valid invocations keep working', () => {
     });
   });
 
-  it('create-user without a password is a google-only account', () => {
+  // Was "create-user without a password is a google-only account": omitting --password now
+  // means "ask for it" (prompt or stdin); a google-only account needs an explicit --google-only.
+  it('create-user without --password leaves the password to be asked for', () => {
     expect(parseAdminArgs(['create-user', '--email', 'a@b.co'])).toEqual({
       kind: 'create-user', email: 'a@b.co', password: undefined, admin: false,
     });
@@ -58,10 +63,12 @@ describe('parseAdminArgs — bad arguments become usage errors, never crashes', 
     expect(errorOf(['bogus'])).toMatch(/unknown command: bogus/);
   });
 
-  it('missing required --email / --password', () => {
+  // The set-password "--password is required" assertion pinned the defect (a password only on
+  // argv); without it the password is now prompted for / read from stdin.
+  it('missing required --email', () => {
     expect(errorOf(['create-user'])).toMatch(/--email is required/);
-    expect(errorOf(['set-password', '--email', 'a@b.co'])).toMatch(/--password is required/);
     expect(errorOf(['set-password', '--password', 'pw'])).toMatch(/--email is required/);
+    expect(errorOf(['delete-user'])).toMatch(/--email is required/);
   });
 
   it('a value flag with no value, or followed by another flag', () => {
@@ -123,5 +130,195 @@ describe('resolveInviter', () => {
 
   it('an unknown --by is an error, not a silent fallback to someone else', async () => {
     await expect(resolveInviter({ email: null, by: 'ghost@x.io' }, lookup)).rejects.toThrow(/no user with --by email ghost@x.io/);
+  });
+});
+
+describe('parseAdminArgs — new flags and commands', () => {
+  it('set-password without --password leaves the password to be asked for', () => {
+    expect(parseAdminArgs(['set-password', '--email', 'a@b.co'])).toEqual({ kind: 'set-password', email: 'a@b.co', password: undefined });
+  });
+
+  it('create-user --google-only creates a password-less account, and cannot be combined with --password', () => {
+    expect(parseAdminArgs(['create-user', '--email', 'a@b.co', '--google-only'])).toEqual({
+      kind: 'create-user', email: 'a@b.co', password: undefined, admin: false, googleOnly: true,
+    });
+    expect(errorOf(['create-user', '--email', 'a@b.co', '--google-only', '--password', 'longenough'])).toMatch(/--google-only and --password/);
+  });
+
+  it('create-user --timezone takes a valid IANA zone and rejects anything else', () => {
+    expect(parseAdminArgs(['create-user', '--email', 'a@b.co', '--timezone', 'Europe/Berlin'])).toEqual({
+      kind: 'create-user', email: 'a@b.co', password: undefined, admin: false, timezone: 'Europe/Berlin',
+    });
+    for (const bad of ['Mars/Olympus', 'local', '+03:00']) {
+      expect(errorOf(['create-user', '--email', 'a@b.co', '--timezone', bad])).toMatch(/--timezone must be an IANA time zone/);
+    }
+  });
+
+  it('delete-user, with and without --yes', () => {
+    expect(parseAdminArgs(['delete-user', '--email', 'A@b.co'])).toEqual({ kind: 'delete-user', email: 'a@b.co', yes: false });
+    expect(parseAdminArgs(['delete-user', '--yes', '--email', 'a@b.co'])).toEqual({ kind: 'delete-user', email: 'a@b.co', yes: true });
+    expect(errorOf(['delete-user', '--email', 'a@b.co', '--password', 'x'])).toMatch(/unknown flag --password for delete-user/);
+  });
+
+  it('usage documents the new commands and flags', () => {
+    for (const text of ['delete-user', '--yes', '--timezone', '--google-only', 'stdin']) expect(ADMIN_USAGE).toContain(text);
+  });
+});
+
+describe('resolvePassword', () => {
+  const io = (over: Partial<PasswordIO> = {}): PasswordIO & { warnings: string[] } => {
+    const warnings: string[] = [];
+    return {
+      isTTY: false,
+      promptHidden: async () => { throw new Error('unexpected prompt'); },
+      readStdin: async () => { throw new Error('unexpected stdin read'); },
+      warn: (m) => { warnings.push(m); },
+      warnings,
+      ...over,
+    };
+  };
+
+  it('on a terminal, asks twice without echo and returns the password', async () => {
+    const promptHidden = vi.fn().mockResolvedValueOnce('correct horse').mockResolvedValueOnce('correct horse');
+    const i = io({ isTTY: true, promptHidden });
+    expect(await resolvePassword(undefined, i)).toBe('correct horse');
+    expect(promptHidden).toHaveBeenCalledTimes(2);
+    expect(i.warnings).toEqual([]);
+  });
+
+  it('on a terminal, refuses two different entries', async () => {
+    const promptHidden = vi.fn().mockResolvedValueOnce('correct horse').mockResolvedValueOnce('correct hors');
+    await expect(resolvePassword(undefined, io({ isTTY: true, promptHidden }))).rejects.toThrow(/do not match/);
+  });
+
+  it('when piped, reads the first line of stdin, stripping only the line ending', async () => {
+    expect(await resolvePassword(undefined, io({ readStdin: async () => '  spaced pass  \r\nignored\n' }))).toBe('  spaced pass  ');
+    expect(await resolvePassword(undefined, io({ readStdin: async () => 'no-newline-pw' }))).toBe('no-newline-pw');
+  });
+
+  it('a password starting with -- works when prompted or piped', async () => {
+    expect(await resolvePassword(undefined, io({ readStdin: async () => '--dashes-first\n' }))).toBe('--dashes-first');
+    const promptHidden = vi.fn().mockResolvedValue('--dashes-first');
+    expect(await resolvePassword(undefined, io({ isTTY: true, promptHidden }))).toBe('--dashes-first');
+  });
+
+  it('empty stdin is an error, never a password-less account', async () => {
+    for (const input of ['', '\n']) {
+      await expect(resolvePassword(undefined, io({ readStdin: async () => input }))).rejects.toBeInstanceOf(AdminInputError);
+    }
+  });
+
+  it('requires at least 8 characters from every source', async () => {
+    await expect(resolvePassword('short77', io())).rejects.toThrow(/at least 8 characters/);
+    await expect(resolvePassword(undefined, io({ readStdin: async () => 'short77\n' }))).rejects.toThrow(/at least 8 characters/);
+    const promptHidden = vi.fn().mockResolvedValue('short77');
+    await expect(resolvePassword(undefined, io({ isTTY: true, promptHidden }))).rejects.toThrow(/at least 8 characters/);
+    expect(await resolvePassword(undefined, io({ readStdin: async () => '8chars!!' }))).toBe('8chars!!');
+  });
+
+  it('still accepts --password on argv, with a warning that it is visible', async () => {
+    const i = io();
+    expect(await resolvePassword('from-argv-pw', i)).toBe('from-argv-pw');
+    expect(i.warnings).toEqual([ARGV_PASSWORD_WARNING]);
+    expect(ARGV_PASSWORD_WARNING).toMatch(/shell history/);
+    expect(ARGV_PASSWORD_WARNING).toMatch(/process list/);
+  });
+});
+
+describe('defaultAdminTimezone', () => {
+  it('uses the server process zone when valid, else UTC', () => {
+    expect(defaultAdminTimezone('Europe/Berlin')).toBe('Europe/Berlin');
+    for (const bad of [undefined, '', 'Mars/Olympus']) expect(defaultAdminTimezone(bad)).toBe('UTC');
+  });
+});
+
+describe('pickFirstAdmin', () => {
+  const admin = (id: string, createdAt: string, isAdmin = true) => ({ id, isAdmin, createdAt: new Date(createdAt) });
+
+  it('is the oldest admin, then the smallest id — whatever order the rows come in', () => {
+    const rows = [
+      admin('c', '2026-03-01T00:00:00Z'),
+      admin('b', '2026-01-01T00:00:00Z'),
+      admin('z', '2025-01-01T00:00:00Z', false),
+      admin('a', '2026-01-01T00:00:00Z'),
+    ];
+    expect(pickFirstAdmin(rows)!.id).toBe('a');
+    expect(pickFirstAdmin([...rows].reverse())!.id).toBe('a');
+  });
+
+  it('null when there is no admin', () => {
+    expect(pickFirstAdmin([admin('z', '2025-01-01T00:00:00Z', false)])).toBeNull();
+  });
+});
+
+describe('runDeleteUser', () => {
+  const user = { id: 'u2', email: 'friend@x.io', isAdmin: false };
+  const deps = (over: Partial<DeleteUserDeps> = {}): DeleteUserDeps & { deleted: string[]; out: string[] } => {
+    const deleted: string[] = [];
+    const out: string[] = [];
+    return {
+      findByEmail: async (e) => (e === user.email ? user : null),
+      countAdmins: async () => 1,
+      countOwned: async () => ({ tasks: 3, habits: 2, blocks: 7, events: 4, invites: 1 }),
+      deleteUser: async (id) => { deleted.push(id); },
+      isTTY: false,
+      prompt: async () => { throw new Error('unexpected prompt'); },
+      print: (line) => { out.push(line); },
+      deleted,
+      out,
+      ...over,
+    };
+  };
+
+  it('shows what will go, including that Google is not touched, then deletes with --yes', async () => {
+    const d = deps();
+    await runDeleteUser({ email: 'friend@x.io', yes: true }, d);
+    expect(d.deleted).toEqual(['u2']);
+    const text = d.out.join('\n');
+    expect(text).toContain('friend@x.io');
+    expect(text).toMatch(/3 tasks/);
+    expect(text).toMatch(/2 habits/);
+    expect(text).toMatch(/7 scheduled blocks/);
+    expect(text).toMatch(/4 calendar events/);
+    expect(text).toMatch(/1 invite code/);
+    expect(text).toMatch(/Google Calendar events.*not deleted/i);
+    expect(text).toMatch(/Google access is not revoked/i);
+    expect(text).toMatch(/deleted user friend@x.io/);
+  });
+
+  it('on a terminal, deletes only when the email is typed again (normalised like --email)', async () => {
+    const ok = deps({ isTTY: true, prompt: async () => '  Friend@X.io ' });
+    await runDeleteUser({ email: 'friend@x.io', yes: false }, ok);
+    expect(ok.deleted).toEqual(['u2']);
+
+    const wrong = deps({ isTTY: true, prompt: async () => 'someone@else.io' });
+    await expect(runDeleteUser({ email: 'friend@x.io', yes: false }, wrong)).rejects.toThrow(/did not match.*nothing deleted/);
+    expect(wrong.deleted).toEqual([]);
+  });
+
+  it('off a terminal without --yes, refuses as a usage error and deletes nothing', async () => {
+    const d = deps();
+    await expect(runDeleteUser({ email: 'friend@x.io', yes: false }, d)).rejects.toBeInstanceOf(AdminInputError);
+    expect(d.deleted).toEqual([]);
+  });
+
+  it('refuses to delete the last admin, before asking anything', async () => {
+    const prompt = vi.fn();
+    const d = deps({ findByEmail: async () => ({ ...user, isAdmin: true }), countAdmins: async () => 1, isTTY: true, prompt });
+    await expect(runDeleteUser({ email: 'friend@x.io', yes: true }, d)).rejects.toThrow(/last admin/);
+    expect(prompt).not.toHaveBeenCalled();
+    expect(d.deleted).toEqual([]);
+  });
+
+  it('may delete an admin while another admin remains', async () => {
+    const d = deps({ findByEmail: async () => ({ ...user, isAdmin: true }), countAdmins: async () => 2 });
+    await runDeleteUser({ email: 'friend@x.io', yes: true }, d);
+    expect(d.deleted).toEqual(['u2']);
+  });
+
+  it('an unknown email is an error', async () => {
+    const d = deps();
+    await expect(runDeleteUser({ email: 'ghost@x.io', yes: true }, d)).rejects.toThrow(/no such user/);
+    expect(d.deleted).toEqual([]);
   });
 });
