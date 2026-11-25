@@ -305,6 +305,57 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
   - Pages still carry their own outer padding (e.g. Planner `md:p-4`), so content sits ~12–16px inside the header's left edge (P3/P7).
   - The Buffers card heading duplicates the new "Scheduling buffers" headline (P7).
 
+### P3 implementation notes (2026-11-25): deviations and contracts for P4
+- **Block layer (D9) — proven live** in Chromium and Firefox at 7, 4 and 2 columns and with `dayStartMinute=180`.
+  - The body grid is `[gutter | days area]`. The days area holds the `day-col-i` columns (click-to-create, `DayDropZone`, `data-drop-target`, `data-today`, grid lines from an inline `repeating-linear-gradient`) and one `block-layer`.
+  - The layer is `pointer-events-none`, and each tile wrapper opts back in. An empty-slot click therefore reaches its column, and elementFromPoint on a block returns the block.
+  - **Stacking:** we hoisted rather than raising z-index on the columns, because a column painted above the layer would also take the blocks' clicks. The drop indicator and the desktop `CreatePopover` render in per-column `col-slot-i` wrappers inside the layer (`z-30`, `pointer-events-none`). The popover itself is `pointer-events-auto`.
+  - The now-line (`data-day-index`) lives in the layer too.
+- **Layer child order is by key** (`b:`/`e:` + id), not by day or time, so a cross-day move never re-inserts the DOM node. Side effect: **Tab order across blocks follows ids, not time**. P4's keyboard task should decide whether that matters (e.g. a roving tabindex in time order).
+- **Block geometry:**
+  - Tiles carry `data-day-index` and `data-block-key`.
+  - `left`/`width` come from `blockLeftCss`/`blockWidthCss`: 5px inset at column edges, 2px between lanes.
+  - jsdom serialises `calc()` percentages rounded, so tests compare through a `cssCalc()` round-trip.
+- **InteractiveBlock contract:**
+  - One column = `closest('[data-testid="block-layer"]')` width / `dayCount`. WeekGrid always passes `dayCount`.
+  - `onClick(keyboard: boolean)`: a pointer tap with zero delta passes `false`. The body's own `click` counts only when `detail === 0` (keyboard), so the native click that can follow a short drag never selects.
+  - Held preview + `landing` bridge are unchanged (P4 replaces them).
+- **CalendarBlock:**
+  - The body button holds a full-height inner wrapper. A `<button>` vertically centres content taller than itself, which pushed a short tile's time label above its top edge.
+  - Titles wrap by word and clip, never `overflow-wrap:anywhere` (that stacked letters in narrow lanes).
+  - Right padding is reserved only for what is always visible in the corner cluster: lock/pin, plus × on coarse pointers.
+  - Accessible name: "<title>, <Wed 09:00 AM – 10:00 AM>, <locked, synced from Google | movable, drag to reschedule>". **P4** should add the arrow-key wording and `aria-describedby` once keyboard moves exist.
+  - Started tasks get a 3px accent bar (`started-bar`). There is no play icon or "Now" dot: the pin keeps the icon slot.
+- **Times** on tiles still use `formatHm` ("09:00 AM", 2-digit hour); the design shows "1:30 PM". The detail card and Next-up card use the unpadded form. Unifying them is a P8 polish item, because many tests pin the `formatHm` output.
+- **Legend:** four static items (Meetings swatch, Movable dashed swatch, Locked icon, Blocked hatch). P4 turns the first two into the filter toggles.
+- **Selection (§5.4, Q6 default applied):**
+  - **md+, any pointer:** a click, tap or Enter selects. Behaviour changes: an iPad tap no longer opens the TaskDrawer, and a desktop click on an app event no longer opens the EventDrawer. The card's Open buttons do both.
+  - **Below md:** a tap opens the TaskDrawer or EventDrawer as before. Habit and Google tiles toast "Edit habits on the Habits page" / "Synced from Google Calendar" (they have no drawer).
+  - Escape deselects unless an `[aria-modal="true"]` surface or the create popover is open.
+  - Keyboard selection moves focus to the card heading. Closing the card hands focus back to the tile's body.
+  - **Known:** the desktop TaskDrawer does not close on Esc (pre-existing). Esc with a drawer open deselects the card underneath.
+- **Detail card with the panel hidden** floats at the grid's bottom-right (`absolute`, `shadow-lift`) instead of taking a side column. Narrowing the grid would change `daysThatFit` and could page the selected block out of view, which clears the selection.
+- **Detail card actions follow §5.4 literally:**
+  - Stop (running) > Unpin (pinned) > Delete. A pinned tile's card has no Delete; the hover × on the tile still deletes.
+  - Google meetings get no primary or secondary action, only "Synced from Google Calendar — edit it there".
+- **UnscheduledCard:**
+  - Copy is "Couldn't schedule everything · didn't fit in your free time": entries include habits, so it does not say "tasks".
+  - "+N more" switches the panel to All tasks and shows it (desktop: un-hides it; compact: opens the Tasks sheet). Without `onShowAll` it unfolds inline.
+  - The compact card always renders, so Re-plan stays reachable at 390px with zero entries.
+- **NextUpCard:**
+  - The header uses `relativeDayTimeLabel` ("Next up · Today 3:29pm"); the chip uses `untilLabel` ("in 1h 29m", "in 1d").
+  - Running state: "Now · until 2:45pm" with a "45m left" chip.
+  - The second line is the next block of any kind (task or habit).
+  - It reads the unranged schedule query, so Planner tests filter `getSchedule` calls by args.
+- **Side panel:**
+  - Group meta (labels and glowing dots on `pri-*` tokens) is local to `PlannerTaskPanel`, because `priorityBucket.ts` META is P6's to migrate.
+  - The "Next: …" time moved to its own line (`panel-next`). Beside the due date it starved the progress bar.
+  - The panel is `min-h-0 flex-1` inside a 330px side column, under the detail card.
+- **Planner padding** is `px-1 pb-1` at md+ (was `md:p-4`), so the panels line up with the header.
+  - **P8:** in light theme the panel shadows are clipped by AppShell's `shell-content` `overflow-auto` box, which shows as a faint rectangle around the content area. The fix belongs in AppShell's padding/overflow contract (P2-owned, `AppShell.test` pins the padding).
+- **Coarse resize target** (pre-existing): on tiles of 30 minutes or more the 24px handle covers the lower part, so on touch a press in the bottom half of a 45-minute tile resizes instead of long-press-moving. P4's resize task may want a smaller hit area plus a visible grip.
+- **Suite:** 1042 → 1137 (`EventBlock.test` and `UnscheduledWarning.test` were replaced by `CalendarBlock`/`blockStyle` and `UnscheduledCard` tests).
+
 ### Survey notes for risky assumptions (checked 2026-11-24)
 - **Block id stability (D13).** `packages/core/src/apply.ts` applies the desired schedule as a keyed (`engineKey`) in-place diff: a block whose engine key survives a replan is **updated in place and keeps its id**, so moved blocks glide and only genuinely new chunks drop in. Caveat: when a task's chunk count changes, keys are reissued and some blocks are deleted/created — those will drop in. That is acceptable ("newly placed" is a fair reading).
 - **CSP vs the inline theme script (D3).** No `Content-Security-Policy` header is set in `packages/server` or the `docs/deploy` runbooks (Tailscale Serve, Docker Compose), so the inline pre-paint script is allowed. If a CSP is added later it needs a hash for that script.
