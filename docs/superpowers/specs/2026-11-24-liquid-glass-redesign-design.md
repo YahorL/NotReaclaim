@@ -756,6 +756,22 @@ Verified findings from the final review. Each item was checked in the code first
   - Only a block that **already** runs past the column end (overnight 23:00–07:00, or one crossing a `dayStartMinute` boundary) keeps the start-only clamp `[0, 1440−15]`, so it keeps its length. **Assumption:** ↓ on such a block still moves it (23:00–07:00 → 23:15–07:15). "Don't push it further" was read as "don't squeeze it back in", not as "↓ is a no-op".
   - The resize parts are unchanged: a zero delta is a no-op, and a block is never shortened because it overflows.
   - Both cases are pinned in `blockKeyboard`, `dragModel` and `InteractiveBlock` tests.
+- **Third live pass, real Tab keys** (headless Chromium and Firefox via playwright-core, 1440×900, demo user in America/New_York, 7 visible days; **14/14 in each engine**):
+  - Every block is reached with `page.keyboard.press('Tab')` only; there is no `element.focus()`. Each walk starts with a click on the non-interactive `#page-heading`, because headless Firefox lets Tab leave the document for the browser chrome and never wraps back.
+  - (a) Tab to a pinned task block, then ↓ → Shift+↓: it moves to the next day at 10:15–11:30, and that persists across a reload.
+  - (b) Enter opens the detail card with focus inside it. Esc closes it and focus returns to the block. ↓ then still moves the block.
+  - (c) A Google meeting (seeded in the DB): an arrow key shakes it (`data-shake`) and shows the "Locked — synced from Google Calendar" toast. No write is sent.
+  - (d) After a mouse click on a block, ↓ sends no write and the block stays put.
+  - (e) P1 narrowed:
+    - In the last visible column, a 17:00 2h task dragged down 6h lands at 22:00–24:00.
+    - Tab to a 23:00–24:00 block and press ↓: no write.
+    - The overnight 23:00–07:00 block on ↓ becomes 23:15–07:15.
+    - With `dayStartMinute=180` (restored afterwards), a 19:00 2h task dragged down 6.5h lands at 01:00–03:00. A 02:00–03:00 block on ↓ sends no write. The overnight block on ↑ keeps its 8h.
+  - The fixtures (a task, its pinned blocks, a Google event and a blocked event) were all deleted afterwards.
+  - **Test-geometry gotcha:** drags must end inside the viewport. In headless Firefox, a pointer driven below the viewport never commits. The fix was to start blocks higher up, not to change the app.
+- **Follow-ups seen live (not fixed, out of scope):**
+  - In headless Firefox only, intermittently (2 of 5 runs), there is a React dev warning "Cannot update a component (`Planner`) while rendering a different component (`NavLink`)". It appears around the Settings PUT and reload. The stack points at `NavLinkItem`, which has no callbacks that set state. The cause has not been found.
+  - In a narrow overlap lane (~22–32px wide), the hover × and the pin icon cover most of the tile's top edge, so a mouse press there deletes or does nothing instead of dragging. This is a UX hazard for dense days.
 - **Follow-ups (ledger, not fixed):**
   - **B4 covers one direction only:** the palette will not open a second drawer on a task a page drawer already holds. A page can still open its own drawer on a task the shell's searched-task drawer holds (e.g. clicking that card on Priorities).
     - **Fix direction:** have pages consult `OpenTaskDrawers`, or close the shell drawer on a page open.
