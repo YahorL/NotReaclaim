@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import type { Task } from '../../api/types';
@@ -91,6 +92,17 @@ describe('TaskSearchPalette', () => {
     expect(onClose).toHaveBeenCalledTimes(2);
     fireEvent.click(screen.getByRole('dialog'));
     expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  // StrictMode (main.tsx) runs effects twice in dev: the first cleanup refocuses the opener, so
+  // `autoFocus` alone ends with the trap focusing the dialog container instead of the combobox.
+  it('focuses the combobox under StrictMode when opened from a focused button', () => {
+    const opener = document.createElement('button');
+    document.body.appendChild(opener);
+    opener.focus();
+    render(<StrictMode><TaskSearchPalette tasks={TASKS} zone="UTC" onSelect={vi.fn()} onClose={vi.fn()} /></StrictMode>);
+    expect(document.activeElement).toBe(screen.getByRole('combobox'));
+    opener.remove();
   });
 
   it('returns focus to the opener when it unmounts', () => {

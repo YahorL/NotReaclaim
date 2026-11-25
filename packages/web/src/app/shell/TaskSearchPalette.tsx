@@ -30,8 +30,9 @@ function statusNote(task: Task, zone: string): string | null {
 export function TaskSearchPalette({ tasks, zone, onSelect, onClose }: TaskSearchPaletteProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  // Explicit initial focus on the combobox: `autoFocus` alone lost to the trap's container focus
-  // when the palette was opened by a shortcut pressed on a focused button (seen live in Chromium).
+  // Explicit initial focus on the combobox. `autoFocus` alone is not enough under StrictMode (dev):
+  // the double-run effect's first cleanup refocuses the opener, and the re-run then sees focus
+  // outside the dialog and focuses the container. Pinned by the StrictMode test.
   const onKeyDown = useFocusTrap(dialogRef, { onEscape: onClose, initialFocus: () => inputRef.current });
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
@@ -145,7 +146,8 @@ export function useTaskSearchShortcut(onOpen: () => void): void {
     function onKey(e: KeyboardEvent) {
       if (e.defaultPrevented || e.altKey) return;
       const slash = e.key === '/' && !e.ctrlKey && !e.metaKey;
-      const modK = e.key.toLowerCase() === 'k' && (e.ctrlKey || e.metaKey) && !e.shiftKey;
+      // `key` can be missing on synthetic keydowns (e.g. Chrome autofill).
+      const modK = e.key?.toLowerCase() === 'k' && (e.ctrlKey || e.metaKey) && !e.shiftKey;
       if (!slash && !modK) return;
       if (isEditable(e.target)) return;
       if (document.querySelector('[aria-modal="true"]')) return;

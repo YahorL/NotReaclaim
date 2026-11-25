@@ -262,7 +262,7 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
   - Logo/avatar hexes (P2).
 
 ### P2 implementation notes (2026-11-25): deviations and contracts for later phases
-- **Order.** `useFocusTrap(ref, { onEscape, restoreTo, initialFocus })` was extracted from `Sheet.tsx` first, in its own behaviour-preserving commit, because 2.6 consumes it before 2.8. It returns the `onKeyDown` handler for the surface. Contract for P5: put the handler on the dialog element, and pass `initialFocus` explicitly. **Do not rely on `autoFocus` alone.** In Chromium, the palette lost `autoFocus` to the trap's container focus when it was opened by a shortcut pressed on a focused button. `initialFocus: () => inputRef.current` fixed it.
+- **Order.** `useFocusTrap(ref, { onEscape, restoreTo, initialFocus })` was extracted from `Sheet.tsx` first, in its own behaviour-preserving commit, because 2.6 consumes it before 2.8. It returns the `onKeyDown` handler for the surface. Contract for P5: put the handler on the dialog element, and pass `initialFocus` explicitly. The `restoreTo`/`initialFocus`/`onEscape` options are tested in `Sheet.test.tsx`. **Do not rely on `autoFocus` alone.** Under `<StrictMode>` (`main.tsx`, dev), effects run twice. The first cleanup refocuses the opener, and when the dialog was opened from a focused button, the re-run then focuses the container instead of the autoFocused field. P5's dialog will hit this. `initialFocus: () => inputRef.current` fixes it, and a StrictMode test in `TaskSearchPalette.test.tsx` pins it.
 - **AccountMenu does not use the modal trap.** It follows the WAI-ARIA menu-button pattern:
   - Opening focuses the first item; ↑/↓/Home/End move between items.
   - Escape closes the menu and refocuses the button; Tab closes it and lets focus move on.
@@ -297,7 +297,7 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
 - **Primitives.**
   - The Sheet surface is `[background:var(--x-dialog-bg)]` + `shadow-modal`, **without** `.glass-dialog`, because a `backdrop-filter` (non-none in light) would make the sheet the containing block for `fixed` descendants.
   - The backdrop is `bg-overlay backdrop-blur-[8px]`, but only when not collapsed. `data-full-screen`/`data-collapsed` were added for tests.
-  - `DrawerPanel` desktop = `.glass-dialog rounded-panel`. `FieldBox` shows its focus cue as `focus-within:border-accent/60`, because the controls inside have `outline-none`.
+  - `DrawerPanel` desktop = `.glass-dialog rounded-panel`. `FieldBox` shows its focus cue as `focus-within:border-accent-fg/60` (olive in light, for contrast), because the controls inside have `outline-none`.
 - **Icons.** `planner`/`priorities`/`stats` glyphs were redrawn to the prototype paths. `pin`/`play`/`stop`/`user` are drawn in the same style, since the prototype has no glyph for them (and the location pin is excluded). `grip` is re-centred on the 24 grid.
 - **Mobile.** The tab bar and top bar are `.glass` with `rounded-none` and one-side borders. The active tab is a 48×28 accent pill behind the icon, plus `aria-current`/`data-active`. The Habits tab now uses the `habits` glyph.
 - **Left for later phases:**

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { Sheet } from './Sheet';
+import { useRef } from 'react';
+import { Sheet, useFocusTrap, type FocusTrapOptions } from './Sheet';
 
 describe('Sheet', () => {
   it('renders a labelled dialog anchored to the bottom edge', () => {
@@ -181,5 +182,46 @@ describe('Sheet variants', () => {
     // and from this phase on, sheets contain drawers. Regression guard for 92e0c8a M1.
     render(<Sheet label="Tasks" onClose={vi.fn()}><p>body</p></Sheet>);
     expect(screen.getByTestId('sheet').className).not.toContain('translate-y');
+  });
+});
+
+describe('useFocusTrap options', () => {
+  function Trapped(props: Omit<FocusTrapOptions, 'initialFocus'> & { focusSecond?: boolean }) {
+    const ref = useRef<HTMLDivElement>(null);
+    const second = useRef<HTMLButtonElement>(null);
+    const onKeyDown = useFocusTrap(ref, { ...props, initialFocus: props.focusSecond ? () => second.current : undefined });
+    return (
+      <div ref={ref} tabIndex={-1} data-testid="trap" onKeyDown={onKeyDown}>
+        <button type="button">first</button>
+        <button type="button" ref={second}>second</button>
+      </div>
+    );
+  }
+
+  it('focuses the container by default and initialFocus when given', () => {
+    const { unmount } = render(<Trapped />);
+    expect(document.activeElement).toBe(screen.getByTestId('trap'));
+    unmount();
+    render(<Trapped focusSecond />);
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'second' }));
+  });
+
+  it('restores focus to restoreTo instead of the render-time opener', () => {
+    const opener = document.createElement('button');
+    const target = document.createElement('button');
+    document.body.append(opener, target);
+    opener.focus();
+    const restoreTo = { current: target };
+    const { unmount } = render(<Trapped restoreTo={restoreTo} />);
+    unmount();
+    expect(document.activeElement).toBe(target);
+    opener.remove(); target.remove();
+  });
+
+  it('calls onEscape for Escape pressed inside', () => {
+    const onEscape = vi.fn();
+    render(<Trapped onEscape={onEscape} />);
+    fireEvent.keyDown(screen.getByRole('button', { name: 'first' }), { key: 'Escape' });
+    expect(onEscape).toHaveBeenCalledTimes(1);
   });
 });

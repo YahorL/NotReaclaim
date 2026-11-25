@@ -45,7 +45,6 @@ export function TopBar({ onNewTask, onSearch, now = Date.now, sidebarHidden, onT
             type="button"
             data-testid="toggle-sidebar"
             aria-label={sidebarHidden ? 'Show sidebar' : 'Hide sidebar'}
-            aria-pressed={!sidebarHidden}
             onClick={onToggleSidebar}
             className={ROUND_GLASS}
           >
