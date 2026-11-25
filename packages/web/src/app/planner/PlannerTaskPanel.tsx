@@ -65,6 +65,11 @@ function TaskCard({ task, nowMs, zone, nextMs, atRisk, showPriority, coarse, onC
   // completion is saved; the card then leaves the active list. If it is still here a while later
   // (the save failed), it un-ticks.
   const [ticked, setTicked] = useState(false);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  // …and bring it into view inside the panel's scroller (`nearest`: no jump when visible).
+  useEffect(() => {
+    if (fresh) cardRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [fresh]);
   const tickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (tickTimer.current) clearTimeout(tickTimer.current); }, []);
   const complete = () => {
@@ -91,7 +96,7 @@ function TaskCard({ task, nowMs, zone, nextMs, atRisk, showPriority, coarse, onC
       // programmatically focusable while removing the dead tab stop — and it is what a
       // KeyboardSensor would require an activation keydown to originate on, which keeps that
       // contract true if this surface ever gains one.
-      ref={(n) => { setNodeRef(n); setActivatorNodeRef(n); }}
+      ref={(n) => { setNodeRef(n); setActivatorNodeRef(n); cardRef.current = n; }}
       data-testid="panel-task"
       data-task-id={task.id}
       data-dragging={isDragging || undefined}
@@ -179,6 +184,16 @@ export function PlannerTaskPanel({ tasks, preview, nowMs, zone, onComplete, onEd
     [active],
   );
   const byDue = useMemo(() => sortByDue(active), [active]);
+
+  // A task just made in the New task dialog may sort past the fold of its group ("Show N more"),
+  // where its glow would play unseen: unfold that group once the card arrives.
+  const freshId = useRecentlyCreated().freshTaskId;
+  useEffect(() => {
+    if (!freshId) return;
+    const g = grouped.find((x) => x.tasks.some((t) => t.id === freshId));
+    if (!g || g.tasks.findIndex((t) => t.id === freshId) < PANEL_GROUP_LIMIT) return;
+    setExpanded((e) => (e[g.bucket] ? e : { ...e, [g.bucket]: true }));
+  }, [freshId, grouped]);
 
   const card = (t: Task, showPriority: boolean) => (
     <TaskCard

@@ -285,6 +285,47 @@ describe('PlannerTaskPanel fresh glow', () => {
     expect(older).not.toHaveAttribute('data-fresh');
   });
 
+  it('unfolds the group when the fresh task sorts behind "Show N more"', () => {
+    const many = Array.from({ length: 7 }, (_, i) => task({ id: `t${i}`, title: `Task ${i}`, priority: 2, sortOrder: i }));
+    const { rerender } = render(
+      <RecentlyCreatedProvider>
+        <PlannerTaskPanel tasks={many.slice(0, 6)} preview={undefined} nowMs={NOW} zone="UTC"
+          onComplete={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} />
+      </RecentlyCreatedProvider>,
+    );
+    expect(screen.getByTestId('panel-show-more-high')).toHaveAttribute('aria-expanded', 'false');
+    // The dialog marks it fresh before the tasks refetch lists it.
+    rerender(
+      <RecentlyCreatedProvider>
+        <MarkOnMount id="t6" />
+        <PlannerTaskPanel tasks={many.slice(0, 6)} preview={undefined} nowMs={NOW} zone="UTC"
+          onComplete={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} />
+      </RecentlyCreatedProvider>,
+    );
+    rerender(
+      <RecentlyCreatedProvider>
+        <MarkOnMount id="t6" />
+        <PlannerTaskPanel tasks={many} preview={undefined} nowMs={NOW} zone="UTC"
+          onComplete={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} />
+      </RecentlyCreatedProvider>,
+    );
+    expect(screen.getByTestId('panel-show-more-high')).toHaveAttribute('aria-expanded', 'true');
+    const fresh = screen.getAllByTestId('panel-task').find((c) => c.dataset.taskId === 't6');
+    expect(fresh).toHaveAttribute('data-fresh', 'true');
+  });
+
+  it('leaves the group folded when the fresh task is above the fold', () => {
+    const many = Array.from({ length: 7 }, (_, i) => task({ id: `t${i}`, title: `Task ${i}`, priority: 2, sortOrder: i }));
+    render(
+      <RecentlyCreatedProvider>
+        <MarkOnMount id="t0" />
+        <PlannerTaskPanel tasks={many} preview={undefined} nowMs={NOW} zone="UTC"
+          onComplete={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} />
+      </RecentlyCreatedProvider>,
+    );
+    expect(screen.getByTestId('panel-show-more-high')).toHaveAttribute('aria-expanded', 'false');
+  });
+
   it('nothing is fresh without the shell provider', () => {
     renderPanel([task({ id: 'a' })]);
     expect(screen.getByTestId('panel-task')).not.toHaveAttribute('data-fresh');
