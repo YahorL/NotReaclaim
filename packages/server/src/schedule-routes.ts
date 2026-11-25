@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { computeDesiredSchedule, round15, QUARTER_HOUR_MS } from '@notreclaim/core';
+import { computeDesiredSchedule, startBlockPatch, stopBlockEndMs } from '@notreclaim/core';
 import { NotFoundError } from '@notreclaim/db';
 import type { AppDeps, AfterMutation } from './app.js';
 import { bestEffortGoogleWrite } from './google-writeback.js';
@@ -110,15 +110,9 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
   app.post('/schedule/:id/start', guard, async (request, reply) => {
     const blockRow = await loadTaskBlock(request, reply, 'started');
     if (!blockRow) return;
-    const now = deps.now();
-    const snapped = round15(now);
-    const data: { pinned: boolean; startedAt: Date; startsAt?: Date } = { pinned: true, startedAt: new Date(now) };
-    // Pull the start to the snapped current time (Start always targets the upcoming task),
-    // keeping the end. The lower-bound guard is gone so a future block is pulled forward too.
-    if (snapped < blockRow.endsAt.getTime()) {
-      data.startsAt = new Date(snapped);
-    }
-    const block = await deps.repos.scheduledBlocks.update(request.userId, blockRow.id, data);
+    const block = await deps.repos.scheduledBlocks.update(
+      request.userId, blockRow.id, startBlockPatch(blockRow.endsAt.getTime(), deps.now()),
+    );
     announceBlockWrite(request.userId);
     afterMutation(request.userId);
     return block;
@@ -127,13 +121,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
   app.post('/schedule/:id/stop', guard, async (request, reply) => {
     const blockRow = await loadTaskBlock(request, reply, 'stopped');
     if (!blockRow) return;
-    const now = deps.now();
-    const startMs = blockRow.startsAt.getTime();
-    const endMs = blockRow.endsAt.getTime();
-    const minEnd = startMs + QUARTER_HOUR_MS;
-    // End the running block now: snap end to the nearest 15 min, never below start+15 min
-    // (no zero-length block) and never past the original end (Stop only shortens).
-    const newEnd = Math.min(endMs, Math.max(round15(now), minEnd));
+    const newEnd = stopBlockEndMs(blockRow.startsAt.getTime(), blockRow.endsAt.getTime(), deps.now());
     const block = await deps.repos.scheduledBlocks.update(request.userId, blockRow.id, { endsAt: new Date(newEnd), pinned: true });
     announceBlockWrite(request.userId);
     afterMutation(request.userId);

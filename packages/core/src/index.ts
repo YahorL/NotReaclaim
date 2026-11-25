@@ -7,3 +7,4 @@ export type {
   ScheduleMirror, BlocksRepo, ReplanCounts, MirrorSnapshot, MirrorEventState,
 } from './apply.js';
 export { computeSpentMs } from './spent.js';
+export { startBlockPatch, stopBlockEndMs } from './block-timer.js';
