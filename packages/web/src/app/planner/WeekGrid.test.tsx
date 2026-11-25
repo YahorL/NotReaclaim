@@ -633,6 +633,21 @@ describe('WeekGrid Meetings / Movable filters', () => {
     expect(byKind('task')[0]!.className).toContain('pointer-events-auto');
   });
 
+  it('a filtered-out tile no longer claims an overlap lane: the visible one beside it takes the full column', () => {
+    const overlapping = appEvent; // Thu 10:00–11:00
+    const task = block({ startsAt: '2026-01-08T10:30:00.000Z', endsAt: '2026-01-08T11:30:00.000Z' });
+    const { rerender } = renderGrid({ blocks: [task], events: [overlapping], filters: { meetings: true, movable: true }, onToggleFilter: vi.fn() });
+    expect(byKind('task')[0]!.style.width).toBe(cssCalc(blockWidthCss(100 / 7 / 2, 1, 2)));
+    rerender(
+      <WeekGrid days={days} nowMs={WED_NOON} weekLabel="Jan 5 – 11" blocks={[task]} events={[overlapping]} onPrev={vi.fn()} onToday={vi.fn()} onNext={vi.fn()} onCommit={vi.fn()}
+        filters={{ meetings: false, movable: true }} onToggleFilter={vi.fn()} />,
+    );
+    expect(byKind('task')[0]!.style.width).toBe(cssCalc(blockWidthCss(100 / 7, 0, 1)));
+    expect(byKind('task')[0]!.style.left).toBe(cssCalc(blockLeftCss((3 / 7) * 100, 0, 1)));
+    // The hidden tile keeps a geometry of its own (stays mounted to fade back in).
+    expect(byKind('meeting')[0]).toHaveAttribute('data-hidden', 'true');
+  });
+
   it('hidden tiles leave the tab order (body and action buttons) but stay mounted', () => {
     renderGrid({ blocks: [block({ pinned: true })], events: [appEvent], filters: { meetings: true, movable: false }, onToggleFilter: vi.fn(), onDeleteBlock: vi.fn() });
     const task = byKind('task')[0]!;

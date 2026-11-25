@@ -286,7 +286,11 @@ export function WeekGrid(props: WeekGridProps) {
     const p = pending[it.key];
     return pendingApplies(p, it) ? { ...it, startMs: p.startMs, endMs: p.endMs, startLabel: formatHm(p.startMs, zone) } : it;
   });
-  const layout = layoutWeek(items, days);
+  // Filtered-out tiles stay mounted (they fade back in), but they must not claim overlap lanes:
+  // the visible tiles split the column among themselves, the hidden ones keep geometry of their own.
+  const shownItems = items.filter((it) => !isFilteredOut(it.kind, filters));
+  const hiddenItems = items.filter((it) => isFilteredOut(it.kind, filters));
+  const layout = new Map([...layoutWeek(hiddenItems, days), ...layoutWeek(shownItems, days)]);
   const entering = useEntrance(entranceKey, days.length);
   const layerRef = useRef<HTMLDivElement>(null);
   const pendingRef = useRef(pending);
