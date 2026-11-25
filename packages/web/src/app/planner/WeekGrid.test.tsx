@@ -816,7 +816,9 @@ describe('WeekGrid compact (below md)', () => {
     // (Re-plan moved to the summary card above the grid; UnscheduledCard pins its shrink-0.)
     expect(screen.queryByRole('button', { name: /re-plan/i })).toBeNull();
     expect(screen.getByText('Today').className).toContain('shrink-0');
-    expect(screen.getByText('Jan 5 – 11').className).toContain('md:shrink-0');
+    // lg+: the label keeps its width; md–lg it may truncate but never below 6rem (a 900px window
+    // otherwise pushed the panel toggle out of the card).
+    expect(screen.getByText('Jan 5 – 11')).toHaveClass('lg:shrink-0', 'md:min-w-[6rem]');
     const legend = screen.getByTestId('grid-legend');
     expect(legend.className).toContain('min-w-0');
     expect(legend.className).toContain('overflow-hidden');

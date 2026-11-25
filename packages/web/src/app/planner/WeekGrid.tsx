@@ -376,7 +376,10 @@ export function WeekGrid(props: WeekGridProps) {
         {/* Compact keeps `min-w-0 truncate` (its row can wrap and the label may be long); on md the
             row cannot wrap, and without `md:shrink-0` the truncation happily eats the range label
             down to zero width — measured: label invisible at a 626px pane. The legend gives instead. */}
-        <span className={`min-w-0 truncate font-medium tracking-[-0.01em] text-fg md:shrink-0 ${compact ? 'text-[16px]' : 'text-[20px]'}`}>{weekLabel}</span>
+        {/* md–lg (tablet, side panel open) the calendar pane is ~370px: even with the legend at zero
+            the row overflowed and pushed the panel toggle out of the card. There the label may
+            truncate, but never below 6rem; from lg it keeps its width again. */}
+        <span className={`min-w-0 truncate font-medium tracking-[-0.01em] text-fg md:min-w-[6rem] lg:shrink-0 ${compact ? 'text-[16px]' : 'text-[20px]'}`}>{weekLabel}</span>
         <button onClick={onToday} className="btn-glass h-9 shrink-0 rounded-pill px-4 text-[14px] text-fg">Today</button>
         <span className="flex-1" />
         {/* The legend is dropped below md (spec §4). It is the one element that gives when the row
