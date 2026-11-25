@@ -115,6 +115,8 @@ W3 for a Google user is one Google round trip per changed, created or swept row 
 - The re-import case (§2 item 4): the user's commit now always follows Google's response to the push, so `row.updatedAt > event.updated` holds **if the host clock is not behind Google's** by more than that latency (§5).
 - The DELETE 404 race.
 
+Not preserved, but no longer silent: an edit (PATCH, Start, Stop) that waited while the replan **removed** its row (the engine dropped that key and swept the block) answers 404 and changes nothing; the optimistic UI rolls back to the replan's result, and no follow-up replan is enqueued. A drag cannot pin a block that no longer exists.
+
 Left open: W1 (drift writes racing a route write: matters only for a genuine two-sided conflict; closable by moving drift's row read and writes into the lock after the listing); writes by cascade (deleting a task or habit removes its blocks mid-apply — no longer an abort, see §6).
 
 ### 3.5 Web companion
@@ -137,9 +139,10 @@ A route waiting on the lock widens the known snap-back race (a `schedule.updated
 
 - Before: one row that failed to save in the main diff loop (a Google error, or a foreign-key error because its task was deleted a moment ago) aborted the whole apply, so later rows, the sweep, the pinned pass and `schedule.updated` were skipped — possibly on every cycle. The pinned pass and the first-insert ("attach") path already isolated per row.
 - Now every create (A4), update (A1/A2) and sweep delete (A5) is isolated: a failing row is skipped and counted, and the loop carries on. Google first still means a failed Google call skips that row's DB write. The order of writes for non-failing rows is unchanged.
-- New optional counts on `ApplyCounts`/`ReplanCounts`: `createFailed`, `updateFailed`, `deleteFailed`, **present only when non-zero** (a clean run keeps its long-standing shape). A failed DB write after a first insert counts as `attachFailed`. They surface in the replan result, the `POST /schedule/replan` reply and the `schedule.updated` WS event; the web's `ReconcileResult` type needs no change.
+- New optional counts on `ApplyCounts`/`ReplanCounts`: `createFailed`, `updateFailed`, `deleteFailed`, **present only when non-zero** (a clean run keeps its long-standing shape). A failed DB write after the first insert of an **unchanged** row counts as `attachFailed`; for a **changed** row (insert + move in one write) it counts as `updateFailed`. They surface in the replan result, the `POST /schedule/replan` reply and the `schedule.updated` WS event; the web's `ReconcileResult` type needs no change.
 - Core has no logging (it is pure); failures surface only as counts, like the pinned pass.
-- Still fatal: `ApplyScheduleOptions.isFatal` (default: nothing fatal). Google's `reconcile` passes `abortsApply`: any `GoogleAuthError` (a `GoogleGrantRevokedError` included — the token service is what flags `googleAuthBrokenAt`, during the refresh before apply, but should one ever come out of a mirror call it must reach the caller), a `GoogleApiError` 401 (the access token was rejected: every later call would fail too), and a `GoogleTimeoutError` (Google unreachable: isolating it would make every remaining row wait out its own 15 s timeout while the user's lock is held). Errors outside the loop (apply's read, compute, drift, the token refresh) are unaffected.
+- A single-row Google error no longer fails `POST /schedule/replan` with a 502: it answers 200 with the count. 403/429 on one event are isolated, so the loop keeps calling Google for the remaining rows.
+- Still fatal: `ApplyScheduleOptions.isFatal` (default: nothing fatal), checked at every catch in the main loop, the first-insert ("attach") catches included — so a fatal error during a first-link insert now aborts instead of being counted. Google's `reconcile` passes `abortsApply`: any `GoogleAuthError` (a `GoogleGrantRevokedError` included — the token service is what flags `googleAuthBrokenAt`, during the refresh before apply, but should one ever come out of a mirror call it must reach the caller), a `GoogleApiError` 401 (the access token was rejected: every later call would fail too), and a `GoogleTimeoutError` (Google unreachable: isolating it would make every remaining row wait out its own 15 s timeout while the user's lock is held). Errors outside the loop (apply's read, compute, drift, the token refresh) are unaffected.
 - A create that fails after its Google insert leaves that event behind (the create may have committed with a lost reply, so it is not deleted blind) — the same orphan the old abort produced.
 
 ## 7. Tests
@@ -166,7 +169,8 @@ A route waiting on the lock widens the known snap-back race (a `schedule.updated
 - **W2 ghosts (fixed).** Engine pass-through blocks carry the row uuid as id; a row that stopped being pinned between assemble and apply made apply create an auto row keyed by that uuid. Compute now runs inside the lock.
 - **Resurrected orphan events (race removed; Google behaviour still unverified [I]).** Whether a PUT to a just-deleted event restores it was never probed; A′ removes the race that could issue one.
 - **Writers still outside the lock (open).** Task/habit deletes cascade to blocks mid-apply (now isolated per row instead of aborting); drift's writes (W1); the inbound sync (§8).
-- **Pinned pass and attach timeouts (open).** The pinned pass still isolates every error, timeouts included, so a Google outage can cost one 15 s timeout per pinned row while the lock is held; consider applying the same fatal set there.
+- **Pinned-pass timeouts (open).** The pinned pass still isolates every error, timeouts included, so a Google outage can cost one 15 s timeout per pinned row while the lock is held; consider applying the same fatal set there. (The main loop, first inserts included, already aborts on them.)
+- **Silent persistent row failures (open).** Nothing logs non-zero `*Failed` counts; a row failing every cycle is visible only in the replan result. Consider a server-side warning when a replan reports failures.
 - **Orphaned event on a failed create after insert (open).** See §6.
 
 ## 10. Open questions for the owner
