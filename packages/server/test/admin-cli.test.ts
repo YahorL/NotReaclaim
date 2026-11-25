@@ -61,7 +61,7 @@ describe('parseAdminArgs — valid invocations keep working', () => {
 describe('parseAdminArgs — bad arguments become usage errors, never crashes', () => {
   it('missing or unknown command', () => {
     expect(errorOf([])).toMatch(/missing command/);
-    expect(errorOf(['bogus'])).toMatch(/unknown command: bogus/);
+    expect(errorOf(['bogus'])).toBe('unknown command (argument 1; not shown)');
   });
 
   // The set-password "--password is required" assertion pinned the defect (a password only on
@@ -80,7 +80,7 @@ describe('parseAdminArgs — bad arguments become usage errors, never crashes', 
   });
 
   it('an unknown or misplaced flag (a typo must not silently create a google-only user)', () => {
-    expect(errorOf(['create-user', '--email', 'a@b.co', '--pasword', 'pw'])).toMatch(/unknown flag --pasword for create-user/);
+    expect(errorOf(['create-user', '--email', 'a@b.co', '--pasword', 'pw'])).toBe('unknown flag (argument 3; not shown)');
     expect(errorOf(['set-password', '--email', 'a@b.co', '--password', 'pw', '--admin'])).toMatch(/unknown flag --admin/);
     expect(errorOf(['create-invite', '--password', 'pw'])).toMatch(/unknown flag --password/);
   });
@@ -100,7 +100,7 @@ describe('parseAdminArgs — bad arguments become usage errors, never crashes', 
 
     it('an error about a --flag=value token names the flag, never the value', () => {
       const cases: Array<[string[], RegExp]> = [
-        [['create-user', '--email', 'a@b.co', '--pasword=s3cret-value'], /unknown flag --pasword for create-user/],
+        [['create-user', '--email', 'a@b.co', '--pasword=s3cret-value'], /^unknown flag \(argument 3; not shown\)$/],
         [['delete-user', '--email', 'a@b.co', '--password=s3cret-value'], /unknown flag --password for delete-user/],
         [['create-user', '--email', 'a@b.co', '--admin=s3cret-value'], /--admin takes no value/],
         [['create-user', '--email', 'a@b.co', '--password=s3cret-value', '--password=s3cret-value'], /--password given more than once/],
@@ -119,6 +119,36 @@ describe('parseAdminArgs — bad arguments become usage errors, never crashes', 
       const error = errorOf(['set-password', '--email', 'a@b.co', '--password', 'correct', 'horse-battery']);
       expect(error).toMatch(/unexpected argument 5/);
       expect(error).not.toContain('horse-battery');
+    });
+  });
+
+  describe('an argument that is not a known command or flag name is never printed', () => {
+    it('a flag and its value passed as one argv token (quoted "--password secret")', () => {
+      const error = errorOf(['set-password', '--email', 'a@b.co', '--password secret12345']);
+      expect(error).toBe('unknown flag (argument 3; not shown)');
+      expect(error).not.toContain('secret12345');
+    });
+
+    it('the rest of an unquoted password that starts with --', () => {
+      const error = errorOf(['set-password', '--email', 'a@b.co', '--password', 'abc', '--def12345']);
+      expect(error).toBe('unknown flag (argument 5; not shown)');
+      expect(error).not.toContain('def12345');
+    });
+
+    it('a first argument that is not a command (e.g. a password typed in the wrong place)', () => {
+      const error = errorOf(['hunter2hunter2', '--email', 'a@b.co']);
+      expect(error).toBe('unknown command (argument 1; not shown)');
+      expect(error).not.toContain('hunter2');
+    });
+
+    it('a known flag on the wrong command is still named', () => {
+      expect(errorOf(['set-password', '--email', 'a@b.co', '--admin'])).toBe('unknown flag --admin for set-password');
+      expect(errorOf(['delete-user', '--max-uses=3'])).toBe('unknown flag --max-uses for delete-user');
+    });
+
+    it('a mistyped flag gets the position-only message', () => {
+      expect(errorOf(['create-invite', '--max-use', '3'])).toBe('unknown flag (argument 1; not shown)');
+      expect(errorOf(['delete-user', '--email', 'a@b.co', '--yess'])).toBe('unknown flag (argument 3; not shown)');
     });
   });
 

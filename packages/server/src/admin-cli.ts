@@ -48,6 +48,8 @@ const FLAGS = {
   'create-invite': { email: true, by: true, 'max-uses': true, expires: true },
 } as const satisfies Record<string, Record<string, boolean>>;
 type Command = keyof typeof FLAGS;
+/** Every flag name any command takes: only these are ever printed in an error. */
+const KNOWN_FLAGS = new Set<string>(Object.values(FLAGS).flatMap((flags) => Object.keys(flags)));
 
 class UsageError extends Error {}
 
@@ -76,7 +78,8 @@ export function parseAdminArgs(argv: readonly string[]): ParsedAdminArgs {
   if (cmd === undefined) return { kind: 'error', message: 'missing command' };
   // A flag in first place is not quoted: it may carry a password (`--password=…`).
   if (cmd.startsWith('-')) return { kind: 'error', message: 'the command must come first (e.g. admin set-password --email <e>)' };
-  if (!Object.hasOwn(FLAGS, cmd)) return { kind: 'error', message: `unknown command: ${cmd}` };
+  // Not echoed: an unknown first argument may be a password typed in the wrong place.
+  if (!Object.hasOwn(FLAGS, cmd)) return { kind: 'error', message: 'unknown command (argument 1; not shown)' };
   const command = cmd as Command;
   const allowed: Record<string, boolean> = FLAGS[command];
 
@@ -92,7 +95,11 @@ export function parseAdminArgs(argv: readonly string[]): ParsedAdminArgs {
       const eq = token.indexOf('=');
       const name = eq === -1 ? token.slice(2) : token.slice(2, eq);
       const inline = eq === -1 ? undefined : token.slice(eq + 1);
-      if (!Object.hasOwn(allowed, name)) throw new UsageError(`unknown flag --${name} for ${command}`);
+      if (!Object.hasOwn(allowed, name)) {
+        // A known name is safe to print; anything else may be a value (`--password secret` passed
+        // as one token, or the `--…` rest of an unquoted password), so only its position is given.
+        throw new UsageError(KNOWN_FLAGS.has(name) ? `unknown flag --${name} for ${command}` : `unknown flag (argument ${i + 1}; not shown)`);
+      }
       if (values.has(name) || switches.has(name)) throw new UsageError(`--${name} given more than once`);
       if (!allowed[name]) {
         if (inline !== undefined) throw new UsageError(`--${name} takes no value`);
