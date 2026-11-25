@@ -769,6 +769,16 @@ Verified findings from the final review. Each item was checked in the code first
     - With `dayStartMinute=180` (restored afterwards), a 19:00 2h task dragged down 6.5h lands at 01:00–03:00. A 02:00–03:00 block on ↓ sends no write. The overnight block on ↑ keeps its 8h.
   - The fixtures (a task, its pinned blocks, a Google event and a blocked event) were all deleted afterwards.
   - **Test-geometry gotcha:** drags must end inside the viewport. In headless Firefox, a pointer driven below the viewport never commits. The fix was to start blocks higher up, not to change the app.
+- **Leaving Priorities with queued moves** (job 3): nothing needed fixing.
+  - **From the code:** `useMoveTaskMutation` keeps its whole lifecycle in the `useMutation` options. TanStack stores those on the `Mutation` in the cache, and scoped mutations are chained by `MutationCache.runNext`, so neither depends on an observer.
+  - The `run` ref lives in those closures, so it outlives the page. Only the last mutation ever has an observer. When that observer unsubscribes, a pending mutation just re-schedules its GC; it is not removed.
+  - **Live** (Chromium and Firefox, 7/7 each): each task PATCH was delayed 1.5s, the grip pressed ↓ ↓ →, and the Planner rail link clicked at once, with 1 PATCH in flight and 2 queued.
+    - All 3 PATCHes went out one after another and returned 200.
+    - The server holds the final move (Medium).
+    - The card is in Medium after client navigation back to Priorities and after a reload. High keeps Q2/Q3 in order.
+    - There were no page errors.
+  - New regression test in `Priorities.test.tsx`: unmount with one move in flight and two queued; all three PATCHes are still sent, in order.
+  - **Edge case, not a bug:** returning to Priorities and moving again while an old run is still settling starts a new hook instance with a fresh `run` ref. The old run's final `onSettled` then sees the new mutation pending and skips its own rollback. The new run's last settle still invalidates `tasks`, so the board converges on the server's truth.
 - **Follow-ups seen live (not fixed, out of scope):**
   - In headless Firefox only, intermittently (2 of 5 runs), there is a React dev warning "Cannot update a component (`Planner`) while rendering a different component (`NavLink`)". It appears around the Settings PUT and reload. The stack points at `NavLinkItem`, which has no callbacks that set state. The cause has not been found.
   - In a narrow overlap lane (~22–32px wide), the hover × and the pin icon cover most of the tile's top edge, so a mouse press there deletes or does nothing instead of dragging. This is a UX hazard for dense days.

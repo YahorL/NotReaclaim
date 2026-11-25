@@ -351,6 +351,28 @@ describe('Priorities board moves', () => {
     expect(updateTask.mock.calls.map((c) => c[1])).toEqual([{ sortOrder: 15 }, { sortOrder: 21 }]);
   });
 
+  it('leaving the page while a move is queued still sends it, in order, without errors', async () => {
+    let resolveFirst: (t: Task) => void = () => {};
+    const updateTask = vi.fn()
+      .mockImplementationOnce(() => new Promise<Task>((r) => { resolveFirst = r; }))
+      .mockImplementation(async () => task());
+    const listTasks = vi.fn(async () => [
+      task({ id: 'a', title: 'First', priority: 2, sortOrder: 0 }),
+      task({ id: 'b', title: 'Second', priority: 2, sortOrder: 10 }),
+      task({ id: 'c', title: 'Third', priority: 2, sortOrder: 20 }),
+    ]);
+    const { unmount } = renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ listTasks, updateTask }) });
+    await waitFor(() => expect(screen.getByText('First')).toBeInTheDocument());
+    fireEvent.keyDown(gripOf('First'), { key: 'ArrowDown' });
+    await waitFor(() => expect(updateTask).toHaveBeenCalledTimes(1));
+    fireEvent.keyDown(gripOf('First'), { key: 'ArrowDown' });
+    fireEvent.keyDown(gripOf('First'), { key: 'ArrowRight' });
+    unmount(); // the queue lives in the mutation cache, not in the page
+    await act(async () => { resolveFirst(task()); });
+    await waitFor(() => expect(updateTask).toHaveBeenCalledTimes(3));
+    expect(updateTask.mock.calls.map((c) => c[1])).toEqual([{ sortOrder: 15 }, { sortOrder: 21 }, expect.objectContaining({ priority: 3 })]);
+  });
+
   it('when two queued moves both fail, the board rolls back to before the first (not to between them)', async () => {
     const initial = [
       task({ id: 'a', title: 'First', priority: 2, sortOrder: 0 }),
