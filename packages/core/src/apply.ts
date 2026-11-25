@@ -323,19 +323,36 @@ export interface ReplanCounts extends ApplyCounts {
   removed: number;
 }
 
-/** Compute the desired schedule and persist it to the DB with no external sync (no Google). */
+/**
+ * Runs `fn` as one critical section, resolving or rejecting exactly as `fn` does. The server
+ * passes its per-user lock here, so a replan's read-diff-write and the block routes'
+ * read-modify-writes never interleave (a drag committed between apply's read and its writes
+ * would otherwise be overwritten or swept by the stale plan).
+ */
+export type Exclusive = <T>(fn: () => Promise<T>) => Promise<T>;
+
+/** No lock: run the section directly (tests, and callers with nothing to exclude). */
+const runDirectly: Exclusive = (fn) => fn();
+
+/**
+ * Compute the desired schedule and persist it to the DB with no external sync (no Google).
+ * The compute (its block read) and the whole apply run inside `exclusive`.
+ */
 export async function planLocally(
   repos: SchedulingRepositories,
   scheduledBlocks: BlocksRepo,
   userId: string,
   now: number,
+  exclusive: Exclusive = runDirectly,
 ): Promise<ReplanCounts> {
   const settings = await repos.settings.getByUserId(userId);
   if (!settings) throw new SettingsRequiredError(userId);
   const horizonEnd = horizonEndMs(now, settings.horizonDays);
-  const desired = await computeDesiredSchedule(repos, userId, now);
-  // No mirror locally, so nothing to push for pinned rows either: apply reports
-  // pinnedSynced/pinnedFailed as 0 on this path.
-  const counts = await applyDesiredSchedule(scheduledBlocks, userId, desired, { now, horizonEnd });
+  const counts = await exclusive(async () => {
+    const desired = await computeDesiredSchedule(repos, userId, now);
+    // No mirror locally, so nothing to push for pinned rows either: apply reports
+    // pinnedSynced/pinnedFailed as 0 on this path.
+    return applyDesiredSchedule(scheduledBlocks, userId, desired, { now, horizonEnd });
+  });
   return { ...counts, pinned: 0, removed: 0 };
 }
