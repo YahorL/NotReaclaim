@@ -397,3 +397,54 @@ describe('a refresh signal during a pending planner write', () => {
     expect(t.scheduleHistory.map((l) => b1(l)?.startsAt)).not.toContain(OLD.startsAt);
   });
 });
+
+describe('deferred refreshes are recorded explicitly, not inferred from isInvalidated', () => {
+  it('(j) a signal deferred during a block move survives an older in-flight calendar-events GET resolving with pre-signal data', async () => {
+    const t = setup();
+    await t.ready();
+    // An earlier calendar-events refetch (nothing pending yet) whose slow response reflects the
+    // server state at request time.
+    let releaseOld!: () => void;
+    t.api.getCalendarEvents.mockImplementationOnce(() => {
+      const snapshot = t.server.events.map((e) => ({ ...e }));
+      return new Promise((res) => { releaseOld = () => res(snapshot); });
+    });
+    act(() => invalidateForEvent(t.qc, { type: 'data.changed', userId: 'u1', resources: ['calendarEvents'] }));
+    await waitFor(() => expect(t.api.getCalendarEvents).toHaveBeenCalledTimes(1));
+
+    act(() => t.hook.result.current.moveBlock.mutate({ id: 'b1', patch: NEW }));
+    await waitFor(() => expect(t.moveBlock).toHaveLength(1));
+    // A Google sync lands a new event and announces it while the move is pending: deferred.
+    t.server.events = [...t.server.events, { id: 'e3', ...NEW }];
+    act(() => invalidateForEvent(t.qc, { type: 'sync.completed', userId: 'u1', sync: {}, counts: {} }));
+    await flush();
+    // The old GET resolves with pre-sync data (and, in TanStack, clears isInvalidated).
+    act(() => releaseOld());
+    await flush();
+    t.api.getCalendarEvents.mockClear();
+
+    act(() => t.moveBlock[0]!.ok());
+    await waitFor(() => expect(t.hook.result.current.moveBlock.isSuccess).toBe(true));
+    await flush();
+    expect(t.api.getCalendarEvents).toHaveBeenCalledTimes(1);
+    expect(t.qc.getQueryData<Item[]>(queryKeys.calendarEvents('a', 'b'))!.map((e) => e.id)).toContain('e3');
+  });
+
+  it('(k) with nothing deferred, a block move refetches only what it did before, even with an errored calendar-events query', async () => {
+    const t = setup();
+    await t.ready();
+    t.api.getCalendarEvents.mockImplementationOnce(async () => { throw new Error('boom'); });
+    act(() => invalidateForEvent(t.qc, { type: 'data.changed', userId: 'u1', resources: ['calendarEvents'] }));
+    await waitFor(() => expect(t.hook.result.current.events.isError).toBe(true));
+    t.api.getCalendarEvents.mockClear();
+
+    act(() => t.hook.result.current.moveBlock.mutate({ id: 'b1', patch: NEW }));
+    await waitFor(() => expect(t.moveBlock).toHaveLength(1));
+    act(() => t.moveBlock[0]!.ok());
+    await waitFor(() => expect(t.hook.result.current.moveBlock.isSuccess).toBe(true));
+    await flush();
+    expect(t.api.getSchedule).toHaveBeenCalledTimes(1);
+    expect(t.api.getSchedulePreview).toHaveBeenCalledTimes(1);
+    expect(t.api.getCalendarEvents).not.toHaveBeenCalled();
+  });
+});

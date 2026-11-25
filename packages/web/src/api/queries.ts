@@ -23,27 +23,44 @@ export const queryKeys = {
 
 /**
  * Shared `mutationKey` of the optimistic planner writes (block/event move + delete). While any is
- * pending, a refetch of a deferred root could read the pre-write server state and overwrite the
+ * pending, a refetch of a protected root could read the pre-write server state and overwrite the
  * optimistic value (tile jumps back, deleted tile reappears), so refresh signals for those roots
- * only mark them stale and the last write to settle refetches once.
+ * are deferred and the last write to settle refetches each deferred root once.
  */
-export const SCHEDULE_WRITE_KEY = ['scheduleWrite'] as const;
+const SCHEDULE_WRITE_KEY = ['scheduleWrite'] as const;
 
 /** The query roots a pending planner write protects. */
-const DEFERRED_ROOTS: readonly QueryKey[] = [queryKeys.scheduleRoot, queryKeys.calendarEventsRoot];
+const PROTECTED_ROOTS: readonly QueryKey[] = [queryKeys.scheduleRoot, queryKeys.calendarEventsRoot];
 
 const sameRoot = (a: QueryKey, b: QueryKey) => a.length === 1 && b.length === 1 && a[0] === b[0];
+
+const isProtectedRoot = (queryKey: QueryKey) => PROTECTED_ROOTS.some((r) => sameRoot(r, queryKey));
 
 const scheduleWritesPending = (qc: QueryClient) => qc.isMutating({ mutationKey: SCHEDULE_WRITE_KEY });
 
 /**
+ * Protected roots whose refresh was deferred while a planner write was pending, per client; the
+ * last write to settle drains it. An explicit record, not the queries' `isInvalidated` flag: a
+ * fetch already in flight when the signal arrived clears that flag when it lands with pre-signal
+ * data, and a failed fetch sets it without anything having been deferred.
+ */
+const deferredRoots = new WeakMap<QueryClient, QueryKey[]>();
+
+/** Record a protected root as deferred (and mark its queries stale without refetching them). */
+function deferRefresh(qc: QueryClient, queryKey: QueryKey): void {
+  const deferred = deferredRoots.get(qc) ?? [];
+  if (!deferred.some((r) => sameRoot(r, queryKey))) deferredRoots.set(qc, [...deferred, queryKey]);
+  void qc.invalidateQueries({ queryKey, refetchType: 'none' });
+}
+
+/**
  * Invalidate a query root for a refresh signal. While a planner write is pending, the schedule /
- * calendar-event roots are only marked stale (the write's settle refetches them); everything else,
+ * calendar-event roots are deferred (the last write's settle refetches them); everything else,
  * and everything when nothing is pending, is invalidated + refetched as usual.
  */
 export function invalidateRoot(qc: QueryClient, queryKey: QueryKey): void {
-  if (DEFERRED_ROOTS.some((r) => sameRoot(r, queryKey)) && scheduleWritesPending(qc) > 0) {
-    void qc.invalidateQueries({ queryKey, refetchType: 'none' });
+  if (isProtectedRoot(queryKey) && scheduleWritesPending(qc) > 0) {
+    deferRefresh(qc, queryKey);
   } else {
     void qc.invalidateQueries({ queryKey });
   }
@@ -72,8 +89,7 @@ function useApiMutation<TVars = void, TResult = unknown>(
  * A mutation that optimistically rewrites every cached LIST under `root` with `apply`, rolls the
  * snapshots back on error, and invalidates `root` then each of `alsoInvalidate` once settled.
  * It is a planner write (SCHEDULE_WRITE_KEY): if another planner write is still pending it only
- * marks its roots stale; the last one to settle refetches its roots plus any deferred root that
- * was marked stale meanwhile.
+ * defers its roots; the last one to settle refetches its roots plus every root deferred meanwhile.
  */
 function useOptimisticListMutation<TVars, TResult>(
   call: (api: ApiClient, vars: TVars) => Promise<TResult>,
@@ -98,18 +114,23 @@ function useOptimisticListMutation<TVars, TResult>(
       ctx?.snapshots.forEach(([key, data]) => qc.setQueryData(key, data));
     },
     // Synchronous on purpose: TanStack still counts this mutation as pending inside onSettled, so
-    // `=== 1` means "I am the last". Awaiting the refetch here would keep it pending during its
-    // own refetch, and a refresh signal arriving then would be deferred with no one to refetch it.
+    // `> 1` means another planner write is still in flight and this one is not the last. (`> 1`
+    // rather than `=== 1` so that a count of 0, e.g. after the mutation cache was cleared on a
+    // session swap, also counts as last.) Awaiting the refetch here would keep this write pending
+    // during its own refetch, and a signal arriving then would be deferred to a settle already done.
     onSettled: () => {
       const roots = [root, ...alsoInvalidate];
       if (scheduleWritesPending(qc) > 1) {
-        for (const queryKey of roots) void qc.invalidateQueries({ queryKey, refetchType: 'none' });
+        for (const queryKey of roots) deferRefresh(qc, queryKey);
         return;
       }
+      const deferred = deferredRoots.get(qc) ?? [];
+      deferredRoots.delete(qc);
       for (const queryKey of roots) void qc.invalidateQueries({ queryKey });
-      for (const queryKey of DEFERRED_ROOTS) {
-        if (roots.some((r) => sameRoot(r, queryKey))) continue;
-        void qc.refetchQueries({ queryKey, type: 'active', predicate: (q) => q.state.isInvalidated });
+      // Plain invalidate: its default cancelRefetch also restarts a GET still in flight from
+      // before the deferred signal, which would otherwise land with pre-signal data.
+      for (const queryKey of deferred) {
+        if (!roots.some((r) => sameRoot(r, queryKey))) void qc.invalidateQueries({ queryKey });
       }
     },
   });
