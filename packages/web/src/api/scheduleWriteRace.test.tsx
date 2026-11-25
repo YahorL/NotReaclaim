@@ -161,6 +161,61 @@ describe('TanStack Query contract the deferral relies on', () => {
     act(() => releases[3]!(false));
     await waitFor(() => expect(seen).toEqual([1, 1, 2, 1]));
   });
+
+  it('a mutation-cache listener sees a mutation out of the pending count on its success/error update, also after clear()', async () => {
+    const qc = new QueryClient();
+    const mutationKey = ['probe'];
+    const seen: Array<[string, number]> = [];
+    qc.getMutationCache().subscribe((e) => {
+      if (e.type === 'updated' && (e.action.type === 'success' || e.action.type === 'error')) {
+        seen.push([e.action.type, qc.isMutating({ mutationKey })]);
+      }
+    });
+    const releases: Array<(ok: boolean) => void> = [];
+    const settled = vi.fn();
+    const Wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+    const { result } = renderHook(
+      () => useMutation({
+        mutationKey,
+        mutationFn: () => new Promise<void>((res, rej) => releases.push((ok) => (ok ? res() : rej(new Error('x'))))),
+        onSettled: () => { settled(); },
+      }),
+      { wrapper: Wrapper },
+    );
+    act(() => { result.current.mutate(); result.current.mutate(); });
+    await waitFor(() => expect(releases).toHaveLength(2));
+    // Same tick: each update is seen with only the other still pending, then none.
+    await act(async () => { releases[0]!(true); releases[1]!(false); });
+    await waitFor(() => expect(seen).toEqual([['success', 1], ['error', 0]]));
+    // A write removed from the cache mid-flight (session swap) still settles and still reaches
+    // the cache's listeners.
+    act(() => { result.current.mutate(); });
+    await waitFor(() => expect(releases).toHaveLength(3));
+    qc.getMutationCache().clear();
+    await act(async () => { releases[2]!(true); });
+    await waitFor(() => expect(seen).toEqual([['success', 1], ['error', 0], ['success', 0]]));
+    expect(settled).toHaveBeenCalledTimes(3);
+  });
+
+  it('a PAUSED (offline) write removed by clear() never resumes, so its onSettled never runs', async () => {
+    const qc = new QueryClient();
+    const mutationFn = vi.fn(async () => undefined);
+    const settled = vi.fn();
+    const Wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+    const { result } = renderHook(() => useMutation({ mutationKey: ['probe'], mutationFn: () => mutationFn(), onSettled: () => { settled(); } }), { wrapper: Wrapper });
+    try {
+      onlineManager.setOnline(false);
+      act(() => { result.current.mutate(); });
+      await waitFor(() => expect(result.current.isPaused).toBe(true));
+      qc.getMutationCache().clear();
+      onlineManager.setOnline(true);
+      await flush();
+      expect(mutationFn).not.toHaveBeenCalled();
+      expect(settled).not.toHaveBeenCalled();
+    } finally {
+      onlineManager.setOnline(true);
+    }
+  });
 });
 
 describe('a refresh signal during a pending planner write', () => {
@@ -377,6 +432,27 @@ describe('a refresh signal during a pending planner write', () => {
     expect(t.scheduleHistory.some((l) => b1(l))).toBe(false);
   });
 
+  it('(c4) two writes settling in the same tick still refetch each deferred root exactly once', async () => {
+    const t = setup();
+    await t.ready();
+    act(() => t.hook.result.current.moveBlock.mutate({ id: 'b1', patch: NEW }));
+    act(() => t.hook.result.current.moveEvent.mutate({ id: 'e1', ...NEW }));
+    await waitFor(() => { expect(t.moveBlock).toHaveLength(1); expect(t.moveEvent).toHaveLength(1); });
+    t.server.events = [...t.server.events, { id: 'e3', ...NEW }];
+    act(() => invalidateForEvent(t.qc, { type: 'sync.completed', userId: 'u1', sync: {}, counts: {} }));
+    await flush();
+    expect(t.api.getSchedule).not.toHaveBeenCalled();
+    expect(t.api.getCalendarEvents).not.toHaveBeenCalled();
+
+    await act(async () => { t.moveBlock[0]!.ok(); t.moveEvent[0]!.ok(); });
+    await flush();
+    expect(t.qc.isMutating()).toBe(0);
+    expect(t.api.getSchedule).toHaveBeenCalledTimes(1);
+    expect(t.api.getSchedulePreview).toHaveBeenCalledTimes(1);
+    expect(t.api.getCalendarEvents).toHaveBeenCalledTimes(1);
+    expect(t.qc.getQueryData<Item[]>(queryKeys.calendarEvents('a', 'b'))!.map((e) => e.id)).toContain('e3');
+  });
+
   it('(i) a calendar-event create succeeding during a pending block move is refetched once the move settles', async () => {
     const t = setup();
     await t.ready();
@@ -446,6 +522,86 @@ describe('deferred refreshes are recorded explicitly, not inferred from isInvali
     expect(t.api.getSchedule).toHaveBeenCalledTimes(1);
     expect(t.api.getSchedulePreview).toHaveBeenCalledTimes(1);
     expect(t.api.getCalendarEvents).not.toHaveBeenCalled();
+  });
+});
+
+describe('a session swap (mutation cache cleared) while a planner write is pending', () => {
+  /** What AuthContext.setAuth does when a new session replaces a live one. */
+  async function swapSession(t: ReturnType<typeof setup>) {
+    act(() => {
+      t.qc.getMutationCache().clear();
+      void t.qc.resetQueries();
+    });
+    await flush();
+    [t.api.getSchedule, t.api.getSchedulePreview, t.api.getCalendarEvents, t.api.listTasks].forEach((f) => f.mockClear());
+    t.scheduleHistory.length = 0;
+    t.eventsHistory.length = 0;
+  }
+  const b2 = (list: Item[] | undefined) => list?.find((b) => b.id === 'b2');
+
+  it('(s1) the old write settling while the new session\'s write is pending does not refetch over the new optimistic value; both done → one refetch of each root', async () => {
+    const t = setup();
+    await t.ready();
+    act(() => t.hook.result.current.moveBlock.mutate({ id: 'b1', patch: NEW }));
+    await waitFor(() => expect(t.moveBlock).toHaveLength(1));
+    await swapSession(t);
+
+    act(() => t.hook.result.current.deleteBlock.mutate('b2'));
+    await waitFor(() => expect(t.deleteBlock).toHaveLength(1));
+    expect(b2(t.qc.getQueryData<Item[]>(queryKeys.schedule('a', 'b')))).toBeUndefined();
+    act(() => invalidateForEvent(t.qc, { type: 'sync.completed', userId: 'u1', sync: {}, counts: {} }));
+
+    act(() => t.moveBlock[0]!.ok());
+    await flush();
+    expect(t.api.getSchedule).not.toHaveBeenCalled();
+    expect(t.api.getSchedulePreview).not.toHaveBeenCalled();
+    expect(t.api.getCalendarEvents).not.toHaveBeenCalled();
+    expect(b2(t.qc.getQueryData<Item[]>(queryKeys.schedule('a', 'b')))).toBeUndefined();
+
+    act(() => t.deleteBlock[0]!.ok());
+    await waitFor(() => expect(t.hook.result.current.deleteBlock.isSuccess).toBe(true));
+    await flush();
+    expect(t.api.getSchedule).toHaveBeenCalledTimes(1);
+    expect(t.api.getSchedulePreview).toHaveBeenCalledTimes(1);
+    expect(t.api.getCalendarEvents).toHaveBeenCalledTimes(1);
+    expect(t.scheduleHistory.some((l) => b2(l))).toBe(false);
+  });
+
+  it('(s2) the old write FAILING while the new session\'s write is pending does not roll old-session data back over the new optimistic value', async () => {
+    const t = setup();
+    await t.ready();
+    act(() => t.hook.result.current.moveBlock.mutate({ id: 'b1', patch: NEW }));
+    await waitFor(() => expect(t.moveBlock).toHaveLength(1));
+    await swapSession(t);
+
+    act(() => t.hook.result.current.deleteBlock.mutate('b2'));
+    await waitFor(() => expect(t.deleteBlock).toHaveLength(1));
+    act(() => t.moveBlock[0]!.fail());
+    await flush();
+    expect(t.scheduleHistory.some((l) => b2(l))).toBe(false);
+    expect(t.api.getSchedule).not.toHaveBeenCalled();
+
+    act(() => t.deleteBlock[0]!.ok());
+    await waitFor(() => expect(t.hook.result.current.deleteBlock.isSuccess).toBe(true));
+    await flush();
+    expect(t.api.getSchedule).toHaveBeenCalledTimes(1);
+    expect(t.scheduleHistory.some((l) => b2(l))).toBe(false);
+  });
+
+  it('(s3) a refresh deferred behind a write that is then removed from the cache is refetched with no further mutation activity', async () => {
+    const t = setup();
+    await t.ready();
+    act(() => t.hook.result.current.moveBlock.mutate({ id: 'b1', patch: NEW }));
+    await waitFor(() => expect(t.moveBlock).toHaveLength(1));
+    act(() => invalidateForEvent(t.qc, { type: 'sync.completed', userId: 'u1', sync: {}, counts: {} }));
+    await flush();
+    expect(t.api.getCalendarEvents).not.toHaveBeenCalled();
+
+    act(() => { t.qc.getMutationCache().clear(); });
+    await flush();
+    expect(t.api.getCalendarEvents).toHaveBeenCalledTimes(1);
+    expect(t.api.getSchedule).toHaveBeenCalledTimes(1);
+    expect(t.api.getSchedulePreview).toHaveBeenCalledTimes(1);
   });
 });
 

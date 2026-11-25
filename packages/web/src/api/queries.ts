@@ -25,7 +25,7 @@ export const queryKeys = {
  * Shared `mutationKey` of the optimistic planner writes (block/event move + delete). While any is
  * pending, a refetch of a protected root could read the pre-write server state and overwrite the
  * optimistic value (tile jumps back, deleted tile reappears), so refresh signals for those roots
- * are deferred and the last write to settle refetches each deferred root once.
+ * are deferred and each deferred root is refetched once when no planner write is pending any more.
  */
 const SCHEDULE_WRITE_KEY = ['scheduleWrite'] as const;
 
@@ -39,14 +39,45 @@ const isProtectedRoot = (queryKey: QueryKey) => PROTECTED_ROOTS.some((r) => same
 const scheduleWritesPending = (qc: QueryClient) => qc.isMutating({ mutationKey: SCHEDULE_WRITE_KEY });
 
 /**
- * Protected roots whose refresh was deferred while a planner write was pending, per client; the
- * last write to settle drains it. An explicit record, not the queries' `isInvalidated` flag: a
- * fetch already in flight when the signal arrived clears that flag when it lands with pre-signal
- * data, and a failed fetch sets it without anything having been deferred.
+ * Protected roots whose refresh was deferred while a planner write was pending, per client; it is
+ * drained (each root refetched once) as soon as no planner write is pending. An explicit record,
+ * not the queries' `isInvalidated` flag: a fetch already in flight when the signal arrived clears
+ * that flag when it lands with pre-signal data, and a failed fetch sets it without anything having
+ * been deferred.
  */
 const deferredRoots = new WeakMap<QueryClient, QueryKey[]>();
 
+/** Clients whose mutation cache is watched by `drainWhenIdle`. */
+const drainWatched = new WeakSet<QueryClient>();
+
+/**
+ * Invariant: whenever no planner write is pending and the record is non-empty, the record is
+ * drained. A write leaves the pending count either through its `success`/`error` update (TanStack
+ * dispatches it AFTER the write's own onSettled, so `isMutating` read inside onSettled cannot tell
+ * which of two writes settling in the same tick is last) or by being removed from the cache
+ * (session swap; a removed write may never settle, e.g. a paused offline one). Both notify the
+ * mutation cache, so its listener re-checks after each event. The check runs in a microtask
+ * because `clear()` notifies `removed` while the writes are still counted. Installed with the
+ * first record, so a non-empty record always has a watcher.
+ */
+function drainWhenIdle(qc: QueryClient): void {
+  if (drainWatched.has(qc)) return;
+  drainWatched.add(qc);
+  qc.getMutationCache().subscribe(() => {
+    if (!deferredRoots.has(qc)) return;
+    queueMicrotask(() => {
+      const deferred = deferredRoots.get(qc);
+      if (!deferred || scheduleWritesPending(qc) > 0) return;
+      deferredRoots.delete(qc);
+      // Plain invalidate: its default cancelRefetch also restarts a GET still in flight from
+      // before the deferred signal, which would otherwise land with pre-signal data.
+      for (const queryKey of deferred) void qc.invalidateQueries({ queryKey });
+    });
+  });
+}
+
 function recordDeferred(qc: QueryClient, queryKey: QueryKey): void {
+  drainWhenIdle(qc);
   const deferred = deferredRoots.get(qc) ?? [];
   if (!deferred.some((r) => sameRoot(r, queryKey))) deferredRoots.set(qc, [...deferred, queryKey]);
 }
@@ -60,9 +91,9 @@ function deferRefresh(qc: QueryClient, queryKey: QueryKey): void {
 /**
  * `refetchOnWindowFocus` / `refetchOnReconnect` for the protected queries. With no planner write
  * pending it returns `true`, i.e. TanStack's default (refetch if stale). While one is pending it
- * skips the refetch and records the root, so the last write to settle refetches it. TanStack calls
- * it once per observer, hence record-only (no invalidation from inside it). It never governs a
- * newly mounted range's initial fetch.
+ * skips the refetch and records the root, so the drain refetches it once no write is pending.
+ * TanStack calls it once per observer, hence record-only (no invalidation from inside it). It never
+ * governs a newly mounted range's initial fetch.
  */
 const refetchUnlessWriting = (qc: QueryClient, root: QueryKey) => (): boolean => {
   if (scheduleWritesPending(qc) === 0) return true;
@@ -72,8 +103,8 @@ const refetchUnlessWriting = (qc: QueryClient, root: QueryKey) => (): boolean =>
 
 /**
  * Invalidate a query root for a refresh signal. While a planner write is pending, the schedule /
- * calendar-event roots are deferred (the last write's settle refetches them); everything else,
- * and everything when nothing is pending, is invalidated + refetched as usual.
+ * calendar-event roots are deferred (drained once no write is pending); everything else, and
+ * everything when nothing is pending, is invalidated + refetched as usual.
  */
 export function invalidateRoot(qc: QueryClient, queryKey: QueryKey): void {
   if (isProtectedRoot(queryKey) && scheduleWritesPending(qc) > 0) {
@@ -104,9 +135,9 @@ function useApiMutation<TVars = void, TResult = unknown>(
 
 /**
  * A mutation that optimistically rewrites every cached LIST under `root` with `apply`, rolls the
- * snapshots back on error, and invalidates `root` then each of `alsoInvalidate` once settled.
- * It is a planner write (SCHEDULE_WRITE_KEY): if another planner write is still pending it only
- * defers its roots; the last one to settle refetches its roots plus every root deferred meanwhile.
+ * snapshots back on error, and refreshes `root` and each of `alsoInvalidate` once settled.
+ * It is a planner write (SCHEDULE_WRITE_KEY): settling only records its roots as deferred; they
+ * are refetched, with every root deferred meanwhile, once no planner write is pending.
  */
 function useOptimisticListMutation<TVars, TResult>(
   call: (api: ApiClient, vars: TVars) => Promise<TResult>,
@@ -128,27 +159,16 @@ function useOptimisticListMutation<TVars, TResult>(
       return { snapshots };
     },
     onError: (_err, _vars, ctx) => {
+      // A write no longer in the mutation cache was dropped by a session swap: its snapshots hold
+      // the previous session's data and must not be restored over the new session's cache.
+      if (!qc.getMutationCache().getAll().some((m) => m.state.context === ctx)) return;
       ctx?.snapshots.forEach(([key, data]) => qc.setQueryData(key, data));
     },
-    // Synchronous on purpose: TanStack still counts this mutation as pending inside onSettled, so
-    // `> 1` means another planner write is still in flight and this one is not the last. (`> 1`
-    // rather than `=== 1` so that a count of 0, e.g. after the mutation cache was cleared on a
-    // session swap, also counts as last.) Awaiting the refetch here would keep this write pending
-    // during its own refetch, and a signal arriving then would be deferred to a settle already done.
+    // Record only, never refetch here: the drain runs once no planner write is pending (see
+    // drainWhenIdle), i.e. after this write has left the pending state, so a write is never
+    // pending during its own refetch and a write that is not the last never refetches.
     onSettled: () => {
-      const roots = [root, ...alsoInvalidate];
-      if (scheduleWritesPending(qc) > 1) {
-        for (const queryKey of roots) deferRefresh(qc, queryKey);
-        return;
-      }
-      const deferred = deferredRoots.get(qc) ?? [];
-      deferredRoots.delete(qc);
-      for (const queryKey of roots) void qc.invalidateQueries({ queryKey });
-      // Plain invalidate: its default cancelRefetch also restarts a GET still in flight from
-      // before the deferred signal, which would otherwise land with pre-signal data.
-      for (const queryKey of deferred) {
-        if (!roots.some((r) => sameRoot(r, queryKey))) void qc.invalidateQueries({ queryKey });
-      }
+      for (const queryKey of [root, ...alsoInvalidate]) deferRefresh(qc, queryKey);
     },
   });
 }
