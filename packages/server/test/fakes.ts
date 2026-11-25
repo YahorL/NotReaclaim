@@ -7,6 +7,7 @@ import type {
 } from '@notreclaim/db';
 import { buildApp, type AppDeps } from '../src/app.js';
 import { createEventBus } from '../src/events.js';
+import { createUserLock } from '../src/user-lock.js';
 import type { ServerEvent } from '../src/events.js';
 
 const FIXED_NOW = Date.parse('2026-01-05T00:00:00.000Z'); // Monday
@@ -323,6 +324,8 @@ export interface TestAppOptions {
   replanGate?: () => Promise<void>;
   /** The injected clock; defaults to FIXED_NOW. */
   now?: () => number;
+  /** The per-user lock the routes take; defaults to a fresh real lock (returned as `withUserLock`). */
+  withUserLock?: AppDeps['withUserLock'];
 }
 
 export function buildTestApp(opts: TestAppOptions = {}) {
@@ -340,6 +343,7 @@ export function buildTestApp(opts: TestAppOptions = {}) {
   } as User]);
   const invites = fakeInviteRepo({ valid: new Set(opts.validInvites ?? []) });
   const reconcileCalls: Array<{ userId: string; now: number }> = [];
+  const withUserLock = opts.withUserLock ?? createUserLock();
 
   const events = createEventBus();
   const emitted: ServerEvent[] = [];
@@ -371,12 +375,13 @@ export function buildTestApp(opts: TestAppOptions = {}) {
       if (opts.reconcileError !== undefined) throw opts.reconcileError;
       return opts.reconcileResult ?? { created: 0, updated: 0, deleted: 0, pinned: 0, removed: 0, pinnedSynced: 0, pinnedFailed: 0 };
     }),
+    withUserLock,
     events,
     config: { jwtSecret: 'test-secret', googleRedirectUri: 'http://localhost:3000/auth/google/callback', webClientUrl: opts.webClientUrl, registrationMode: opts.registrationMode ?? 'open' },
     now: opts.now ?? (() => FIXED_NOW),
   });
 
-  return { app, settings, scheduledBlocks, calendarEvents, categories, users, invites, reconcileCalls, emitted, events, FIXED_NOW };
+  return { app, settings, scheduledBlocks, calendarEvents, categories, users, invites, reconcileCalls, emitted, events, withUserLock, FIXED_NOW };
 }
 
 export async function tokenFor(app: Awaited<ReturnType<typeof buildTestApp>>['app'], userId = 'u1'): Promise<string> {

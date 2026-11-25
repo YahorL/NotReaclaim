@@ -27,6 +27,7 @@ import { createConnectionRegistry } from './connection-registry.js';
 import { registerWebSocket } from './ws.js';
 import { replanAfterMutation } from './replan.js';
 import { sessionUserId } from './auth/token.js';
+import type { WithUserLock } from './user-lock.js';
 
 export interface AppDeps {
   repos: {
@@ -45,6 +46,12 @@ export interface AppDeps {
     tokens: Pick<TokenService, 'exchangeCodeForLink' | 'getAccessToken'>;
   };
   replan: (userId: string, now: number) => Promise<ReconcileResult>;
+  /**
+   * The per-user lock the replan's compute + apply runs under (server.ts passes the SAME one
+   * to both). Block routes hold it around their read-modify-write so a replan can never
+   * write from a read taken before the user's edit. Never await a replan while holding it.
+   */
+  withUserLock: WithUserLock;
   events: EventBus;
   config: { jwtSecret: string; googleRedirectUri: string; webClientUrl?: string; registrationMode: RegistrationMode };
   now: () => number;

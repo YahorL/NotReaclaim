@@ -18,13 +18,14 @@ import {
   syncPrimaryCalendar,
   loadGoogleConfig,
 } from '@notreclaim/google';
-import { planLocally } from '@notreclaim/core';
+import { planLocally, type Exclusive } from '@notreclaim/core';
 import { buildApp } from './app.js';
 import { createEventBus } from './events.js';
 import { makeReplan } from './replan-router.js';
 import { pollAndReplan } from './replan.js';
 import { startPoller } from './poller.js';
 import { loadServerConfig } from './config.js';
+import { createUserLock } from './user-lock.js';
 import { isGoogleConnected } from './auth/google-connection.js';
 
 async function main(): Promise<void> {
@@ -54,12 +55,19 @@ async function main(): Promise<void> {
 
   const schedulingRepos = { settings, calendarEvents, tasks, habits, scheduledBlocks, categories };
 
+  // ONE lock per process, shared by both replan paths (around compute + apply) and the block
+  // routes (around each read-modify-write): an edit waits for an in-flight apply instead of
+  // being overwritten by it. Like the replan queue, it assumes a single server process.
+  const userLock = createUserLock();
+  const exclusiveFor = (userId: string): Exclusive => (fn) => userLock(userId, fn);
+
   const reconcileBound = (userId: string, now: number) =>
-    reconcile({ client, tokens, users, scheduledBlocks, schedulingRepos }, userId, now);
+    reconcile({ client, tokens, users, scheduledBlocks, schedulingRepos, exclusive: exclusiveFor(userId) }, userId, now);
   const syncBound = (userId: string, now: number) =>
     syncPrimaryCalendar({ client, tokens, syncState: calendarSyncState, events: calendarEvents }, userId, now);
 
-  const planLocallyBound = (userId: string, now: number) => planLocally(schedulingRepos, scheduledBlocks, userId, now);
+  const planLocallyBound = (userId: string, now: number) =>
+    planLocally(schedulingRepos, scheduledBlocks, userId, now, exclusiveFor(userId));
   const isConnected = async (userId: string): Promise<boolean> => isGoogleConnected(await users.findById(userId));
   // The ONE replan every entry point uses (routes via buildApp AND the poll below): it is
   // serialised per user, so a second instance or a direct reconcileBound call would bypass it.
@@ -70,6 +78,7 @@ async function main(): Promise<void> {
     repos: { settings, tasks, habits, scheduledBlocks, calendarEvents, categories, subtasks, users, invites },
     google: { client, tokens },
     replan,
+    withUserLock: userLock,
     events: bus,
     config: {
       jwtSecret: serverConfig.jwtSecret,
