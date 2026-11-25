@@ -472,3 +472,46 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
   - A week whose busiest day lands exactly on the top axis tick, where the bar's value label sits above the plot top.
   - The KPI row and Settings at 768–1023px.
 - **Suite:** 1155 tests / 97 files → 1230 tests / 104 files.
+
+### P5 implementation notes (2026-11-25): New task dialog, plus the P7 live pass
+- **PriorityPicker** is `role=radiogroup aria-label="Priority"` with `role=radio aria-checked` pills (still `type=button`). Roving tabindex (only the checked pill is a tab stop). ←/→/↑/↓ move **and select**, wrapping, and Home/End jump to the ends. Selection-follows-focus is safe because picking has no side effect, unlike the Hours swatches. Dots use `pri-*` tokens locally; `BUCKET_META` stays P6's. A coarse pointer gets `coarse:h-11`.
+- **DurationStepper.** Default: 22px tabular value with 34px round `.btn-glass` −/+ buttons. Callers passing `size < 26` get a **compact** variant (`data-compact`: 17px value, 30px buttons), because the drawers' half columns and the CreatePopover cannot hold "2 hr 15 min" at 22px. `size` also scales the icon. Both variants are `coarse:h-11 coarse:w-11`. Labels are unchanged ("1 hr 30 min"; the design's "1 hr 15 mins" was not adopted). New `minus` icon appended.
+- **Dialog close path.**
+  - One idempotent `requestClose`: Escape (through `useFocusTrap`), ✕, Cancel, a backdrop press, and a successful create.
+  - It sets `data-closing` on the backdrop and dialog (`animate-bd-out`/`animate-modal-out`, backdrop `pointer-events-none`), then calls `onClose` after `MODAL_EXIT_MS` (220). Under reduced motion it calls `onClose` at once.
+  - Backdrop close requires the press to **start** on the backdrop, so a text selection dragged out of a field does not close.
+- **Focus.**
+  - `initialFocus` = the name field (StrictMode note from P2).
+  - AppShell records the **clicked** opener (`e.currentTarget` of the header New task / mobile `+`) and passes it as `opener` → `restoreTo`. A click does not focus a button in Safari (or jsdom), so the trap's render-time capture would have been `<body>`.
+  - Live in Chromium and Firefox: focus returns to the button that opened the dialog.
+- **Enter** is handled on the name field only (IME composition ignored), not via a `<form>`. That keeps Enter in the datetime inputs and the inline category field from creating the task. Enter in the inline category field adds the category, and Escape there backs out of the field without closing the dialog. A ref guards against a double Enter during the request.
+- **Layout.**
+  - Three pairs are `grid-cols-1 sm:grid-cols-2`: Duration|Priority, Min|Max and the two date fields. The prototype stacks them at ≤560px. Before, Min|Max was `flex-col md:flex-row`.
+  - Max width is 600px (prototype `.modal`; was 500). The mobile near-full-screen classes (`min-h-[calc(100dvh_-_88px)] md:min-h-0`, `pt-14 md:pt-[70px]`) are kept.
+  - **Split off ⇒ Min/Max are not rendered** (were disabled). The reseed test that waited for "45 mins" with Split off now peeks by toggling Split on and off.
+  - The Hours, Schedule after and Due date fields use real `<label for>`.
+- **After create.**
+  - `useToast().show('Task created', { icon: 'check' })`. On the planner it renders in the calendar panel (P4 anchor).
+  - `RecentlyCreatedProvider` (shell) holds the created id for `FRESH_HOLD_MS` = 4s, because the card mounts only after the tasks refetch. `PlannerTaskPanel`'s card root gets `data-fresh` + `animate-fresh`. Outside the provider nothing is fresh.
+  - Live: the glow appeared ~300ms after the toast in both browsers.
+- **Live P7 fixes (each with a test):**
+  - `WeeklyHoursEditor` at 390px (Hours **and** Settings): Chromium clipped "09:00 AM" to "09:0". Below `sm` the day column, gaps and padding are tighter (inputs 83 → 100px) and Chromium's picker icon is hidden; a tap opens the native picker on touch.
+  - Settings Min/Max chunk now use the full-size stepper (it passed `size={22}`, which became the compact variant).
+  - The Habits summary strip at 390px wrapped "paused" and left a divider dangling. Below `sm` the numbers are 34px with 16px gaps.
+- **Verified live, no change needed:**
+  - The custom checkbox tick (`::before` scale 1, `clip-path`) in Chromium and Firefox.
+  - `color-scheme` follows the theme on the root, the select and the time inputs (both engines, both themes).
+  - Stats `grow` ×3 and `donut-draw` ×2 run on mount; reduced motion runs nothing.
+  - The Buffers preview animates widths (5 width transitions with intermediate values), and nothing runs under reduced motion.
+  - Light contrast (approximated by compositing): eligible habit day pills 7.3:1, off pills 5.5:1, preview task text 7.3:1.
+  - Sign-in page in both themes at 1440 and 390, no overflow.
+  - No horizontal page overflow on any P7 route at 1440/900/390 in either engine.
+- **For P8:**
+  - **Header at ~900px.** The right cluster wraps and leaves the avatar alone on a second row (Stats, Hours and Settings at 900). P2's header contract.
+  - **Stats KPI row at 900:** 3 + 1 wrap, so "Tasks done" spans full width.
+  - **Buffers preview at 390** is a horizontally scrolled `min-w-[480px]` strip (decorative, `aria-hidden`), so the second task is clipped until scrolled.
+  - **QuickAdd input in light** has a heavy grey inset look (the P7 `rgb()` inset shadow note).
+  - **Headless Firefox** renders the dialog backdrop without visible blur, although the computed `backdrop-filter: blur(8px)` and `bg-overlay` match Chromium. The same applies to the search palette. Check on a real Firefox.
+  - **Not verified:** Escape while a native select or date picker is open (headless cannot drive native popups); a Stats week whose busiest day sits exactly on the top tick.
+  - **The created task can be hidden.** If it lands past the fifth card in its priority group (behind "Show N more"), the glow plays on a hidden card. Low priority is the default, and Low is often the long group. Consider auto-expanding the group for a fresh id.
+- **Suite:** 1346 tests / 109 files → 1380 / 110.
