@@ -104,6 +104,8 @@ describe('parseAdminArgs — bad arguments become usage errors, never crashes', 
         [['delete-user', '--email', 'a@b.co', '--password=s3cret-value'], /unknown flag --password for delete-user/],
         [['create-user', '--email', 'a@b.co', '--admin=s3cret-value'], /--admin takes no value/],
         [['create-user', '--email', 'a@b.co', '--password=s3cret-value', '--password=s3cret-value'], /--password given more than once/],
+        [['--password=s3cret-value', 'set-password', '--email', 'a@b.co'], /the command must come first/],
+        [['-p=s3cret-value', 'set-password'], /the command must come first/],
       ];
       for (const [argv, message] of cases) {
         const error = errorOf(argv);

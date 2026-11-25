@@ -74,6 +74,8 @@ export function parseAdminArgs(argv: readonly string[]): ParsedAdminArgs {
   const [cmd, ...rest] = argv;
   if (cmd === 'help' || cmd === '--help' || cmd === '-h') return { kind: 'help' };
   if (cmd === undefined) return { kind: 'error', message: 'missing command' };
+  // A flag in first place is not quoted: it may carry a password (`--password=…`).
+  if (cmd.startsWith('-')) return { kind: 'error', message: 'the command must come first (e.g. admin set-password --email <e>)' };
   if (!Object.hasOwn(FLAGS, cmd)) return { kind: 'error', message: `unknown command: ${cmd}` };
   const command = cmd as Command;
   const allowed: Record<string, boolean> = FLAGS[command];
