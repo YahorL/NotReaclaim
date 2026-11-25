@@ -84,6 +84,15 @@ describe('HabitRow', () => {
     expect(screen.getAllByTestId('habit-row')[1]).toHaveAttribute('data-paused', 'false');
   });
 
+  it('dims a paused habit\'s text with contrast-safe tokens, never the whole row (buttons stay full strength)', () => {
+    setup({ status: 'paused' });
+    const row = screen.getByTestId('habit-row');
+    // A row-wide opacity took the meta text to ~2.5:1 and the Edit / Resume buttons under 4.5:1.
+    expect(row.className).not.toMatch(/(^|\s)opacity-/);
+    expect(screen.getByText('Run')).toHaveClass('text-fg-2');
+    for (const pill of screen.getAllByTestId('habit-day')) expect(pill.className).not.toContain('text-accent-fg');
+  });
+
   it('the at-risk chip states the missed count in text', () => {
     setup({}, 2);
     expect(screen.getByTestId('habit-at-risk')).toHaveTextContent('2 missed');

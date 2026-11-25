@@ -33,11 +33,13 @@ export function HabitRow({ habit, unscheduledCount = 0, onEdit, onToggleStatus, 
     <div
       data-testid="habit-row"
       data-paused={paused}
-      className={`glass flex flex-wrap items-center gap-x-[18px] gap-y-3.5 rounded-panel py-4 pl-5 pr-4 transition-[opacity,transform] duration-300 ${paused ? 'scale-[.99] opacity-[.55]' : ''}`}
+      // Paused dims the TEXT through contrast-safe tokens (title fg-2, meta fg-3, muted pills), not
+      // the row: a row-wide opacity took the meta to ~2.5:1 and the active buttons under 4.5:1.
+      className={`glass flex flex-wrap items-center gap-x-[18px] gap-y-3.5 rounded-panel py-4 pl-5 pr-4 transition-transform duration-300 ${paused ? 'scale-[.99]' : ''}`}
     >
       <div className="flex min-w-0 flex-[1_1_260px] flex-col gap-1.5">
         <div className="flex min-w-0 flex-wrap items-center gap-2.5">
-          <span className="truncate text-[17px] font-medium">{habit.title}</span>
+          <span className={`truncate text-[17px] font-medium transition-colors duration-300 ${paused ? 'text-fg-2' : ''}`}>{habit.title}</span>
           {paused && <span data-testid="habit-paused" className="chip">Paused</span>}
           {unscheduledCount > 0 && (
             <span
@@ -53,7 +55,7 @@ export function HabitRow({ habit, unscheduledCount = 0, onEdit, onToggleStatus, 
             </span>
           )}
         </div>
-        <span className="text-[13px] text-fg-2">{formatDurationShort(habit.chunkMs)} × {habit.perPeriod}/week · {days}</span>
+        <span className={`text-[13px] ${paused ? 'text-fg-3' : 'text-fg-2'}`}>{formatDurationShort(habit.chunkMs)} × {habit.perPeriod}/week · {days}</span>
       </div>
 
       {/* Read-only display of the eligible days (spec D16); the meta line above and the sr-only
@@ -68,7 +70,7 @@ export function HabitRow({ habit, unscheduledCount = 0, onEdit, onToggleStatus, 
               aria-hidden="true"
               data-testid="habit-day"
               data-on={on}
-              className={`inline-flex h-[26px] w-[26px] items-center justify-center rounded-pill border text-[11px] font-medium ${on ? 'border-accent/30 bg-accent/[.14] text-accent-fg' : 'border-fg/10 text-fg-2'}`}
+              className={`inline-flex h-[26px] w-[26px] items-center justify-center rounded-pill border text-[11px] font-medium ${on ? (paused ? 'border-fg/20 bg-fg/[.07] text-fg-2' : 'border-accent/30 bg-accent/[.14] text-accent-fg') : 'border-fg/10 text-fg-2'}`}
             >
               {letter}
             </span>
