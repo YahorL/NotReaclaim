@@ -5,7 +5,7 @@ beforeEach(() => {
   localStorage.clear();
   tokenStore.clear();
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); });
 
 describe('tokenStore', () => {
   it('returns null when empty and round-trips a stored value', () => {
