@@ -103,7 +103,7 @@ describe('Priorities board', () => {
     await waitFor(() => expect(screen.getByText('Low thing')).toBeInTheDocument());
     const row = screen.getByText('Low thing').closest('[data-testid="task-row"]')! as HTMLElement;
     fireEvent.click(within(row).getByRole('button', { name: /task menu/i }));
-    fireEvent.click(within(row).getByRole('button', { name: 'Delete' }));
+    fireEvent.click(within(row).getByRole('menuitem', { name: 'Delete' }));
     await waitFor(() => expect(deleteTask).toHaveBeenCalledWith('l1'));
   });
 

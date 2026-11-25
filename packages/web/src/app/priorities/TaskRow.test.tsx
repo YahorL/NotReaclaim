@@ -226,9 +226,27 @@ describe('TaskRow card states', () => {
     expect(kebab).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(kebab);
     expect(kebab).toHaveAttribute('aria-expanded', 'true');
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit' }));
     expect(onEdit).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Delete' })).toBeNull();
+  });
+
+  it('the kebab is a menu button: first item focused, arrows move, Escape returns focus', () => {
+    renderRow(base as Task);
+    const kebab = screen.getByRole('button', { name: 'task menu' });
+    expect(kebab).toHaveAttribute('aria-haspopup', 'menu');
+    fireEvent.keyDown(kebab, { key: 'ArrowDown' });
+    const menu = screen.getByRole('menu');
+    expect(kebab).toHaveAttribute('aria-controls', menu.id);
+    expect(screen.getByRole('menuitem', { name: 'Edit' })).toHaveFocus();
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(screen.getByRole('menuitem', { name: 'Delete' })).toHaveFocus();
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(screen.getByRole('menuitem', { name: 'Edit' })).toHaveFocus();
+    fireEvent.keyDown(menu, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(kebab).toHaveFocus();
   });
 });
 

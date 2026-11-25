@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type MouseEventHandler, type TouchEventHandler } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEventHandler, type TouchEventHandler } from 'react';
 import { DndContext, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -97,6 +97,27 @@ export function TaskRow({ task, columnKey, nextMs, now, zone, draggable = true, 
   });
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const kebabRef = useRef<HTMLButtonElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
+  const menuId = useId();
+  // WAI-ARIA menu button (same pattern as Dropdown / AccountMenu): opening focuses the first item,
+  // ↑/↓/Home/End move, Escape closes and returns focus to the kebab, Tab closes.
+  useEffect(() => {
+    if (menuOpen) popupRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+  }, [menuOpen]);
+  const onMenuKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(popupRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
+    const i = items.indexOf(document.activeElement as HTMLElement);
+    const focusAt = (n: number) => { e.preventDefault(); items[(n + items.length) % items.length]?.focus(); };
+    switch (e.key) {
+      case 'Escape': e.preventDefault(); setMenuOpen(false); kebabRef.current?.focus(); break;
+      case 'ArrowDown': focusAt(i + 1); break;
+      case 'ArrowUp': focusAt(i - 1); break;
+      case 'Home': focusAt(0); break;
+      case 'End': focusAt(items.length - 1); break;
+      case 'Tab': setMenuOpen(false); break;
+    }
+  };
   const subtaskSensors = useAppSensors();
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   useClickOutside(menuRef, closeMenu, menuOpen);
@@ -188,16 +209,19 @@ export function TaskRow({ task, columnKey, nextMs, now, zone, draggable = true, 
         )}
         <div ref={menuRef} className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
           <button
-            type="button" aria-label="task menu" aria-haspopup="true" aria-expanded={menuOpen}
+            ref={kebabRef}
+            type="button" aria-label="task menu" aria-haspopup="menu" aria-expanded={menuOpen}
+            aria-controls={menuOpen ? menuId : undefined}
             onClick={() => setMenuOpen((v) => !v)}
+            onKeyDown={(e) => { if (e.key === 'ArrowDown' && !menuOpen) { e.preventDefault(); setMenuOpen(true); } }}
             className="flex items-center justify-center rounded-full p-[7px] text-fg/60 transition-colors hover:bg-fg/[.08] hover:text-fg coarse:p-3.5"
           >
             <Icons.dots size={18} />
           </button>
           {menuOpen && (
-            <div className="glass-dialog absolute right-0 top-[calc(100%+4px)] z-30 w-[150px] animate-pop rounded-card p-1.5">
-              <button type="button" onClick={() => { setMenuOpen(false); onEdit(task); }} className={`${MENU_ITEM} text-fg`}>Edit</button>
-              <button type="button" onClick={() => { setMenuOpen(false); onDelete(task); }} className={`${MENU_ITEM} text-danger`}>Delete</button>
+            <div ref={popupRef} id={menuId} role="menu" aria-label={`Actions for ${task.title}`} onKeyDown={onMenuKeyDown} className="glass-dialog absolute right-0 top-[calc(100%+4px)] z-30 w-[150px] animate-pop rounded-card p-1.5">
+              <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setMenuOpen(false); onEdit(task); }} className={`${MENU_ITEM} text-fg`}>Edit</button>
+              <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setMenuOpen(false); onDelete(task); }} className={`${MENU_ITEM} text-danger`}>Delete</button>
             </div>
           )}
         </div>
