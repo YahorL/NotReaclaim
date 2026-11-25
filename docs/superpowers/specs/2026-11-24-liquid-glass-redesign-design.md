@@ -27,7 +27,7 @@
 | D6 | Detail card | **Card then drawer.** Click a block → selected (outline) + detail card atop the side panel. Card's primary button ("Open task"/"Open event"/"Open habit") opens the existing `TaskDrawer`/`EventDrawer` (habits: navigate to `/habits`, see §5.4). Post-drag click is swallowed. | Owner 5 |
 | D7 | Start/Stop | Planner **Next up card** gets Start/Stop with today's current-or-next semantics (`useNowNextControls`/`pickCurrentOrNext`). Other desktop screens keep a **compact Now/Next pill** in the header. Mobile keeps its top-bar pill. | Owner 6 |
 | D8 | Priorities | 4 glass priority columns **+ Backlog + Completed** glass columns; keep Filter (Hide completed) and Columns menus; keep dnd-kit; approximate design motion with dnd-kit (`DragOverlay` tilted clone, dashed placeholder, landing spring, ←/→ = change priority). | Owner 7 |
-| D9 | Block layer | Adopt the design's **single absolutely-positioned block layer** spanning all N rendered day columns. `left = (dayIndex + lane/lanes) / N`, `width = 1/(lanes·N)` (percent of the layer) minus a 5px inset each side (2px when `lanes>1`). Stable keys (`b:<id>` / `e:<id>`) so a cross-day move reuses the element and transitions `left/top`. Generalises cleanly to 1–7 days and overlap lanes. | Orchestrator (verified feasible) |
+| D9 | Block layer | Adopt the design's **single absolutely-positioned block layer** spanning all N rendered day columns. `left = (dayIndex + lane/lanes) / N`, `width = 1/(lanes·N)` (percent of the layer) minus a 5px inset each side (2px when `lanes>1`). Stable keys (`b:<id>` / `e:<id>`) so a cross-day move reuses the element and transitions `left/top`. Generalises to 1–7 days and overlap lanes on paper (geometry is per-day `placeInDay` + `layoutOverlaps`, unchanged); **not yet prototyped** — Task 3.4 must prove click-to-create (layer `pointer-events-none`, blocks `pointer-events-auto`), popover/drop-indicator stacking and cross-day drag before P4 builds on it. | Orchestrator (feasibility assessed from code, not tested) |
 | D10 | Hour scale | **60px/hr** (`HOUR_ROW_PX = 60`, `GRID_COLUMN_PX = 1440`). Contained: 1 constant + 2 `h-[58px]` literals in `WeekGrid` + `weekModel.test.ts` + `InteractiveBlock.test.tsx` pixel expectations. `scheduleDrop` tests are fraction-based and unaffected. | Orchestrator |
 | D11 | Planner geometry kept | Responsive 1–7 day count (`daysThatFit`), 24h vertically scrolling columns, `dayStartMinute` anchoring, overlap lanes, `settings.timezone` rendering, header swipe paging. The design's fixed "1 PM–2 AM" window is **not** adopted. | Orchestrator |
 | D12 | Unscheduled | Summary card replaces the amber `UnscheduledWarning` strip; keeps `role=status`; count = number of unscheduled entries; first 3 chips + "+N more" (switches side panel to All tasks); lime Re-plan button lives here. Card is **always** rendered on desktop (shows "Everything fits" state with count 0) so the Re-plan button has a home. | Orchestrator |
@@ -55,19 +55,19 @@
 | `--text-on-accent` | `--c-on-accent` | `on-accent` | — |
 | `--text-danger` | `--c-danger` | `danger` | `crit` keeps the priority red (see priority row) |
 | `--panel-bg` (flat dark / gradient light) | `--x-panel-bg` | utility `.glass` (component class) | `card` → `--c-card` (dark `22 22 26`, light `255 255 255`) for opaque cards |
-| `--panel-border` | `--x-panel-border` | in `.glass` | `line` → `--c-line` (dark `255 255 255 / .07`-equivalent via channels + `line` default alpha) |
+| `--panel-border` | `--x-panel-border` | in `.glass` | `line` → fixed-alpha colour `rgb(var(--c-line-rgb) / 0.07)` (`--c-line-rgb` = white in dark, ink in light); like `fg-2`, no `/alpha` modifier support |
 | `--card-bg` / `--card-border` / `--card-hover` | `--x-card-*` | `.glass-card`, `.glass-card-hover` | — |
 | `--btn-bg` / `--btn-border` / `--btn-bg-hover` | `--x-btn-*` | `.btn-glass` | — |
 | `--btn-primary-bg` / `-text` | `--c-primary`, `--c-on-primary` | `primary`, `on-primary` | — |
-| `--accent` (lime fill) | `--c-accent` | `accent` | `indigo` (all current "brand" usages become lime/accent fills — buttons, active nav, checkboxes; reviewed per screen) |
-| `--accent-text` (lime / olive) | `--c-accent-text` | `accent-fg` | `indigo` **as text** must migrate to `accent-fg` (contrast: lime text is unreadable on light) |
-| `--accent-soft` / `--accent-line` | via `accent` + alpha | `accent/[.06]`, `accent-line` | `indigoSoft` → `accent/10` |
+| `--accent` (lime fill) | `--c-accent` | `accent` | — (legacy `indigo` is **not** pointed here: today's `bg-indigo text-white` buttons would become white-on-lime. During P1–P7 legacy `indigo`/`indigo600` point at `meeting` violet; each screen phase moves brand fills to `bg-accent text-on-accent`) |
+| `--accent-text` (lime / olive) | `--c-accent-text` | `accent-fg` | brand *text* (`text-indigo`) migrates to `accent-fg` per screen (lime text is unreadable on light) |
+| `--accent-soft` / `--accent-line` | via `accent` + alpha | `accent/[.06]`, `accent-line` | `indigoSoft` → `meeting` @ .12 (transitional, fixed-alpha) |
 | `--meeting-bg` (flat dark / gradient light) | `--c-meeting` (flat) + `--x-meeting-bg` | `meeting` (dot/legend/chart) + `.block-meeting` | `event` |
 | `--meeting-border`, `--meeting-text`, `--meeting-shadow` | `--x-meeting-*` | in `.block-meeting` | — |
 | `--today-bg` / `--today-text` / `--today-column` | `--c-today`, `--c-on-today`, `--x-today-col` | `today`, `on-today` | — |
 | `--habit-bg` / `--habit-border` / `--habit-text` | `--x-habit-*`, `--c-habit-fg` | `.block-habit`, `habit-fg` | `kind.habitText` |
 | `--task-bg` / `--task-border` | `--x-task-*` | `.block-task` | — |
-| `--grid-line` | `--c-grid` (alpha in token) | `grid` | `#f1f2f6` literal in WeekGrid |
+| `--grid-line` | `--c-line-rgb` | `grid` = fixed-alpha `rgb(var(--c-line-rgb) / 0.065)` | `#f1f2f6` literal in WeekGrid |
 | `--now-line` | `--c-now` | `now` | — |
 | `--overlay` | `--x-overlay` | `bg-overlay` (backgroundColor ext) | `bg-[rgba(24,26,42,.35)]` in NewTaskModal, `bg-black/20` in Habits drawer host |
 | `--dialog-bg` | `--x-dialog-bg` | `.glass-dialog` | — |
@@ -87,7 +87,7 @@ Rules: (1) re-pointed legacy names make the codebase theme-able on day one of P1
 | `--panel-blur` | `.glass` uses `backdrop-filter: var(--panel-blur)` (none in dark) |
 | `--ease-spring/-spring-strong/-pop/-out` | `ease-spring`, `ease-spring-strong`, `ease-pop`, `ease-out-soft` |
 | `--dur-move/resize/land/reflow/enter/modal-in/modal-out/toast` | `duration-move` (550), `duration-resize` (500), `duration-land` (520), `duration-reflow` (240), `duration-enter` (600), `duration-modal-in` (500), `duration-modal-out` (220) |
-| keyframes | `rise`, `fade-up`, `ev-in`, `land`, `shake`, `toast`, `pulse-dot`, `pop-check`, `expand`, `modal-in`, `modal-out`, `bd-in`, `bd-out`, `th-in`, `spin` (exact curves from `PlannerDark.dc.html` §style) |
+| keyframes | `rise`, `fade-up`, `ev-in`, `land`, `shake`, `toast`, `pulse-dot`, `pop-check`, `expand`, `modal-in`, `modal-out`, `bd-in`, `bd-out`, `th-in`, `spin`, `fresh` (new-task glow), `grow` (Stats bars), `donut-draw` (Stats donut) — exact curves from `PlannerDark.dc.html` / `Stats.dc.html` §style. All ship in P1; `tailwind.config.js`/`index.css` are frozen during the parallel phases. |
 | `--font-sans` | `fontFamily.sans = ['Manrope', 'system-ui', 'sans-serif']` |
 | `--page-pad`, `--gap-*`, `--rail-width`, `--side-panel-basis` | literal Tailwind arbitrary values at the call site (`w-[76px]`, `basis-[330px]`, `gap-5`) — not worth config entries |
 
@@ -187,7 +187,7 @@ Token restyle only (glass card on `bg-page`), theme applies (pre-paint script ru
 
 **Keyboard.** Focused movable block: ↑/↓ ±15 min, ←/→ ±1 day (clamped to rendered days; at the edge, no-op + toast "Use the arrows above to see more days"), Shift+↑/↓ shorter/longer by 15 (min 15). Each key press commits immediately through the same mutation (debounced 400ms per block so key-repeat does not flood: preview moves instantly, one PATCH after the last key) and keeps focus on the block (stable key → same element). Enter/Space = select (detail card). Escape = deselect. Locked: any arrow → shake + toast. Delete key on a block with `onDelete` → same as ×.
 
-**Click vs drag.** A press that crossed the drag threshold swallows the following `click` (no selection toggle). Fine pointer at md+: click selects (detail card). Compact layout (below md), where the side panel is a sheet: **tap keeps today's behaviour and opens the drawer directly** (TaskDrawer for task blocks, EventDrawer for app events/blocked time; Google meetings and habit blocks show a toast "Synced from Google" / "Edit habits on the Habits page"). The detail card is an md+ feature.
+**Click vs drag.** A press that crossed the drag threshold swallows the following `click` (no selection toggle). At md+ (any pointer, incl. iPad touch): click/tap selects (detail card) — a change from today, where a coarse tap at md+ opens the TaskDrawer directly (Q6). Compact layout (below md), where the side panel is a sheet: **tap keeps today's behaviour and opens the drawer directly** (TaskDrawer for task blocks, EventDrawer for app events/blocked time; Google meetings and habit blocks show a toast "Synced from Google" / "Edit habits on the Habits page"). The detail card is an md+ feature.
 
 **Locked shake + toast.** `pointerdown` or arrow on a Google meeting → `animate-shake` (450ms) via a `data-shake` key bump, plus toast. No capture, no drag.
 
@@ -241,3 +241,8 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
 - **Q3 Detail card for Google meetings** has no primary action (no event link stored). Acceptable, or add `htmlLink` server-side later (out of scope)?
 - **Q4 Keyboard ←/→ at the view edge** — no-op + hint (default) vs auto-page the view.
 - **Q5 Accent repurposing.** All former indigo "brand" fills become lime; indigo-as-violet survives only in meetings/today (dark). Confirm during P2 live review.
+- **Q6 Click-to-select scope.** Owner decision 5 says clicking a block selects it. Default: selection at md+ for every pointer type (an iPad tap now selects instead of opening the drawer directly); below md a tap still opens the drawer because the side panel is a sheet there. Alternative: keep iPad (coarse at md+) on tap-opens-drawer.
+
+### Survey notes for risky assumptions (checked 2026-11-24)
+- **Block id stability (D13).** `packages/core/src/apply.ts` applies the desired schedule as a keyed (`engineKey`) in-place diff: a block whose engine key survives a replan is **updated in place and keeps its id**, so moved blocks glide and only genuinely new chunks drop in. Caveat: when a task's chunk count changes, keys are reissued and some blocks are deleted/created — those will drop in. That is acceptable ("newly placed" is a fair reading).
+- **CSP vs the inline theme script (D3).** No `Content-Security-Policy` header is set in `packages/server` or the `docs/deploy` runbooks (Tailscale Serve, Docker Compose), so the inline pre-paint script is allowed. If a CSP is added later it needs a hash for that script.
