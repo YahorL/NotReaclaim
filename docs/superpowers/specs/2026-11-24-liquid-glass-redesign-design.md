@@ -743,6 +743,6 @@ Verified findings from the final review. Each item was checked in the code first
 - **Suite:** web 1436 / 110 → **1479 / 111**. Root build green.
 - **Follow-ups (ledger, not fixed):**
   - **DST 25-hour days:**
-    - `blockLayout.ts` `layoutWeek` assigns items to `[d, d + MS_PER_DAY)` and `placeInDay` maps a flat 24h. On the fall-back day (25 wall-clock hours) an item in the extra hour falls outside every column and does not render. On the spring-forward day (23h), the next column's first hour overlaps.
+    - `blockLayout.ts` `layoutWeek` assigns items to `[d, d + MS_PER_DAY)` and `placeInDay` maps a flat 24h. On the fall-back day (25 wall-clock hours) an item in the extra hour falls outside every column and does not render. (The 23h spring-forward day was not analysed.)
     - Separately, a cross-day move that crosses a DST day from a midnight-anchored column shifts wall-clock time by 1h. The minutes-from-anchor model treats the column as a flat 1440 minutes, while `shiftDays` is wall-clock.
     - **Fix direction:** derive each column's real span from the next column's anchor, and map minutes through the zone rather than through a flat `MS_PER_MIN` offset.
