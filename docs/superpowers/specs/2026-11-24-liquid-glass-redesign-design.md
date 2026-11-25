@@ -580,3 +580,80 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
   - Both themes vs `07`.
   - The 6-column horizontal scroll at 1440.
 - **Suite:** 1155 → 1192 (97 files).
+
+### P8 implementation notes (2026-11-25): light pass, legacy palette removal, QA
+- **How it was checked.** Headless playwright-core (Chromium 1223, Firefox 1522) against Vite + the built API. The demo user got design-like calendar data for the pass: six Google meetings, an app event and a blocked slot. They were removed afterwards, and the board order changed by the DnD checks was restored through the API. Captures are in `review/p8-redesign/` (untracked): side-by-side `pair-*.png` against 01–12, overlays, DnD, 390px grids and the running `NOTES.md`.
+- **Carried-over backlog:**
+  - **A. Priorities live DnD:** verified in Chromium dark and Firefox light at 1440. Within-column, cross-column, empty-column and collapsed-column drops all work, and the collapsed column expands. Every drop landed where the drop line or placeholder showed. The overlay was tilted mid-drag and back to about 0° within 250ms of the drop. ↓↓↓ then →→ kept focus on the grip, and the announcer read "Moved X to Low priority, position N.". After reload, all six columns matched. The kebab stacks above the next card in light, and the overlay is not clipped by the pane. Touch (CDP, 390): a swipe on the card body scrolls with no PATCH; a long press on the grip drags and lands at the placeholder. Cross-column drops go *before* the hovered card even on its lower half (the P6 rule). This matches the drop line, so it is unchanged.
+  - **B. Header at about 900px:** the action cluster is `flex-nowrap ml-auto min-w-0`. Below `xl`, New task becomes a round icon (the name is kept as sr-only text) and the pill hides its time. When the cluster still does not fit beside the title, it wraps as one right-aligned row. `--drawer-top` follows through the existing ResizeObserver: measured 183px with two rows and 121px with one.
+  - **C. Stats KPI row:** 2×2 grid below `lg`, 4-up from `lg`.
+  - **D. Buffers preview:** a fluid strip instead of a 480px scroller. Segment padding is `px-2` below `sm`.
+  - **E. QuickAdd input:** now uses the `--x-btn-bg` surface, which is white glass in light, with a soft inset. The Priorities search field had the same heavy look and got the same treatment.
+  - **F. Progress fills (Stats, planner panel, TaskDrawer):** now `accent-fg`, lime in dark and olive in light.
+  - **G. Hidden just-created task:** the panel unfolds the priority group whose fresh task sorts past the fold and scrolls the card into view (`nearest`).
+  - **H. Clipped panel shadows:** `shell-content` is `md:-mx-5 md:-mb-5 md:px-5 md:pb-5`, so shadows fade inside the scroller. Content does not move, and the top edge (the one `--drawer-top` measures) is unchanged. `AppShell.test` pins this.
+  - **I. Blocked storage:** `tokenStore` guards both property access and the methods, with an in-memory fallback. Live with a throwing `window.localStorage` getter in both engines, sign-in renders and the auth callback lands on the planner, with no page errors.
+  - **J. Phone hour labels:** compact gutter labels use `fg-2`.
+  - **K. Time format:** the real mismatch was `formatHm`/`weekdayLabel`/range/due labels (browser locale) against the en-US detail card and Next-up card. Everything now uses `TIME_LOCALE = 'en-US'`, 12-hour. Relative labels read "Today 4:15 PM" (was "4:15pm") and the gutter reads "1 PM" (was "1p"), as in the design. Live with browser locale `de-DE`, both engines show tiles "4:30 PM" and ghost "Sat · 3:45 PM".
+  - **L. TaskDrawer dates:** Due by and Schedule after each take a full row. The drawer is 440px at every desktop width, so the clip was not specific to 1024.
+  - **M. Firefox backdrop blur:** a bare HTML page with `backdrop-filter: blur(8px)` also renders unblurred in headless Firefox, although the computed value is present, while Chromium blurs it. This is a harness limit, not a CSS cause. Not changed; the owner should check in a real Firefox.
+- **8.1 light pass:**
+  - **Screens and overlays checked:** every route plus the overlays (palette, account menu, detail card for meeting and task, locked toast, create popover, planner TaskDrawer, board kebab, Filter menu, habit drawer, phone sheets).
+  - **Token fixes in `tokens.css` (the light values were wrong):**
+    - `fg-3` alpha is now a per-theme var, `--a-fg-3`: .55 dark, .62 light. It was about 4.1:1 on the light page and glass.
+    - Light `danger` is now `#B3262E` (was `#C8323A`, 4.1:1).
+    - The light meeting gradient is now `#5A66F2 → #4753E3`. The design's `#7381FF` top stop gave white tile text 3.3:1. **Deviation from 02:** slightly deeper violet.
+    - `tokens.test` pins all three.
+  - **Component fixes:**
+    - The now-dot is on `bg-accent`, lime on the ink line as in 02.
+    - The create sheet on phones now portals to `<body>`. In light, the calendar panel's `.glass` backdrop-filter was the containing block for the sheet's `fixed` backdrop, which shrank to the panel.
+    - A scan found no other `fixed` element trapped in a filtered ancestor, apart from dnd-kit's 1×1 live regions.
+  - **Chart colours:** not re-validated with the dataviz palette validator. The Stats series are unchanged from P7; this is left for the owner.
+- **8.2 legacy palette:** removed `indigo`, `indigo600`, `indigoSoft`, `event`, `bg`, `ink`, `inkSoft`, `crit`, `high`, `med`, `low`, `sidebar*`, `kind.*` and the unused `.dark-scroll`. `card`/`line` stay as real tokens, and so do `shadow-card/pop/modal`. Evidence: the scanner, checked against a positive control, finds 0 utility usages in `src` (tests included), and the built CSS is byte-identical before and after (72545 bytes, no rule added or removed).
+- **8.3 accessibility:**
+  - **axe 4.10:** `wcag2a/aa/21aa` on every route plus the dialog and palette, both themes, 1440. The fixes:
+    - Meeting tile time labels are at full strength (white @ .8 on violet was 3.9:1).
+    - The card checklist checkboxes are named after their subtask.
+    - The ✓ button is "Complete <title>" (the P6 follow-up).
+  - **Contrast on glass and gradients:** axe reports these as "incomplete", so contrast was measured on 2× screenshots instead, with glyph-versus-background pixels per text node. After the fixes, the only flags are tiles clipped in narrow overlap lanes, which are false positives.
+  - **Tab walk:** every route in Chromium light and Firefox dark. Every stop shows an outline or the focus-token border.
+- **8.4 reduced motion and 390px:**
+  - **Reduced motion:** with `reducedMotion: 'reduce'` (Chromium dark, Firefox light), `document.getAnimations()` holds nothing over 1ms. This covers routes, dialog open/close, palette, locked shake + toast (the text is still announced), Re-plan, theme switch, the board pointer drop (WAAPI) and keyboard moves. A no-preference control run detects `pulse-dot`, modal, shake, toast, `th-in` and the 520ms WAAPI drop.
+  - **390px:** checked every route, the Tasks sheet, the New task dialog and the create sheet (Chromium light, Firefox dark). `shell-content` never scrolls sideways, and the screenshots were viewed.
+- **8.5 screenshot comparison (1440, Chromium):** dark 01, 05, 07–12; light 02 and 06; derived light 07–12. Fixes made from it:
+  - The now-dot.
+  - **Board column width:** columns are `minmax(300px,1fr)` from 1380px, so the four priority columns fill a 1440 view as in 07. At 260px, six columns left titles about 60px wide.
+  - The card meta wraps as one unit.
+  - The detail card Time tile no longer wraps.
+- **Intentional deviations against 01–12:**
+  - The header sidebar toggle and Now/Next pill (D20, D7), and the Next-up Start button (D7).
+  - 24h scrolling columns instead of the fixed 1 PM–2 AM window (D11). No meeting location (D14).
+  - Six board columns, with Backlog and Completed one scroll away (D8).
+  - Stats task series (P7) and the Mon–Sun Stats eyebrow (P2).
+  - The Settings Save button plus the Appearance and Account cards (§4.8).
+  - The deeper light meeting violet (above).
+  - Demo data differs (real dev DB).
+- **Still for the owner (real devices and browsers):**
+  - Firefox backdrop blur (M).
+  - Real-device Android long-press and the coarse resize handle (P4).
+  - The release spring in a real Firefox (P4).
+  - Native pickers following `color-scheme`.
+  - The light chart palette validation.
+  - The rail below about 620px viewport height (P2).
+  - Phone search is still keyboard-only (P2 question, not changed).
+- **Suite:** 1418 tests / 110 files → **1433 / 110**. All workspaces: core 120, db 81 (Postgres up), google 70, scheduler 136, server 275, web 1433. Root build green.
+
+#### README acceptance checklist
+| Item | Result |
+|---|---|
+| Each screen matches its screenshot (dark, and light where designed) | Pass with listed deviations (D7/D8/D11/D14/D20, Stats task series, Settings Save/Appearance, deeper light meeting violet) |
+| Theme switch on every screen, persists, respects system default | Pass (P1/P2 live; re-seen on every route in both themes here) |
+| Locked meetings solid; movable habits/tasks dashed | Pass |
+| Drag across time/days, 15-min snap, ghost + label, spring, saved | Pass (P4 live; ghost label re-checked under de-DE locale). Snap is delta-based (P4 deviation) |
+| Resize from bottom edge, 15-min min, spring, saved | Pass (P4 live) |
+| Keyboard move/resize; locked shake + toast | Pass (toast and shake re-checked; shake skipped under reduced motion, toast kept) |
+| Priorities DnD with placeholder, re-flow, landing spring, saved, keyboard + announcements | Pass (live here, both engines and touch) |
+| New task dialog animations, Esc/backdrop/focus return/disabled Create/Enter, real task | Pass (P5 live; reduced-motion re-checked here) |
+| Re-plan loading state + drop-in | Pass (P4 live) |
+| Reduced motion: nothing animates | Pass (getAnimations audit, both engines) |
+| No contrast regressions; icon-only buttons labelled | Pass after the P8 fixes (axe 0 violations after fixes; composited contrast; button-name rule clean) |
