@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { Settings } from '../../api/types';
 import { ApiError } from '../../api/client';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
@@ -12,6 +13,14 @@ const settings = (over: Partial<Settings> = {}): Settings => ({
   meetingBufferMs: 300_000, taskBufferMs: 600_000,
   createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', ...over,
 });
+
+/** Exposes the test's QueryClient so a test can refetch settings while the page stays mounted. */
+function GrabClient({ onClient }: { onClient: (c: QueryClient) => void }) {
+  onClient(useQueryClient());
+  return null;
+}
+
+const valueOf = (id: string) => (screen.getByTestId(id) as HTMLInputElement).value;
 
 describe('Buffers page', () => {
   it('shows a loading state', () => {
@@ -259,6 +268,101 @@ describe('Buffers page', () => {
       fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '-1' } });
       expect(screen.queryByTestId('saved')).not.toBeInTheDocument();
       expect(screen.getByTestId('save')).toBeDisabled();
+    });
+  });
+
+  describe('settings that change while the page is open (another tab, realtime refetch)', () => {
+    const mountWithServer = async (server: { current: Settings }) => {
+      const patchSettings = vi.fn(async (patch: Partial<Settings>) => (server.current = { ...server.current, ...patch }));
+      const api = fakeApiClient({ getSettings: async () => server.current, patchSettings } as never);
+      let client!: QueryClient;
+      renderWithProviders(<><Buffers /><GrabClient onClient={(c) => { client = c; }} /></>, { api });
+      await waitFor(() => expect(valueOf('meeting-buffer')).toBe('5'));
+      const refetch = async () => { await act(async () => { await client.invalidateQueries(); }); };
+      return { patchSettings, refetch };
+    };
+
+    it('an untouched field follows the new value, an edited one is kept, and the next save sends only the edit', async () => {
+      const server = { current: settings() }; // meeting 5, task 10
+      const { patchSettings, refetch } = await mountWithServer(server);
+      fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '15' } });
+
+      server.current = settings({ meetingBufferMs: 1_200_000, taskBufferMs: 1_800_000 }); // another tab: 20 / 30
+      await refetch();
+      await waitFor(() => expect(valueOf('meeting-buffer')).toBe('20'));
+      expect(valueOf('task-buffer')).toBe('15'); // the user's edit is never overwritten
+      expect(screen.getByTestId('save')).toBeEnabled();
+
+      fireEvent.click(screen.getByTestId('save'));
+      await waitFor(() => expect(patchSettings).toHaveBeenCalledTimes(1));
+      expect(patchSettings).toHaveBeenCalledWith({ taskBufferMs: 900_000 });
+      await waitFor(() => expect(screen.getByTestId('saved')).toBeInTheDocument());
+      expect(valueOf('meeting-buffer')).toBe('20');
+      expect(screen.getByTestId('save')).toBeDisabled();
+    });
+
+    it('a re-seeded field is measured against the new value: typing the old one back can be saved', async () => {
+      const server = { current: settings() };
+      const { patchSettings, refetch } = await mountWithServer(server);
+      server.current = settings({ meetingBufferMs: 1_200_000 });
+      await refetch();
+      await waitFor(() => expect(valueOf('meeting-buffer')).toBe('20'));
+      expect(screen.getByTestId('save')).toBeDisabled(); // a re-seed is not an edit
+
+      fireEvent.change(screen.getByTestId('meeting-buffer'), { target: { value: '5' } });
+      expect(screen.getByTestId('save')).toBeEnabled();
+      fireEvent.click(screen.getByTestId('save'));
+      await waitFor(() => expect(patchSettings).toHaveBeenCalledWith({ meetingBufferMs: 300_000 }));
+    });
+
+    it('a re-seed after a save keeps the Saved label (it is not a user edit)', async () => {
+      const server = { current: settings() };
+      const { refetch } = await mountWithServer(server);
+      fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '15' } });
+      fireEvent.click(screen.getByTestId('save'));
+      await waitFor(() => expect(screen.getByTestId('saved')).toBeInTheDocument());
+
+      server.current = { ...server.current, meetingBufferMs: 1_200_000 };
+      await refetch();
+      await waitFor(() => expect(valueOf('meeting-buffer')).toBe('20'));
+      expect(screen.getByTestId('saved')).toBeInTheDocument();
+      expect(screen.getByTestId('save')).toBeDisabled();
+    });
+
+    it('a field re-seeded while a save of the other is in flight is not marked edited when the save lands', async () => {
+      let server = settings();
+      let landSave!: () => void;
+      const patchSettings = vi.fn((patch: Partial<Settings>) => new Promise<Settings>((resolve) => {
+        landSave = () => { server = { ...server, ...patch }; resolve(server); };
+      }));
+      const api = fakeApiClient({ getSettings: async () => server, patchSettings } as never);
+      let client!: QueryClient;
+      renderWithProviders(<><Buffers /><GrabClient onClient={(c) => { client = c; }} /></>, { api });
+      await waitFor(() => expect(valueOf('meeting-buffer')).toBe('5'));
+      fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '15' } });
+      fireEvent.click(screen.getByTestId('save'));
+      await waitFor(() => expect(patchSettings).toHaveBeenCalledTimes(1));
+
+      server = { ...server, meetingBufferMs: 1_200_000 };
+      await act(async () => { await client.invalidateQueries(); });
+      await waitFor(() => expect(valueOf('meeting-buffer')).toBe('20'));
+      await act(async () => { landSave(); });
+      await waitFor(() => expect(screen.getByTestId('saved')).toBeInTheDocument());
+      expect(valueOf('meeting-buffer')).toBe('20');
+      expect(screen.getByTestId('save')).toBeDisabled();
+    });
+
+    it('a refetch with identical data changes nothing', async () => {
+      const server = { current: settings() };
+      const { patchSettings, refetch } = await mountWithServer(server);
+      fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '15' } });
+      server.current = settings(); // same values, new object
+      await refetch();
+      expect(valueOf('meeting-buffer')).toBe('5');
+      expect(valueOf('task-buffer')).toBe('15');
+      expect(screen.getByTestId('save')).toBeEnabled();
+      fireEvent.click(screen.getByTestId('save'));
+      await waitFor(() => expect(patchSettings).toHaveBeenCalledWith({ taskBufferMs: 900_000 }));
     });
   });
 });

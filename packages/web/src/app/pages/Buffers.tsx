@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ApiError } from '../../api/client';
 import { useSettingsQuery, useSaveBuffersMutation, type BufferValues } from '../../api/queries';
 import { toFormState, defaultFormState, toSettingsInput, browserTimezone, validateBufferMinutesText, type SettingsFormState } from '../settings/settingsForm';
 import { FIELD_ERROR } from '../components/formStyles';
+import { useValueChange } from '../components/useValueChange';
 
 const labelCls = 'mb-0.5 block text-[10px] uppercase tracking-wide text-inkSoft';
 
@@ -60,6 +61,21 @@ function BuffersForm({ initial, firstTime, onSave, saving, justSaved, saveError 
   // The text as loaded / last saved. Only a field that differs from it is sent: an untouched one
   // could revert a change saved elsewhere, or round a stored 90 000 ms (shown as 2) to 120 000.
   const [baseline, setBaseline] = useState(() => ({ meeting: meetingText, task: taskText }));
+  // Settings changed while the page is open (another tab, then the realtime refetch): a field the
+  // user has not edited (still its baseline) takes the new value, and that becomes its baseline,
+  // so the page never shows a value the server no longer has. An edited field keeps its text and
+  // its baseline. Memoised on the two numbers so useValueChange sees a stable seed in between.
+  const seed = useMemo(
+    () => ({ meeting: minutesText(initial.meetingBufferMs), task: minutesText(initial.taskBufferMs) }),
+    [initial.meetingBufferMs, initial.taskBufferMs],
+  );
+  useValueChange(seed, (_prev, next) => {
+    const meetingUntouched = meetingText === baseline.meeting;
+    const taskUntouched = taskText === baseline.task;
+    if (meetingUntouched) setMeetingText(next.meeting);
+    if (taskUntouched) setTaskText(next.task);
+    setBaseline({ meeting: meetingUntouched ? next.meeting : baseline.meeting, task: taskUntouched ? next.task : baseline.task });
+  });
   // A "Saved" left over from the previous save must not sit next to an edited (maybe invalid) form.
   const [editedSinceSave, setEditedSinceSave] = useState(false);
   const meetingBufferError = validateBufferMinutesText(meetingText);
@@ -82,8 +98,10 @@ function BuffersForm({ initial, firstTime, onSave, saving, justSaved, saveError 
   const save = () => {
     if (!canSave) return;
     setEditedSinceSave(false);
-    const sent = { meeting: meetingText, task: taskText };
-    onSave(toSend, () => setBaseline(sent));
+    // Only the sent fields' baselines move: one re-seeded while the save was in flight keeps its new one.
+    const sentMeeting = 'meetingBufferMs' in toSend ? meetingText : null;
+    const sentTask = 'taskBufferMs' in toSend ? taskText : null;
+    onSave(toSend, () => setBaseline((b) => ({ meeting: sentMeeting ?? b.meeting, task: sentTask ?? b.task })));
   };
 
   return (
