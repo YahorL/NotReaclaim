@@ -475,7 +475,7 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
 
 ### P5 implementation notes (2026-11-25): New task dialog, plus the P7 live pass
 - **PriorityPicker** is `role=radiogroup aria-label="Priority"` with `role=radio aria-checked` pills (still `type=button`). Roving tabindex (only the checked pill is a tab stop). ←/→/↑/↓ move **and select**, wrapping, and Home/End jump to the ends. Selection-follows-focus is safe because picking has no side effect, unlike the Hours swatches. Dots use `pri-*` tokens locally; `BUCKET_META` stays P6's. A coarse pointer gets `coarse:h-11`.
-- **DurationStepper.** Default: 22px tabular value with 34px round `.btn-glass` −/+ buttons. Callers passing `size < 26` get a **compact** variant (`data-compact`: 17px value, 30px buttons), because the drawers' half columns and the CreatePopover cannot hold "2 hr 15 min" at 22px. `size` also scales the icon. Both variants are `coarse:h-11 coarse:w-11`. Labels are unchanged ("1 hr 30 min"; the design's "1 hr 15 mins" was not adopted). New `minus` icon appended.
+- **DurationStepper.** Default: 22px tabular value with 34px round `.btn-glass` −/+ buttons. Callers passing `size < 26` get a **compact** variant (`data-compact`: 17px value, 30px buttons), because the drawers' half columns and the CreatePopover cannot hold "2 hr 15 min" at 22px. `size` also scales the icon. Both variants are `coarse:h-11 coarse:w-11`. The value never shrinks below its text (`flex-[1_0_auto]`), and the −/+ pair wraps under it as a unit (`flex-wrap`, `ml-auto`) where a column is too narrow. Found live: TaskDrawer at 1024px with touch, where "1 hr 30 min" ran under two 44px buttons. Fine pointers at 1440 and 390 stay on one row. Labels are unchanged ("1 hr 30 min"; the design's "1 hr 15 mins" was not adopted). New `minus` icon appended.
 - **Dialog close path.**
   - One idempotent `requestClose`: Escape (through `useFocusTrap`), ✕, Cancel, a backdrop press, and a successful create.
   - It sets `data-closing` on the backdrop and dialog (`animate-bd-out`/`animate-modal-out`, backdrop `pointer-events-none`), then calls `onClose` after `MODAL_EXIT_MS` (220). Under reduced motion it calls `onClose` at once.
@@ -504,14 +504,16 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
   - Stats `grow` ×3 and `donut-draw` ×2 run on mount; reduced motion runs nothing.
   - The Buffers preview animates widths (5 width transitions with intermediate values), and nothing runs under reduced motion.
   - Light contrast (approximated by compositing): eligible habit day pills 7.3:1, off pills 5.5:1, preview task text 7.3:1.
-  - Sign-in page in both themes at 1440 and 390, no overflow.
+  - Sign-in and Register pages in both themes at 1440 and 390, no overflow.
   - No horizontal page overflow on any P7 route at 1440/900/390 in either engine.
 - **For P8:**
   - **Header at ~900px.** The right cluster wraps and leaves the avatar alone on a second row (Stats, Hours and Settings at 900). P2's header contract.
   - **Stats KPI row at 900:** 3 + 1 wrap, so "Tasks done" spans full width.
   - **Buffers preview at 390** is a horizontally scrolled `min-w-[480px]` strip (decorative, `aria-hidden`), so the second task is clipped until scrolled.
   - **QuickAdd input in light** has a heavy grey inset look (the P7 `rgb()` inset shadow note).
-  - **Headless Firefox** renders the dialog backdrop without visible blur, although the computed `backdrop-filter: blur(8px)` and `bg-overlay` match Chromium. The same applies to the search palette. Check on a real Firefox.
+  - **Headless Firefox** renders the dialog backdrop dimmed but without visible blur, although the computed `backdrop-filter: blur(8px)` and `bg-overlay` match Chromium. The search palette's backdrop was screenshotted in the same run and looks the same, so this is a harness/compositor limit, not a P5 difference. Check both on a real Firefox.
+  - **TaskDrawer date fields at 1024px** clip "06/10/2026, 12:0" (pre-existing drawer markup, not P5).
+  - **Light Stats "Tasks done" bar:** the lime fill on the light track has very low contrast.
   - **Not verified:** Escape while a native select or date picker is open (headless cannot drive native popups); a Stats week whose busiest day sits exactly on the top tick.
   - **The created task can be hidden.** If it lands past the fifth card in its priority group (behind "Show N more"), the glow plays on a hidden card. Low priority is the default, and Low is often the long group. Consider auto-expanding the group for a fresh id.
-- **Suite:** 1346 tests / 109 files → 1380 / 110.
+- **Suite:** 1346 tests / 109 files → 1381 / 110.
