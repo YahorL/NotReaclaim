@@ -319,6 +319,10 @@ export interface TestAppOptions {
   googleEmailVerified?: boolean;
   /** Awaited on every OAuth code exchange — lets a test hold two link callbacks in flight. */
   exchangeGate?: () => Promise<void>;
+  /** Awaited inside the default fake replan, after it records the call — lets a test hold a replan in flight. */
+  replanGate?: () => Promise<void>;
+  /** The injected clock; defaults to FIXED_NOW. */
+  now?: () => number;
 }
 
 export function buildTestApp(opts: TestAppOptions = {}) {
@@ -363,15 +367,16 @@ export function buildTestApp(opts: TestAppOptions = {}) {
     },
     reconcile: opts.reconcile ?? (async (userId, now) => {
       reconcileCalls.push({ userId, now });
+      if (opts.replanGate) await opts.replanGate();
       if (opts.reconcileError !== undefined) throw opts.reconcileError;
       return opts.reconcileResult ?? { created: 0, updated: 0, deleted: 0, pinned: 0, removed: 0, pinnedSynced: 0, pinnedFailed: 0 };
     }),
     events,
     config: { jwtSecret: 'test-secret', googleRedirectUri: 'http://localhost:3000/auth/google/callback', webClientUrl: opts.webClientUrl, registrationMode: opts.registrationMode ?? 'open' },
-    now: () => FIXED_NOW,
+    now: opts.now ?? (() => FIXED_NOW),
   });
 
-  return { app, settings, categories, users, invites, reconcileCalls, emitted, events, FIXED_NOW };
+  return { app, settings, scheduledBlocks, calendarEvents, categories, users, invites, reconcileCalls, emitted, events, FIXED_NOW };
 }
 
 export async function tokenFor(app: Awaited<ReturnType<typeof buildTestApp>>['app'], userId = 'u1'): Promise<string> {
