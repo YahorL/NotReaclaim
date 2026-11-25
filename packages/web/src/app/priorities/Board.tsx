@@ -191,8 +191,10 @@ export function Board({
         {/* One grid column per board column. Phones: ~one column per screen, snapped by the pane.
             md+: columns share the width at ≥260px each and the pane scrolls sideways only when they
             cannot all fit (6 × 260 + gaps needs ~1640px) — the prototype's auto-fit grid, minus the
-            wrapping onto a second row. */}
-        <div data-testid="board" className="grid min-h-full auto-cols-[min(372px,85vw)] grid-flow-col gap-4 md:auto-cols-[minmax(260px,1fr)]">
+            wrapping onto a second row. From ~1380px the minimum is 300px so the four priority columns
+            fill the view as in the design (07) with Backlog/Completed one scroll away; at 260px six
+            squeezed columns left card titles ~60px wide. */}
+        <div data-testid="board" className="grid min-h-full auto-cols-[min(372px,85vw)] grid-flow-col gap-4 md:auto-cols-[minmax(260px,1fr)] min-[1380px]:auto-cols-[minmax(300px,1fr)]">
           {shown.map((c, i) => (
             <Column
               key={c.key} columnKey={c.key} tasks={c.tasks} index={i} now={now} zone={zone} nextMsFor={nextMsFor}

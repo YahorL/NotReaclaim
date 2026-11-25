@@ -223,6 +223,8 @@ describe('Priorities board', () => {
     expect(board.classList.contains('auto-cols-[min(372px,85vw)]')).toBe(true);
     // md+: columns share the width at ≥260px (prototype auto-fit minimum), scrolling when they can't.
     expect(board.classList.contains('md:auto-cols-[minmax(260px,1fr)]')).toBe(true);
+    // Wide desktop: 300px minimum, so four priority columns fill a 1440 view (design 07).
+    expect(board).toHaveClass('min-[1380px]:auto-cols-[minmax(300px,1fr)]');
     expect(board.classList.contains('grid-flow-col')).toBe(true);
     expect(column.className).toContain('snap-start');
     const pane = column.closest('.overflow-auto') as HTMLElement;

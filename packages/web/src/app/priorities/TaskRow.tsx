@@ -171,7 +171,8 @@ export function TaskRow({ task, columnKey, nextMs, now, zone, draggable = true, 
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-x-1.5 text-[12px] text-fg-2">
-            <Icons.calendar size={12} className="shrink-0" /><span>{meta}</span>
+            {/* Icon and text wrap as one unit (the icon used to sit alone above "Due 6/10 · Next…"). */}
+            <span data-testid="card-meta" className="inline-flex min-w-0 items-start gap-1.5"><Icons.calendar size={12} className="mt-[2px] shrink-0" /><span>{meta}</span></span>
             {subtasks.length > 0 && (
               <span data-testid="subtask-count" className="ml-1.5 inline-flex items-center gap-1">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M8 12l3 3 5-6" /></svg>
