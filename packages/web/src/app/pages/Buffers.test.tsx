@@ -237,7 +237,7 @@ describe('Buffers page', () => {
     expect((screen.getByTestId('task-buffer') as HTMLInputElement).value).toBe('10');
   });
 
-  it('has no upper clamp: stepping past 60 keeps going and saves', async () => {
+  it('has no 60-minute clamp (the design\'s): stepping past 60 keeps going and saves', async () => {
     // Saved with a PATCH of the stepped buffer alone (fix/followups: the Buffers page sends only the edited field).
     const patchSettings = vi.fn(async () => settings());
     const api = fakeApiClient({ getSettings: async () => settings({ taskBufferMs: 3_600_000 }), patchSettings } as never);
@@ -246,6 +246,39 @@ describe('Buffers page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Increase gap between tasks' }));
     fireEvent.click(screen.getByTestId('save'));
     await waitFor(() => expect(patchSettings).toHaveBeenCalledWith(expect.objectContaining({ taskBufferMs: 65 * 60_000 })));
+  });
+
+  describe('the steppers stay inside the 24 h cap (1440 min)', () => {
+    const inc = () => fireEvent.click(screen.getByRole('button', { name: 'Increase gap between tasks' }));
+    const dec = () => fireEvent.click(screen.getByRole('button', { name: 'Decrease gap between tasks' }));
+
+    it('+ at 1440 stays at 1440 (no error), and + from 1438 lands on 1440', async () => {
+      const api = fakeApiClient({ getSettings: async () => settings({ taskBufferMs: 1440 * 60_000 }) } as never);
+      renderWithProviders(<Buffers />, { api });
+      await waitFor(() => expect(valueOf('task-buffer')).toBe('1440'));
+      inc();
+      expect(valueOf('task-buffer')).toBe('1440');
+      expect(screen.queryByTestId('err-taskBufferMs')).not.toBeInTheDocument();
+      fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '1438' } });
+      inc();
+      expect(valueOf('task-buffer')).toBe('1440');
+      expect(screen.queryByTestId('err-taskBufferMs')).not.toBeInTheDocument();
+    });
+
+    it('− from a stored over-cap value (2000) goes straight to 1440, clears the error and saves it', async () => {
+      const patchSettings = vi.fn(async () => settings());
+      const api = fakeApiClient({ getSettings: async () => settings({ taskBufferMs: 2000 * 60_000 }), patchSettings } as never);
+      renderWithProviders(<Buffers />, { api });
+      await waitFor(() => expect(valueOf('task-buffer')).toBe('2000'));
+      expect(screen.getByTestId('err-taskBufferMs')).toHaveTextContent('Buffer must be at most 24 hours (1440 min)');
+      dec();
+      expect(valueOf('task-buffer')).toBe('1440');
+      expect(screen.queryByTestId('err-taskBufferMs')).not.toBeInTheDocument();
+      expect(screen.getByTestId('save')).toBeEnabled();
+      fireEvent.click(screen.getByTestId('save'));
+      await waitFor(() => expect(patchSettings).toHaveBeenCalledTimes(1));
+      expect(patchSettings).toHaveBeenCalledWith({ taskBufferMs: 1440 * 60_000 });
+    });
   });
 
   it('labels each number field and describes it with its helper text', async () => {

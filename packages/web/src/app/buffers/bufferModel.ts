@@ -1,3 +1,5 @@
+import { MAX_BUFFER_MINUTES } from '../settings/settingsForm';
+
 /** Buffer stepper increment (minutes). */
 export const BUFFER_STEP_MIN = 5;
 
@@ -5,14 +7,16 @@ const clean = (min: number): number => (Number.isFinite(min) && min > 0 ? min : 
 
 /**
  * One − / + press on a buffer, in minutes: moves to the next multiple of 5 in that direction
- * (7 → 10 / 5), floors at 0, no upper clamp (spec §9 — the design's 0–60 clamp is not adopted).
+ * (7 → 10 / 5), floors at 0 and stops at the 24 h cap the server enforces (MAX_BUFFER_MINUTES;
+ * the design's 0–60 clamp is not adopted, spec §9). + at the cap is a no-op, and a value stored
+ * above the cap before it existed steps straight back to it (− from 2000 → 1440, not 1995).
  * An invalid field value (negative, NaN) restarts from 0.
  */
 export function stepBuffer(min: number, dir: 1 | -1): number {
   const v = clean(min);
   const S = BUFFER_STEP_MIN;
   const next = dir === 1 ? Math.floor(v / S) * S + S : Math.ceil(v / S) * S - S;
-  return Math.max(0, next);
+  return Math.min(MAX_BUFFER_MINUTES, Math.max(0, next));
 }
 
 export type PreviewKind = 'buffer' | 'meeting' | 'task' | 'gap';

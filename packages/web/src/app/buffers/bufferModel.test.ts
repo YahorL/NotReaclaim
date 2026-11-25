@@ -14,10 +14,21 @@ describe('stepBuffer', () => {
     expect(stepBuffer(3, -1)).toBe(0);
   });
 
-  it('floors at 0 and has no upper clamp', () => {
+  it('floors at 0 and has no 60-minute clamp (the design\'s)', () => {
     expect(stepBuffer(0, -1)).toBe(0);
     expect(stepBuffer(60, 1)).toBe(65);
     expect(stepBuffer(240, 1)).toBe(245);
+  });
+
+  it('never steps past the 24 h cap (1440 min), and steps an over-cap value straight back to it', () => {
+    expect(stepBuffer(1435, 1)).toBe(1440);
+    expect(stepBuffer(1438, 1)).toBe(1440);
+    expect(stepBuffer(1440, 1)).toBe(1440);
+    expect(stepBuffer(1440, -1)).toBe(1435);
+    expect(stepBuffer(1441, -1)).toBe(1440);
+    expect(stepBuffer(2000, -1)).toBe(1440);
+    // + on an over-cap value also lands on the cap (the only valid value in that direction).
+    expect(stepBuffer(2000, 1)).toBe(1440);
   });
 
   it('treats an invalid value (negative, NaN) as 0, and snaps a fractional one', () => {
