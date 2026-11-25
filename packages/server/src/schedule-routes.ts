@@ -39,7 +39,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
   // Not afterMutation/replanAfterMutation: those swallow errors, and this route must surface
   // them (e.g. 502 on a Google failure). Emit only once the replan has succeeded.
   app.post('/schedule/replan', guard, async (request) => {
-    const counts = await deps.reconcile(request.userId, deps.now());
+    const counts = await deps.replan(request.userId, deps.now());
     deps.events.emit({ type: 'schedule.updated', userId: request.userId, counts });
     return counts;
   });

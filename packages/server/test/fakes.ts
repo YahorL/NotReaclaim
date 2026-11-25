@@ -301,11 +301,11 @@ export interface TestAppOptions {
   calendarEvents?: CalendarEvent[];
   categories?: Category[];
   subtasks?: Subtask[];
-  reconcileResult?: AppDeps['reconcile'] extends (...a: never[]) => Promise<infer R> ? R : never;
+  reconcileResult?: AppDeps['replan'] extends (...a: never[]) => Promise<infer R> ? R : never;
   /** When set, every reconcile call records itself and then throws this. */
   reconcileError?: unknown;
   /** Full override of the injected replan (e.g. a real makeReplan over fakes); bypasses reconcileCalls. */
-  reconcile?: AppDeps['reconcile'];
+  replan?: AppDeps['replan'];
   webClientUrl?: string;
   accessToken?: string;
   /** Full override of the token lookup — lets a test assert it was never even attempted. */
@@ -365,7 +365,7 @@ export function buildTestApp(opts: TestAppOptions = {}) {
         }),
       },
     },
-    reconcile: opts.reconcile ?? (async (userId, now) => {
+    replan: opts.replan ?? (async (userId, now) => {
       reconcileCalls.push({ userId, now });
       if (opts.replanGate) await opts.replanGate();
       if (opts.reconcileError !== undefined) throw opts.reconcileError;

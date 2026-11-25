@@ -44,7 +44,7 @@ export interface AppDeps {
     client: Pick<GoogleClient, 'getConsentUrl' | 'insertEvent' | 'deleteEvent' | 'patchEvent'>;
     tokens: Pick<TokenService, 'exchangeCodeForLink' | 'getAccessToken'>;
   };
-  reconcile: (userId: string, now: number) => Promise<ReconcileResult>;
+  replan: (userId: string, now: number) => Promise<ReconcileResult>;
   events: EventBus;
   config: { jwtSecret: string; googleRedirectUri: string; webClientUrl?: string; registrationMode: RegistrationMode };
   now: () => number;
@@ -96,7 +96,7 @@ export function buildApp(input: Omit<AppDeps, 'now'> & { now?: () => number; log
   const afterMutation: AfterMutation = (userId, change) => {
     if (change) deps.events.emit({ type: 'task.changed', userId, ...change });
     void replanAfterMutation(
-      { reconcile: deps.reconcile, bus: deps.events, now: deps.now, log: (err) => app.log.error(err) },
+      { replan: deps.replan, bus: deps.events, now: deps.now, log: (err) => app.log.error(err) },
       userId,
     );
   };

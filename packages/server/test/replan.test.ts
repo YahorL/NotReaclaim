@@ -18,7 +18,7 @@ describe('replanAfterMutation', () => {
     const { bus, events } = capture();
     const reconcile = vi.fn(async () => COUNTS);
 
-    await replanAfterMutation({ reconcile, bus, now: () => NOW }, 'u1');
+    await replanAfterMutation({ replan: reconcile, bus, now: () => NOW }, 'u1');
 
     expect(reconcile).toHaveBeenCalledWith('u1', NOW);
     expect(events).toEqual([{ type: 'schedule.updated', userId: 'u1', counts: COUNTS }]);
@@ -31,7 +31,7 @@ describe('replanAfterMutation', () => {
     });
     const log = vi.fn();
 
-    await expect(replanAfterMutation({ reconcile, bus, now: () => NOW, log }, 'u1')).resolves.toBeUndefined();
+    await expect(replanAfterMutation({ replan: reconcile, bus, now: () => NOW, log }, 'u1')).resolves.toBeUndefined();
 
     expect(events).toEqual([]);
     expect(log).toHaveBeenCalledTimes(1);
@@ -45,7 +45,7 @@ describe('pollAndReplan', () => {
     const sync = vi.fn(async () => SYNC);
     const reconcile = vi.fn(async () => COUNTS);
 
-    await pollAndReplan({ sync, reconcile, bus, now: () => NOW }, 'u1');
+    await pollAndReplan({ sync, replan: reconcile, bus, now: () => NOW }, 'u1');
 
     expect(sync).toHaveBeenCalledWith('u1', NOW);
     expect(reconcile).toHaveBeenCalledWith('u1', NOW);
@@ -62,7 +62,7 @@ describe('pollAndReplan', () => {
     });
     const reconcile = vi.fn(async () => COUNTS);
 
-    await expect(pollAndReplan({ sync, reconcile, bus, now: () => NOW }, 'u1')).rejects.toThrow('sync failed');
+    await expect(pollAndReplan({ sync, replan: reconcile, bus, now: () => NOW }, 'u1')).rejects.toThrow('sync failed');
 
     expect(reconcile).not.toHaveBeenCalled();
     expect(events).toEqual([]);

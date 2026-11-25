@@ -69,7 +69,7 @@ async function main(): Promise<void> {
     logger: true,
     repos: { settings, tasks, habits, scheduledBlocks, calendarEvents, categories, subtasks, users, invites },
     google: { client, tokens },
-    reconcile: replan,
+    replan,
     events: bus,
     config: {
       jwtSecret: serverConfig.jwtSecret,
@@ -86,7 +86,7 @@ async function main(): Promise<void> {
     listConnectedIds: () => users.listConnectedIds(),
     pollAndReplan: (userId) =>
       pollAndReplan(
-        { sync: syncBound, reconcile: replan, bus, now: () => Date.now() },
+        { sync: syncBound, replan, bus, now: () => Date.now() },
         userId,
       ),
     intervalMs: serverConfig.pollIntervalMs,

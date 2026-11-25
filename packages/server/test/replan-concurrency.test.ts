@@ -33,7 +33,7 @@ describe('replans for one user never overlap across entry points', () => {
       planLocally: async () => ({ ...COUNTS }),
       isConnected: async () => true,
     });
-    const { app, emitted } = buildTestApp({ reconcile: replan });
+    const { app, emitted } = buildTestApp({ replan });
     const token = await tokenFor(app);
     const auth = { authorization: `Bearer ${token}` };
 
@@ -43,7 +43,7 @@ describe('replans for one user never overlap across entry points', () => {
       payload: { title: 'T', priority: 1, durationMs: 3600000, dueBy: '2026-01-09T17:00:00.000Z', minChunkMs: 900000, maxChunkMs: 1800000 },
     });
     const poll = pollAndReplan(
-      { sync: async () => SYNC, reconcile: replan, bus: createEventBus(), now: () => 1 },
+      { sync: async () => SYNC, replan, bus: createEventBus(), now: () => 1 },
       'u1',
     );
 
