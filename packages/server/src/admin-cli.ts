@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isValidTimezone } from '@notreclaim/core';
+import { MIN_PASSWORD_LENGTH } from './schemas.js';
 
 /**
  * Argument handling and decision logic for `scripts/admin.mjs` (which imports this from
@@ -8,7 +9,9 @@ import { isValidTimezone } from '@notreclaim/core';
  * injected, so the logic is unit-tested.
  */
 
-export const MIN_PASSWORD_LENGTH = 8;
+// The app's own rule (register / set-password schemas), so the CLI cannot set a password the app
+// would refuse.
+export { MIN_PASSWORD_LENGTH };
 
 export const ADMIN_USAGE = [
   'usage: admin <command> [flags]',

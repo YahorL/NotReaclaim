@@ -1,8 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   parseAdminArgs, resolveInviter, ADMIN_USAGE, resolvePassword, AdminInputError, ARGV_PASSWORD_WARNING,
-  defaultAdminTimezone, pickFirstAdmin, runDeleteUser, type PasswordIO, type DeleteUserDeps,
+  defaultAdminTimezone, pickFirstAdmin, runDeleteUser, MIN_PASSWORD_LENGTH, type PasswordIO, type DeleteUserDeps,
 } from '../src/admin-cli.js';
+import { registerSchema, setPasswordSchema } from '../src/schemas.js';
 
 const errorOf = (argv: string[]): string => {
   const parsed = parseAdminArgs(argv);
@@ -208,12 +209,22 @@ describe('resolvePassword', () => {
     }
   });
 
-  it('requires at least 8 characters from every source', async () => {
-    await expect(resolvePassword('short77', io())).rejects.toThrow(/at least 8 characters/);
-    await expect(resolvePassword(undefined, io({ readStdin: async () => 'short77\n' }))).rejects.toThrow(/at least 8 characters/);
-    const promptHidden = vi.fn().mockResolvedValue('short77');
-    await expect(resolvePassword(undefined, io({ isTTY: true, promptHidden }))).rejects.toThrow(/at least 8 characters/);
-    expect(await resolvePassword(undefined, io({ readStdin: async () => '8chars!!' }))).toBe('8chars!!');
+  it('requires at least 10 characters from every source, like registering in the app', async () => {
+    await expect(resolvePassword('nine-char', io())).rejects.toThrow(/at least 10 characters/);
+    await expect(resolvePassword(undefined, io({ readStdin: async () => 'nine-char\n' }))).rejects.toThrow(/at least 10 characters/);
+    const promptHidden = vi.fn().mockResolvedValue('nine-char');
+    await expect(resolvePassword(undefined, io({ isTTY: true, promptHidden }))).rejects.toThrow(/at least 10 characters/);
+    expect(await resolvePassword(undefined, io({ readStdin: async () => '10chars!!!' }))).toBe('10chars!!!');
+  });
+
+  it('uses the same minimum as the server\'s register / set-password schemas', () => {
+    expect(MIN_PASSWORD_LENGTH).toBe(10);
+    for (const schema of [registerSchema, setPasswordSchema]) {
+      const body = (password: string) => ({ email: 'a@b.co', password });
+      expect(schema.safeParse(body('x'.repeat(MIN_PASSWORD_LENGTH - 1))).success).toBe(false);
+      expect(schema.safeParse(body('x'.repeat(MIN_PASSWORD_LENGTH))).success).toBe(true);
+    }
+    expect(ADMIN_USAGE).toContain(`at least ${MIN_PASSWORD_LENGTH} characters`);
   });
 
   it('still accepts --password on argv, with a warning that it is visible', async () => {

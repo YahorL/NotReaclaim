@@ -172,14 +172,17 @@ export const updateScheduledBlockSchema = z
   })
   .refine((b) => !(b.startsAt && b.endsAt) || startsBeforeEnds(b.startsAt, b.endsAt), START_BEFORE_END);
 
+/** Minimum password length, everywhere a password is set: register, set-password and the admin CLI. */
+export const MIN_PASSWORD_LENGTH = 10;
+
 export const registerSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(10),
+  password: z.string().min(MIN_PASSWORD_LENGTH),
   inviteCode: z.string().min(1).optional(),
 });
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
 });
-export const setPasswordSchema = z.object({ password: z.string().min(10) });
+export const setPasswordSchema = z.object({ password: z.string().min(MIN_PASSWORD_LENGTH) });
 export const changeEmailSchema = z.object({ email: z.string().email() });

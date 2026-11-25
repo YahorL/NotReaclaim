@@ -40,7 +40,7 @@ npm run dev -w @notreclaim/web    # Vite on :5173, proxies API routes + /ws to :
 npm run build
 set -a && . ./.env.run && set +a && node packages/server/dist/server.js
 node --env-file=.env.run seed-dev.mjs   # prints a demo-user AUTHURL to log in without Google
-npm run admin -w @notreclaim/server -- create-user --email x@y --password p [--admin]
+npm run admin -w @notreclaim/server -- create-user --email x@y.z [--admin]   # asks for the password (min 10 chars; or pipe it on stdin); --google-only for no password
 ```
 
 After changing backend code, rebuild and restart the server (it runs from `dist/`). Restart Vite before browser-verifying frontend changes — stale Vite state has caused false "bug not fixed" reports. Note the Vite proxy maps by path prefix (`/tasks`, `/schedule`, `/settings`, …), so a full-page load of an app route like `/settings` in dev hits the API proxy — navigate client-side from `/`.

@@ -108,7 +108,8 @@ sudo tailscale serve --bg 8080
 tailscale serve status      # expect https://<machine>.<tailnet>.ts.net → 127.0.0.1:8080
 ```
 Create your owner account (registration is closed, so do it via the admin CLI inside the
-server container). It asks for the password twice without echoing it (at least 8 characters):
+server container). It asks for the password twice without echoing it (at least 10 characters,
+the same rule as registering in the app):
 ```sh
 docker compose exec server node packages/server/scripts/admin.mjs \
   create-user --email you@example.com --admin --timezone Europe/Berlin
