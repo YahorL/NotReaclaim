@@ -87,11 +87,16 @@ export function AppShell() {
           <MobileTopBar onNewTask={openNewTask} />
           <GoogleBrokenBanner />
           {/* The tab bar is `fixed`, so the scroll area reserves its height (56px) plus the
-              home-indicator inset below md. Tailwind turns the `_` into a space in calc(). */}
+              home-indicator inset below md. Tailwind turns the `_` into a space in calc().
+              At md+ the scroller bleeds 20px into the frame's side/bottom padding and pads it back
+              (`-mx-5 -mb-5 px-5 pb-5`): content sits exactly where it did, but the panels' soft
+              shadows now fade out inside the scroll box instead of being cut at its edge (a faint
+              hard rectangle around the content in light). The top edge stays put: `--drawer-top`
+              measures it. */}
           <div
             ref={contentRef}
             data-testid="shell-content"
-            className="min-h-0 flex-1 overflow-auto pb-[calc(56px_+_env(safe-area-inset-bottom))] md:pb-0"
+            className="min-h-0 flex-1 overflow-auto pb-[calc(56px_+_env(safe-area-inset-bottom))] md:-mx-5 md:-mb-5 md:px-5 md:pb-5"
           >
             <Outlet />
           </div>

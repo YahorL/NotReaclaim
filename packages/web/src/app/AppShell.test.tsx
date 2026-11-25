@@ -128,7 +128,17 @@ describe('AppShell mobile chrome', () => {
     renderWithProviders(<AppShell />, { api: makeApi() });
     const content = screen.getByTestId('shell-content');
     expect(content.className).toContain('pb-[calc(56px_+_env(safe-area-inset-bottom))]');
-    expect(content.className).toContain('md:pb-0');
+    // md+: no tab bar; the 20px is the frame padding moved inside the scroller (see next test).
+    expect(content).toHaveClass('md:pb-5');
+  });
+
+  it('lets panel shadows fade inside the scroller instead of clipping at its edge (md+)', () => {
+    renderWithProviders(<AppShell />, { api: makeApi() });
+    const content = screen.getByTestId('shell-content');
+    // Bleeds into the frame's side/bottom padding and pads it back, so content does not move.
+    expect(content).toHaveClass('md:-mx-5', 'md:px-5', 'md:-mb-5', 'md:pb-5');
+    // The top edge is what --drawer-top measures: it must not bleed upward.
+    expect(content.className).not.toMatch(/md:-mt-|md:pt-/);
   });
 });
 
