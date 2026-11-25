@@ -326,7 +326,7 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
   - The body button holds a full-height inner wrapper. A `<button>` vertically centres content taller than itself, which pushed a short tile's time label above its top edge.
   - Titles wrap by word and clip, never `overflow-wrap:anywhere` (that stacked letters in narrow lanes).
   - Right padding is reserved only for what is always visible in the corner cluster: lock/pin, plus × on coarse pointers.
-  - Accessible name: "<title>, <Wed 09:00 AM – 10:00 AM>, <locked, synced from Google | movable, drag to reschedule>". **P4** should add the arrow-key wording and `aria-describedby` once keyboard moves exist.
+  - Accessible name: "<title>, <Wed 9:00 AM – 10:00 AM>, <locked, synced from Google | movable, drag to reschedule>". **P4** should add the arrow-key wording and `aria-describedby` once keyboard moves exist.
   - Started tasks get a 3px accent bar (`started-bar`). There is no play icon or "Now" dot: the pin keeps the icon slot.
 - **Times:** `formatHm` now renders the unpadded hour ("9:00 AM", `hour: 'numeric'`, still the user's locale), matching the design and the detail/Next-up cards. Its callers are all planner surfaces: tile labels, tile accessible names, the drag/resize label and the CreatePopover slot label.
 - **Legend:** four static items (Meetings swatch, Movable dashed swatch, Locked icon, Blocked hatch). P4 turns the first two into the filter toggles.
