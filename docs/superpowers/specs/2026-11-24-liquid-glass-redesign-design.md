@@ -261,6 +261,49 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
   - Stats donut `KIND_HEX` (P7).
   - Logo/avatar hexes (P2).
 
+### P2 implementation notes (2026-11-25): deviations and contracts for later phases
+- **Order.** `useFocusTrap(ref, { onEscape, restoreTo, initialFocus })` was extracted from `Sheet.tsx` first, in its own behaviour-preserving commit, because 2.6 consumes it before 2.8. It returns the `onKeyDown` handler for the surface. Contract for P5: put the handler on the dialog element, and pass `initialFocus` explicitly. **Do not rely on `autoFocus` alone.** In Chromium, the palette lost `autoFocus` to the trap's container focus when it was opened by a shortcut pressed on a focused button. `initialFocus: () => inputRef.current` fixed it.
+- **AccountMenu does not use the modal trap.** It follows the WAI-ARIA menu-button pattern:
+  - Opening focuses the first item; ↑/↓/Home/End move between items.
+  - Escape closes the menu and refocuses the button; Tab closes it and lets focus move on.
+  - An outside press closes it **without** moving focus, since that press may be focusing something else.
+  - Items are `role=menuitem`, so tests query `getByRole('menuitem', { name: /sign out/i })`.
+- **Rail.**
+  - The `data-testid="sidebar"` element is the `<nav aria-label="Main">` itself (`hidden md:flex` kept). It has `rounded-panel` (22px, matching the screenshots; `--radius-rail` 38px is unused) and `relative z-30`.
+  - It has no overflow clipping, so the `::after` tooltips (`data-label`) can overhang the content column.
+  - Wells and the theme knob have no token. They use a literal `[[data-theme=light]_&]:` variant (`RAIL_GROUP` in `NavItem.tsx`). There are no new tokens: `index.css`/the config stay frozen.
+  - `NavLinkItem` sets `data-active` via `useMatch`. `NavSection` and the collapsible group are deleted.
+  - The legacy `sidebar*` colours and `.dark-scroll` now have no users; P8 removes them.
+- **ThemeSwitch.** `aria-pressed` follows the **resolved** theme, so exactly one button is pressed under "system". Clicking a button stores an explicit pref.
+- **Header.**
+  - `routeHeader(pathname, { nowMs, zone, openTaskCount })` is a pure function returning `{ eyebrow, title: [before, bold, after] }`. The compact `routeTitle()` lives in the same file (`routeTitle.ts` is deleted).
+  - The Stats eyebrow uses the Mon–Sun settings-zone week that the Stats page reports on (e.g. "Week 48 · Nov 23 – Nov 29"), not the screenshot's Tue–Mon.
+  - The Priorities count is active (pending/scheduled) tasks. It reads "Tasks across…" while the count is unknown.
+  - The right cluster is: sidebar toggle (D20, 46px glass) · Now/Next pill · Search · New task · avatar. The pill and the toggle are not in screenshots 01/02 (expected deviation, owner decisions).
+  - Header bottom is at 101px and content starts at 121px at md+, so drawer slots are now `top-[120px]` (measured live). `DrawerPanel` max-height is `calc(100dvh-140px)`.
+- **Now/Next pill.**
+  - Only TopBar uses the structured label: "Now · title" or "Next · title · Today 2:00pm", with the title truncated by CSS `max-w-[24ch] truncate`. `useNowNextControls` now also returns `nextTime`. `nextLabel` (mobile) reads "Next · title · time".
+  - The pill still renders on `/`. Task 3.5 owns the `pathname !== '/'` gate.
+- **Search.**
+  - Palette state, the `/` and Ctrl/Cmd+K listener (`useTaskSearchShortcut`) and `ShellTaskDrawer` live in `AppShell`.
+  - The shortcut is ignored in editable targets, while any `[aria-modal="true"]` is open, and for keys that were already prevented.
+  - A blank query shows "Type to search your tasks"; nothing listed matches "No tasks match".
+  - Below md the header is hidden and `MobileTopBar` pins "no search button", so search on phones is keyboard-only (hardware `/`). Decide in P8 whether to add a mobile entry point.
+  - Z-tiers: shell drawer `z-[55]` (above page drawers at z-50), palette `z-[60]`, toast region `z-[70]`.
+- **Toasts.**
+  - `useToast()` outside a `ToastProvider` is a **silent no-op**, because pages render bare in tests. Page tests that want to assert a toast must wrap in `ToastProvider`.
+  - P4 anchoring: `const { setAnchor } = useToast(); <div ref={setAnchor} … />` portals the visible pill into the planner panel. The `role=status` live region stays in the shell with an sr-only copy. Call `setAnchor(null)` (ref cleanup) on unmount.
+  - Under reduced motion `animate-toast` is omitted, not just shortened: its keyframe ends at opacity 0 with fill `both`. `data-animated` exposes this to tests.
+- **Primitives.**
+  - The Sheet surface is `[background:var(--x-dialog-bg)]` + `shadow-modal`, **without** `.glass-dialog`, because a `backdrop-filter` (non-none in light) would make the sheet the containing block for `fixed` descendants.
+  - The backdrop is `bg-overlay backdrop-blur-[8px]`, but only when not collapsed. `data-full-screen`/`data-collapsed` were added for tests.
+  - `DrawerPanel` desktop = `.glass-dialog rounded-panel`. `FieldBox` shows its focus cue as `focus-within:border-accent/60`, because the controls inside have `outline-none`.
+- **Icons.** `planner`/`priorities`/`stats` glyphs were redrawn to the prototype paths. `pin`/`play`/`stop`/`user` are drawn in the same style, since the prototype has no glyph for them (and the location pin is excluded). `grip` is re-centred on the 24 grid.
+- **Mobile.** The tab bar and top bar are `.glass` with `rounded-none` and one-side borders. The active tab is a 48×28 accent pill behind the icon, plus `aria-current`/`data-active`. The Habits tab now uses the `habits` glyph.
+- **Left for later phases:**
+  - Pages still carry their own outer padding (e.g. Planner `p-3`), so content sits ~12px inside the header's left edge (P3/P7).
+  - The Buffers card heading duplicates the new "Scheduling buffers" headline (P7).
+
 ### Survey notes for risky assumptions (checked 2026-11-24)
 - **Block id stability (D13).** `packages/core/src/apply.ts` applies the desired schedule as a keyed (`engineKey`) in-place diff: a block whose engine key survives a replan is **updated in place and keeps its id**, so moved blocks glide and only genuinely new chunks drop in. Caveat: when a task's chunk count changes, keys are reissued and some blocks are deleted/created — those will drop in. That is acceptable ("newly placed" is a fair reading).
 - **CSP vs the inline theme script (D3).** No `Content-Security-Policy` header is set in `packages/server` or the `docs/deploy` runbooks (Tailscale Serve, Docker Compose), so the inline pre-paint script is allowed. If a CSP is added later it needs a hash for that script.
