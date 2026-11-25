@@ -32,7 +32,6 @@ export function SettingsForm({ initial, onSave, saving = false, error = null, ju
 
   return (
     <div data-testid="settings-form" className="max-w-md p-4">
-      <h2 className="mb-4 text-[20px] font-extrabold text-ink">Settings</h2>
 
       {/* Working hours */}
       <section className="mb-4 rounded-[14px] border border-line bg-card p-4">

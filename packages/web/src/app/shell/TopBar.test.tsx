@@ -27,9 +27,43 @@ describe('TopBar (bare render)', () => {
     return onNewTask;
   }
 
-  it('shows the page title from the route', () => {
+  it('shows the route headline with its bold word, and the eyebrow', () => {
     renderTopBar(vi.fn(), '/priorities');
-    expect(screen.getByRole('heading', { name: 'Priorities' })).toBeInTheDocument();
+    const h1 = screen.getByRole('heading', { level: 1 });
+    expect(h1).toHaveTextContent('Your priorities');
+    expect(h1.querySelector('strong')).toHaveTextContent('priorities');
+    expect(screen.getByTestId('route-eyebrow')).toHaveTextContent(/across 4 priority levels/);
+  });
+
+  it('counts open tasks in the Priorities eyebrow', async () => {
+    const api = fakeApiClient({
+      getSchedule: async () => [],
+      listTasks: async () => [
+        { status: 'pending' }, { status: 'scheduled' }, { status: 'backlog' }, { status: 'completed' },
+      ] as never,
+    });
+    renderWithProviders(<TopBar onNewTask={vi.fn()} />, { api, initialEntries: ['/priorities'] });
+    await waitFor(() => expect(screen.getByTestId('route-eyebrow')).toHaveTextContent('2 open tasks across 4 priority levels'));
+  });
+
+  it('shows the planner date eyebrow in the settings zone', () => {
+    const api = fakeApiClient({ getSchedule: async () => [] });
+    renderWithProviders(<TopBar onNewTask={vi.fn()} now={nowFn} />, { api, initialEntries: ['/'] });
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Your week planner');
+    expect(screen.getByTestId('route-eyebrow')).toHaveTextContent('Thursday, June 11 · Week 24');
+  });
+
+  it('disables Search until a palette handler is wired, then calls it', () => {
+    const api = fakeApiClient({ getSchedule: async () => [] });
+    const { unmount } = renderWithProviders(<TopBar onNewTask={vi.fn()} />, { api });
+    expect(screen.getByRole('button', { name: 'Search tasks' })).toBeDisabled();
+    unmount();
+    const onSearch = vi.fn();
+    renderWithProviders(<TopBar onNewTask={vi.fn()} onSearch={onSearch} />, { api });
+    const search = screen.getByRole('button', { name: 'Search tasks' });
+    expect(search).toHaveAttribute('aria-keyshortcuts', '/ Control+K Meta+K');
+    fireEvent.click(search);
+    expect(onSearch).toHaveBeenCalledTimes(1);
   });
 
   it('fires onNewTask when New Task is clicked', () => {

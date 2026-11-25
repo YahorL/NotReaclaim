@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Icons } from './icons';
-import { routeTitle } from './routeTitle';
+import { routeTitle } from './routeHeader';
 import { useNowNextControls } from './useNowNextControls';
 
 interface MobileTopBarProps {

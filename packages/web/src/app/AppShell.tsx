@@ -25,10 +25,12 @@ export function AppShell() {
     });
   }
 
+  // Desktop frame (prototype): 20px page padding, rail + content column 20px apart, header 20px
+  // above the page. Phones keep the edge-to-edge chrome.
   return (
-    <div className="flex h-dvh overflow-hidden">
+    <div className="flex h-dvh overflow-hidden bg-page md:gap-5 md:p-5">
       {!sidebarHidden && <Sidebar />}
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main className="flex min-w-0 flex-1 flex-col md:gap-5">
         <TopBar onNewTask={() => setNewTaskOpen(true)} sidebarHidden={sidebarHidden} onToggleSidebar={toggleSidebar} />
         <MobileTopBar onNewTask={() => setNewTaskOpen(true)} />
         <GoogleBrokenBanner />

@@ -30,7 +30,6 @@ export function Habits() {
   return (
     <div className="p-4">
       <div className="mx-auto w-full max-w-[720px]">
-        <h2 className="mb-4 text-[22px] font-extrabold tracking-[-.3px] text-ink">Habits</h2>
         <QuickAdd placeholder="+ Add a habit…" onAdd={(title) => createM.mutate(defaultQuickAddInput(title))} />
         {habitsQ.isLoading && <div className="text-sm text-gray-500">Loading habits…</div>}
         {habitsQ.isError && (
