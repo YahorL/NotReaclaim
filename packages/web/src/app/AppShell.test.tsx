@@ -64,6 +64,29 @@ describe('AppShell sidebar toggle', () => {
     expect(localStorage.getItem('nr.sidebarHidden')).toBe('true');
   });
 
+  it('still renders and toggles when storage throws for the sidebar key', () => {
+    // Throw only for this key so the test isolates AppShell (auth/theme have their own handling).
+    const realGet = Storage.prototype.getItem;
+    const realSet = Storage.prototype.setItem;
+    const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key: string) {
+      if (key === 'nr.sidebarHidden') throw new DOMException('denied', 'SecurityError');
+      return realGet.call(this, key);
+    });
+    const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key: string, value: string) {
+      if (key === 'nr.sidebarHidden') throw new DOMException('full', 'QuotaExceededError');
+      realSet.call(this, key, value);
+    });
+    try {
+      renderWithProviders(<AppShell />, { api: makeApi() });
+      expect(screen.getByTestId('sidebar')).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('toggle-sidebar'));
+      expect(screen.queryByTestId('sidebar')).toBeNull();
+    } finally {
+      get.mockRestore();
+      set.mockRestore();
+    }
+  });
+
   it('reads initial hidden state from localStorage', () => {
     localStorage.setItem('nr.sidebarHidden', 'true');
     renderWithProviders(<AppShell />, { api: makeApi() });

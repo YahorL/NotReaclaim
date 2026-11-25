@@ -14,6 +14,8 @@ import { useTasksQuery } from '../api/queries';
 import { useTimezone } from './settings/useTimezone';
 import { ToastProvider } from './shell/ToastProvider';
 
+const SIDEBAR_HIDDEN_KEY = 'nr.sidebarHidden';
+
 /**
  * Publishes the content area's top edge as `--drawer-top` on the shell root, for the fixed desktop
  * drawer slot (DESKTOP_DRAWER_SLOT). The header wraps below ~1150px and the Google banner can sit
@@ -51,14 +53,15 @@ export function AppShell() {
   const rootRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   useDrawerTopVar(rootRef, contentRef);
-  const [sidebarHidden, setSidebarHidden] = useState(
-    () => localStorage.getItem('nr.sidebarHidden') === 'true',
-  );
+  // Storage can throw (blocked site data, private mode, quota): the toggle then just isn't remembered.
+  const [sidebarHidden, setSidebarHidden] = useState(() => {
+    try { return localStorage.getItem(SIDEBAR_HIDDEN_KEY) === 'true'; } catch { return false; }
+  });
 
   function toggleSidebar() {
     setSidebarHidden((prev) => {
       const next = !prev;
-      localStorage.setItem('nr.sidebarHidden', String(next));
+      try { localStorage.setItem(SIDEBAR_HIDDEN_KEY, String(next)); } catch { /* not remembered */ }
       return next;
     });
   }
