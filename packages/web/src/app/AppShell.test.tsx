@@ -74,6 +74,11 @@ describe('AppShell mobile chrome', () => {
     localStorage.clear();
   });
 
+  it('mounts the shell toast live region', () => {
+    renderWithProviders(<AppShell />, { api: makeApi() });
+    expect(screen.getByTestId('toast-region')).toHaveAttribute('role', 'status');
+  });
+
   it('mounts the mobile tab bar and the mobile top bar', () => {
     renderWithProviders(<AppShell />, { api: makeApi() });
     expect(screen.getByTestId('mobile-tab-bar')).toBeInTheDocument();
