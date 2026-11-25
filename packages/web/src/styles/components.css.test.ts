@@ -19,6 +19,12 @@ describe('index.css component classes', () => {
     expect(componentsLayer).toMatch(new RegExp(`\\.${name}\\s*[{,:]`));
   });
 
+  it('the reduced-motion kill switch also stops infinite animations (runs them once, not every 10µs)', () => {
+    const block = css.match(/@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? '';
+    expect(block).toMatch(/animation-duration:\s*\.01ms\s*!important/);
+    expect(block).toMatch(/animation-iteration-count:\s*1\s*!important/);
+  });
+
   it('presses every button variant down to .96', () => {
     for (const b of ['btn-glass', 'btn-primary', 'btn-accent']) {
       expect(componentsLayer).toMatch(new RegExp(`\\.${b}:active[^{]*\\{[^}]*scale\\(\\.96\\)`));

@@ -131,6 +131,10 @@
   *, *::before, *::after {
     animation-duration: .01ms !important;
     animation-delay: 0s !important;
+    /* Without this an `infinite` animation (the now-dot pulse, the Re-plan spinner) restarts every
+       10µs — a flicker, not a stop. Once, it ends on its last frame: the dot sits still, the spinner
+       is a static icon beside its "Re-planning…" text. */
+    animation-iteration-count: 1 !important;
     transition-duration: .01ms !important;
   }
 }
