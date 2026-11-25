@@ -4,7 +4,7 @@ import { type BoardColumnKey, BOARD_COLUMNS, columnMeta } from './priorityBucket
 
 // The glass search pill. Full width on a phone (its own row), 460px at md+ (prototype
 // `flex: 0 1 460px`); `min-w-0`/`max-w-full` let it shrink inside the wrapping row.
-const SEARCH_BOX = 'flex h-[46px] w-full min-w-0 max-w-full items-center gap-2.5 rounded-pill border border-fg/10 bg-fg/[.05] px-[18px] shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)] transition-colors focus-within:border-focus md:w-[460px]';
+const SEARCH_BOX = 'flex h-[46px] w-full min-w-0 max-w-full items-center gap-2.5 rounded-pill border border-fg/10 [background:var(--x-btn-bg)] px-[18px] shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)] transition-colors [[data-theme=light]_&]:shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] focus-within:border-focus md:w-[460px]';
 
 export interface ToolbarProps {
   query: string;
