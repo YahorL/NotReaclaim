@@ -33,6 +33,8 @@ export interface UseBlockDragOptions {
 export interface BlockDrag {
   /** The live gesture once it is a drag (past the threshold / armed by a long press), else null. */
   live: LiveDrag | null;
+  /** A pointer is down (including a press still under the threshold or awaiting its long press). */
+  pressed: boolean;
   handlers: {
     onPointerDown: (e: ReactPointerEvent<HTMLElement>) => void;
     onPointerMove: (e: ReactPointerEvent<HTMLElement>) => void;
@@ -83,6 +85,7 @@ export function useBlockDrag({ dayCount, coarse, getScrollContainer, onTap, onRe
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const captureRef = useRef<{ el: HTMLElement; pointerId: number } | null>(null);
   const [live, setLive] = useState<LiveDrag | null>(null);
+  const [pressed, setPressed] = useState(false);
   // Latest callbacks for handlers created during an older render.
   const cb = useRef({ onTap, onRelease, onGrab });
   cb.current = { onTap, onRelease, onGrab };
@@ -145,6 +148,7 @@ export function useBlockDrag({ dayCount, coarse, getScrollContainer, onTap, onRe
     pressRef.current = endPress();
     gestureRef.current = null;
     setLive(null);
+    setPressed(false);
   };
 
   useEffect(() => () => {
@@ -190,6 +194,7 @@ export function useBlockDrag({ dayCount, coarse, getScrollContainer, onTap, onRe
       lastY: finite(e.clientY),
     };
     clearPressTimer();
+    setPressed(true);
     if (isArmed(pressRef.current)) { capture(el, pointerId); return; }
     pressTimerRef.current = setTimeout(() => {
       pressTimerRef.current = null;
@@ -244,6 +249,7 @@ export function useBlockDrag({ dayCount, coarse, getScrollContainer, onTap, onRe
 
   return {
     live,
+    pressed,
     handlers: { onPointerDown: begin('move'), onPointerMove, onPointerUp, onPointerCancel },
     resizeHandlers: { onPointerDown: begin('resize') },
   };

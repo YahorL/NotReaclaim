@@ -957,3 +957,15 @@ describe('InteractiveBlock vs. stray text selections', () => {
     expect(screen.getByTestId('event-block').className).toContain('select-none');
   });
 });
+
+describe('InteractiveBlock press state', () => {
+  it('marks a press that has not become a drag yet (the layer must not re-insert it)', () => {
+    renderBlock();
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    expect(el).toHaveAttribute('data-pressed', 'true');
+    expect(el).not.toHaveAttribute('data-dragging');
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    expect(el).not.toHaveAttribute('data-pressed');
+  });
+});

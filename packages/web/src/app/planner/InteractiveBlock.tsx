@@ -238,6 +238,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
         describedBy={describedBy}
         {...drag.handlers}
         motion={motion}
+        pressed={drag.pressed}
         settling={settling}
         hidden={hidden}
         landDelayMs={landDelayMs}

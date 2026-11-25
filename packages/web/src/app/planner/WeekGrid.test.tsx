@@ -661,6 +661,16 @@ describe('WeekGrid entrance', () => {
     }
   });
 
+  it('a filtered-out tile neither pops in nor drops in (both keyframes end at full opacity)', () => {
+    render(<WeekGrid {...base} blocks={[block()]} events={[event()]} entranceKey="r1" filters={{ meetings: true, movable: false }} landing={new Map([['b:b1', 0]])} />);
+    const task = tiles().find((t) => t.getAttribute('data-kind') === 'task')!;
+    expect(task).toHaveAttribute('data-hidden', 'true');
+    expect(task).not.toHaveAttribute('data-entering');
+    expect(task).not.toHaveAttribute('data-new');
+    expect(task.className).not.toMatch(/animate-(ev-in|land)/);
+    expect(tiles().find((t) => t.getAttribute('data-kind') === 'meeting')).toHaveAttribute('data-entering', 'true');
+  });
+
   it('nothing pops in while the range is still loading (null key)', () => {
     render(<WeekGrid {...base} blocks={[block()]} events={[]} entranceKey={null} />);
     expect(tiles()[0]).not.toHaveAttribute('data-entering');

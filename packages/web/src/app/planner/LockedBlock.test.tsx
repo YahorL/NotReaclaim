@@ -8,6 +8,7 @@ import { WeekGrid } from './WeekGrid';
 import { dayColumns, startOfWeek, minutesToPx } from './weekModel';
 import { LOCKED_TOAST } from './LockedBlock';
 import { SHAKE_MS } from './useShake';
+import { LONG_PRESS_MS } from './longPress';
 
 const days = dayColumns(startOfWeek(Date.parse('2026-01-05T12:00:00.000Z'), 'UTC'), 7, 'UTC');
 const meeting = (over: Partial<CalendarEvent> = {}): CalendarEvent => ({
@@ -89,6 +90,35 @@ describe('Locked Google tiles', () => {
     renderGrid();
     fireEvent.pointerDown(screen.getByTestId('event-block'), { pointerId: 1 });
     expect(screen.getByTestId('event-block')).not.toHaveAttribute('data-shake');
+    expect(screen.getByTestId('toast-region')).toHaveTextContent(LOCKED_TOAST);
+  });
+
+  /** jsdom drops `pointerType` from the init; define it on the event. */
+  const touchEvent = (kind: 'pointerDown' | 'pointerMove' | 'pointerUp', el: Element, init: Record<string, unknown>) => {
+    const ev = createEvent[kind](el, init);
+    Object.defineProperty(ev, 'pointerType', { value: 'touch' });
+    fireEvent(el, ev);
+  };
+
+  it('touch: a finger that scrolls away from the tile never shakes it', () => {
+    vi.useFakeTimers();
+    renderGrid();
+    const tile = screen.getByTestId('event-block');
+    touchEvent('pointerDown', tile, { clientX: 50, clientY: 100, pointerId: 1 });
+    expect(tile).not.toHaveAttribute('data-shake');
+    touchEvent('pointerMove', tile, { clientX: 50, clientY: 140, pointerId: 1 });
+    act(() => { vi.advanceTimersByTime(LONG_PRESS_MS + 50); });
+    expect(tile).not.toHaveAttribute('data-shake');
+    expect(screen.getByTestId('toast-region')).not.toHaveTextContent(LOCKED_TOAST);
+  });
+
+  it('touch: a long press on the tile is the move attempt that shakes', () => {
+    vi.useFakeTimers();
+    renderGrid();
+    const tile = screen.getByTestId('event-block');
+    touchEvent('pointerDown', tile, { clientX: 50, clientY: 100, pointerId: 1 });
+    act(() => { vi.advanceTimersByTime(LONG_PRESS_MS); });
+    expect(tile).toHaveAttribute('data-shake', 'true');
     expect(screen.getByTestId('toast-region')).toHaveTextContent(LOCKED_TOAST);
   });
 

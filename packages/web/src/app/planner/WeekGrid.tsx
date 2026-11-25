@@ -40,7 +40,7 @@ function DayDropZone({ dayIndex, dayStartMs }: { dayIndex: number; dayStartMs: n
 export const REORDER_DELAY_MS = 700;
 const REORDER_RETRY_MS = 400;
 /** Anything in motion (or about to animate) inside the layer: a DOM move would kill it. */
-const BUSY_SELECTOR = '[data-dragging],[data-resizing],[data-settling],[data-new],[data-entering],[data-shake]';
+const BUSY_SELECTOR = '[data-pressed],[data-dragging],[data-resizing],[data-settling],[data-new],[data-entering],[data-shake]';
 
 /**
  * Items in the order the layer renders them: by day, then start — so Tab and a screen reader's

@@ -57,6 +57,8 @@ export interface CalendarBlockProps {
   motion?: BlockMotion;
   /** Springing into its slot after a release: stays above its neighbours until it lands. */
   settling?: boolean;
+  /** A pointer is down on the tile (a press that may still become a drag). */
+  pressed?: boolean;
   /** Locked tile refusing a move: one `animate-shake` run. */
   shake?: boolean;
   /** Newly placed by a Re-plan: drops in (`animate-land`) after this delay (spec §5.5). */
@@ -100,12 +102,13 @@ export function CalendarBlock(props: CalendarBlockProps) {
     blockKey, title, kind, source = null, pinned = false, started = false, accent, startLabel, whenLabel, durationMin,
     style, className = '', dayIndex, selected = false, coarse = false, onDelete, deleteLabel = 'Delete block',
     onUnpin, onBodyClick, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, resize, children,
-    motion = 'idle', settling = false, shake = false, hidden = false, landDelayMs, enterDelayMs, onTransitionEnd, onBodyKeyDown, onBodyBlur, describedBy,
+    motion = 'idle', pressed = false, settling = false, shake = false, hidden = false, landDelayMs, enterDelayMs, onTransitionEnd, onBodyKeyDown, onBodyBlur, describedBy,
   } = props;
   const v = blockVariant({ kind, source, pinned, started, accent });
   // A drag owns the transform; a landing animation would fight it.
-  const landing = landDelayMs !== undefined && motion === 'idle';
-  const entering = !landing && enterDelayMs !== undefined && motion === 'idle';
+  // Both keyframes end at opacity 1, which would override a filtered-out tile's opacity-0.
+  const landing = landDelayMs !== undefined && motion === 'idle' && !hidden;
+  const entering = !landing && enterDelayMs !== undefined && motion === 'idle' && !hidden;
   const row = durationMin < ROW_LAYOUT_MAX_MIN;
   const state = v.locked ? 'locked, synced from Google' : 'movable: drag or use arrow keys, Shift+arrows to resize';
   const ariaLabel = [title, whenLabel, state].filter(Boolean).join(', ');
@@ -127,6 +130,7 @@ export function CalendarBlock(props: CalendarBlockProps) {
       data-selected={selected}
       data-day-index={dayIndex}
       data-dragging={motion === 'dragging' ? 'true' : undefined}
+      data-pressed={pressed ? 'true' : undefined}
       data-resizing={motion === 'resizing' ? 'true' : undefined}
       data-settling={settling ? 'true' : undefined}
       data-shake={shake ? 'true' : undefined}
