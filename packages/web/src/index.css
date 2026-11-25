@@ -18,7 +18,112 @@
   transition: none !important;
 }
 
+/*
+ * Component classes: multi-value tokens (gradients, multi-shadows, blur, border shorthands)
+ * that would otherwise be 200-char utility strings. Values from the prototypes (.g, .gc,
+ * .gbtn, .lime, .chip, .ev-*, .toast, Buffers .hatch), all via tokens.css vars so both
+ * themes come for free. Surfaces only: callers add shape/size (`rounded-panel`, `h-[46px]`,
+ * padding). Tailwind emits a component class only when some source file uses it.
+ */
 @layer components {
+  /* ---- surfaces ---- */
+  .glass {
+    background: var(--x-panel-bg);
+    border: 1px solid var(--x-panel-border);
+    box-shadow: var(--x-panel-shadow);
+    -webkit-backdrop-filter: var(--x-panel-blur);
+    backdrop-filter: var(--x-panel-blur);
+  }
+  .glass-card {
+    background: var(--x-card-bg);
+    border: 1px solid var(--x-card-border);
+    box-shadow: var(--x-card-shadow);
+  }
+  .glass-card-hover { transition: background .2s ease, border-color .2s ease; }
+  .glass-card-hover:hover { background: var(--x-card-hover); }
+  .glass-dialog {
+    background: var(--x-dialog-bg);
+    border: 1px solid var(--x-panel-border);
+    box-shadow: var(--x-panel-shadow);
+    -webkit-backdrop-filter: var(--x-panel-blur);
+    backdrop-filter: var(--x-panel-blur);
+  }
+
+  /* ---- buttons ---- */
+  .btn-glass {
+    background: var(--x-btn-bg);
+    border: 1px solid var(--x-btn-border);
+    box-shadow: var(--x-btn-shadow);
+    color: rgb(var(--c-text-1));
+    transition: background .2s ease, border-color .2s ease, transform .15s ease;
+  }
+  .btn-glass:hover:not(:disabled) { background: var(--x-btn-bg-hover); border-color: var(--x-btn-border-hover); }
+  .btn-primary {
+    background: rgb(var(--c-primary));
+    color: rgb(var(--c-on-primary));
+    transition: opacity .2s ease, transform .15s ease;
+  }
+  .btn-primary:hover:not(:disabled) { opacity: .9; }
+  .btn-accent {
+    background: rgb(var(--c-accent));
+    color: rgb(var(--c-on-accent));
+    box-shadow: var(--x-accent-shadow);
+    transition: box-shadow .2s ease, transform .15s ease;
+  }
+  .btn-accent:hover:not(:disabled) { box-shadow: var(--x-accent-shadow-hover); }
+  .btn-glass:active:not(:disabled),
+  .btn-primary:active:not(:disabled),
+  .btn-accent:active:not(:disabled) { transform: scale(.96); }
+  .btn-glass:disabled, .btn-primary:disabled, .btn-accent:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+
+  /* ---- small pieces ---- */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: var(--radius-pill);
+    font-size: 12px;
+    white-space: nowrap;
+    background: var(--x-chip-bg);
+    border: 1px solid var(--x-chip-border);
+    color: rgb(var(--c-chip-fg));
+  }
+  /* Positioning is the caller's (a centring flex wrapper); `animate-toast` adds the motion. */
+  .toast {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 16px;
+    border-radius: var(--radius-pill);
+    font-size: 13px;
+    white-space: nowrap;
+    color: rgb(var(--c-toast-fg));
+    background: var(--x-toast-bg);
+    border: 1px solid var(--x-toast-border);
+    box-shadow: var(--x-toast-shadow);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+  }
+  .hatch { background: var(--x-hatch-bg); border: var(--x-blocked-border); }
+  /* Forces the accent focus outline even where a utility (`outline-none`) removed it. */
+  .focus-ring:focus-visible { outline: 2px solid rgb(var(--c-accent)); outline-offset: 2px; }
+
+  /* ---- planner blocks (spec §3) ---- */
+  .block-meeting {
+    background: var(--x-meeting-bg);
+    border: var(--x-meeting-border);
+    box-shadow: var(--x-meeting-shadow);
+    color: rgb(var(--c-on-meeting));
+  }
+  .block-task { background: var(--x-task-bg); border: var(--x-task-border); color: rgb(var(--c-text-1)); }
+  .block-task:hover { background: var(--x-task-bg-hover); }
+  .block-habit { background: var(--x-habit-bg); border: var(--x-habit-border); color: rgb(var(--c-habit-fg)); }
+  .block-habit:hover { background: var(--x-habit-bg-hover); }
+  .block-blocked { background: var(--x-blocked-bg); border: var(--x-blocked-border); color: rgb(var(--c-text-1) / 0.66); }
+
+  /* ---- scrollbars ---- */
   .dark-scroll::-webkit-scrollbar { width: 8px; }
   .dark-scroll::-webkit-scrollbar-thumb { background: rgb(var(--c-text-1) / 0.16); border-radius: 8px; }
   .dark-scroll::-webkit-scrollbar-track { background: transparent; }
