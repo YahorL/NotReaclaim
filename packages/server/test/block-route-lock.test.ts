@@ -307,6 +307,29 @@ describe('GET /schedule manual-mode sweep and the lock', () => {
     await held.release();
   });
 
+  it('a candidate the replan mirrored while the sweep waited: lets go, fetches a token, retakes the lock, removes the event too', async () => {
+    const deleted: string[] = [];
+    let tokenLookups = 0;
+    const h = harness({
+      settings: manual,
+      // Unmirrored when the sweep lists it: no token fetched up front.
+      blocks: [block({ id: 'past', startsAt: T('2026-01-04T23:00:00.000Z'), endsAt: T('2026-01-04T23:30:00.000Z') })],
+      getAccessToken: async () => { tokenLookups += 1; return 'access-1'; },
+      deleteEvent: async (_t, _c, id) => { deleted.push(id); },
+    });
+    const held = h.holdLock();
+    const res = h.send('GET', `/schedule${wide}`);
+    await untilQueued(h);
+    expect(tokenLookups).toBe(0);
+    // A replan clocked before the row ended (its pinned pass / first insert) mirrored it meanwhile.
+    await held.release(() => h.raw.update('u1', 'past', { googleEventId: 'g-new', googleCalendarId: 'cal-auto' }));
+    expect((await res).statusCode).toBe(200);
+    expect(tokenLookups).toBe(1);
+    expect(deleted).toEqual(['g-new']);
+    expect(await h.row('past')).toBeNull();
+    expect(h.calls.filter((c) => c === 'lock')).toHaveLength(2);
+  });
+
   it('with candidates it waits for the lock, then skips rows the replan made non-discardable', async () => {
     const h = harness({
       settings: manual,

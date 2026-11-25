@@ -4,9 +4,6 @@ import { NotFoundError } from '@notreclaim/db';
 import type { AppDeps } from './app.js';
 import { isMirrored, prefetchAccessToken, removeMirroredEventWithToken, type PrefetchedToken } from './google-writeback.js';
 
-/** Stands in for a token that was never looked up because no candidate had a Google event. */
-const NO_TOKEN: PrefetchedToken = { error: new Error('no access token: the block had no Google event when the sweep started') };
-
 /**
  * Manual mode: delete the user's past task blocks that were never started, one row at a time
  * in list order, each followed by the best-effort removal of its mirrored Google event.
@@ -16,7 +13,10 @@ const NO_TOKEN: PrefetchedToken = { error: new Error('no access token: the block
  * waits for a replan. Otherwise the Google token is looked up first (still unlocked, and only
  * if a candidate has a Google event), then the deletes run under the lock, each candidate
  * re-checked against a fresh read: a replan that held the lock meanwhile may have moved one
- * forward (a reissued engine key) or the user may have started it.
+ * forward (a reissued engine key), the user may have started it — or a replan clocked before
+ * the row ended may have given it a Google event (its pinned pass or a first insert). In that
+ * last case no token was fetched, so the sweep lets go of the lock, fetches one and comes back
+ * once, exactly like DELETE /schedule/:id: the token lookup never runs under the lock.
  */
 export async function discardUnstartedPastBlocks(
   app: FastifyInstance,
@@ -28,14 +28,12 @@ export async function discardUnstartedPastBlocks(
   const candidates = (await listPast()).filter((b) => isDiscardableUnstarted(b, now));
   if (candidates.length === 0) return 0;
   const candidateIds = new Set(candidates.map((b) => b.id));
-  // A past row cannot gain Google ids while this waits (apply only attaches events to rows it
-  // places in the future), so deciding from the candidates is enough.
-  const token = candidates.some(isMirrored) ? await prefetchAccessToken(deps, userId) : NO_TOKEN;
 
-  return deps.withUserLock(userId, async () => {
+  const sweepUnderLock = (token: PrefetchedToken | null) => deps.withUserLock(userId, async () => {
+    const rows = (await listPast()).filter((b) => candidateIds.has(b.id) && isDiscardableUnstarted(b, now));
+    if (!token && rows.some(isMirrored)) return 'needs-token' as const;
     let discarded = 0;
-    for (const b of await listPast()) {
-      if (!candidateIds.has(b.id) || !isDiscardableUnstarted(b, now)) continue;
+    for (const b of rows) {
       // Row first: an overlapping GET may have discarded it already (it then owns the
       // Google delete too), which must not fail this request.
       try {
@@ -48,10 +46,18 @@ export async function discardUnstartedPastBlocks(
       // Remove the mirrored event too: nothing else ever will (reconcile only deletes
       // events of rows it still holds, and drift only lists [now, horizon]). Best-effort
       // and per row, same as DELETE /schedule/:id — a Google failure never fails the GET.
-      await removeMirroredEventWithToken(app, deps, token, b, {
-        fields: { blockId: b.id }, message: 'google write-back failed: discarded block event not removed remotely',
-      });
+      // (No token here means no row of this sweep is mirrored: checked above.)
+      if (token) {
+        await removeMirroredEventWithToken(app, deps, token, b, {
+          fields: { blockId: b.id }, message: 'google write-back failed: discarded block event not removed remotely',
+        });
+      }
     }
     return discarded;
   });
+
+  const first = await sweepUnderLock(candidates.some(isMirrored) ? await prefetchAccessToken(deps, userId) : null);
+  if (first !== 'needs-token') return first;
+  const second = await sweepUnderLock(await prefetchAccessToken(deps, userId));
+  return second === 'needs-token' ? 0 : second; // unreachable: a token was passed
 }
