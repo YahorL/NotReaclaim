@@ -243,6 +243,24 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
 - **Q5 Accent repurposing.** All former indigo "brand" fills become lime; indigo-as-violet survives only in meetings/today (dark). Confirm during P2 live review.
 - **Q6 Click-to-select scope.** Owner decision 5 says clicking a block selects it. Default: selection at md+ for every pointer type (an iPad tap now selects instead of opening the drawer directly); below md a tap still opens the drawer because the side panel is a sheet there. Alternative: keep iPad (coarse at md+) on tap-opens-drawer.
 
+### P1 implementation notes (2026-11-25): deviations and contracts for later phases
+- **Fixed-alpha colours accept `/alpha`.** Tailwind 3.4 parses `rgb(var(--x) / 0.66)`, so `text-fg-2/50` compiles. The modifier **replaces** the baked alpha (giving text at .50); it does not multiply it. The plan said modifiers were unsupported. Use the base name (`text-fg/50`) instead. The config comment documents this.
+- **Toast:** the prototype's keyframe has `translate(-50%, …)` baked in. P1's `toast` keyframe moves only vertically, and `.toast` carries no positioning. The caller (P2 `ToastProvider`, P4 planner anchor) centres it with a flex wrapper.
+- **Donut:** `animate-donut-draw` follows the prototype and animates `stroke-dasharray` from `0 var(--donut-c, 503)`, not `stroke-dashoffset`. Contract for P7: each arc sets its final `stroke-dasharray` as "<len> <circumference>" and sets `--donut-c` to the circumference.
+- **Legacy `sidebar*` colours** are kept as a fixed dark island using the dark-theme values, not tokens. The old sidebar's active item is `bg-sidebarHover text-white`, which would be white-on-white on a light surface. P2's rail rewrite removes them.
+- **Extra tokens / Tailwind names:**
+  - Vars: `--c-accent-glow`. Lime glows, the `.lime` shadow, and the `land`, `pulse-dot` and `fresh` keyframes all use it. Light is olive `120 155 0`, not the fill colour. Also `--c-on-meeting`, `--c-chip-fg` + `--x-chip-*`, `--x-btn-shadow`/`-border-hover`, `--x-card-shadow`, `--x-*-bg-hover`, `--x-toast-border`/`-shadow`, `--x-hatch-bg`, `--x-shadow-pop`/`-modal`.
+  - Tailwind names: `on-meeting`, `chip-fg`, `accent-soft`, `accent-line` (raw vars, no alpha), `bg-today-col`, `shadow-accent-hover`.
+- **Fonts:** Manrope is loaded at 300–700. The 11 existing `font-extrabold`/`font-black` usages now render at 700.
+- **System theme:** `systemPrefersDark` falls back to dark when `matchMedia` is missing or throws. A browser that reports no preference resolves to light, because the dark query is false. The pre-paint script matches this behaviour, and `theme.test.ts` runs the script's text against the same decision table.
+- **Things in dark mode the legacy mapping cannot fix:** these are hex literals in components and are left to their screen phases.
+  - Priorities count chip `bg-[#eef0f4] text-inkSoft` in `TasksCard`: **unreadable** (light chip, light text). Fix in P6.
+  - TaskRow hovers `#fafbfc`/`#eef0f4`.
+  - WeekGrid grid lines `#f1f2f6` (bright) and the gutter label `#a6aab8` (P3).
+  - The amber `UnscheduledWarning` strip stays light (P3).
+  - Stats donut `KIND_HEX` (P7).
+  - Logo/avatar hexes (P2).
+
 ### Survey notes for risky assumptions (checked 2026-11-24)
 - **Block id stability (D13).** `packages/core/src/apply.ts` applies the desired schedule as a keyed (`engineKey`) in-place diff: a block whose engine key survives a replan is **updated in place and keeps its id**, so moved blocks glide and only genuinely new chunks drop in. Caveat: when a task's chunk count changes, keys are reissued and some blocks are deleted/created — those will drop in. That is acceptable ("newly placed" is a fair reading).
 - **CSP vs the inline theme script (D3).** No `Content-Security-Policy` header is set in `packages/server` or the `docs/deploy` runbooks (Tailscale Serve, Docker Compose), so the inline pre-paint script is allowed. If a CSP is added later it needs a hash for that script.
