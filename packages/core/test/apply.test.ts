@@ -844,6 +844,31 @@ describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', ()
     expect(writes).toEqual(['update b-t1']); // nothing after the fatal row
   });
 
+  it('a fatal error on a first insert aborts too (unchanged and changed never-mirrored rows)', async () => {
+    const fatal = Object.assign(new Error('timeout'), { fatal: true });
+    const isFatal = (err: unknown) => (err as { fatal?: boolean }).fatal === true;
+    // Unchanged row with no event yet: the attach insert (mirror.create) throws.
+    const unchanged = failingMirror({ create: 'task:t1:0' }, fatal);
+    const repoA = fakeRepo([row('t1', 9), row('t2', 10)]);
+    await expect(applyDesiredSchedule(repoA, 'u1', desired([want('t1', 9), want('t2', 10)]), {
+      now: NOW, horizonEnd: HORIZON, mirror: unchanged.mirror, isFatal,
+    })).rejects.toBe(fatal);
+    expect(unchanged.calls).toEqual(['create task:t1:0']);
+    // Changed row with no event yet: the inserting mirror.update throws.
+    const changed = failingMirror({ update: 'b-t1' }, fatal);
+    const repoB = fakeRepo([row('t1', 14), row('t2', 15)]);
+    await expect(applyDesiredSchedule(repoB, 'u1', desired([want('t1', 9), want('t2', 10)]), {
+      now: NOW, horizonEnd: HORIZON, mirror: changed.mirror, isFatal,
+    })).rejects.toBe(fatal);
+    expect(repoB.update).not.toHaveBeenCalled(); // not even the plan's own move went through
+    // Storing the inserted ids hits a fatal error.
+    const repoC = fakeRepo([row('t1', 9), row('t2', 10)]);
+    repoC.update.mockImplementation(async () => { throw fatal; });
+    await expect(applyDesiredSchedule(repoC, 'u1', desired([want('t1', 9), want('t2', 10)]), {
+      now: NOW, horizonEnd: HORIZON, mirror: failingMirror({}).mirror, isFatal,
+    })).rejects.toBe(fatal);
+  });
+
   it('a fatal error from a sweep delete or a create aborts too', async () => {
     const fatal = Object.assign(new Error('timeout'), { fatal: true });
     const isFatal = (err: unknown) => (err as { fatal?: boolean }).fatal === true;
