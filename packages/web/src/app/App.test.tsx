@@ -3,6 +3,10 @@ import { screen, fireEvent, within } from '@testing-library/react';
 import { App } from './App';
 import { renderWithProviders, fakeApiClient } from '../test/fakes';
 import { tokenStore } from '../auth/tokenStore';
+import { act } from '@testing-library/react';
+import { installMatchMedia } from '../test/matchMedia';
+import { resetThemeStoreForTests } from '../theme/useTheme';
+import { DARK_QUERY } from '../theme/theme';
 
 function authedApi() {
   return fakeApiClient({
@@ -84,4 +88,29 @@ describe('App routing', () => {
     expect(await screen.findByText(/total scheduled/i)).toBeInTheDocument();
   });
 
+});
+
+describe('App theme', () => {
+  // The rail's ThemeSwitch is absent on the auth pages and when the sidebar is hidden, so the
+  // OS-theme subscription must live at the app root.
+  it.each([
+    ['the sign-in page', false, '/signin'],
+    ['the shell with the sidebar hidden', true, '/'],
+  ])('follows prefers-color-scheme on %s', (_name, authed, path) => {
+    resetThemeStoreForTests();
+    if (authed) {
+      tokenStore.set({ token: 'jwt', userId: 'u1' });
+      localStorage.setItem('nr.sidebarHidden', 'true');
+    }
+    const mm = installMatchMedia({ [DARK_QUERY]: true });
+    try {
+      renderWithProviders(<App />, { initialEntries: [path], api: authedApi() });
+      if (authed) expect(screen.queryByTestId('sidebar')).toBeNull();
+      expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+      act(() => { mm.set(DARK_QUERY, false); });
+      expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+    } finally {
+      mm.restore();
+    }
+  });
 });

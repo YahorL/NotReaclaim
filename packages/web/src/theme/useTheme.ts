@@ -73,3 +73,12 @@ export function useTheme(): ThemeState {
 
   return { pref, theme, setPref };
 }
+
+/**
+ * App-root subscription: applies the resolved theme and follows OS changes while the pref is
+ * 'system', on every route — the rail's ThemeSwitch is not mounted when the sidebar is hidden or
+ * on the auth pages, so it cannot be the only subscriber.
+ */
+export function useThemeSync(): void {
+  useTheme();
+}
