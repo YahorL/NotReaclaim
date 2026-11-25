@@ -962,6 +962,55 @@ describe('InteractiveBlock keyboard move / resize', () => {
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
 
+  it('Backspace never deletes (no confirmation behind it)', () => {
+    const onDelete = vi.fn();
+    render(<InteractiveBlock {...props} onCommit={vi.fn()} onDelete={onDelete} />);
+    const ev = createEvent.keyDown(body(), { key: 'Backspace' });
+    fireEvent(body(), ev);
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
+  it('after a mouse click focused the block, arrows scroll the page (no move, no pin) and Delete does nothing', () => {
+    const onCommit = vi.fn();
+    const onPreview = vi.fn();
+    const onDelete = vi.fn();
+    render(<InteractiveBlock {...props} onCommit={onCommit} onPreview={onPreview} onDelete={onDelete} />);
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(body(), { clientX: 50, clientY: 100, pointerId: 1, pointerType: 'mouse' });
+    fireEvent.focus(body());
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 100, pointerId: 1, pointerType: 'mouse' });
+    const down = createEvent.keyDown(body(), { key: 'ArrowDown' });
+    fireEvent(body(), down);
+    fireEvent.keyDown(body(), { key: 'Delete' });
+    act(() => { vi.advanceTimersByTime(KEY_COMMIT_DEBOUNCE_MS); });
+    expect(down.defaultPrevented).toBe(false);
+    expect(onPreview).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onDelete).not.toHaveBeenCalled();
+  });
+
+  it('a press on the resize handle also counts as pointer focus', () => {
+    const onPreview = vi.fn();
+    render(<InteractiveBlock {...props} onCommit={vi.fn()} onPreview={onPreview} />);
+    const handle = screen.getByTestId('resize-handle');
+    fireEvent.pointerDown(handle, { clientY: 100, pointerId: 1, pointerType: 'mouse' });
+    fireEvent.pointerUp(handle, { clientY: 100, pointerId: 1, pointerType: 'mouse' });
+    fireEvent.keyDown(body(), { key: 'ArrowDown' });
+    expect(onPreview).not.toHaveBeenCalled();
+  });
+
+  it('once a pointer-focused block blurs, Tabbing back in makes the arrows move it again', () => {
+    const onPreview = vi.fn();
+    render(<InteractiveBlock {...props} onCommit={vi.fn()} onPreview={onPreview} />);
+    fireEvent.pointerDown(body(), { clientX: 50, clientY: 100, pointerId: 1, pointerType: 'mouse' });
+    fireEvent.pointerUp(screen.getByTestId('event-block'), { clientX: 50, clientY: 100, pointerId: 1, pointerType: 'mouse' });
+    fireEvent.blur(body());
+    fireEvent.focus(body());
+    fireEvent.keyDown(body(), { key: 'ArrowDown' });
+    expect(onPreview).toHaveBeenCalledWith(START + 15 * 60_000, END + 15 * 60_000);
+  });
+
   it('the accessible name mentions the arrow keys and points at the shared instructions', () => {
     render(<InteractiveBlock {...props} onCommit={vi.fn()} describedBy="planner-block-keys" />);
     expect(body()).toHaveAccessibleName(/movable: drag or use arrow keys, Shift\+arrows to resize$/);

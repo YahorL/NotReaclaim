@@ -126,8 +126,16 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
   flushRef.current = flushKeys;
   useEffect(() => () => flushRef.current(), []);
 
+  // How the body got focus. A mouse click / touch focuses the button too, and the arrow keys must
+  // then keep scrolling the hours rather than move (and pin) the tile the user merely clicked —
+  // nor may Delete remove it. Set on every press, cleared on blur, so a Tab back in is keyboard.
+  // (Not `:focus-visible`: browsers may start matching it on the very keypress we are reading.)
+  const pointerFocus = useRef(false);
+
   const onKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>) => {
-    if ((e.key === 'Delete' || e.key === 'Backspace') && onDelete) {
+    if (pointerFocus.current) return;
+    // Delete only — Backspace is too easy to hit for a confirmation-free delete.
+    if (e.key === 'Delete' && onDelete) {
       e.preventDefault();
       flushKeys();
       onDelete();
@@ -235,9 +243,10 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
         // A real mouse click after a short drag must never select.
         onBodyClick={(e) => { if (e.detail === 0) onClick?.(true); }}
         onBodyKeyDown={onKeyDown}
-        onBodyBlur={flushKeys}
+        onBodyBlur={() => { pointerFocus.current = false; flushKeys(); }}
         describedBy={describedBy}
         {...drag.handlers}
+        onPointerDown={(e) => { pointerFocus.current = true; drag.handlers.onPointerDown(e); }}
         motion={motion}
         pressed={drag.pressed}
         settling={settling}
@@ -248,7 +257,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
         className={`${live ? '' : 'cursor-grab'} select-none ${coarse ? 'touch-pan-y' : ''}`}
         style={style}
         // `touch-none` on the handle: a finger that lands there is a resize from the first pixel.
-        resize={{ onPointerDown: drag.resizeHandlers.onPointerDown, className: `${resizeHandleClass(heightPct, coarse)} ${coarse ? 'touch-none' : ''}` }}
+        resize={{ onPointerDown: (e) => { pointerFocus.current = true; drag.resizeHandlers.onPointerDown(e); }, className: `${resizeHandleClass(heightPct, coarse)} ${coarse ? 'touch-none' : ''}` }}
       />
       {ghost && (
         <div
