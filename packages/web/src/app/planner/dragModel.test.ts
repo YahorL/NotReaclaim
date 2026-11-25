@@ -55,9 +55,19 @@ describe('moveTarget', () => {
     expect(moveTarget({ ...base, origDay: 1, dayCount: 3, dx: 400 })).toEqual({ dayIndex: 2, startMin: 540 });
   });
 
-  it('clamps the start so the whole block stays inside the 24h window', () => {
+  it('clamps only the start to the column; the end may run past it (the block keeps its length)', () => {
     expect(moveTarget({ ...base, dy: -100 * PX_60 })).toEqual({ dayIndex: 2, startMin: 0 });
-    expect(moveTarget({ ...base, dy: 100 * PX_60 })).toEqual({ dayIndex: 2, startMin: WINDOW_END_MIN - 60 });
+    expect(moveTarget({ ...base, dy: 100 * PX_60 })).toEqual({ dayIndex: 2, startMin: WINDOW_END_MIN - 15 });
+  });
+
+  it('an overnight block (23:00, 8h) dragged down 15 minutes moves 15 minutes, not back into the column', () => {
+    expect(moveTarget({ ...base, origStartMin: 23 * 60, durationMin: 8 * 60, dy: PX_15 })).toEqual({ dayIndex: 2, startMin: 23 * 60 + 15 });
+    // A pure cross-day move of an overnight block keeps its time.
+    expect(moveTarget({ ...base, origStartMin: 23 * 60, durationMin: 8 * 60, dx: 120 })).toEqual({ dayIndex: 3, startMin: 23 * 60 });
+  });
+
+  it('never moves against the drag: an off-grid start in the last slot dragged down stays put', () => {
+    expect(moveTarget({ ...base, origStartMin: WINDOW_END_MIN - 10, dy: PX_60 })).toEqual({ dayIndex: 2, startMin: WINDOW_END_MIN - 10 });
   });
 
   it('ignores horizontal travel when the column width is unknown', () => {
@@ -91,6 +101,19 @@ describe('resizeTarget', () => {
 
   it('never runs past the window end', () => {
     expect(resizeTarget({ ...base, dy: 100 * PX_60 })).toEqual({ endMin: WINDOW_END_MIN });
+  });
+
+  it('a block whose end lies past the column (23:00–07:00) is never shortened merely for that', () => {
+    const night = { startMin: 23 * 60, origEndMin: 31 * 60 };
+    // A click on the handle (zero travel) and a downward drag are both no-ops …
+    expect(resizeTarget({ ...night, dy: 0 })).toEqual({ endMin: 31 * 60 });
+    expect(resizeTarget({ ...night, dy: PX_60 })).toEqual({ endMin: 31 * 60 });
+    // … and an upward drag shortens from the REAL end by the snapped delta.
+    expect(resizeTarget({ ...night, dy: -PX_15 })).toEqual({ endMin: 31 * 60 - 15 });
+  });
+
+  it('a sub-slot block is never lengthened by an upward drag (min-length clamp vs direction)', () => {
+    expect(resizeTarget({ startMin: 540, origEndMin: 550, dy: -PX_15 })).toEqual({ endMin: 550 });
   });
 
   it('a zero delta is a no-op', () => {

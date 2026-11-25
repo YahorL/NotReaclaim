@@ -1,4 +1,4 @@
-import { WINDOW_END_MIN, SLOT_MIN, snapMinutes, pxToMinutes, clampToWindow, shiftDays, formatHm, weekdayLabel } from './weekModel';
+import { snapMinutes, pxToMinutes, moveStartMin, resizeEndMin, shiftDays, formatHm, weekdayLabel } from './weekModel';
 import { MS_PER_MIN } from '../lib/time';
 import { formatDurationShort } from '../lib/duration';
 
@@ -46,18 +46,22 @@ export interface MoveInput {
  * Where a moved block lands. The DELTA snaps to 15 minutes (not the absolute start), so an
  * off-grid block keeps its offset and a pure cross-day move keeps its exact time — the same rule
  * the arrow keys follow (±15). The day is rounded from the horizontal travel and clamped to the
- * rendered columns; the start is clamped so the whole block stays inside the 24h column.
+ * rendered columns. Only the START is clamped to the 24h column (`moveStartMin`): the block keeps
+ * its length, so its end may run past the column — an overnight block is never squeezed back in.
  */
-export function moveTarget({ origDay, origStartMin, durationMin, dx, dy, colWidth, dayCount, scale }: MoveInput): { dayIndex: number; startMin: number } {
+export function moveTarget({ origDay, origStartMin, dx, dy, colWidth, dayCount, scale }: MoveInput): { dayIndex: number; startMin: number } {
   const days = colWidth > 0 ? Math.round(dx / colWidth) : 0;
   const dayIndex = Math.max(0, Math.min(Math.max(0, dayCount - 1), origDay + days));
-  const { startMin } = clampToWindow(origStartMin + snappedMinutes(dy, scale), durationMin);
-  return { dayIndex, startMin };
+  return { dayIndex, startMin: moveStartMin(origStartMin, snappedMinutes(dy, scale)) };
 }
 
-/** Where a bottom-edge resize ends: snapped delta, at least one 15-min slot, never past the column end. */
+/**
+ * Where a bottom-edge resize ends: snapped delta, at least one 15-min slot, never grown past the
+ * column end and never cut back to it (`resizeEndMin`) — a zero snapped delta (a click on the
+ * handle) is always a no-op.
+ */
 export function resizeTarget({ startMin, origEndMin, dy, scale }: { startMin: number; origEndMin: number; dy: number; scale?: number }): { endMin: number } {
-  return { endMin: Math.min(WINDOW_END_MIN, Math.max(startMin + SLOT_MIN, origEndMin + snappedMinutes(dy, scale))) };
+  return { endMin: resizeEndMin(startMin, origEndMin, snappedMinutes(dy, scale)) };
 }
 
 /**

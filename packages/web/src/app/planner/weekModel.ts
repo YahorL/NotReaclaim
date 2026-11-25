@@ -221,6 +221,30 @@ export function clampDayDelta(dayIndex: number, delta: number, lastIndex = 6): n
   return Math.max(-dayIndex, Math.min(lastIndex - dayIndex, delta)) || 0;
 }
 
+/**
+ * Where a MOVED block starts: `startMin + deltaMin`, with only the START clamped to the column
+ * ([WINDOW_START_MIN, WINDOW_END_MIN − SLOT_MIN]). The caller keeps the block's length, so its end
+ * may run past the column (an overnight 23:00–07:00 block, or 23:15–00:15 after a ↓). Never moves
+ * against the direction of `deltaMin`: an off-grid start already in the last slot stays put on ↓.
+ */
+export function moveStartMin(startMin: number, deltaMin: number): number {
+  if (deltaMin === 0) return startMin;
+  const clamped = Math.min(WINDOW_END_MIN - SLOT_MIN, Math.max(WINDOW_START_MIN, startMin + deltaMin));
+  return deltaMin > 0 ? Math.max(startMin, clamped) : Math.min(startMin, clamped);
+}
+
+/**
+ * Where a bottom-edge RESIZE ends: `endMin + deltaMin`, at least one slot long, and never grown
+ * past the column end — unless the block already ends past it, in which case it is never SHORTENED
+ * for that (a click on an overnight tile's handle must not cut it to 24:00). A zero delta is a
+ * no-op before any clamping, and the end never moves against the direction of `deltaMin`.
+ */
+export function resizeEndMin(startMin: number, endMin: number, deltaMin: number): number {
+  if (deltaMin === 0) return endMin;
+  const target = Math.min(Math.max(WINDOW_END_MIN, endMin), Math.max(startMin + SLOT_MIN, endMin + deltaMin));
+  return deltaMin > 0 ? Math.max(endMin, target) : Math.min(endMin, target);
+}
+
 /** Keep [startMin, startMin+durationMin] inside the [WINDOW_START_MIN, WINDOW_END_MIN] window. */
 export function clampToWindow(startMin: number, durationMin: number): { startMin: number; endMin: number } {
   let s = Math.max(WINDOW_START_MIN, startMin);

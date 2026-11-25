@@ -129,7 +129,8 @@ describe('InteractiveBlock', () => {
     expect(el.style.transform).toBe('translate(0px, 20px) scale(1.05) rotate(-0.8deg)');
     const ghost = screen.getByTestId('drag-ghost');
     expect(ghost.style.top).toBe(`${minuteToPct(9 * 60 + 15)}%`);
-    expect(ghost.style.height).toBe('5%');
+    // The ghost keeps the block's length (1h), wherever the target lands.
+    expect(Number.parseFloat(ghost.style.height)).toBeCloseTo(minuteToPct(60) - minuteToPct(0), 6);
     expect(screen.getByTestId('drag-label').textContent).toMatch(/^Mon · 9:15\sAM$/);
     expect(el.textContent).toMatch(/9:15\sAM/);
   });
@@ -146,6 +147,23 @@ describe('InteractiveBlock', () => {
     expect(ghost.style.top).toBe('10%');
     expect(Number.parseFloat(ghost.style.height)).toBeCloseTo(minuteToPct(9 * 60 + 135) - minuteToPct(9 * 60), 6); // 60 + 70 → 135 min
     expect(screen.getByTestId('drag-label').textContent).toMatch(/^2h 15m · ends 11:15\sAM$/);
+  });
+
+  it('a click on an overnight tile\'s resize handle commits nothing (it is never cut to the column end)', () => {
+    const onCommit = renderBlock({ startMs: DAY + 23 * 3_600_000, endMs: DAY + 31 * 3_600_000, topPct: minuteToPct(23 * 60), heightPct: minuteToPct(24 * 60) - minuteToPct(23 * 60) });
+    const handle = screen.getByTestId('resize-handle');
+    fireEvent.pointerDown(handle, { clientY: 500, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientY: 500, pointerId: 1 });
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('dragging an overnight tile down 15 minutes keeps its length (no jump back into the column)', () => {
+    const onCommit = renderBlock({ startMs: DAY + 23 * 3_600_000, endMs: DAY + 31 * 3_600_000, topPct: minuteToPct(23 * 60), heightPct: minuteToPct(24 * 60) - minuteToPct(23 * 60) });
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 100 + minutesToPx(15), pointerId: 1 });
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 100 + minutesToPx(15), pointerId: 1 });
+    expect(onCommit).toHaveBeenCalledWith({ startsAt: '2026-01-05T23:15:00.000Z', endsAt: '2026-01-06T07:15:00.000Z', pinned: true });
   });
 
   it('a resize commits at least one 15-minute slot', () => {
@@ -922,6 +940,19 @@ describe('InteractiveBlock keyboard move / resize', () => {
     const tab = createEvent.keyDown(body(), { key: 'Tab' });
     fireEvent(body(), tab);
     expect(tab.defaultPrevented).toBe(false);
+  });
+
+  it('an overnight block (23:00–07:00): ↓ moves it 15 minutes keeping all 8 hours; Shift+↓ never truncates it', () => {
+    const onCommit = vi.fn();
+    const night = { ...props, startMs: DAY + 23 * 3_600_000, endMs: DAY + 31 * 3_600_000, topPct: minuteToPct(23 * 60), heightPct: minuteToPct(24 * 60) - minuteToPct(23 * 60) };
+    render(<InteractiveBlock {...night} onCommit={onCommit} />);
+    fireEvent.keyDown(body(), { key: 'ArrowDown', shiftKey: true }); // already past the column: no-op
+    act(() => { vi.advanceTimersByTime(KEY_COMMIT_DEBOUNCE_MS); });
+    expect(onCommit).not.toHaveBeenCalled();
+    fireEvent.keyDown(body(), { key: 'ArrowDown' });
+    act(() => { vi.advanceTimersByTime(KEY_COMMIT_DEBOUNCE_MS); });
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onCommit).toHaveBeenCalledWith({ startsAt: '2026-01-05T23:15:00.000Z', endsAt: '2026-01-06T07:15:00.000Z', pinned: true });
   });
 
   it('Delete removes the block', () => {

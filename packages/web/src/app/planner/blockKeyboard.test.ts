@@ -30,11 +30,34 @@ describe('keyboardChange', () => {
     expect(keyboardChange('ArrowDown', true, late, 7)).toEqual(late);
   });
 
-  it('clamps a move to the column: the first slot cannot go up, the last cannot go down', () => {
+  it('clamps only the START of a move: the first slot cannot go up, the last start slot cannot go down', () => {
     const first = { dayIndex: 2, startMin: 0, endMin: 60 };
     expect(keyboardChange('ArrowUp', false, first, 7)).toEqual(first);
+    const lastStart = { dayIndex: 2, startMin: WINDOW_END_MIN - 15, endMin: WINDOW_END_MIN + 45 };
+    expect(keyboardChange('ArrowDown', false, lastStart, 7)).toEqual(lastStart);
+  });
+
+  it('a move keeps the length and lets the end run past the column (23:00–24:00 ↓ → 23:15–00:15)', () => {
     const last = { dayIndex: 2, startMin: WINDOW_END_MIN - 60, endMin: WINDOW_END_MIN };
-    expect(keyboardChange('ArrowDown', false, last, 7)).toEqual(last);
+    expect(keyboardChange('ArrowDown', false, last, 7)).toEqual({ dayIndex: 2, startMin: WINDOW_END_MIN - 45, endMin: WINDOW_END_MIN + 15 });
+  });
+
+  it('an overnight block (23:00–07:00) moves by 15 minutes and keeps its 8 hours', () => {
+    const night = { dayIndex: 2, startMin: 23 * 60, endMin: 31 * 60 };
+    expect(keyboardChange('ArrowDown', false, night, 7)).toEqual({ dayIndex: 2, startMin: 23 * 60 + 15, endMin: 31 * 60 + 15 });
+    expect(keyboardChange('ArrowUp', false, night, 7)).toEqual({ dayIndex: 2, startMin: 23 * 60 - 15, endMin: 31 * 60 - 15 });
+  });
+
+  it('never moves against the key: an off-grid start in the last slot stays put on ↓', () => {
+    const offGrid = { dayIndex: 2, startMin: WINDOW_END_MIN - 10, endMin: WINDOW_END_MIN + 50 };
+    expect(keyboardChange('ArrowDown', false, offGrid, 7)).toEqual(offGrid);
+  });
+
+  it('Shift+↑/↓ on an overnight block shortens from its real end and never truncates it to the column', () => {
+    const night = { dayIndex: 2, startMin: 23 * 60, endMin: 31 * 60 };
+    expect(keyboardChange('ArrowUp', true, night, 7)).toEqual({ ...night, endMin: 31 * 60 - 15 });
+    // Already past the column end: lengthening is a no-op, never a cut back to 24:00.
+    expect(keyboardChange('ArrowDown', true, night, 7)).toEqual(night);
   });
 
   it('keeps an off-grid start off-grid (a 9:05 block moves to 9:20)', () => {

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as 
 import { CalendarBlock, type BlockMotion } from './CalendarBlock';
 import type { BlockKind } from './blockStyle';
 import { blockLeftCss, blockWidthCss } from './blockLayout';
-import { GRID_COLUMN_PX, minuteToPct, formatHm, weekdayLabel, resizeHandleClass, shiftDays } from './weekModel';
+import { GRID_COLUMN_PX, WINDOW_END_MIN, minuteToPct, formatHm, weekdayLabel, resizeHandleClass, shiftDays } from './weekModel';
 import { moveTarget, resizeTarget, targetTimes, moveLabel, resizeLabel, type MoveInput } from './dragModel';
 import { useBlockDrag, type LiveDrag } from './useBlockDrag';
 import { keyboardChange } from './blockKeyboard';
@@ -188,7 +188,8 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
     const n = Math.max(1, dayCount);
     ghost = {
       top: `${minuteToPct(t.startMin)}%`,
-      height: `${heightPct}%`,
+      // The block keeps its length; the part past the column end is clipped like the tile is.
+      height: `${minuteToPct(Math.min(WINDOW_END_MIN, t.startMin + durationMin)) - minuteToPct(t.startMin)}%`,
       left: blockLeftCss((t.dayIndex / n) * 100, 0, 1),
       width: blockWidthCss(100 / n, 0, 1),
       label: moveLabel(col, s, zone),
@@ -202,7 +203,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
     style = { ...style, height: `${rawPx}px` };
     ghost = {
       top: `${topPct}%`,
-      height: `${minuteToPct(snappedEnd) - minuteToPct(startMin)}%`,
+      height: `${minuteToPct(Math.min(WINDOW_END_MIN, snappedEnd)) - minuteToPct(startMin)}%`,
       left: style.left as string,
       width: style.width as string,
       label: resizeLabel(snappedEnd - startMin, dayStartMs + snappedEnd * MS_PER_MIN, zone),
