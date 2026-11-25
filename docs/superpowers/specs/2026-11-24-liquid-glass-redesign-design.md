@@ -358,6 +358,49 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
 - **Coarse resize target** (pre-existing): on tiles of 30 minutes or more the 24px handle covers the lower part, so on touch a press in the bottom half of a 45-minute tile resizes instead of long-press-moving. P4's resize task may want a smaller hit area plus a visible grip.
 - **Suite:** 1042 → 1137 (`EventBlock.test` and `UnscheduledWarning.test` were replaced by `CalendarBlock`/`blockStyle` and `UnscheduledCard` tests).
 
+### P4 implementation notes (2026-11-25): deviations and contracts for P5/P8
+- **Snap rule (deviation from §5.2, owner can flip).** `dragModel.moveTarget` / `resizeTarget` snap the *delta* to 15 min, not the absolute start (`snap15(origStart + dy)` in §5.2). This is what the pre-redesign InteractiveBlock did and what the arrow keys do (±15). A 9:05 block therefore moves to 9:20, and a pure cross-day move keeps its exact time. Side effect: the engine places on a 5-min grid (R24), so a block at 11:10 can never be dragged onto :00. Flipping this means changing one line in `moveTarget`/`resizeTarget` and their tests.
+- **Release without a jump.**
+  - WeekGrid holds a released or keyboard-previewed target in a *pending override* map, keyed by block. Each entry stores `{start, end}` plus the baseline times the data had when it was set, and is applied before `layoutWeek`.
+  - An override renders only while the data still shows that baseline. Once the optimistic write lands, or the server puts the block elsewhere, the data wins.
+  - A committed override expires after `HOLD_TIMEOUT_MS` (1.5s). On a failed write the tile then springs home.
+  - The release render drops the inline transform and moves the geometry together, with the spring transition on. The held-preview/`landing` machinery is deleted.
+  - Idle tiles carry **no inline transform**, so `animate-ev-in`, `animate-land`, `animate-shake` and the filter `scale-[.92]` all work. Spring transitions on top/left/width/height/transform are always on, except while dragging or resizing.
+  - Live-sampled every animation frame after mouse-up in Chromium and Firefox, for vertical, cross-day left/right and off-grid drops, and for a rollback (PATCH forced to 500). The first frames sit at the drop point, and no frame comes near the origin.
+- **Resize** keeps the pointer-capture path (first-pointer-wins, touch), not the prototype's window listeners.
+  - Handle heights: fine pointer `h-2.5` (the design's 10px) on tiles of 30 min or more. Coarse pointer `h-3` on 30–59 min tiles and `h-4` from an hour, so it never reaches the lower half (the P3 note). Every pointer gets `h-1.5` on tiles under 30 min.
+  - The grip shows on hover and focus, always shows on touch, and widens 22 → 30px while resizing.
+- **Mouse threshold.** A mouse press becomes a drag only past 5px. A drag released back where it started commits nothing and is not a click. A long press lifted in place and released still counts as a tap.
+- **Keyboard.**
+  - ↑/↓ move by 15 min, ←/→ by one day, Shift+↑/↓ change the length, Delete removes. Each step previews through the hold; one commit goes out 400ms after the last key, or at once on blur, unmount or pointer-down.
+  - At the edge of the rendered days the toast reads "Use the arrows above to see more days" (Q4 default: no auto-paging).
+  - Block names end "movable: drag or use arrow keys, Shift+arrows to resize", with `aria-describedby` pointing at the hidden `#planner-block-keys`.
+- **Tab order = time.**
+  - The layer renders in day-then-start order, but the DOM order only catches up 700ms after the last order change, and only while nothing in the layer is focused, dragging, resizing, settling, held, new, entering or shaking (`useCalmTimeOrder`).
+  - The reason: React re-inserts a moved node, which would drop focus and kill the spring.
+  - Live in both browsers: ArrowDown past a neighbour keeps focus, the next ArrowDown still moves the block, and the order fixes itself after blur.
+  - A replan that reorders blocks glides first (550ms) and reorders afterwards. This was not separately forced live.
+- **Locked tiles** (`LockedBlock`): a press or an arrow key runs `useShake` (450ms, restartable, skipped under reduced motion) and shows the toast "Locked — synced from Google Calendar". The toast is anchored in the calendar panel through `setAnchor` (`planner-toast-anchor`). A click still selects.
+- **Bug found live and fixed:** a press-drag across a (selectable) locked tile selected text over the grid. A later drag of a movable tile inside that selection became a native drag of the text, and Chromium cancelled the pointer. Tiles are now `select-none`, cancel `dragstart`, and a press clears any stale selection.
+- **Filters.**
+  - `usePlannerFilters` persists `nr.plannerFilters`. The toggle pills replace the first two legend chips, which is why the legend clip is now `max-h-[36px]`.
+  - Hidden tiles stay mounted with `data-hidden`/`aria-hidden`, are faded and scaled, are `pointer-events-none`, and have `tabIndex=-1` on the body and the action buttons.
+  - **Deviation:** the toggles are md+ only, so the compact layout ignores saved filters. Otherwise a desktop filter would strand hidden tiles on a phone with no way to bring them back.
+- **Re-plan.**
+  - The block ids are snapshotted at the click. On success, the drop-in waits for the in-flight schedule refetch, or diffs at once if it has already landed (`queryClient.getQueryState` fetchStatus). It is cancelled if the user pages away.
+  - The spinner shows for at least 600ms.
+  - Live: a deliberately deleted block came back with a new id and dropped in (`land`) in both browsers.
+- **Entrance.**
+  - Panels `animate-rise` with a 60ms stagger, on route mount only; the classes come off afterwards.
+  - Blocks `animate-ev-in` with a 45ms × day stagger. WeekGrid's `entranceKey` drives it: the Planner passes the loaded range, from the ranged schedule and calendar queries only.
+  - Side-panel ticks pop the check and draw the strike while the save runs, then un-tick after 4s if the task is still listed.
+  - Reduced motion skips all of it in JS as well.
+- **For P5:** "Task created" toasts on the planner render inside the calendar panel (the anchor is global while the Planner is mounted). `PlannerTaskPanel` now has local tick state, so P5's `data-fresh` should go on the same card root.
+- **For P8:**
+  - Headless Firefox samples sparse frames (34/101/217ms) during the release spring. Positions follow the curve, but it is worth a look on a real Firefox.
+  - Real-device Android long-press and the smaller coarse resize handle are not yet verified on hardware (CDP touch emulation passes).
+  - Ghost pills follow the browser locale (headless Firefox showed 24h "Thu · 16:15").
+
 ### Survey notes for risky assumptions (checked 2026-11-24)
 - **Block id stability (D13).** `packages/core/src/apply.ts` applies the desired schedule as a keyed (`engineKey`) in-place diff: a block whose engine key survives a replan is **updated in place and keeps its id**, so moved blocks glide and only genuinely new chunks drop in. Caveat: when a task's chunk count changes, keys are reissued and some blocks are deleted/created — those will drop in. That is acceptable ("newly placed" is a fair reading).
 - **CSP vs the inline theme script (D3).** No `Content-Security-Policy` header is set in `packages/server` or the `docs/deploy` runbooks (Tailscale Serve, Docker Compose), so the inline pre-paint script is allowed. If a CSP is added later it needs a hash for that script.
