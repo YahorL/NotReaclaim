@@ -61,13 +61,13 @@ describe('App routing', () => {
   it('renders the Priorities board at /priorities', async () => {
     tokenStore.set({ token: 'jwt', userId: 'u1' });
     renderWithProviders(<App />, { initialEntries: ['/priorities'], api: authedApi() });
-    expect(await screen.findByPlaceholderText(/search for something/i)).toBeInTheDocument();
+    expect(await screen.findByPlaceholderText('Search tasks…')).toBeInTheDocument();
   });
 
   it('redirects /tasks to /priorities', async () => {
     tokenStore.set({ token: 'jwt', userId: 'u1' });
     renderWithProviders(<App />, { initialEntries: ['/tasks'], api: authedApi() });
-    expect(await screen.findByPlaceholderText(/search for something/i)).toBeInTheDocument();
+    expect(await screen.findByPlaceholderText('Search tasks…')).toBeInTheDocument();
   });
 
   it('renders the Stats dashboard at /stats', async () => {

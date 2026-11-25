@@ -50,7 +50,7 @@ describe('Priorities board', () => {
   it('filters by search text', async () => {
     renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
     await waitFor(() => expect(screen.getByText('Critical thing')).toBeInTheDocument());
-    fireEvent.change(screen.getByPlaceholderText(/search for something/i), { target: { value: 'low' } });
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search tasks' }), { target: { value: 'low' } });
     expect(screen.queryByText('Critical thing')).toBeNull();
     expect(screen.getByText('Low thing')).toBeInTheDocument();
   });
@@ -59,7 +59,7 @@ describe('Priorities board', () => {
     renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
     await waitFor(() => expect(screen.getByText('Done thing')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /filter/i }));
-    fireEvent.click(screen.getByRole('button', { name: /hide completed/i }));
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /hide completed/i }));
     expect(screen.queryByText('Done thing')).toBeNull();
   });
 
@@ -67,7 +67,7 @@ describe('Priorities board', () => {
     renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
     await waitFor(() => expect(screen.getByTestId('column-critical')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /columns/i }));
-    fireEvent.click(screen.getByRole('button', { name: /^critical$/i }));
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /^critical$/i }));
     expect(screen.queryByTestId('column-critical')).toBeNull();
     expect(screen.getByTestId('column-low')).toBeInTheDocument();
   });
@@ -104,7 +104,7 @@ describe('Priorities board', () => {
     fireEvent.click(screen.getByText('Low thing'));
     expect(screen.getByTestId('task-drawer')).toBeInTheDocument();
     // Type a query that matches no task ("Low thing" disappears from columns)
-    fireEvent.change(screen.getByPlaceholderText(/search for something/i), { target: { value: 'zzz' } });
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search tasks' }), { target: { value: 'zzz' } });
     // The task is gone from the board but editing derives from the unfiltered query,
     // so the drawer must still be present
     expect(screen.queryByText('Low thing')).toBeNull();
@@ -147,7 +147,7 @@ describe('Priorities board', () => {
     renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
     await waitFor(() => expect(screen.getByTestId('column-completed')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /filter/i }));
-    fireEvent.click(screen.getByRole('button', { name: /hide completed/i }));
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /hide completed/i }));
     expect(screen.queryByTestId('column-completed')).toBeNull();
     expect(screen.queryByText('Done thing')).toBeNull();
   });
