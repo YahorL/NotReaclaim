@@ -833,6 +833,19 @@ describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', ()
     expect(repo.rows().map((r) => r.engineKey)).toEqual(['task:t1:0', 'task:t3:0']);
   });
 
+  it('a never-mirrored changed row whose insert AND move both fail is counted once, as updateFailed', async () => {
+    // The insert failing alone counts as attachFailed (the move still lands); when the move
+    // fails too, the row's plan did not apply at all — that is the one failure reported.
+    const { repo } = failingRepo([row('t1', 14), row('t2', 15)], 'update', 'b-t1', named('NotFoundError'));
+    const { mirror } = failingMirror({ update: 'b-t1' });
+
+    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10)]), { now: NOW, horizonEnd: HORIZON, mirror, isRowScoped });
+
+    expect(res).toEqual({
+      created: 0, updated: 1, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0, updateFailed: 1,
+    });
+  });
+
   it('a row-scoped Google update failure leaves that row untouched in the DB and is counted; later rows still move', async () => {
     const repo = fakeRepo([mirrored('t1', 14), mirrored('t2', 15), mirrored('t3', 16)]);
     const { mirror, calls } = failingMirror({ update: 'b-t2' });

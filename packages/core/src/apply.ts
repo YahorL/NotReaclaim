@@ -176,12 +176,15 @@ export async function applyDesiredSchedule(
           // A never-mirrored row makes the mirror INSERT here (ScheduleMirror.update).
           const unmirrored = mirror != null && match.googleEventId == null;
           let ids: MirrorIds | undefined;
+          // A failed first insert is counted once the move below has landed: a row whose move
+          // fails too counts once, as updateFailed (its plan did not apply at all).
+          let insertFailed = false;
           try {
             ids = await mirror?.update(block, match);
           } catch (err) {
             if (!unmirrored) throw err; // an in-place update of a mirrored row fails the row
             skipIfRowScoped(err);
-            attachFailed += 1; // the plan still applies below; the row is retried next cycle
+            insertFailed = true; // the plan still applies below; the row is retried next cycle
           }
           if (ids && mirror) {
             const outcome = await storeInsertedIds(scheduledBlocks, mirror, userId, match, ids, fields);
@@ -195,6 +198,7 @@ export async function applyDesiredSchedule(
           }
           await scheduledBlocks.update(userId, match.id, fields);
           updated += 1;
+          if (insertFailed) attachFailed += 1;
         } catch (err) {
           skipIfRowScoped(err);
           updateFailed += 1;
