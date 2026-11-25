@@ -405,7 +405,7 @@ Glass panels `animate-rise` (600ms, stagger 60ms via inline `animationDelay`) on
   - `App.test.tsx` (outside P6's files) had its placeholder query updated; the change is test-only.
 - **Test note.** dnd-kit keeps a capture-phase document click blocker for 50ms after a drag ends. jsdom drag tests must wait it out (`releaseDrag()` in `Priorities.test.tsx`), or the next test's first click is swallowed. This caused a flaky failure.
 - **Follow-ups (not done):**
-  - The ✓ button keeps `aria-label="complete"` (tests and the planner use it); naming it "Mark done: <title>" is an a11y pass for P8.
+  - The ✓ button keeps `aria-label="complete"` (+ `aria-pressed`); naming it "Mark done: <title>" is left to the P8 a11y pass.
   - The card kebab is still plain buttons, not a `role=menu`.
   - Identical consecutive announcements are not re-spoken.
   - Opening the TaskDrawer from the keyboard is via kebab → Edit only (the card itself is not focusable).
