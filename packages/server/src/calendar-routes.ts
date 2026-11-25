@@ -1,8 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { NotFoundError } from '@notreclaim/db';
-import { PRIMARY_CALENDAR_ID } from '@notreclaim/google';
 import type { AppDeps, AfterMutation } from './app.js';
-import { bestEffortGoogleWrite, removeMirroredEvent } from './google-writeback.js';
+import { mirrorAppEventEdit, mirrorNewAppEvent, removeMirroredEvent } from './google-writeback.js';
 import { resolveRange } from './range.js';
 import { rangeQuerySchema, createCalendarEventSchema, updateCalendarEventSchema, idParamSchema } from './schemas.js';
 import { dataChanged } from './events.js';
@@ -31,16 +30,7 @@ export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afte
     if (kind !== 'blocked') {
       // Best-effort Google write-back: connected users get the event mirrored to their
       // primary calendar; failures (or no Google account) leave the local row authoritative.
-      await bestEffortGoogleWrite(
-        app, deps, request.userId,
-        { fields: { eventId: event.id }, message: 'google write-back failed: event not mirrored' },
-        async (accessToken) => {
-          const { googleEventId } = await deps.google.client.insertEvent(accessToken, PRIMARY_CALENDAR_ID, {
-            summary: body.title, startDateTime: body.startsAt, endDateTime: body.endsAt,
-          });
-          event = await deps.repos.calendarEvents.setGoogleIds(request.userId, event.id, PRIMARY_CALENDAR_ID, googleEventId);
-        },
-      );
+      event = await mirrorNewAppEvent(app, deps, request.userId, event, body);
     }
     announce(request.userId);
     afterMutation(request.userId);
@@ -63,19 +53,7 @@ export function registerCalendarRoutes(app: FastifyInstance, deps: AppDeps, afte
     }
     const title = body.title ?? event.title;
     const updated = await deps.repos.calendarEvents.update(request.userId, id, { title, startsAt, endsAt });
-    // Best-effort Google write-back for events previously mirrored to Google. PATCH (merge),
-    // not PUT — the user may have added a description/location/attendees on the Google side.
-    // A failure leaves the Google copy stale, so it must be visible in the log.
-    const { googleEventId, googleCalendarId } = event;
-    if (googleEventId && googleCalendarId) {
-      await bestEffortGoogleWrite(
-        app, deps, request.userId,
-        { fields: { eventId: id }, message: 'google write-back failed: event edit not mirrored' },
-        (accessToken) => deps.google.client.patchEvent(accessToken, googleCalendarId, googleEventId, {
-          summary: title, startDateTime: startsAt.toISOString(), endDateTime: endsAt.toISOString(),
-        }),
-      );
-    }
+    await mirrorAppEventEdit(app, deps, request.userId, event, { title, startsAt, endsAt });
     announce(request.userId);
     afterMutation(request.userId);
     return updated;
