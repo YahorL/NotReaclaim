@@ -70,7 +70,11 @@ export function Board({
       onDragEnd={onDragEnd}
       onDragCancel={clear}
     >
-      <div className="flex items-start gap-[26px]" style={{ minWidth: 'min-content' }}>
+      {/* Each column element is its droppable (`col:*`), so it must reach the bottom of the board:
+          the row fills the pane (min-h-full; a taller column still grows it and the pane scrolls)
+          and its columns stretch to the row (no items-start), so the space below a column's last
+          card accepts a drop. The column elements paint nothing themselves — the look is unchanged. */}
+      <div className="flex min-h-full gap-[26px]" style={{ minWidth: 'min-content' }}>
         {columns.map((c) => (
           <Column
             key={c.key} columnKey={c.key} tasks={c.tasks} now={now} zone={zone} nextMsFor={nextMsFor}
