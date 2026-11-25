@@ -53,7 +53,7 @@ describe('Priorities board', () => {
     renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi({ updateTask }) });
     await waitFor(() => expect(screen.getByText('Critical thing')).toBeInTheDocument());
     const row = screen.getByText('Critical thing').closest('[data-testid="task-row"]')!;
-    fireEvent.click(within(row as HTMLElement).getByRole('button', { name: 'complete' }));
+    fireEvent.click(within(row as HTMLElement).getByRole('button', { name: /^Complete / }));
     await waitFor(() => expect(updateTask).toHaveBeenCalledWith('c1', { status: 'completed' }));
   });
 
@@ -175,7 +175,7 @@ describe('Priorities board', () => {
     await waitFor(() => expect(screen.getByTestId('column-completed')).toBeInTheDocument());
     const col = screen.getByTestId('column-completed');
     const row = within(col).getByTestId('task-row');
-    fireEvent.click(within(row as HTMLElement).getByRole('button', { name: 'complete' }));
+    fireEvent.click(within(row as HTMLElement).getByRole('button', { name: /^Complete / }));
     await waitFor(() => expect(updateTask).toHaveBeenCalledWith('d1', { status: 'pending' }));
   });
 
@@ -358,7 +358,7 @@ describe('Priorities board moves', () => {
     renderWithProviders(<Priorities now={() => NOW} />, { api: makeApi() });
     await waitFor(() => expect(screen.getByText('Low thing')).toBeInTheDocument());
     const card = screen.getByText('Low thing').closest('[data-testid="task-row"]') as HTMLElement;
-    fireEvent.mouseDown(within(card).getByRole('button', { name: 'complete' }), { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.mouseDown(within(card).getByRole('button', { name: /^Complete / }), { button: 0, clientX: 10, clientY: 10 });
     fireEvent.mouseMove(document, { clientX: 40, clientY: 40 });
     expect(screen.queryByTestId('board-drag-overlay')).toBeNull();
     await releaseDrag();

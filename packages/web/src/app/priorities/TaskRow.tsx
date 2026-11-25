@@ -53,6 +53,8 @@ function SortableCardSubtask({ subtask, onToggle }: { subtask: Subtask; onToggle
           <input
             type="checkbox"
             data-testid={`card-subtask-${subtask.id}`}
+            // The visible title is a sibling (outside the label, see the halo note), so name it here.
+            aria-label={subtask.title}
             checked={subtask.done}
             onChange={onToggle}
             className="h-4 w-4 accent-accent coarse:h-5 coarse:w-5"
@@ -154,7 +156,7 @@ export function TaskRow({ task, columnKey, nextMs, now, zone, draggable = true, 
           <span aria-hidden="true" className="-ml-1 w-[18px] shrink-0" />
         )}
         <button
-          type="button" aria-label="complete" aria-pressed={done}
+          type="button" aria-label={`Complete ${task.title}`} aria-pressed={done}
           onClick={(e) => { e.stopPropagation(); onComplete(task); }}
           className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border-[1.5px] transition-colors duration-200 ${done ? 'animate-pop-check border-accent bg-accent text-on-accent' : 'border-fg/30 hover:border-accent-fg'}`}
         >

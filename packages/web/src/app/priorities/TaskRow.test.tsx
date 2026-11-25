@@ -55,6 +55,12 @@ describe('TaskRow subtask checklist', () => {
     expect(screen.getByTestId('card-subtask-s2')).not.toBeChecked();
   });
 
+  it('names each checkbox after its subtask (the title sits outside the label)', () => {
+    renderRow({ ...base, subtasks: twoSubtasks } as Task);
+    expect(screen.getByRole('checkbox', { name: 'first step' })).toBe(screen.getByTestId('card-subtask-s1'));
+    expect(screen.getByRole('checkbox', { name: 'second step' })).toBe(screen.getByTestId('card-subtask-s2'));
+  });
+
   it('strikes through done subtasks', () => {
     renderRow({ ...base, subtasks: twoSubtasks } as Task);
     expect(screen.getByText('first step').className).toContain('line-through');
@@ -190,7 +196,7 @@ describe('TaskRow card states', () => {
     expect(done).toHaveAttribute('data-bucket', 'completed');
     expect(done).toHaveAttribute('data-done', 'true');
     expect(done).not.toHaveAttribute('data-muted');
-    expect(screen.getByRole('button', { name: 'complete' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: /^Complete / })).toHaveAttribute('aria-pressed', 'true');
     unmount();
     render(
       <TaskRow
@@ -202,7 +208,7 @@ describe('TaskRow card states', () => {
     expect(muted).toHaveAttribute('data-bucket', 'backlog');
     expect(muted).toHaveAttribute('data-muted', 'true');
     expect(muted).not.toHaveAttribute('data-done');
-    expect(screen.getByRole('button', { name: 'complete' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: /^Complete / })).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('shows a duration chip for tasks of a minute or more', () => {
