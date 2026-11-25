@@ -20,6 +20,7 @@ export function fakeApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     deleteHabit: notImplemented('deleteHabit'),
     getSettings: notImplemented('getSettings'),
     putSettings: notImplemented('putSettings'),
+    patchSettings: notImplemented('patchSettings'),
     getSchedule: notImplemented('getSchedule'),
     updateScheduledBlock: notImplemented('updateScheduledBlock'),
     deleteScheduledBlock: notImplemented('deleteScheduledBlock'),

@@ -82,7 +82,7 @@ export const workingHourEntrySchema = z.object({
 // 0..24 h. Also keeps the value inside the 32-bit Int column (a larger one was a 500).
 const bufferMsSchema = z.number().int().nonnegative().max(24 * 60 * 60_000, { message: 'must be at most 24 hours' });
 
-export const settingsSchema = z.object({
+const settingsFieldsSchema = z.object({
   timezone: z.string().refine(isValidTimezone, { message: 'must be a valid IANA time zone' }),
   // An empty week is allowed here (unlike category windows): it means "no working hours".
   workingHours: z.array(workingHourEntrySchema),
@@ -94,9 +94,18 @@ export const settingsSchema = z.object({
   requireStartToTrack: z.boolean().optional(),
   /** Visual planner day boundary, minutes past local midnight (0 = midnight, 180 = 03:00). */
   dayStartMinute: z.number().int().min(0).max(1439).optional(),
-}).refine((b) => b.defaultMinChunkMs <= b.defaultMaxChunkMs, {
-  message: 'must not exceed defaultMaxChunkMs', path: ['defaultMinChunkMs'],
 });
+// Shared by the PUT refine and the PATCH /settings merged check in settings-routes.
+export const DEFAULT_CHUNK_ORDER = { message: 'must not exceed defaultMaxChunkMs', path: ['defaultMinChunkMs'] };
+export const settingsSchema = settingsFieldsSchema.refine(
+  (b) => b.defaultMinChunkMs <= b.defaultMaxChunkMs, DEFAULT_CHUNK_ORDER,
+);
+// PATCH: any subset, each field under the PUT rules. Chunk order is checked in the route against
+// the stored row, and only when the patch touches min or max, so other edits are never blocked
+// by a stored value that predates a rule (e.g. a legacy invalid time zone).
+export const patchSettingsSchema = settingsFieldsSchema.partial().refine(
+  (b) => Object.values(b).some((v) => v !== undefined), { message: 'empty update' },
+);
 
 export const createCategorySchema = z.object({
   name: z.string().min(1),

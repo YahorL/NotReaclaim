@@ -37,34 +37,53 @@ describe('Buffers page', () => {
     expect((screen.getByTestId('task-buffer') as HTMLInputElement).value).toBe('0');
   });
 
-  it('Save PUTs the full settings payload with the edited buffer value', async () => {
+  // Replaces "Save PUTs the full settings payload…", which pinned the defect: a PUT of the
+  // settings captured on page load reverted any change made meanwhile in another tab.
+  it('Save PATCHes only the two buffer values, never the rest of the settings', async () => {
+    const patchSettings = vi.fn(async () => settings());
     const putSettings = vi.fn(async () => settings());
-    const api = fakeApiClient({ getSettings: async () => settings(), putSettings } as never);
+    const api = fakeApiClient({ getSettings: async () => settings(), patchSettings, putSettings } as never);
     renderWithProviders(<Buffers />, { api });
     await waitFor(() => expect((screen.getByTestId('task-buffer') as HTMLInputElement).value).toBe('10'));
     fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '15' } });
     fireEvent.click(screen.getByTestId('save'));
+    await waitFor(() => expect(patchSettings).toHaveBeenCalledTimes(1));
+    expect(patchSettings).toHaveBeenCalledWith({ meetingBufferMs: 300_000, taskBufferMs: 900_000 });
+    expect(putSettings).not.toHaveBeenCalled();
+  });
+
+  it('first-time setup (no settings yet) saves the defaults plus the buffers with a PUT', async () => {
+    const patchSettings = vi.fn(async () => settings());
+    const putSettings = vi.fn(async () => settings());
+    const api = fakeApiClient({
+      getSettings: () => Promise.reject(new ApiError(404, 'not_found', 'not found')), patchSettings, putSettings,
+    } as never);
+    renderWithProviders(<Buffers />, { api });
+    await waitFor(() => expect(screen.getByTestId('task-buffer')).toBeInTheDocument());
+    fireEvent.change(screen.getByTestId('task-buffer'), { target: { value: '15' } });
+    fireEvent.click(screen.getByTestId('save'));
     await waitFor(() => expect(putSettings).toHaveBeenCalledWith(
-      expect.objectContaining({ meetingBufferMs: 300_000, taskBufferMs: 900_000, timezone: 'UTC' }),
+      expect.objectContaining({ meetingBufferMs: 0, taskBufferMs: 900_000, defaultMinChunkMs: 30 * 60_000 }),
     ));
+    expect(patchSettings).not.toHaveBeenCalled();
   });
 
   it('a negative buffer sends no request', async () => {
-    const putSettings = vi.fn(async () => settings());
-    const api = fakeApiClient({ getSettings: async () => settings(), putSettings } as never);
+    const patchSettings = vi.fn(async () => settings());
+    const api = fakeApiClient({ getSettings: async () => settings(), patchSettings } as never);
     renderWithProviders(<Buffers />, { api });
     await waitFor(() => expect((screen.getByTestId('meeting-buffer') as HTMLInputElement).value).toBe('5'));
     fireEvent.change(screen.getByTestId('meeting-buffer'), { target: { value: '-5' } });
     fireEvent.click(screen.getByTestId('save'));
     await new Promise((r) => setTimeout(r, 0));
-    expect(putSettings).not.toHaveBeenCalled();
+    expect(patchSettings).not.toHaveBeenCalled();
   });
 
   it('the Save handler itself refuses an invalid form, independently of the disabled attribute', async () => {
     // A click on a disabled button never reaches onClick (jsdom and React both drop it), so the test
     // above would pass without the handler's own guard. Call the handler directly to pin the guard.
-    const putSettings = vi.fn(async () => settings());
-    const api = fakeApiClient({ getSettings: async () => settings(), putSettings } as never);
+    const patchSettings = vi.fn(async () => settings());
+    const api = fakeApiClient({ getSettings: async () => settings(), patchSettings } as never);
     renderWithProviders(<Buffers />, { api });
     await waitFor(() => expect((screen.getByTestId('meeting-buffer') as HTMLInputElement).value).toBe('5'));
     fireEvent.change(screen.getByTestId('meeting-buffer'), { target: { value: '-5' } });
@@ -73,7 +92,7 @@ describe('Buffers page', () => {
     const propsKey = Object.keys(save).find((k) => k.startsWith('__reactProps$'))!;
     act(() => { (save as unknown as Record<string, { onClick: () => void }>)[propsKey]!.onClick(); });
     await new Promise((r) => setTimeout(r, 0));
-    expect(putSettings).not.toHaveBeenCalled();
+    expect(patchSettings).not.toHaveBeenCalled();
   });
 
   it('a negative buffer shows the Settings validation error under that field and disables Save', async () => {
@@ -91,10 +110,10 @@ describe('Buffers page', () => {
   });
 
   it('a rejected save shows the server error and no Saved line; a later successful save clears it', async () => {
-    const putSettings = vi.fn()
+    const patchSettings = vi.fn()
       .mockRejectedValueOnce(new ApiError(400, 'validation_error', 'taskBufferMs must be non-negative'))
       .mockResolvedValueOnce(settings());
-    const api = fakeApiClient({ getSettings: async () => settings(), putSettings } as never);
+    const api = fakeApiClient({ getSettings: async () => settings(), patchSettings } as never);
     renderWithProviders(<Buffers />, { api });
     await waitFor(() => expect((screen.getByTestId('task-buffer') as HTMLInputElement).value).toBe('10'));
 
@@ -108,8 +127,8 @@ describe('Buffers page', () => {
   });
 
   it('a save that fails without an API response (network error) still shows an error', async () => {
-    const putSettings = vi.fn(async () => { throw new TypeError('Failed to fetch'); });
-    const api = fakeApiClient({ getSettings: async () => settings(), putSettings } as never);
+    const patchSettings = vi.fn(async () => { throw new TypeError('Failed to fetch'); });
+    const api = fakeApiClient({ getSettings: async () => settings(), patchSettings } as never);
     renderWithProviders(<Buffers />, { api });
     await waitFor(() => expect((screen.getByTestId('task-buffer') as HTMLInputElement).value).toBe('10'));
     fireEvent.click(screen.getByTestId('save'));
@@ -119,22 +138,22 @@ describe('Buffers page', () => {
 
   describe('typed values are validated as typed', () => {
     const load = async () => {
-      const putSettings = vi.fn(async () => settings());
-      const api = fakeApiClient({ getSettings: async () => settings(), putSettings } as never);
+      const patchSettings = vi.fn(async () => settings());
+      const api = fakeApiClient({ getSettings: async () => settings(), patchSettings } as never);
       renderWithProviders(<Buffers />, { api });
       await waitFor(() => expect((screen.getByTestId('meeting-buffer') as HTMLInputElement).value).toBe('5'));
-      return { putSettings };
+      return { patchSettings };
     };
 
     it('keeps a fractional value as typed and flags it instead of rounding it', async () => {
-      const { putSettings } = await load();
+      const { patchSettings } = await load();
       fireEvent.change(screen.getByTestId('meeting-buffer'), { target: { value: '1.5' } });
       expect((screen.getByTestId('meeting-buffer') as HTMLInputElement).value).toBe('1.5');
       expect(screen.getByTestId('err-meetingBufferMs')).toHaveTextContent('Buffer must be a whole number of minutes (≥ 0)');
       expect(screen.getByTestId('save')).toBeDisabled();
       fireEvent.click(screen.getByTestId('save'));
       await new Promise((r) => setTimeout(r, 0));
-      expect(putSettings).not.toHaveBeenCalled();
+      expect(patchSettings).not.toHaveBeenCalled();
     });
 
     it('flags an emptied field instead of saving it as 0', async () => {

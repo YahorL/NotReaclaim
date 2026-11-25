@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { prisma } from '../../src/client.js';
 import { createUserRepository } from '../../src/repositories/user-repository.js';
 import { createSettingsRepository } from '../../src/repositories/settings-repository.js';
+import { NotFoundError } from '../../src/errors.js';
 
 const users = createUserRepository(prisma);
 const repo = createSettingsRepository(prisma);
@@ -54,5 +55,22 @@ describe('SettingsRepository', () => {
     const updated = await repo.upsert(user.id, { ...settingsInput(), dayStartMinute: 180 });
     expect(updated.dayStartMinute).toBe(180);
     expect((await repo.getByUserId(user.id))?.dayStartMinute).toBe(180);
+  });
+
+  it('update writes only the given fields and leaves every other column as stored', async () => {
+    const user = await users.create({ email: 'patch@example.com' });
+    const created = await repo.upsert(user.id, { ...settingsInput(), horizonDays: 7, dayStartMinute: 180, requireStartToTrack: true });
+    const updated = await repo.update(user.id, { meetingBufferMs: 900000, taskBufferMs: 600000 });
+    expect(updated).toMatchObject({
+      ...settingsInput(), horizonDays: 7, dayStartMinute: 180, requireStartToTrack: true,
+      meetingBufferMs: 900000, taskBufferMs: 600000, id: created.id,
+    });
+    expect(await repo.getByUserId(user.id)).toEqual(updated);
+  });
+
+  it('update of a user without settings is a NotFoundError and creates nothing', async () => {
+    const user = await users.create({ email: 'patch-none@example.com' });
+    await expect(repo.update(user.id, { taskBufferMs: 60000 })).rejects.toBeInstanceOf(NotFoundError);
+    expect(await repo.getByUserId(user.id)).toBeNull();
   });
 });

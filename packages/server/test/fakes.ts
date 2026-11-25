@@ -102,6 +102,11 @@ export function fakeSettingsRepo(seed: Settings | null = null) {
       } as Settings;
       return row;
     },
+    async update(userId: string, data: Partial<UpsertSettingsInput>): Promise<Settings> {
+      if (!row || row.userId !== userId) throw new NotFoundError('Settings not configured');
+      row = { ...row, ...data } as Settings;
+      return row;
+    },
   };
 }
 

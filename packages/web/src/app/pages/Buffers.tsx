@@ -1,14 +1,36 @@
 import { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
-import { useSettingsQuery, useUpdateSettingsMutation } from '../../api/queries';
+import { useApi } from '../../api/ApiProvider';
+import { queryKeys, useSettingsQuery } from '../../api/queries';
 import { toFormState, defaultFormState, toSettingsInput, browserTimezone, validateBufferMinutesText, type SettingsFormState } from '../settings/settingsForm';
 import { FIELD_ERROR } from '../components/formStyles';
 
 const labelCls = 'mb-0.5 block text-[10px] uppercase tracking-wide text-inkSoft';
 
+type BufferValues = { meetingBufferMs: number; taskBufferMs: number };
+
+/**
+ * Saves just the two buffers with a PATCH, so this page cannot revert a settings change made
+ * elsewhere since it loaded. With no settings row yet (first-time setup) there is nothing to
+ * patch, so it PUTs the defaults plus the buffers instead.
+ */
+function useSaveBuffersMutation(configured: boolean) {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (buffers: BufferValues) => configured
+      ? api.patchSettings(buffers)
+      : api.putSettings(toSettingsInput({ ...defaultFormState(browserTimezone()), ...buffers })),
+    onSuccess: () => {
+      for (const queryKey of [queryKeys.settingsRoot, queryKeys.scheduleRoot]) void qc.invalidateQueries({ queryKey });
+    },
+  });
+}
+
 export function Buffers() {
   const settingsQ = useSettingsQuery();
-  const updateM = useUpdateSettingsMutation();
+  const updateM = useSaveBuffersMutation(settingsQ.data !== undefined);
 
   if (settingsQ.isLoading) {
     return <div className="p-6 text-gray-500">Loading…</div>;
@@ -36,7 +58,7 @@ export function Buffers() {
 
 function BuffersForm({ initial, onSave, saving, justSaved, saveError }: {
   initial: SettingsFormState;
-  onSave: (input: ReturnType<typeof toSettingsInput>) => void;
+  onSave: (buffers: BufferValues) => void;
   saving: boolean;
   justSaved: boolean;
   saveError: string | null;
@@ -47,8 +69,6 @@ function BuffersForm({ initial, onSave, saving, justSaved, saveError }: {
   const [taskText, setTaskText] = useState(() => String(Math.round(initial.taskBufferMs / 60000)));
   // A "Saved" left over from the previous save must not sit next to an edited (maybe invalid) form.
   const [editedSinceSave, setEditedSinceSave] = useState(false);
-  // Only the two fields this page edits gate Save: the rest of the payload is the stored settings,
-  // and an error there would have nowhere on this page to show.
   const meetingBufferError = validateBufferMinutesText(meetingText);
   const taskBufferError = validateBufferMinutesText(taskText);
   const ok = !meetingBufferError && !taskBufferError;
@@ -59,7 +79,7 @@ function BuffersForm({ initial, onSave, saving, justSaved, saveError }: {
   const save = () => {
     if (!ok) return;
     setEditedSinceSave(false);
-    onSave(toSettingsInput({ ...initial, meetingBufferMs: Number(meetingText) * 60000, taskBufferMs: Number(taskText) * 60000 }));
+    onSave({ meetingBufferMs: Number(meetingText) * 60000, taskBufferMs: Number(taskText) * 60000 });
   };
 
   return (

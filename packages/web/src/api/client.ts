@@ -30,6 +30,8 @@ export interface ApiClient {
   deleteHabit(id: string): Promise<void>;
   getSettings(): Promise<Settings>;
   putSettings(body: SettingsInput): Promise<Settings>;
+  /** Partial update: only the given fields are written. 404 when no settings exist yet. */
+  patchSettings(patch: Partial<SettingsInput>): Promise<Settings>;
   getSchedule(from?: string, to?: string): Promise<ScheduledBlock[]>;
   updateScheduledBlock(id: string, patch: UpdateScheduledBlockInput): Promise<ScheduledBlock>;
   deleteScheduledBlock(id: string): Promise<void>;
@@ -107,6 +109,7 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
     deleteHabit: (id) => request('DELETE', `/habits/${id}`),
     getSettings: () => request('GET', '/settings'),
     putSettings: (body) => request('PUT', '/settings', body),
+    patchSettings: (patch) => request('PATCH', '/settings', patch),
     getSchedule: (from, to) => request('GET', `/schedule${rangeQuery(from, to)}`),
     updateScheduledBlock: (id, patch) => request('PATCH', `/schedule/${id}`, patch),
     deleteScheduledBlock: (id) => request('DELETE', `/schedule/${id}`),

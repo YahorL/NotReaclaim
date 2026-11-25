@@ -214,4 +214,91 @@ describe('settings routes', () => {
       expect(res.json().workingHours, label).toEqual(workingHours);
     }
   });
+
+  describe('PATCH /settings (partial update)', () => {
+    const stored = {
+      id: 'settings-1', userId: 'u1', timezone: 'America/New_York',
+      workingHours: [{ weekday: 1, startMinute: 540, endMinute: 1020 }],
+      horizonDays: 21, defaultMinChunkMs: 900000, defaultMaxChunkMs: 1800000,
+      meetingBufferMs: 0, taskBufferMs: 0, requireStartToTrack: true, dayStartMinute: 180,
+      createdAt: new Date(0), updatedAt: new Date(0),
+    };
+    const setup = async (settings: typeof stored | null = stored) => {
+      const ctx = buildTestApp({ settings: settings as never });
+      return { ...ctx, auth: { authorization: `Bearer ${await tokenFor(ctx.app)}` } };
+    };
+
+    it('changes only the fields sent and returns the full row', async () => {
+      const { app, auth } = await setup();
+      const res = await app.inject({ method: 'PATCH', url: '/settings', headers: auth, payload: { meetingBufferMs: 900000, taskBufferMs: 600000 } });
+      expect(res.statusCode).toBe(200);
+      const { createdAt: _c, updatedAt: _u, ...rest } = stored;
+      expect(res.json()).toMatchObject({ ...rest, meetingBufferMs: 900000, taskBufferMs: 600000 });
+      const got = (await app.inject({ method: 'GET', url: '/settings', headers: auth })).json();
+      expect(got).toMatchObject({ ...rest, meetingBufferMs: 900000, taskBufferMs: 600000 });
+    });
+
+    it('announces and re-plans exactly like PUT', async () => {
+      const { app, auth, reconcileCalls, emitted } = await setup();
+      await app.inject({ method: 'PATCH', url: '/settings', headers: auth, payload: { taskBufferMs: 600000 } });
+      expect(reconcileCalls).toContainEqual({ userId: 'u1', now: expect.any(Number) });
+      expect(emitted).toContainEqual(expect.objectContaining({ type: 'data.changed', userId: 'u1', resources: ['settings', 'tasks', 'schedule'] }));
+    });
+
+    it('validates each field it is sent with the PUT rules', async () => {
+      const { app, auth, reconcileCalls } = await setup();
+      for (const payload of [
+        { taskBufferMs: -1 }, { meetingBufferMs: 24 * 60 * 60_000 + 1 }, { timezone: 'Fantasia/Castle' },
+        { workingHours: [{ weekday: 1, startMinute: 600, endMinute: 540 }] }, { dayStartMinute: 1440 },
+      ]) {
+        const res = await app.inject({ method: 'PATCH', url: '/settings', headers: auth, payload });
+        expect(res.statusCode, JSON.stringify(payload)).toBe(400);
+        expect(res.json().code).toBe('validation_error');
+      }
+      expect(reconcileCalls).toEqual([]);
+      expect((await app.inject({ method: 'GET', url: '/settings', headers: auth })).json()).toMatchObject({ taskBufferMs: 0, timezone: 'America/New_York' });
+    });
+
+    it('rejects an empty patch', async () => {
+      const { app, auth } = await setup();
+      const res = await app.inject({ method: 'PATCH', url: '/settings', headers: auth, payload: {} });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('checks one chunk default against the stored other one', async () => {
+      const { app, auth } = await setup(); // stored min 15 min, max 30 min
+      const minOnly = await app.inject({ method: 'PATCH', url: '/settings', headers: auth, payload: { defaultMinChunkMs: 2700000 } });
+      expect(minOnly.statusCode).toBe(400);
+      expect(minOnly.json().message).toBe('defaultMinChunkMs: must not exceed defaultMaxChunkMs');
+      const maxOnly = await app.inject({ method: 'PATCH', url: '/settings', headers: auth, payload: { defaultMaxChunkMs: 600000 } });
+      expect(maxOnly.statusCode).toBe(400);
+      const both = await app.inject({ method: 'PATCH', url: '/settings', headers: auth, payload: { defaultMinChunkMs: 2700000, defaultMaxChunkMs: 3600000 } });
+      expect(both.statusCode).toBe(200);
+      expect(both.json()).toMatchObject({ defaultMinChunkMs: 2700000, defaultMaxChunkMs: 3600000 });
+    });
+
+    // A row stored before validation existed (e.g. an invalid zone) must not block saving buffers.
+    it('does not re-validate stored fields it was not sent', async () => {
+      const { app, auth } = await setup({ ...stored, timezone: 'Not/AZone' });
+      const res = await app.inject({ method: 'PATCH', url: '/settings', headers: auth, payload: { taskBufferMs: 300000 } });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ timezone: 'Not/AZone', taskBufferMs: 300000 });
+    });
+
+    it('404s when the user has no settings yet, and creates nothing', async () => {
+      const { app, auth, reconcileCalls } = await setup(null);
+      for (const payload of [{ taskBufferMs: 300000 }, { defaultMinChunkMs: 900000 }]) {
+        const res = await app.inject({ method: 'PATCH', url: '/settings', headers: auth, payload });
+        expect(res.statusCode).toBe(404);
+        expect(res.json()).toEqual({ code: 'not_found', message: 'Settings not configured' });
+      }
+      expect(reconcileCalls).toEqual([]);
+      expect((await app.inject({ method: 'GET', url: '/settings', headers: auth })).statusCode).toBe(404);
+    });
+
+    it('requires a token', async () => {
+      const { app } = await setup();
+      expect((await app.inject({ method: 'PATCH', url: '/settings', payload: { taskBufferMs: 0 } })).statusCode).toBe(401);
+    });
+  });
 });
