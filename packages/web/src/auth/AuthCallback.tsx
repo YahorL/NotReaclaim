@@ -21,5 +21,5 @@ export function AuthCallback() {
     }
   }, [hash, navigate, setAuth]);
 
-  return <p className="p-8 text-gray-500">Signing you in…</p>;
+  return <p role="status" className="p-8 text-fg-2">Signing you in…</p>;
 }
