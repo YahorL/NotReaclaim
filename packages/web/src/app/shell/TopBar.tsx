@@ -1,6 +1,6 @@
 import { useLocation } from 'react-router-dom';
 import { Icons } from './icons';
-import { routeHeader } from './routeHeader';
+import { routeHeader, PAGE_HEADING_ID } from './routeHeader';
 import { AccountMenu } from './AccountMenu';
 import { useNowNextControls } from './useNowNextControls';
 import { useTasksQuery } from '../../api/queries';
@@ -37,7 +37,7 @@ export function TopBar({ onNewTask, onSearch, now = Date.now, sidebarHidden, onT
     <header className="hidden shrink-0 flex-wrap items-end justify-between gap-4 px-1 pt-1.5 md:flex">
       <div className="flex min-w-0 flex-col gap-1.5">
         {eyebrow && <span data-testid="route-eyebrow" className="text-[14px] tracking-[0.02em] text-fg-2">{eyebrow}</span>}
-        <h1 className="text-[48px] font-light leading-none tracking-[-0.02em] text-fg">
+        <h1 id={PAGE_HEADING_ID} tabIndex={-1} className="text-[48px] font-light leading-none tracking-[-0.02em] text-fg outline-none">
           {before}<strong className="font-medium">{bold}</strong>{after}
         </h1>
       </div>

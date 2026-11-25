@@ -24,6 +24,8 @@ export interface SheetProps {
   fullScreen?: boolean;
   /** Scroll the sheet body. Off by default — PlannerTaskPanel owns its own inner scroll region. */
   scrollBody?: boolean;
+  /** Where focus returns on close, when the element focused at open is a poor target (see useFocusTrap). */
+  restoreTo?: RefObject<HTMLElement | null>;
   /**
    * Slide the sheet down to a strip and make the backdrop inert, for the duration of a drag that
    * started inside it. The children stay mounted on purpose: unmounting the dragged card would
@@ -138,11 +140,11 @@ export function useFocusTrap<T extends HTMLElement>(ref: RefObject<T>, { onEscap
  *
  * Only rendered on the compact layout — desktop surfaces keep their inline panels and wrappers.
  */
-export function Sheet({ label, onClose, children, fullScreen = false, scrollBody = false, collapsed = false }: SheetProps): ReactElement {
+export function Sheet({ label, onClose, children, fullScreen = false, scrollBody = false, collapsed = false, restoreTo }: SheetProps): ReactElement {
   const dialogRef = useRef<HTMLDivElement>(null);
   // A collapsed sheet has focus out on the grid mid-drag, so Escape reaches dnd-kit and cancels
   // the drag instead of closing the sheet: intended.
-  const onKeyDown = useFocusTrap(dialogRef, { onEscape: onClose });
+  const onKeyDown = useFocusTrap(dialogRef, { onEscape: onClose, restoreTo });
 
   const frameClass = fullScreen ? `${FRAME} h-dvh` : `${FRAME} h-[70dvh] rounded-t-[26px]`;
   const bodyClass = scrollBody

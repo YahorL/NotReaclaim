@@ -4,6 +4,8 @@ import { act } from '@testing-library/react';
 import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { renderWithProviders, fakeApiClient } from '../test/fakes';
+import { installMatchMedia } from '../test/matchMedia';
+import { COMPACT_WIDTH_QUERY } from './lib/useMediaQuery';
 import { AppShell } from './AppShell';
 import { TaskDrawer } from './tasks/TaskDrawer';
 import type { Task } from '../api/types';
@@ -271,6 +273,24 @@ describe('AppShell drawer stacking', () => {
     await screen.findByRole('dialog', { name: 'New task' });
     expect(screen.queryByTestId('task-drawer')).toBeNull();
     expect(screen.getByTestId('new-task-backdrop').className).toContain('z-[58]');
+  });
+
+  it('compact: closing the searched-task sheet returns focus to what opened the palette, not the detached input', async () => {
+    const mm = installMatchMedia({ [COMPACT_WIDTH_QUERY]: true });
+    try {
+      renderWithProviders(<AppShell />, { api: makeApi({ listTasks: async () => [task] }) });
+      const plus = screen.getByTestId('mobile-new-task'); // any focused non-field control
+      plus.focus();
+      fireEvent.keyDown(plus, { key: '/' });
+      fireEvent.change(screen.getByRole('combobox', { name: 'Search tasks' }), { target: { value: 'quarterly' } });
+      fireEvent.click(await screen.findByRole('option', { name: /Write the quarterly report/ }));
+      await screen.findByTestId('task-drawer');
+      fireEvent.click(screen.getByTestId('sheet-close'));
+      await waitFor(() => expect(screen.queryByTestId('task-drawer')).toBeNull());
+      expect(document.activeElement).toBe(plus);
+    } finally {
+      mm.restore();
+    }
   });
 
   it('search never opens a second drawer on a task a page drawer already has open', async () => {

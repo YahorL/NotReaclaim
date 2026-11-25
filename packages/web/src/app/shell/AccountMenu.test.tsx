@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { screen, fireEvent } from '@testing-library/react';
+import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../../test/fakes';
 import { AccountMenu } from './AccountMenu';
+import { PAGE_HEADING_ID } from './routeHeader';
 
 function openMenu() {
   renderWithProviders(<AccountMenu />);
@@ -11,6 +12,14 @@ function openMenu() {
 }
 
 describe('AccountMenu', () => {
+  it('Settings moves focus to the page heading instead of dropping it on <body>', async () => {
+    renderWithProviders(<><h1 id={PAGE_HEADING_ID} tabIndex={-1}>Settings</h1><AccountMenu /></>);
+    fireEvent.click(screen.getByRole('button', { name: 'Account menu' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Settings' }));
+    expect(screen.queryByRole('menu')).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Settings' })));
+  });
+
   it('is a menu button that starts closed', () => {
     renderWithProviders(<AccountMenu />);
     const button = screen.getByRole('button', { name: 'Account menu' });

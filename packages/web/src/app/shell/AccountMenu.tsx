@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
 import { Icons } from './icons';
 import { useClickOutside } from '../components/useClickOutside';
+import { PAGE_HEADING_ID } from './routeHeader';
 
 const ITEM = 'block w-full rounded-input px-3.5 py-2 text-left text-[15px] font-medium text-fg hover:bg-fg/[.07] focus-visible:bg-fg/[.07] focus-visible:outline-offset-[-2px]';
 
@@ -28,6 +29,12 @@ export function AccountMenu() {
   }, [open]);
 
   const closeAndRefocus = () => { setOpen(false); buttonRef.current?.focus(); };
+  // Settings unmounts the focused item as it navigates, which dropped focus on <body>. Land it on
+  // the new page's heading once the route has rendered (a no-op where there is none).
+  const navigateAndFocusHeading = () => {
+    setOpen(false);
+    setTimeout(() => document.getElementById(PAGE_HEADING_ID)?.focus(), 0);
+  };
 
   const onMenuKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     const items = Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
@@ -64,7 +71,7 @@ export function AccountMenu() {
           onKeyDown={onMenuKeyDown}
           className="glass-dialog absolute right-0 top-[calc(100%+8px)] z-40 w-[200px] animate-pop rounded-card p-1.5"
         >
-          <NavLink to="/settings" role="menuitem" tabIndex={-1} onClick={close} className={ITEM}>
+          <NavLink to="/settings" role="menuitem" tabIndex={-1} onClick={navigateAndFocusHeading} className={ITEM}>
             Settings
           </NavLink>
           <button type="button" role="menuitem" tabIndex={-1} onClick={signOut} className={ITEM}>

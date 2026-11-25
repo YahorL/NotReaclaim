@@ -15,6 +15,9 @@ export interface RouteHeaderContext {
   openTaskCount: number | null;
 }
 
+/** id of the desktop page heading (TopBar's h1, `tabIndex=-1`): where focus lands after a menu navigates. */
+export const PAGE_HEADING_ID = 'page-heading';
+
 const PRIORITY_HINT = 'across 4 priority levels · drag to reorder';
 
 /** Desktop header copy per route (spec §4.1). Pure: the clock and zone are passed in. */

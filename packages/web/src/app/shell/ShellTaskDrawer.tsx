@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 import { ApiError } from '../../api/client';
 import { useTasksQuery, useUpdateTaskMutation } from '../../api/queries';
 import { DrawerHost, DESKTOP_DRAWER_SLOT } from '../components/DrawerHost';
@@ -12,7 +12,13 @@ import { TaskDrawer } from '../tasks/TaskDrawer';
  * page-level drawer (z-50) that may already be open in the same slot, and below NewTaskModal
  * (z-[58]) — which closes it on open anyway.
  */
-export function ShellTaskDrawer({ taskId, onClose }: { taskId: string; onClose: () => void }) {
+export function ShellTaskDrawer({ taskId, onClose, opener }: {
+  taskId: string;
+  onClose: () => void;
+  /** What opened the search palette. Compact: the Sheet mounts while the palette's input is still
+   *  focused — about to be detached — so it must hand focus back here instead. */
+  opener?: RefObject<HTMLElement | null>;
+}) {
   const tasksQ = useTasksQuery();
   const task = tasksQ.data?.find((t) => t.id === taskId) ?? null;
   const zone = useTimezone();
@@ -41,7 +47,7 @@ export function ShellTaskDrawer({ taskId, onClose }: { taskId: string; onClose: 
   }, [compact, hasTask, taskId]);
   if (!task) return null;
   return (
-    <DrawerHost compact={compact} label="Edit task" onClose={onClose} hostRef={hostRef} desktopClass={`${DESKTOP_DRAWER_SLOT} z-[55]`}>
+    <DrawerHost compact={compact} label="Edit task" onClose={onClose} hostRef={hostRef} restoreTo={opener} desktopClass={`${DESKTOP_DRAWER_SLOT} z-[55]`}>
       <TaskDrawer
         key={task.id}
         task={task} zone={zone} compact={compact} saving={updateTask.isPending}

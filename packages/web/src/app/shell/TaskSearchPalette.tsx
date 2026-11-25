@@ -48,6 +48,9 @@ export function TaskSearchPalette({ tasks, zone, onSelect, onClose }: TaskSearch
       const step = e.key === 'ArrowDown' ? 1 : -1;
       setActive((i) => (Math.min(i, results.length - 1) + step + results.length) % results.length);
     } else if (e.key === 'Enter') {
+      // Enter that commits an IME composition (Japanese, Chinese, …) is not "open this task".
+      // keyCode 229: Safari reports the composing keydown that way, with isComposing false.
+      if (e.nativeEvent.isComposing || e.keyCode === 229) return;
       e.preventDefault();
       if (current) onSelect(current.task.id);
     }

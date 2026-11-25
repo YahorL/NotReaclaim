@@ -60,10 +60,17 @@ export function AppShell() {
     setNewTaskOpen(true);
   };
   const [searchOpen, setSearchOpen] = useState(false);
+  // What opened the palette (taken like the New task opener), for the drawer it may open next.
+  const searchOpenerRef = useRef<HTMLElement | null>(null);
+  const openSearch = (e?: { currentTarget: EventTarget | null }) => {
+    const target = e?.currentTarget ?? document.activeElement;
+    searchOpenerRef.current = target instanceof HTMLElement && target !== document.body ? target : null;
+    setSearchOpen(true);
+  };
   const openTaskDrawers = useRef<OpenTaskDrawers>(new Map()).current;
   const tasksQ = useTasksQuery();
   const zone = useTimezone();
-  useTaskSearchShortcut(() => setSearchOpen(true));
+  useTaskSearchShortcut(() => openSearch());
   const rootRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   useDrawerTopVar(rootRef, contentRef);
@@ -89,7 +96,7 @@ export function AppShell() {
       <div ref={rootRef} data-testid="app-shell" className="flex h-dvh overflow-hidden bg-page md:gap-5 md:p-5">
         {!sidebarHidden && <Sidebar />}
         <main className="flex min-w-0 flex-1 flex-col md:gap-5">
-          <TopBar onNewTask={openNewTask} onSearch={() => setSearchOpen(true)} sidebarHidden={sidebarHidden} onToggleSidebar={toggleSidebar} />
+          <TopBar onNewTask={openNewTask} onSearch={openSearch} sidebarHidden={sidebarHidden} onToggleSidebar={toggleSidebar} />
           <MobileTopBar onNewTask={openNewTask} />
           <GoogleBrokenBanner />
           {/* The tab bar is `fixed`, so the scroll area reserves its height (56px) plus the
@@ -109,7 +116,7 @@ export function AppShell() {
         </main>
         <MobileTabBar />
         {newTaskOpen && <NewTaskModal opener={newTaskOpenerRef} onClose={() => setNewTaskOpen(false)} />}
-        {searchedTaskId && <ShellTaskDrawer taskId={searchedTaskId} onClose={() => setSearchedTaskId(null)} />}
+        {searchedTaskId && <ShellTaskDrawer taskId={searchedTaskId} opener={searchOpenerRef} onClose={() => setSearchedTaskId(null)} />}
         {searchOpen && (
           <TaskSearchPalette
             tasks={tasksQ.data ?? []} zone={zone}

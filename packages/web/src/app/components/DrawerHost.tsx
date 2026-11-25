@@ -1,4 +1,4 @@
-import type { ReactElement, ReactNode, Ref } from 'react';
+import type { ReactElement, ReactNode, Ref, RefObject } from 'react';
 import { Sheet } from './Sheet';
 
 /**
@@ -19,6 +19,8 @@ export interface DrawerHostProps {
   desktopClass: string;
   /** Ref to the desktop host element (unused on compact, where the Sheet owns focus). */
   hostRef?: Ref<HTMLDivElement>;
+  /** Compact only: where the Sheet returns focus on close (default: whatever was focused at open). */
+  restoreTo?: RefObject<HTMLElement | null>;
   children: ReactNode;
 }
 
@@ -28,9 +30,9 @@ export interface DrawerHostProps {
  * modal z-tier with it. The drawer element itself is built once by the caller and handed to
  * whichever shell renders it — never duplicated per branch.
  */
-export function DrawerHost({ compact, label, onClose, desktopClass, hostRef, children }: DrawerHostProps): ReactElement {
+export function DrawerHost({ compact, label, onClose, desktopClass, hostRef, restoreTo, children }: DrawerHostProps): ReactElement {
   if (compact) {
-    return <Sheet label={label} onClose={onClose} fullScreen scrollBody>{children}</Sheet>;
+    return <Sheet label={label} onClose={onClose} fullScreen scrollBody restoreTo={restoreTo}>{children}</Sheet>;
   }
   return <div ref={hostRef} className={desktopClass}>{children}</div>;
 }

@@ -77,6 +77,16 @@ describe('TaskSearchPalette', () => {
     expect(onSelect).toHaveBeenCalledWith(TASKS[2]!.id);
   });
 
+  it('an Enter that commits an IME composition does not open a task', () => {
+    const { input, onSelect } = renderPalette();
+    type(input, 'docs');
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
+    fireEvent.keyDown(input, { key: 'Enter', keyCode: 229 }); // Safari's composing keydown
+    expect(onSelect).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
   it('opens a clicked result', () => {
     const { input, onSelect } = renderPalette();
     type(input, 'email');
