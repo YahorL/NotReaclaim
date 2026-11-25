@@ -217,6 +217,16 @@ describe('TopBar Next-task indicator', () => {
     expect(screen.getByRole('button', { name: 'Hide sidebar' })).toBeInTheDocument();
   });
 
+  it('announces the sidebar toggle by its action label only, never as a pressed toggle', () => {
+    // A dynamic "Show/Hide sidebar" label plus aria-pressed reads as e.g. "Hide sidebar, pressed".
+    const api = fakeApiClient({ getSchedule: async () => [] });
+    renderWithProviders(
+      <TopBar onNewTask={() => {}} now={nowFn} onToggleSidebar={() => {}} sidebarHidden={false} />,
+      { api },
+    );
+    expect(screen.getByTestId('toggle-sidebar')).not.toHaveAttribute('aria-pressed');
+  });
+
   it('shows the running (started, in-progress) task with a Stop button', async () => {
     const stopBlock = vi.fn(async () => ({} as never));
     const api = fakeApiClient({
