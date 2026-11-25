@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { runPollCycle } from '../src/scheduler.js';
+import { runPollCycle } from '../src/poller.js';
 
 describe('runPollCycle', () => {
   it('calls pollAndReplan once per connected id, in order', async () => {

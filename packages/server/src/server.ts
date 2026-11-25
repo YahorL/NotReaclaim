@@ -23,7 +23,7 @@ import { buildApp } from './app.js';
 import { createEventBus } from './events.js';
 import { makeReplan } from './replan-router.js';
 import { pollAndReplan } from './replan.js';
-import { startScheduler } from './scheduler.js';
+import { startPoller } from './poller.js';
 import { loadServerConfig } from './config.js';
 import { isGoogleConnected } from './auth/google-connection.js';
 
@@ -82,7 +82,7 @@ async function main(): Promise<void> {
   await app.listen({ port: serverConfig.port, host: '0.0.0.0' });
   app.log.info(`NotReclaim server listening on :${serverConfig.port}`);
 
-  const scheduler = startScheduler({
+  const poller = startPoller({
     listConnectedIds: () => users.listConnectedIds(),
     pollAndReplan: (userId) =>
       pollAndReplan(
@@ -97,7 +97,7 @@ async function main(): Promise<void> {
   const shutdown = async (): Promise<void> => {
     if (shuttingDown) return;
     shuttingDown = true;
-    scheduler.stop();
+    poller.stop();
     await app.close();
     process.exit(0);
   };

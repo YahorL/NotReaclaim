@@ -16,12 +16,12 @@ export async function runPollCycle(deps: PollCycleDeps): Promise<void> {
   }
 }
 
-export interface SchedulerDeps extends PollCycleDeps {
+export interface PollerDeps extends PollCycleDeps {
   intervalMs: number;
 }
 
 /** Thin impure shell: drive runPollCycle on an interval with a re-entrancy guard. Used only by server.ts (never in unit tests). */
-export function startScheduler(deps: SchedulerDeps): { stop: () => void } {
+export function startPoller(deps: PollerDeps): { stop: () => void } {
   let running = false;
   const timer = setInterval(() => {
     if (running) return;
