@@ -1,4 +1,4 @@
-import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
+import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode, TransitionEvent as ReactTransitionEvent } from 'react';
 import { Icons } from '../shell/icons';
 import { blockVariant, type BlockKind } from './blockStyle';
 
@@ -44,9 +44,33 @@ export interface CalendarBlockProps {
   onPointerCancel?: PointerHandler;
   /** Bottom-edge resize hit area. Absent on locked tiles. */
   resize?: { onPointerDown: PointerHandler; className: string };
+  /**
+   * Motion state (spec §5.2). `idle`: the spring transitions on top/left/width/height/transform
+   * are always on, so a release, a replan or a keyboard move glides. `dragging` / `resizing`: the
+   * tile follows the pointer exactly, so geometry transitions are off and it lifts.
+   */
+  motion?: BlockMotion;
+  /** Springing into its slot after a release: stays above its neighbours until it lands. */
+  settling?: boolean;
+  onTransitionEnd?: (e: ReactTransitionEvent<HTMLDivElement>) => void;
   /** Overlays (the live drag label). */
   children?: ReactNode;
 }
+
+export type BlockMotion = 'idle' | 'dragging' | 'resizing';
+
+/**
+ * Idle transitions — the prototype's `.ev` curves (move/resize/fade). One literal string so the
+ * JIT sees it; the reduced-motion kill switch collapses every duration to ~0.
+ */
+const SPRING = '[transition:top_var(--dur-move)_var(--ease-spring),left_var(--dur-move)_var(--ease-spring),width_var(--dur-move)_var(--ease-spring),height_var(--dur-resize)_var(--ease-spring-strong),transform_var(--dur-move)_var(--ease-spring),opacity_.3s_ease,box-shadow_.25s_ease]';
+/** Picked up: no geometry transition (it follows the pointer), big shadow + accent ring. */
+const LIFTED = 'z-20 shadow-lift ring-[1.5px] ring-accent/70 transition-[box-shadow] duration-200';
+const MOTION_CLASS: Record<BlockMotion, string> = {
+  idle: SPRING,
+  dragging: `${LIFTED} cursor-grabbing`,
+  resizing: LIFTED,
+};
 
 /** Hover × — sibling of the focus target, never inside it. */
 const DELETE_BTN = 'h-[18px] w-[18px] items-center justify-center rounded-full bg-black/30 text-[12px] leading-none text-white hover:bg-black/50';
@@ -62,6 +86,7 @@ export function CalendarBlock(props: CalendarBlockProps) {
     blockKey, title, kind, source = null, pinned = false, started = false, accent, startLabel, whenLabel, durationMin,
     style, className = '', dayIndex, selected = false, coarse = false, onDelete, deleteLabel = 'Delete block',
     onUnpin, onBodyClick, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, resize, children,
+    motion = 'idle', settling = false, onTransitionEnd,
   } = props;
   const v = blockVariant({ kind, source, pinned, started, accent });
   const row = durationMin < ROW_LAYOUT_MAX_MIN;
@@ -84,12 +109,16 @@ export function CalendarBlock(props: CalendarBlockProps) {
       data-started={started}
       data-selected={selected}
       data-day-index={dayIndex}
+      data-dragging={motion === 'dragging' ? 'true' : undefined}
+      data-resizing={motion === 'resizing' ? 'true' : undefined}
+      data-settling={settling ? 'true' : undefined}
       title={`${startLabel} ${title}`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
-      className={`group pointer-events-auto absolute overflow-hidden rounded-event ${v.className} ${selected ? 'z-[3] outline outline-2 outline-offset-2 outline-fg' : ''} ${className}`}
+      onTransitionEnd={onTransitionEnd}
+      className={`group pointer-events-auto absolute overflow-hidden rounded-event ${v.className} ${MOTION_CLASS[motion]} ${settling ? 'z-20' : ''} ${selected ? 'z-[3] outline outline-2 outline-offset-2 outline-fg' : ''} ${className}`}
       style={{ ...style, ...v.style }}
     >
       {started && <span aria-hidden="true" data-testid="started-bar" className="absolute inset-y-0 left-0 w-[3px] bg-accent" />}

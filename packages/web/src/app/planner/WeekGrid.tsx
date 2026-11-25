@@ -106,6 +106,29 @@ interface Item {
   taskId: string | null;
 }
 
+/**
+ * A target the planner shows before the data does (spec §5.2): a released drag/resize, or a
+ * keyboard move still in its debounce. Held against the BASELINE times the data had when it was
+ * set: it renders only while the data still shows that baseline. Once the data shows the target
+ * (the optimistic write landed) or anything else (the server moved it), the data wins — so the
+ * tile never paints a stale position, and a rollback (data back at the baseline once the hold
+ * expires) springs it home.
+ */
+interface Pending {
+  startMs: number;
+  endMs: number;
+  baseStartMs: number;
+  baseEndMs: number;
+}
+
+/** How long a committed target is held when the data never changes (a failed write that rolled back). */
+export const HOLD_TIMEOUT_MS = 1500;
+
+function pendingApplies(p: Pending | undefined, it: { startMs: number; endMs: number }): p is Pending {
+  return p !== undefined && it.startMs === p.baseStartMs && it.endMs === p.baseEndMs
+    && !(it.startMs === p.startMs && it.endMs === p.endMs);
+}
+
 function toItems(blocks: ScheduledBlock[], events: CalendarEvent[], zone: string): Item[] {
   const fromBlocks = blocks.map((b): Item => {
     const cls = classifyBlock(b);
@@ -128,9 +151,51 @@ function toItems(blocks: ScheduledBlock[], events: CalendarEvent[], zone: string
 export function WeekGrid(props: WeekGridProps) {
   const { days, nowMs, weekLabel, blocks, events, onPrev, onToday, onNext, onCommit, onCommitEvent, onEditEvent, onDeleteBlock, onDeleteEvent, taskDrop = null, accents = {}, zone = 'UTC', dayStartMinute = 0, panelHidden, onTogglePanel, compact = false, coarse = false, onEditTask, selectedKey = null, onSelect } = props;
   const gridCols = `${timeGutterPx(compact)}px repeat(${days.length}, minmax(0, 1fr))`;
-  const items = toItems(blocks, events, zone);
+  const dataItems = toItems(blocks, events, zone);
+  const [pending, setPending] = useState<Record<string, Pending>>({});
+  const holdTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const items = dataItems.map((it) => {
+    const p = pending[it.key];
+    return pendingApplies(p, it) ? { ...it, startMs: p.startMs, endMs: p.endMs, startLabel: formatHm(p.startMs, zone) } : it;
+  });
   const layout = layoutWeek(items, days);
   const toast = useToast();
+
+  const dropPending = (key: string) => {
+    const t = holdTimers.current.get(key);
+    if (t) clearTimeout(t);
+    holdTimers.current.delete(key);
+    setPending((p) => {
+      if (!(key in p)) return p;
+      const { [key]: _gone, ...rest } = p;
+      return rest;
+    });
+  };
+  /** Show `key` at [startMs, endMs) until the data agrees. `expire`: start the rollback clock. */
+  const hold = (key: string, startMs: number, endMs: number, expire = true) => {
+    const base = dataItems.find((x) => x.key === key);
+    if (!base) return;
+    setPending((p) => {
+      const prev = p[key];
+      // Keep the first baseline across a run of keyboard steps: the data has not moved yet.
+      const keepBase = prev !== undefined && pendingApplies(prev, base);
+      return { ...p, [key]: { startMs, endMs, baseStartMs: keepBase ? prev.baseStartMs : base.startMs, baseEndMs: keepBase ? prev.baseEndMs : base.endMs } };
+    });
+    const t = holdTimers.current.get(key);
+    if (t) clearTimeout(t);
+    holdTimers.current.delete(key);
+    if (expire) holdTimers.current.set(key, setTimeout(() => dropPending(key), HOLD_TIMEOUT_MS));
+  };
+  // Forget holds the data has overtaken (landed, or moved elsewhere by the server).
+  useEffect(() => {
+    const stale = Object.keys(pending).filter((k) => {
+      const it = dataItems.find((x) => x.key === k);
+      return !it || !pendingApplies(pending[k], it);
+    });
+    stale.forEach(dropPending);
+    // Deps: re-check only when the data changes (pending itself is read fresh each time).
+  }, [blocks, events]);
+  useEffect(() => () => { holdTimers.current.forEach(clearTimeout); }, []);
 
   /**
    * A click (a press that did not drag) or Enter on a block. At md+ it selects (detail card,
@@ -315,7 +380,7 @@ export function WeekGrid(props: WeekGridProps) {
                         startMs={it.startMs} endMs={it.endMs}
                         {...geometry}
                         startLabel={it.startLabel} title={it.title} kind={it.kind} pinned={it.pinned} started={it.started}
-                        onCommit={(patch) => onCommit(blockId, patch)}
+                        onCommit={(patch) => { hold(it.key, Date.parse(patch.startsAt), Date.parse(patch.endsAt)); onCommit(blockId, patch); }}
                         onUnpin={it.pinned ? () => onCommit(blockId, { pinned: false }) : undefined}
                         onDelete={onDeleteBlock ? () => onDeleteBlock(blockId) : undefined}
                         onClick={(keyboard) => activate(it, keyboard)}
@@ -340,7 +405,11 @@ export function WeekGrid(props: WeekGridProps) {
                         startMs={it.startMs} endMs={it.endMs}
                         {...geometry}
                         startLabel={it.startLabel} title={it.title} kind={it.kind} pinned={false} source="app"
-                        onCommit={(patch) => onCommitEvent?.(ev.id, { startsAt: patch.startsAt, endsAt: patch.endsAt })}
+                        onCommit={(patch) => {
+                          if (!onCommitEvent) return;
+                          hold(it.key, Date.parse(patch.startsAt), Date.parse(patch.endsAt));
+                          onCommitEvent(ev.id, { startsAt: patch.startsAt, endsAt: patch.endsAt });
+                        }}
                         onClick={(keyboard) => activate(it, keyboard)}
                         blockKey={it.key}
                         selected={selectedKey === it.key}
@@ -371,7 +440,6 @@ export function WeekGrid(props: WeekGridProps) {
                       coarse={coarse}
                       onDelete={ev && onDeleteEvent ? () => onDeleteEvent(ev.id) : undefined}
                       deleteLabel="Delete event"
-                      className="transition-[top,left,height] duration-300 ease-out"
                       style={{ top: `${g.topPct}%`, height: `${g.heightPct}%`, left: blockLeftCss(g.leftPct, g.lane, g.lanes), width: blockWidthCss(g.widthPct, g.lane, g.lanes) }}
                     />
                   );

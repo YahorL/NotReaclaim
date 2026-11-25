@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, createEvent } from '@testing-library/react';
 import { InteractiveBlock } from './InteractiveBlock';
-import { minutesToPx } from './weekModel';
+import { minutesToPx, minuteToPct } from './weekModel';
+import { blockLeftCss, blockWidthCss } from './blockLayout';
 import { LONG_PRESS_MS } from './longPress';
 
 const DAY = Date.parse('2026-01-05T00:00:00.000Z'); // local midnight (TZ=UTC)
@@ -20,6 +21,20 @@ function renderBlock(onCommitOrOver: Parameters<typeof InteractiveBlock>[0]['onC
   const props = { ...defaults, ...overrides };
   render(<InteractiveBlock {...props} />);
   return props.onCommit;
+}
+
+/** jsdom has no TransitionEvent, so an init `propertyName` is dropped; define it on the event. */
+function fireTransitionEnd(el: Element, propertyName: string) {
+  const ev = createEvent.transitionEnd(el);
+  Object.defineProperty(ev, 'propertyName', { value: propertyName });
+  fireEvent(el, ev);
+}
+
+/** The value a browser (and jsdom) serialises a `calc()` string back as — percentages are rounded. */
+function cssCalc(value: string): string {
+  const el = document.createElement('div');
+  el.style.left = value;
+  return el.style.left;
 }
 
 /** A fake block layer spanning `dayCount` columns of `colWidth` px (the layer, not the block's parent column, is measured). */
@@ -83,36 +98,61 @@ describe('InteractiveBlock', () => {
   });
 
 
-  it('preview snaps to the 15-min grid while moving (sub-step drag → no offset)', () => {
+  it('under the 5px threshold a mouse press is still a click: no lift, no ghost', () => {
     renderBlock();
     const el = screen.getByTestId('event-block');
     fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
-    fireEvent.pointerMove(el, { clientX: 50, clientY: 107, pointerId: 1 }); // 7px = 7min → snaps to 0
-    expect(el.style.transform).toBe('translate(0px, 0px)');
-    expect(screen.queryByTestId('drag-label')).not.toBeInTheDocument();
+    fireEvent.pointerMove(el, { clientX: 52, clientY: 102, pointerId: 1 });
+    expect(el).not.toHaveAttribute('data-dragging');
+    expect(el.style.transform).toBe('');
+    expect(screen.queryByTestId('drag-ghost')).not.toBeInTheDocument();
   });
 
-  it('preview ticks one 15-min step and shows the live time label', () => {
+  it('while dragging the tile follows the raw pointer, lifted and tilted, transitions off', () => {
+    renderBlock();
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 107, pointerId: 1 }); // 7px: past the threshold, under a slot
+    expect(el).toHaveAttribute('data-dragging', 'true');
+    expect(el.style.transform).toBe('translate(0px, 7px) scale(1.05) rotate(-0.8deg)');
+    expect(el.className).not.toContain('[transition:');
+    // 7 minutes snaps to no change: the ghost sits on the original slot.
+    expect(screen.getByTestId('drag-ghost').style.top).toBe(`${minuteToPct(9 * 60)}%`);
+  });
+
+  it('the ghost sits at the snapped target with a "<day> · <start>" pill; the tile shows the snapped time', () => {
     renderBlock();
     const el = screen.getByTestId('event-block');
     fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
     fireEvent.pointerMove(el, { clientX: 50, clientY: 120, pointerId: 1 }); // 20px ≈ 20min → snaps to 15
-    expect(el.style.transform).toBe(`translate(0px, ${minutesToPx(15)}px)`);
-    expect(screen.getByTestId('drag-label')).toHaveTextContent(
-      '9:15 AM – 10:15 AM',
-    );
+    expect(el.style.transform).toBe('translate(0px, 20px) scale(1.05) rotate(-0.8deg)');
+    const ghost = screen.getByTestId('drag-ghost');
+    expect(ghost.style.top).toBe(`${minuteToPct(9 * 60 + 15)}%`);
+    expect(ghost.style.height).toBe('5%');
+    expect(screen.getByTestId('drag-label').textContent).toMatch(/^Mon · 9:15\sAM$/);
+    expect(el.textContent).toMatch(/9:15\sAM/);
   });
 
-  it('resize preview snaps and shows the live label with the start unchanged', () => {
+  it('resize: the height follows the pointer exactly, the ghost shows the snapped end', () => {
     renderBlock();
     const handle = screen.getByTestId('resize-handle');
     fireEvent.pointerDown(handle, { clientY: 200, pointerId: 1 });
-    fireEvent.pointerMove(handle, { clientY: 200 + PX_PER_60MIN, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientY: 200 + minutesToPx(70), pointerId: 1 });
     const el = screen.getByTestId('event-block');
-    expect(el.style.height).toBe(`calc(5% + ${minutesToPx(60)}px)`);
-    expect(screen.getByTestId('drag-label')).toHaveTextContent(
-      '9:00 AM – 11:00 AM',
-    );
+    expect(el).toHaveAttribute('data-resizing', 'true');
+    expect(el.style.height).toBe(`${(5 / 100) * 1440 + minutesToPx(70)}px`); // raw, unsnapped
+    const ghost = screen.getByTestId('drag-ghost');
+    expect(ghost.style.top).toBe('10%');
+    expect(Number.parseFloat(ghost.style.height)).toBeCloseTo(minuteToPct(9 * 60 + 135) - minuteToPct(9 * 60), 6); // 60 + 70 → 135 min
+    expect(screen.getByTestId('drag-label').textContent).toMatch(/^2h 15m · ends 11:15\sAM$/);
+  });
+
+  it('resize never shrinks the raw height below 12px', () => {
+    renderBlock();
+    const handle = screen.getByTestId('resize-handle');
+    fireEvent.pointerDown(handle, { clientY: 500, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientY: 0, pointerId: 1 });
+    expect(screen.getByTestId('event-block').style.height).toBe('12px');
   });
 
   it('a second pointer landing mid-drag is ignored — the first pointer keeps the gesture', () => {
@@ -138,13 +178,35 @@ describe('InteractiveBlock', () => {
     });
   });
 
-  it('label disappears after release', () => {
+  it('ghost and label disappear after release', () => {
     renderBlock();
     const el = screen.getByTestId('event-block');
     fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
     fireEvent.pointerMove(el, { clientX: 50, clientY: 120, pointerId: 1 });
     fireEvent.pointerUp(el, { clientX: 50, clientY: 120, pointerId: 1 });
+    expect(screen.queryByTestId('drag-ghost')).not.toBeInTheDocument();
     expect(screen.queryByTestId('drag-label')).not.toBeInTheDocument();
+  });
+
+  it('a drag released back where it started commits nothing and is not a click', () => {
+    const onClick = vi.fn();
+    const onCommit = renderBlock({ onClick });
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 160, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 101, pointerId: 1 });
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 101, pointerId: 1 });
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('ignores a secondary-button press', () => {
+    const onCommit = renderBlock();
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1, button: 2 });
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
+    expect(onCommit).not.toHaveBeenCalled();
   });
 });
 
@@ -154,7 +216,11 @@ describe('InteractiveBlock cross-day move', () => {
     const el = screen.getByTestId('event-block');
     fireEvent.pointerDown(el, { clientX: 100, clientY: 100, pointerId: 1 });
     fireEvent.pointerMove(el, { clientX: 230, clientY: 100, pointerId: 1 }); // dx=130 → round(130/120)=1
-    expect(el.style.transform).toBe('translate(120px, 0px)');
+    expect(el.style.transform).toBe('translate(130px, 0px) scale(1.05) rotate(-0.8deg)'); // raw pointer
+    const ghost = screen.getByTestId('drag-ghost');
+    expect(ghost.style.left).toBe(cssCalc(blockLeftCss((1 / 7) * 100, 0, 1))); // snapped to Tuesday
+    expect(ghost.style.width).toBe(cssCalc(blockWidthCss(100 / 7, 0, 1)));
+    expect(screen.getByTestId('drag-label').textContent).toMatch(/^Tue · 9:00\sAM$/);
     fireEvent.pointerUp(el, { clientX: 230, clientY: 100, pointerId: 1 });
     expect(onCommit).toHaveBeenCalledWith({
       startsAt: '2026-01-06T09:00:00.000Z', endsAt: '2026-01-06T10:00:00.000Z', pinned: true,
@@ -166,7 +232,7 @@ describe('InteractiveBlock cross-day move', () => {
     const el = screen.getByTestId('event-block');
     fireEvent.pointerDown(el, { clientX: 100, clientY: 100, pointerId: 1 });
     fireEvent.pointerMove(el, { clientX: 310, clientY: 100, pointerId: 1 }); // dx=210 → round(210/200)=1
-    expect(el.style.transform).toBe('translate(200px, 0px)');
+    expect(screen.getByTestId('drag-ghost').style.left).toBe(cssCalc(blockLeftCss((1 / 3) * 100, 0, 1)));
     fireEvent.pointerUp(el, { clientX: 310, clientY: 100, pointerId: 1 });
     expect(onCommit).toHaveBeenCalledWith({
       startsAt: '2026-01-06T09:00:00.000Z', endsAt: '2026-01-06T10:00:00.000Z', pinned: true,
@@ -188,7 +254,7 @@ describe('InteractiveBlock cross-day move', () => {
     const el = screen.getByTestId('event-block');
     fireEvent.pointerDown(el, { clientX: 100, clientY: 100, pointerId: 1 });
     fireEvent.pointerMove(el, { clientX: 400, clientY: 100, pointerId: 1 });
-    expect(el.style.transform).toBe('translate(0px, 0px)');
+    expect(screen.getByTestId('drag-ghost').style.left).toBe(cssCalc(blockLeftCss((6 / 7) * 100, 0, 1))); // stays on Sunday
     fireEvent.pointerUp(el, { clientX: 400, clientY: 100, pointerId: 1 });
     expect(onCommit).not.toHaveBeenCalled(); // day clamped to 0 + no vertical delta = no-op
   });
@@ -227,117 +293,86 @@ describe('InteractiveBlock cross-day move across a DST transition', () => {
   });
 });
 
-describe('InteractiveBlock held preview (flicker fix)', () => {
-  it('after pointerUp with a 15-min move, the transform STILL shows the moved offset (held)', () => {
-    renderBlock();
-    const el = screen.getByTestId('event-block');
-    // Move down by ~20px which snaps to 15 min
-    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
-    fireEvent.pointerMove(el, { clientX: 50, clientY: 120, pointerId: 1 }); // snaps to 15 min
-    fireEvent.pointerUp(el, { clientX: 50, clientY: 120, pointerId: 1 });
-    // After release, the transform should still reflect the held preview (not reset to 0)
-    expect(el.style.transform).toBe(`translate(0px, ${minutesToPx(15)}px)`);
-  });
+describe('InteractiveBlock release (spring into the slot, no jump)', () => {
+  const props = {
+    dayStartMs: DAY, dayIndex: 0, startMs: START, endMs: END,
+    topPct: 10, heightPct: 5, startLabel: '09:00', title: 'Write spec', kind: 'task' as const, pinned: false,
+  };
 
-  it('after rerendering with new startMs/endMs props, the transform resets to 0 (cleared)', () => {
-    const { rerender } = render(
-      <InteractiveBlock
-        dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
-        topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
-        onCommit={vi.fn()}
-      />,
-    );
+  it('in the release render the transform is gone and the spring transition is back on', () => {
+    // The caller (WeekGrid) moves the target geometry in on this same render; the transform and
+    // top/left then transition together, so the tile springs from the drop point into the slot.
+    render(<InteractiveBlock {...props} onCommit={vi.fn()} />);
     const el = screen.getByTestId('event-block');
     fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
-    fireEvent.pointerMove(el, { clientX: 50, clientY: 120, pointerId: 1 }); // snaps to 15 min
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 120, pointerId: 1 });
+    expect(el.className).not.toContain('[transition:');
     fireEvent.pointerUp(el, { clientX: 50, clientY: 120, pointerId: 1 });
-    // Held preview is active
-    expect(el.style.transform).toBe(`translate(0px, ${minutesToPx(15)}px)`);
-    // Rerender with new props (simulating optimistic update landing)
-    const NEW_START = START + 15 * 60_000;
-    const NEW_END = END + 15 * 60_000;
-    rerender(
-      <InteractiveBlock
-        dayStartMs={DAY} dayIndex={0} startMs={NEW_START} endMs={NEW_END}
-        topPct={10} heightPct={5} startLabel="09:15" title="Write spec" kind="task" pinned={false}
-        onCommit={vi.fn()}
-      />,
-    );
-    // After props change, held preview should clear → transform back to 0
-    expect(el.style.transform).toBe('translate(0px, 0px)');
+    expect(el.style.transform).toBe('');
+    expect(el).not.toHaveAttribute('data-dragging');
+    expect(el.className).toContain('[transition:top_var(--dur-move)_var(--ease-spring)');
   });
 
-  it('zero-delta click still resets immediately (no held preview on no-op)', () => {
+  it('after props update the wrapper has no transform and carries data-settling until transitionend', () => {
+    const { rerender } = render(<InteractiveBlock {...props} onCommit={vi.fn()} />);
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientX: 50, clientY: 120, pointerId: 1 });
+    fireEvent.pointerUp(el, { clientX: 50, clientY: 120, pointerId: 1 });
+    rerender(<InteractiveBlock {...props} startMs={START + 15 * 60_000} endMs={END + 15 * 60_000} topPct={11.5} onCommit={vi.fn()} />);
+    expect(el.style.transform).toBe('');
+    expect(el.style.top).toBe('11.5%');
+    expect(el).toHaveAttribute('data-settling', 'true');
+    // A child's transitionend (the grip pill) bubbles up and must not count.
+    fireTransitionEnd(screen.getByTestId('resize-handle'), 'top');
+    expect(el).toHaveAttribute('data-settling', 'true');
+    fireTransitionEnd(el, 'opacity'); // not a geometry property
+    expect(el).toHaveAttribute('data-settling', 'true');
+    fireTransitionEnd(el, 'top');
+    expect(el).not.toHaveAttribute('data-settling');
+  });
+
+  it('data-settling falls back to a timeout when no transitionend arrives', () => {
+    vi.useFakeTimers();
+    try {
+      render(<InteractiveBlock {...props} onCommit={vi.fn()} />);
+      const el = screen.getByTestId('event-block');
+      fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+      fireEvent.pointerUp(el, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
+      expect(el).toHaveAttribute('data-settling', 'true');
+      act(() => { vi.advanceTimersByTime(1000); });
+      expect(el).not.toHaveAttribute('data-settling');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a click (no drag) never settles and never carries a transform', () => {
     renderBlock();
     const el = screen.getByTestId('event-block');
     fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
     fireEvent.pointerUp(el, { clientX: 50, clientY: 100, pointerId: 1 });
-    // No-op move — no held preview
-    expect(el.style.transform).toBe('translate(0px, 0px)');
+    expect(el.style.transform).toBe('');
+    expect(el).not.toHaveAttribute('data-settling');
   });
 
-  it('drag label disappears on release even with held preview', () => {
-    renderBlock();
+  it('an idle block glides on a data change (replan) — the spring is always on when not dragging', () => {
+    const { rerender } = render(<InteractiveBlock {...props} onCommit={vi.fn()} />);
     const el = screen.getByTestId('event-block');
-    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
-    fireEvent.pointerMove(el, { clientX: 50, clientY: 120, pointerId: 1 });
-    expect(screen.getByTestId('drag-label')).toBeInTheDocument();
-    fireEvent.pointerUp(el, { clientX: 50, clientY: 120, pointerId: 1 });
-    expect(screen.queryByTestId('drag-label')).not.toBeInTheDocument();
+    rerender(<InteractiveBlock {...props} startMs={START + 60 * 60_000} endMs={END + 60 * 60_000} topPct={20} onCommit={vi.fn()} />);
+    expect(el.className).toContain('[transition:top_var(--dur-move)_var(--ease-spring)');
+    expect(el.style.transform).toBe('');
   });
 
-  // The "jump from initial to final" fix. The drag preview lives in `transform` while the
-  // committed position arrives in `top`. If the replan transition (transition-[top,height])
-  // were active on the render that moves top to its new value, the browser would animate top
-  // old→new while transform snaps to 0 — the block jumps back to the start then glides to the
-  // end. So the block must stay transition-none through the *landed paint* (held → landing).
-  it('stays transition-none through the held preview AND the landed commit (no jump)', () => {
-    const { rerender } = render(
-      <InteractiveBlock
-        dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
-        topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
-        onCommit={vi.fn()}
-      />,
-    );
+  it('a resize release drops the raw height for the target in one render (spring-strong settle)', () => {
+    render(<InteractiveBlock {...props} onCommit={vi.fn()} />);
+    const handle = screen.getByTestId('resize-handle');
     const el = screen.getByTestId('event-block');
-    expect(el.className).toContain('transition-[top,height]'); // idle replan glide
-    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
-    fireEvent.pointerMove(el, { clientX: 50, clientY: 120, pointerId: 1 });
-    fireEvent.pointerUp(el, { clientX: 50, clientY: 120, pointerId: 1 });
-    // Held: no transition
-    expect(el.className).toContain('transition-none');
-    // Commit lands (new props after a drag) → `landing` keeps the transition off for the
-    // painted frame, so top jumps to newTop with transform 0 and nothing animates.
-    rerender(
-      <InteractiveBlock
-        dayStartMs={DAY} dayIndex={0} startMs={START + 15 * 60_000} endMs={END + 15 * 60_000}
-        topPct={11.5} heightPct={5} startLabel="09:15" title="Write spec" kind="task" pinned={false}
-        onCommit={vi.fn()}
-      />,
-    );
-    expect(el.className).toContain('transition-none');
-    expect(el.className).not.toContain('transition-[top,height]');
-  });
-
-  // A replan (props change with NO preceding drag) must keep the glide — `landing` only
-  // engages when a held preview was being cleared.
-  it('keeps the replan glide when props change without a drag', () => {
-    const { rerender } = render(
-      <InteractiveBlock
-        dayStartMs={DAY} dayIndex={0} startMs={START} endMs={END}
-        topPct={10} heightPct={5} startLabel="09:00" title="Write spec" kind="task" pinned={false}
-        onCommit={vi.fn()}
-      />,
-    );
-    const el = screen.getByTestId('event-block');
-    rerender(
-      <InteractiveBlock
-        dayStartMs={DAY} dayIndex={0} startMs={START + 60 * 60_000} endMs={END + 60 * 60_000}
-        topPct={20} heightPct={5} startLabel="10:00" title="Write spec" kind="task" pinned={false}
-        onCommit={vi.fn()}
-      />,
-    );
-    expect(el.className).toContain('transition-[top,height]');
+    fireEvent.pointerDown(handle, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientY: 200 + PX_PER_60MIN, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientY: 200 + PX_PER_60MIN, pointerId: 1 });
+    expect(el.style.height).toBe('5%');
+    expect(el.className).toContain('height_var(--dur-resize)_var(--ease-spring-strong)');
   });
 });
 
@@ -552,14 +587,27 @@ describe('InteractiveBlock on a coarse pointer', () => {
     });
   });
 
-  it('an armed coarse block lifts and stops the browser owning the gesture', () => {
+  it('an armed coarse block lifts at once, before any travel', () => {
     render(<InteractiveBlock {...coarseProps} onCommit={vi.fn()} />);
     const el = screen.getByTestId('event-block');
     expect(el.className).toContain('touch-pan-y');
     fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
     act(() => { vi.advanceTimersByTime(LONG_PRESS_MS); });
-    expect(el.className).toContain('shadow-pop');
-    expect(el.style.transform).toContain('scale(1.02)');
+    expect(el).toHaveAttribute('data-dragging', 'true');
+    expect(el.className).toContain('shadow-lift');
+    expect(el.style.transform).toContain('scale(1.05)');
+  });
+
+  it('a long press lifted in place and released is a tap, not a commit', () => {
+    const onCommit = vi.fn();
+    const onClick = vi.fn();
+    render(<InteractiveBlock {...coarseProps} onCommit={onCommit} onClick={onClick} />);
+    const el = screen.getByTestId('event-block');
+    fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
+    act(() => { vi.advanceTimersByTime(LONG_PRESS_MS); });
+    fireEvent.pointerUp(el, { clientX: 51, clientY: 101, pointerId: 1 });
+    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(onCommit).not.toHaveBeenCalled();
   });
 
   // jsdom has no PointerEvent, so a `pointerType` passed in fireEvent's init is dropped (the
@@ -589,8 +637,8 @@ describe('InteractiveBlock on a coarse pointer', () => {
     expect(el.className).not.toContain('touch-pan-y');
     fireEvent.pointerDown(el, { clientX: 50, clientY: 100, pointerId: 1 });
     fireEvent.pointerMove(el, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
+    expect(el.style.transform).toContain('scale(1.05)'); // past the threshold at once — no long press
     fireEvent.pointerUp(el, { clientX: 50, clientY: 100 + PX_PER_60MIN, pointerId: 1 });
-    expect(el.style.transform).not.toContain('scale');
     expect(onCommit).toHaveBeenCalledTimes(1);
   });
 
@@ -700,18 +748,16 @@ describe('InteractiveBlock scroll compensation', () => {
       fireEvent.pointerDown(el, { clientX: 50, clientY: 560, pointerId: 1 });
       fireEvent.pointerMove(el, { clientX: 50, clientY: 590, pointerId: 1 });
       // 30px of finger travel = 30 min → snapped to +30.
-      expect(screen.getByTestId('drag-label')).toHaveTextContent(
-        '9:30 AM – 10:30 AM',
-      );
+      expect(screen.getByTestId('drag-label').textContent).toMatch(/^Mon · 9:30\sAM$/);
 
       // Now the finger stops. One auto-scroll frame fires — and nothing else.
       const step = 12; // edgeScrollStep(590, 0, 600)
       act(() => { frames.splice(0).forEach((cb) => cb(0)); });
       expect(scroller.scrollTop).toBe(step);
       // 30px of finger + 12px of scroll = 42 min → snapped to +45, with no new pointermove.
-      expect(screen.getByTestId('drag-label')).toHaveTextContent(
-        '9:45 AM – 10:45 AM',
-      );
+      expect(screen.getByTestId('drag-label').textContent).toMatch(/^Mon · 9:45\sAM$/);
+      // The tile itself rides the scroll too: 30px of finger + 12px of scroll.
+      expect(screen.getByTestId('event-block').style.transform).toBe('translate(0px, 42px) scale(1.05) rotate(-0.8deg)');
 
       // And the commit agrees with what the preview showed — no landing jump.
       fireEvent.pointerUp(el, { clientX: 50, clientY: 590, pointerId: 1 });

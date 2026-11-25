@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import type { ScheduledBlock, CalendarEvent } from '../../api/types';
 import { startOfWeek, dayColumns, minutesToPx } from './weekModel';
 import { blockLeftCss, blockWidthCss } from './blockLayout';
 import { within } from '@testing-library/react';
-import { WeekGrid, type WeekGridProps } from './WeekGrid';
+import { WeekGrid, HOLD_TIMEOUT_MS, type WeekGridProps } from './WeekGrid';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 
 const MON = startOfWeek(Date.parse('2026-01-05T12:00:00.000Z'), 'UTC'); // 2026-01-05
@@ -396,6 +396,77 @@ describe('WeekGrid', () => {
     expect(tiles.find((t) => t.textContent?.includes('Standup'))).toHaveAttribute('data-selected', 'false');
   });
 
+});
+
+describe('WeekGrid held release target (no jump, rollback springs home)', () => {
+  const PX_60 = minutesToPx(60);
+  const base = { days, nowMs: WED_NOON, weekLabel: 'Jan 5 – 11', events: [] as CalendarEvent[], onPrev: vi.fn(), onToday: vi.fn(), onNext: vi.fn() };
+  const top = (hour: number) => `${(hour / 24) * 100}%`;
+  const tile = () => screen.getByTestId('event-block');
+  const dragDownAnHour = () => {
+    fireEvent.pointerDown(tile(), { clientX: 40, clientY: 80, pointerId: 1 });
+    fireEvent.pointerMove(tile(), { clientX: 40, clientY: 80 + PX_60, pointerId: 1 });
+    fireEvent.pointerUp(tile(), { clientX: 40, clientY: 80 + PX_60, pointerId: 1 });
+  };
+
+  it('the release render already shows the target slot, with no transform', () => {
+    const onCommit = vi.fn();
+    render(<WeekGrid {...base} blocks={[block()]} onCommit={onCommit} />);
+    expect(tile().style.top).toBe(top(13));
+    dragDownAnHour();
+    expect(onCommit).toHaveBeenCalledWith('b1', { startsAt: '2026-01-05T14:00:00.000Z', endsAt: '2026-01-05T15:00:00.000Z', pinned: true });
+    // The data has not changed yet, but the tile is already in its new slot.
+    expect(tile().style.top).toBe(top(14));
+    expect(tile().style.transform).toBe('');
+    expect(tile()).toHaveAttribute('data-settling', 'true');
+  });
+
+  it('keeps the target once the data agrees, and after the hold window', () => {
+    vi.useFakeTimers();
+    try {
+      const { rerender } = render(<WeekGrid {...base} blocks={[block()]} onCommit={vi.fn()} />);
+      dragDownAnHour();
+      rerender(<WeekGrid {...base} blocks={[block({ startsAt: '2026-01-05T14:00:00.000Z', endsAt: '2026-01-05T15:00:00.000Z', pinned: true })]} onCommit={vi.fn()} />);
+      expect(tile().style.top).toBe(top(14));
+      act(() => { vi.advanceTimersByTime(HOLD_TIMEOUT_MS + 10); });
+      expect(tile().style.top).toBe(top(14));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('springs back to the data when the write never lands (rolled back / failed)', () => {
+    vi.useFakeTimers();
+    try {
+      render(<WeekGrid {...base} blocks={[block()]} onCommit={vi.fn()} />);
+      dragDownAnHour();
+      expect(tile().style.top).toBe(top(14));
+      act(() => { vi.advanceTimersByTime(HOLD_TIMEOUT_MS + 10); });
+      expect(tile().style.top).toBe(top(13));
+      expect(tile().className).toContain('[transition:top_var(--dur-move)_var(--ease-spring)');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('the data wins when the server put the block somewhere else', () => {
+    const { rerender } = render(<WeekGrid {...base} blocks={[block()]} onCommit={vi.fn()} />);
+    dragDownAnHour();
+    rerender(<WeekGrid {...base} blocks={[block({ startsAt: '2026-01-05T16:00:00.000Z', endsAt: '2026-01-05T17:00:00.000Z' })]} onCommit={vi.fn()} />);
+    expect(tile().style.top).toBe(top(16));
+  });
+
+  it('a cross-day release moves the same element to the new column (stable key, no re-insert)', () => {
+    render(<WeekGrid {...base} blocks={[block()]} onCommit={vi.fn()} />);
+    const layer = screen.getByTestId('block-layer');
+    vi.spyOn(layer, 'getBoundingClientRect').mockReturnValue({ width: 840, height: 1440, top: 0, left: 0, right: 840, bottom: 1440, x: 0, y: 0, toJSON: () => ({}) } as DOMRect);
+    const before = tile();
+    fireEvent.pointerDown(before, { clientX: 40, clientY: 80, pointerId: 1 });
+    fireEvent.pointerUp(before, { clientX: 40 + 2 * 120, clientY: 80, pointerId: 1 });
+    expect(tile()).toBe(before);
+    expect(tile()).toHaveAttribute('data-day-index', '2');
+    expect(tile().style.left).toBe(cssCalc(blockLeftCss((2 / 7) * 100, 0, 1)));
+  });
 });
 
 describe('WeekGrid app-created events', () => {
