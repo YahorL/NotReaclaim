@@ -141,4 +141,28 @@ describe('reconcile with an exclusive section (per-user lock)', () => {
     expect(result.created).toBe(1);
     expect(log).toEqual(['token', 'drift listing', 'enter', 'insert', 'exit']);
   });
+
+  it('reads the settings exactly once inside the section, and that read decides compute and apply alike', async () => {
+    const store = fakeScheduledBlockStore([], { snapshotReads: true });
+    const client = new FakeGoogleClient();
+    client.listQueue = [{ events: [] }];
+    const deps = buildDeps(store, client, [makeTask({ id: 't1' })]);
+    let inside = false;
+    const reads: string[] = [];
+    const settingsRepo = deps.schedulingRepos.settings;
+    const schedulingRepos = {
+      ...deps.schedulingRepos,
+      settings: { getByUserId: async (u: string) => { reads.push(inside ? 'inside' : 'outside'); return settingsRepo.getByUserId(u); } },
+    };
+    const exclusive = async <R>(fn: () => Promise<R>): Promise<R> => {
+      inside = true;
+      try { return await fn(); } finally { inside = false; }
+    };
+
+    await reconcile({ ...deps, schedulingRepos, exclusive }, 'u1', NOW);
+
+    // One read outside (drift's window) and ONE inside: a PUT /settings (which takes no user lock)
+    // landing between two inside reads would give compute and apply different tracking modes.
+    expect(reads).toEqual(['outside', 'inside']);
+  });
 });

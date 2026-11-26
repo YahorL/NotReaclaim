@@ -862,6 +862,17 @@ describe('assembleScheduleInput frozen task pieces (automatic tracking)', () => 
     });
   });
 
+  it('manual with kept history: the remaining pieces are numbered after the keys the kept rows hold', async () => {
+    const kept = running({ id: 'kept', engineKey: 'task:t1:2', startsAt: new Date('2026-01-05T07:00:00.000Z'), endsAt: new Date('2026-01-05T08:00:00.000Z') });
+    const withSince = fakeRepos({
+      settings: makeSettings({ requireStartToTrack: true, requireStartSince: new Date('2026-01-05T08:30:00.000Z'), workingHours: [{ weekday: 1, startMinute: 0, endMinute: 1440 }] as never }),
+      categories: [makeCategory()],
+      tasks: [makeTask({ id: 't1', durationMs: 7_200_000, minChunkMs: 1_800_000, maxChunkMs: 3_600_000 })],
+      blocks: [kept],
+    });
+    expect((await assembleScheduleInput(withSince, 'u1', NOW)).tasks.find((t) => t.id === 't1')).toMatchObject({ firstChunkIndex: 3 });
+  });
+
   it('automatic: a running habit row keeps its own (R21) handling, not the task freeze', async () => {
     const habitRow = running({ id: 'hab', taskId: null, habitId: 'h1', engineKey: 'habit:h1:x' });
     const input = await assembleScheduleInput(repos(false, [habitRow]), 'u1', NOW);

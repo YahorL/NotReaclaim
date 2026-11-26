@@ -652,6 +652,17 @@ describe('applyDesiredSchedule across time (stale past blocks)', () => {
     });
   });
 
+  it('manual tracking with kept history: a past row that ended by the switch keeps its time and gives its key up, even with no stable-key offset', async () => {
+    const repo = fakeRepo([dbBlock()]); // 2026-01-05 09:00–10:00, task:t1:0
+    const reissued = eBlock({ start: Date.parse('2026-01-12T09:00:00.000Z'), end: Date.parse('2026-01-12T10:00:00.000Z') });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([reissued]), {
+      now: LATER, horizonEnd: LATER_HORIZON, requireStartToTrack: true, requireStartSince: new Date('2026-01-05T12:00:00.000Z'),
+    });
+    expect(res).toEqual({ created: 1, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
+    expect(repo.update.mock.calls).toEqual([['u1', 'b1', { engineKey: null }]]);
+    expect(repo.rows().find((r) => r.id === 'b1')).toMatchObject({ startsAt: new Date('2026-01-05T09:00:00.000Z') });
+  });
+
   it('automatic tracking: a frozen row whose key release fails is skipped together with the create', async () => {
     const repo = fakeRepo([dbBlock()]);
     repo.update.mockImplementationOnce(async () => { throw Object.assign(new Error('gone'), { name: 'NotFoundError' }); });
