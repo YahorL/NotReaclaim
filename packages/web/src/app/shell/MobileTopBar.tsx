@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Icons } from './icons';
+import { ActionIcon } from './ActionIcon';
 import { routeTitle } from './routeHeader';
 import { useNowNextControls } from './useNowNextControls';
 
@@ -20,7 +21,7 @@ const ACTION = 'inline-flex shrink-0 items-center gap-1 rounded-pill px-3 py-1.5
  */
 export function MobileTopBar({ onNewTask, now = Date.now }: MobileTopBarProps): ReactElement {
   const { pathname } = useLocation();
-  const { running, nextBlock, nextLabel, start, stop, openPlanner } = useNowNextControls(now);
+  const { running, nextBlock, nextLabel, start, stop, openPlanner, startPending, stopPending } = useNowNextControls(now);
 
   return (
     <header
@@ -34,8 +35,8 @@ export function MobileTopBar({ onNewTask, now = Date.now }: MobileTopBarProps): 
           <button type="button" data-testid="mobile-current-task" onClick={openPlanner} className={PILL}>
             <span className="font-medium text-fg">Now</span> · {running.title}
           </button>
-          <button type="button" data-testid="mobile-stop-task" onClick={stop} className={`btn-glass ${ACTION} text-danger`}>
-            <Icons.stop size={13} /> Stop
+          <button type="button" data-testid="mobile-stop-task" onClick={stop} aria-busy={stopPending || undefined} className={`btn-glass ${ACTION} text-danger`}>
+            <ActionIcon pending={stopPending} icon={Icons.stop} size={13} /> Stop
           </button>
         </div>
       ) : nextBlock ? (
@@ -43,8 +44,8 @@ export function MobileTopBar({ onNewTask, now = Date.now }: MobileTopBarProps): 
           <button type="button" data-testid="mobile-next-task" onClick={openPlanner} className={PILL}>
             {nextLabel}
           </button>
-          <button type="button" data-testid="mobile-next-task-start" onClick={start} className={`btn-accent ${ACTION}`}>
-            <Icons.play size={13} /> Start
+          <button type="button" data-testid="mobile-next-task-start" onClick={start} aria-busy={startPending || undefined} className={`btn-accent ${ACTION}`}>
+            <ActionIcon pending={startPending} icon={Icons.play} size={13} /> Start
           </button>
         </div>
       ) : (

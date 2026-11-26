@@ -72,6 +72,12 @@ export interface CalendarBlockProps {
    *  order and the accessibility tree — but still mounted, so it can animate back. */
   hidden?: boolean;
   onTransitionEnd?: (e: ReactTransitionEvent<HTMLDivElement>) => void;
+  /**
+   * A write for this tile has been in flight for a while (the caller applies the ~400ms delay):
+   * `aria-busy`, "saving" in the body's name and a small spinner. Display only — it changes no
+   * handler, class or geometry the gestures read.
+   */
+  pending?: boolean;
   /** Overlays (the live drag label). */
   children?: ReactNode;
 }
@@ -106,6 +112,7 @@ export function CalendarBlock(props: CalendarBlockProps) {
     style, className = '', dayIndex, selected = false, coarse = false, onDelete, deleteLabel = 'Delete block',
     onUnpin, onBodyClick, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onLostPointerCapture, resize, children,
     motion = 'idle', pressed = false, settling = false, shake = false, hidden = false, landDelayMs, enterDelayMs, onTransitionEnd, onBodyKeyDown, onBodyBlur, onBodyFocus, describedBy,
+    pending = false,
   } = props;
   const v = blockVariant({ kind, source, pinned, started, accent });
   // 11px time label: dimmed on the translucent tiles, full strength on the violet meeting fill
@@ -117,7 +124,7 @@ export function CalendarBlock(props: CalendarBlockProps) {
   const entering = !landing && enterDelayMs !== undefined && motion === 'idle' && !hidden;
   const row = durationMin < ROW_LAYOUT_MAX_MIN;
   const state = v.locked ? 'locked, synced from Google' : 'movable: drag or use arrow keys, Shift+arrows to resize';
-  const ariaLabel = [title, whenLabel, state].filter(Boolean).join(', ');
+  const ariaLabel = [title, whenLabel, state, pending ? 'saving' : null].filter(Boolean).join(', ');
   const hasCluster = v.icon !== null || onDelete !== undefined;
   // Right padding for what is always visible in the corner cluster: the lock/pin, plus the ×
   // on a coarse pointer (no hover there). A hover-only × may overlap the text for a moment.
@@ -143,6 +150,8 @@ export function CalendarBlock(props: CalendarBlockProps) {
       data-hidden={hidden ? 'true' : undefined}
       data-new={landing ? 'true' : undefined}
       data-entering={entering ? 'true' : undefined}
+      data-pending={pending ? 'true' : undefined}
+      aria-busy={pending ? true : undefined}
       aria-hidden={hidden ? true : undefined}
       title={`${startLabel} ${title}`}
       onPointerDown={onPointerDown}
@@ -227,6 +236,13 @@ export function CalendarBlock(props: CalendarBlockProps) {
               ×
             </button>
           )}
+        </span>
+      )}
+      {/* Saving (spec: the Re-plan button's spinning refresh glyph, static under reduced motion). Its own
+          absolute corner, outside the cluster (no reflow of the reserved padding) and inert. */}
+      {pending && (
+        <span data-testid="block-pending" aria-hidden="true" className="pointer-events-none absolute bottom-1 right-1.5 z-[3] opacity-80">
+          <Icons.refresh size={11} className="animate-spin" />
         </span>
       )}
       {children}

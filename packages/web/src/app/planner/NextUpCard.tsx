@@ -1,6 +1,7 @@
 import type { ScheduledBlock } from '../../api/types';
 import { useScheduleQuery } from '../../api/queries';
 import { Icons } from '../shell/icons';
+import { ActionIcon } from '../shell/ActionIcon';
 import { useNowNextControls } from '../shell/useNowNextControls';
 import { useTimezone } from '../settings/useTimezone';
 import { relativeDayTimeLabel } from '../priorities/priorityBucket';
@@ -22,7 +23,7 @@ const ACTION = 'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-pill px-3.
  * pill, which the TopBar hides on the planner route.
  */
 export function NextUpCard({ now = Date.now, className = '' }: { now?: () => number; className?: string }) {
-  const { running, nextBlock, start, stop } = useNowNextControls(now);
+  const { running, nextBlock, start, stop, startPending, stopPending } = useNowNextControls(now);
   const scheduleQ = useScheduleQuery();
   const zone = useTimezone();
   const nowMs = now();
@@ -58,12 +59,12 @@ export function NextUpCard({ now = Date.now, className = '' }: { now?: () => num
               {current.title}
             </span>
             {running ? (
-              <button type="button" data-testid="stop-task" onClick={stop} className={`btn-glass ${ACTION} text-danger`}>
-                <Icons.stop size={14} /> Stop
+              <button type="button" data-testid="stop-task" onClick={stop} aria-busy={stopPending || undefined} className={`btn-glass ${ACTION} text-danger`}>
+                <ActionIcon pending={stopPending} icon={Icons.stop} size={14} /> Stop
               </button>
             ) : (
-              <button type="button" data-testid="next-task-start" onClick={start} className={`btn-accent ${ACTION}`}>
-                <Icons.play size={14} /> Start
+              <button type="button" data-testid="next-task-start" onClick={start} aria-busy={startPending || undefined} className={`btn-accent ${ACTION}`}>
+                <ActionIcon pending={startPending} icon={Icons.play} size={14} /> Start
               </button>
             )}
           </div>

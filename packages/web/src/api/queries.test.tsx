@@ -408,3 +408,45 @@ describe('duplicate block writes while one is pending (U2)', () => {
     expect(pending.result.current.map((p) => p.op).sort()).toEqual(['blockCreate', 'blockUpdate']);
   });
 });
+
+describe('useCreateScheduledBlockMutation: the placeholder hands over to the real tile (U1)', () => {
+  it('on success writes the created row into every cached schedule list whose range it overlaps, before it stops pending', async () => {
+    const created = { id: 'n1', taskId: 't1', startsAt: '2026-01-06T09:00:00.000Z', endsAt: '2026-01-06T10:00:00.000Z', pinned: true };
+    const createScheduledBlock = vi.fn(async () => created);
+    const { Wrapper, qc } = wrap(fakeApiClient({ createScheduledBlock } as never));
+    vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    const week = queryKeys.schedule('2026-01-05T00:00:00.000Z', '2026-01-12T00:00:00.000Z');
+    const nextWeek = queryKeys.schedule('2026-01-12T00:00:00.000Z', '2026-01-19T00:00:00.000Z');
+    const unranged = queryKeys.schedule(undefined, undefined);
+    qc.setQueryData(week, [{ id: 'b1' }]);
+    qc.setQueryData(nextWeek, []);
+    qc.setQueryData(unranged, []);
+    qc.setQueryData(queryKeys.schedulePreview(), { blocks: [], unscheduled: [] });
+    let pendingWhenWritten: boolean | null = null;
+    qc.getQueryCache().subscribe((e) => {
+      if (e.type === 'updated' && pendingWhenWritten === null && JSON.stringify(e.query.queryKey) === JSON.stringify(week)) {
+        pendingWhenWritten = qc.isMutating() > 0;
+      }
+    });
+    const { result } = renderHook(() => useCreateScheduledBlockMutation(), { wrapper: Wrapper });
+    result.current.mutate({ taskId: 't1', startsAt: created.startsAt, endsAt: created.endsAt });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(qc.getQueryData(week)).toEqual([{ id: 'b1' }, created]);
+    expect(qc.getQueryData(nextWeek)).toEqual([]);
+    expect(qc.getQueryData(unranged)).toEqual([created]);
+    expect(qc.getQueryData(queryKeys.schedulePreview())).toEqual({ blocks: [], unscheduled: [] });
+    expect(pendingWhenWritten).toBe(true);
+  });
+
+  it('never adds a row twice (a refetch may already have brought it)', async () => {
+    const created = { id: 'n1', taskId: 't1', startsAt: '2026-01-06T09:00:00.000Z', endsAt: '2026-01-06T10:00:00.000Z', pinned: true };
+    const { Wrapper, qc } = wrap(fakeApiClient({ createScheduledBlock: vi.fn(async () => created) } as never));
+    vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    const week = queryKeys.schedule('2026-01-05T00:00:00.000Z', '2026-01-12T00:00:00.000Z');
+    qc.setQueryData(week, [created]);
+    const { result } = renderHook(() => useCreateScheduledBlockMutation(), { wrapper: Wrapper });
+    result.current.mutate({ taskId: 't1', startsAt: created.startsAt, endsAt: created.endsAt });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(qc.getQueryData(week)).toEqual([created]);
+  });
+});

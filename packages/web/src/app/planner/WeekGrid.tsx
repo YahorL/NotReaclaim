@@ -204,7 +204,18 @@ export interface WeekGridProps {
    * Planner passes the loaded range, so first load and paging pop in, a refetch does not.
    */
   entranceKey?: string | null;
+  /** Tiles (`b:<id>` / `e:<id>`) with a slow write in flight: shown as saving (display only). */
+  pendingKeys?: ReadonlySet<string>;
+  /**
+   * Tasks dropped / pinned onto the grid whose POST is still waiting: a dashed placeholder at the
+   * slot until the real tile arrives. Not tiles — they take no overlap lane and no pointer events.
+   */
+  dropPlaceholders?: readonly DropPlaceholder[];
 }
+
+export interface DropPlaceholder { key: string; title: string; startMs: number; endMs: number }
+
+const NO_PLACEHOLDERS: readonly DropPlaceholder[] = [];
 
 interface Item {
   key: string;
@@ -277,7 +288,7 @@ function toItems(blocks: ScheduledBlock[], events: CalendarEvent[], zone: string
 }
 
 export function WeekGrid(props: WeekGridProps) {
-  const { days, nowMs, weekLabel, blocks, events, onPrev, onToday, onNext, onCommit, onCommitEvent, onEditEvent, onDeleteBlock, onDeleteEvent, taskDrop = null, accents = {}, zone = 'UTC', dayStartMinute = 0, panelHidden, onTogglePanel, compact = false, coarse = false, onEditTask, selectedKey = null, onSelect, filters = ALL_SHOWN, onToggleFilter, landing, entranceKey = null } = props;
+  const { days, nowMs, weekLabel, blocks, events, onPrev, onToday, onNext, onCommit, onCommitEvent, onEditEvent, onDeleteBlock, onDeleteEvent, taskDrop = null, accents = {}, zone = 'UTC', dayStartMinute = 0, panelHidden, onTogglePanel, compact = false, coarse = false, onEditTask, selectedKey = null, onSelect, filters = ALL_SHOWN, onToggleFilter, landing, entranceKey = null, pendingKeys, dropPlaceholders = NO_PLACEHOLDERS } = props;
   const gridCols = `${timeGutterPx(compact)}px repeat(${days.length}, minmax(0, 1fr))`;
   const dataItems = toItems(blocks, events, zone);
   const [pending, setPending] = useState<Record<string, Pending>>({});
@@ -291,6 +302,8 @@ export function WeekGrid(props: WeekGridProps) {
   const shownItems = items.filter((it) => !isFilteredOut(it.kind, filters));
   const hiddenItems = items.filter((it) => isFilteredOut(it.kind, filters));
   const layout = new Map([...layoutWeek(hiddenItems, days), ...layoutWeek(shownItems, days)]);
+  // Their own pass: a placeholder never splits a real tile's column into lanes.
+  const placeholderLayout = layoutWeek(dropPlaceholders, days);
   const entering = useEntrance(entranceKey, days.length);
   const layerRef = useRef<HTMLDivElement>(null);
   const pendingRef = useRef(pending);
@@ -559,6 +572,7 @@ export function WeekGrid(props: WeekGridProps) {
                         zone={zone}
                         coarse={coarse}
                         getScrollContainer={() => scrollRef.current}
+                        pending={pendingKeys?.has(it.key) ?? false}
                       />
                     );
                   }
@@ -591,6 +605,7 @@ export function WeekGrid(props: WeekGridProps) {
                         zone={zone}
                         coarse={coarse}
                         getScrollContainer={() => scrollRef.current}
+                        pending={pendingKeys?.has(it.key) ?? false}
                       />
                     );
                   }
@@ -616,6 +631,25 @@ export function WeekGrid(props: WeekGridProps) {
                       deleteLabel="Delete event"
                       style={{ top: `${g.topPct}%`, height: `${g.heightPct}%`, left: blockLeftCss(g.leftPct, g.lane, g.lanes), width: blockWidthCss(g.widthPct, g.lane, g.lanes) }}
                     />
+                  );
+                })}
+
+                {/* Dropped tasks still being saved: the drag ghost's dashed accent look, at the slot. */}
+                {dropPlaceholders.map((ph) => {
+                  const g = placeholderLayout.get(ph.key);
+                  if (!g) return null;
+                  return (
+                    <div
+                      key={ph.key}
+                      data-testid="drop-placeholder"
+                      data-day-index={g.dayIndex}
+                      aria-hidden="true"
+                      className="pointer-events-none absolute z-[2] flex items-start gap-1.5 overflow-hidden rounded-event border-[1.5px] border-dashed border-accent-fg bg-accent-fg/[.08] px-[9px] py-1 text-[13px] font-medium leading-tight text-fg-2"
+                      style={{ top: `${g.topPct}%`, height: `${g.heightPct}%`, left: blockLeftCss(g.leftPct, g.lane, g.lanes), width: blockWidthCss(g.widthPct, g.lane, g.lanes) }}
+                    >
+                      <Icons.refresh size={11} className="mt-[3px] shrink-0 animate-spin" />
+                      <span className="min-w-0 truncate">{ph.title}</span>
+                    </div>
                   );
                 })}
 

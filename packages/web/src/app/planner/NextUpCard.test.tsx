@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { ScheduledBlock } from '../../api/types';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 import { NextUpCard, followingBlock } from './NextUpCard';
@@ -38,6 +38,40 @@ describe('NextUpCard', () => {
     expect(screen.queryByTestId('next-task-start')).toBeNull();
     fireEvent.click(screen.getByTestId('stop-task'));
     await waitFor(() => expect(stopBlock).toHaveBeenCalledWith('r1'));
+  });
+
+  it('a slow Start: after a short delay the button is busy (spinner), and a second click sends nothing', async () => {
+    let release!: (v: unknown) => void;
+    const startBlock = vi.fn(() => new Promise((res) => { release = res; }));
+    const api = fakeApiClient({ getSchedule: vi.fn(async () => [block()]), startBlock } as never);
+    renderWithProviders(<NextUpCard now={() => NOW} />, { api });
+    const btn = await screen.findByTestId('next-task-start');
+    fireEvent.click(btn);
+    expect(btn).not.toHaveAttribute('aria-busy');
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn).toHaveAttribute('aria-busy', 'true'));
+    expect(within(btn).getByTestId('action-pending')).toBeInTheDocument();
+    fireEvent.click(btn);
+    expect(startBlock).toHaveBeenCalledTimes(1);
+    release({});
+    await waitFor(() => expect(btn).not.toHaveAttribute('aria-busy'));
+  });
+
+  it('a slow Stop marks the Stop button busy the same way', async () => {
+    let release!: (v: unknown) => void;
+    const stopBlock = vi.fn(() => new Promise((res) => { release = res; }));
+    const api = fakeApiClient({
+      getSchedule: vi.fn(async () => [block({ id: 'r1', startsAt: '2026-01-05T13:30:00.000Z', endsAt: '2026-01-05T14:45:00.000Z', startedAt: '2026-01-05T13:30:00.000Z' })]),
+      stopBlock,
+    } as never);
+    renderWithProviders(<NextUpCard now={() => NOW} />, { api });
+    const btn = await screen.findByTestId('stop-task');
+    fireEvent.click(btn);
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn).toHaveAttribute('aria-busy', 'true'));
+    expect(stopBlock).toHaveBeenCalledTimes(1);
+    release({});
+    await waitFor(() => expect(btn).not.toHaveAttribute('aria-busy'));
   });
 
   it('names the block after the next one on its second line', async () => {

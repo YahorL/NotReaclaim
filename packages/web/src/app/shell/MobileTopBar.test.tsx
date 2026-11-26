@@ -68,6 +68,20 @@ describe('MobileTopBar', () => {
     await waitFor(() => expect(stopBlock).toHaveBeenCalledWith('r1'));
   });
 
+  it('a slow Start is shown busy after a short delay, and a second tap sends nothing', async () => {
+    let release!: (v: unknown) => void;
+    const startBlock = vi.fn(() => new Promise((res) => { release = res; }));
+    const api = fakeApiClient({ getSchedule: async () => [block()], startBlock } as never);
+    renderWithProviders(<MobileTopBar onNewTask={() => {}} now={nowFn} />, { api });
+    const btn = await screen.findByTestId('mobile-next-task-start');
+    fireEvent.click(btn);
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn).toHaveAttribute('aria-busy', 'true'));
+    expect(startBlock).toHaveBeenCalledTimes(1);
+    release({});
+    await waitFor(() => expect(btn).not.toHaveAttribute('aria-busy'));
+  });
+
   it('gives the + button a touch-sized target', () => {
     const api = fakeApiClient({ getSchedule: async () => [] });
     renderWithProviders(<MobileTopBar onNewTask={() => {}} now={nowFn} />, { api });

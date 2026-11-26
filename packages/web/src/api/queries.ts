@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { useMutation, useMutationState, useQuery, useQueryClient, type Mutation, type QueryClient, type QueryKey } from '@tanstack/react-query';
 import { useApi } from './ApiProvider';
 import type { ApiClient } from './client';
-import type { CreateTaskInput, UpdateTaskInput, CreateHabitInput, UpdateHabitInput, SettingsInput, UpdateScheduledBlockInput, CreateCategoryInput, UpdateCategoryInput, CreateSubtaskInput, UpdateSubtaskInput, CreateCalendarEventInput, UpdateCalendarEventInput, CreateScheduledBlockInput } from './types';
+import type { CreateTaskInput, UpdateTaskInput, CreateHabitInput, UpdateHabitInput, SettingsInput, UpdateScheduledBlockInput, CreateCategoryInput, UpdateCategoryInput, CreateSubtaskInput, UpdateSubtaskInput, CreateCalendarEventInput, UpdateCalendarEventInput, CreateScheduledBlockInput, ScheduledBlock } from './types';
 
 export const queryKeys = {
   scheduleRoot: ['schedule'] as const,
@@ -194,16 +194,41 @@ function useApiMutation<TVars = void, TResult = unknown>(
   call: (api: ApiClient, vars: TVars) => Promise<TResult>,
   roots: readonly QueryKey[],
   meta?: PlannerWriteMeta,
+  /** Runs on success before the invalidation (while the mutation still counts as pending). */
+  onData?: (qc: QueryClient, data: TResult) => void,
 ) {
   const api = useApi();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (vars: TVars) => call(api, vars),
     meta,
-    onSuccess: () => {
+    onSuccess: (data: TResult) => {
+      onData?.(qc, data);
       for (const queryKey of roots) invalidateRoot(qc, queryKey);
     },
   });
+}
+
+/** True when the cached schedule list `queryKey` (['schedule', { from, to }]) covers `block`. */
+function scheduleListCovers(queryKey: QueryKey, block: ScheduledBlock): boolean {
+  const range = queryKey[1];
+  if (range === null || typeof range !== 'object') return false; // e.g. ['schedule', 'preview']
+  const { from, to } = range as { from?: string; to?: string };
+  // The server's range rule (startsAt < to && endsAt > from); an open end is "from now on".
+  return (to === undefined || block.startsAt < to) && (from === undefined || block.endsAt > from);
+}
+
+/**
+ * Write a just-created block into every cached schedule list whose range it falls in, so the
+ * planner's drop placeholder hands over to the real tile in the same render instead of leaving a
+ * gap until the refetch (which may be deferred behind another planner write) lands.
+ */
+function addCreatedBlock(qc: QueryClient, block: ScheduledBlock): void {
+  for (const [key, data] of qc.getQueriesData<unknown>({ queryKey: queryKeys.scheduleRoot })) {
+    if (!Array.isArray(data) || !scheduleListCovers(key, block)) continue;
+    if ((data as Array<{ id: string }>).some((b) => b.id === block.id)) continue;
+    qc.setQueryData(key, [...data, block]);
+  }
 }
 
 /**
@@ -499,6 +524,7 @@ export function useCreateScheduledBlockMutation({ inlineErrors = false }: { inli
     (api, body: CreateScheduledBlockInput) => api.createScheduledBlock(body),
     [queryKeys.scheduleRoot],
     { plannerWrite: 'blockCreate', inlineErrors },
+    addCreatedBlock,
   ));
 }
 

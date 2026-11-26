@@ -668,3 +668,61 @@ describe('Planner range query in the settings zone', () => {
   });
 });
 
+
+describe('Planner: block writes that are still saving (U1)', () => {
+  beforeEach(() => { localStorage.removeItem('nr.plannerPanelHidden'); });
+  const task: Task = {
+    id: 't1', userId: 'u1', title: 'Write spec', priority: 2, sortOrder: 0,
+    durationMs: 3_600_000, dueBy: '2026-01-10T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1,
+    categoryId: null, status: 'pending', completedAt: null, createdAt: '', updatedAt: '',
+  };
+  const inbox: Task = { ...task, id: 't2', title: 'Inbox zero' };
+  const layer = () => screen.getByTestId('block-layer');
+  const tileOf = (title: string) => within(layer()).getAllByTestId('event-block').find((b) => b.textContent?.includes(title));
+  const tap = (el: HTMLElement) => {
+    fireEvent.pointerDown(el, { clientX: 40, clientY: 80, pointerId: 1 });
+    fireEvent.pointerUp(el, { clientX: 40, clientY: 80, pointerId: 1 });
+  };
+
+  it('a slow write marks its tile as saving only after a short delay, and clears when it lands', async () => {
+    let release!: (v: unknown) => void;
+    const updateScheduledBlock = vi.fn(() => new Promise((res) => { release = res; }));
+    const pinned = [{ ...blocks[0]!, pinned: true }];
+    renderWithProviders(<Planner now={() => NOW} />, { api: makeApi({ getSchedule: vi.fn(async () => pinned), updateScheduledBlock, listTasks: vi.fn(async () => [task]) }) });
+    await waitFor(() => expect(tileOf('Write spec')).toBeTruthy());
+    tap(tileOf('Write spec')!);
+    fireEvent.click(screen.getByTestId('detail-unpin'));
+    await waitFor(() => expect(updateScheduledBlock).toHaveBeenCalledTimes(1));
+    // Not at once: a normal fast save must not flicker.
+    expect(tileOf('Write spec')).not.toHaveAttribute('data-pending');
+    await waitFor(() => expect(tileOf('Write spec')).toHaveAttribute('data-pending', 'true'));
+    expect(tileOf('Write spec')).toHaveAttribute('aria-busy', 'true');
+    release(pinned[0]);
+    await waitFor(() => expect(tileOf('Write spec')).not.toHaveAttribute('data-pending'));
+  });
+
+  it('a task pinned at a slot shows a placeholder there while the POST waits, then the real tile', async () => {
+    let release!: (v: unknown) => void;
+    const createScheduledBlock = vi.fn(() => new Promise((res) => { release = res; }));
+    const created = { ...blocks[0]!, id: 'n1', taskId: 't2', title: 'Inbox zero', pinned: true, startsAt: '2026-01-07T00:00:00.000Z', endsAt: '2026-01-07T00:30:00.000Z' };
+    // After the POST answers, the schedule refetch hangs: only the hand-over can show the tile.
+    let refetchHangs = false;
+    const getSchedule = vi.fn(() => (refetchHangs ? new Promise<ScheduledBlock[]>(() => {}) : Promise.resolve([...blocks])));
+    renderWithProviders(<Planner now={() => NOW} />, { api: makeApi({ createScheduledBlock, getSchedule, listTasks: vi.fn(async () => [task, inbox]) }) });
+    await waitFor(() => expect(tileOf('Write spec')).toBeTruthy());
+    // Click-to-create on today's column (jsdom rects are 0 → the 00:00 slot), pin an existing task.
+    fireEvent.click(screen.getByTestId('day-col-0'));
+    fireEvent.click(screen.getByTestId('mode-task'));
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Inbox zero' })).toBeInTheDocument());
+    fireEvent.change(screen.getByTestId('task-select'), { target: { value: 't2' } });
+    fireEvent.click(screen.getByTestId('create-submit'));
+    await waitFor(() => expect(createScheduledBlock).toHaveBeenCalledTimes(1));
+    const ph = await within(layer()).findByTestId('drop-placeholder');
+    expect(ph).toHaveTextContent('Inbox zero');
+    expect(ph).toHaveAttribute('data-day-index', '0');
+    refetchHangs = true;
+    release(created);
+    await waitFor(() => expect(within(layer()).queryByTestId('drop-placeholder')).toBeNull());
+    expect(tileOf('Inbox zero')).toBeTruthy();
+  });
+});

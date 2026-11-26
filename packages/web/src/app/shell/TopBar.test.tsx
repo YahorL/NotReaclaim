@@ -143,6 +143,21 @@ describe('TopBar Next-task indicator', () => {
     expect(screen.getByText('New task')).toHaveClass('sr-only', 'xl:not-sr-only');
   });
 
+  it('a slow Start in the pill: busy after a short delay, and a second click sends nothing', async () => {
+    let release!: (v: unknown) => void;
+    const startBlock = vi.fn(() => new Promise((res) => { release = res; }));
+    const api = fakeApiClient({ getSchedule: async () => [block()], startBlock } as never);
+    renderWithProviders(<TopBar onNewTask={() => {}} now={nowFn} />, { api, initialEntries: ['/priorities'] });
+    const btn = await screen.findByTestId('next-task-start');
+    fireEvent.click(btn);
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn).toHaveAttribute('aria-busy', 'true'));
+    expect(within(btn).getByTestId('action-pending')).toBeInTheDocument();
+    expect(startBlock).toHaveBeenCalledTimes(1);
+    release({});
+    await waitFor(() => expect(btn).not.toHaveAttribute('aria-busy'));
+  });
+
   it('is hidden when the schedule is empty', async () => {
     const api = fakeApiClient({
       getSchedule: async () => [],

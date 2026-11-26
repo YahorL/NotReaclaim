@@ -275,6 +275,33 @@ describe('WeekGrid', () => {
     expect(within(screen.getByTestId('block-layer')).getByTestId('col-slot-1').contains(indicator)).toBe(true);
   });
 
+  it('marks the tiles named in pendingKeys as saving (task block and app event)', () => {
+    renderGrid({ events: [event({ source: 'app' })], pendingKeys: new Set(['b:b1', 'e:e1']) });
+    const tiles = screen.getAllByTestId('event-block');
+    expect(tiles.map((t) => t.getAttribute('data-pending'))).toEqual(['true', 'true']);
+  });
+
+  it('draws a placeholder at the slot of a dropped task while its POST is pending, outside the tiles\' lanes', () => {
+    // Overlaps the Monday 13:00–14:00 block: the real tile must keep its full width.
+    renderGrid({
+      events: [],
+      dropPlaceholders: [{ key: 'drop:t2', title: 'Inbox zero', startMs: Date.parse('2026-01-05T13:30:00.000Z'), endMs: Date.parse('2026-01-05T14:30:00.000Z') }],
+    });
+    const ph = screen.getByTestId('drop-placeholder');
+    expect(screen.getByTestId('block-layer').contains(ph)).toBe(true);
+    expect(ph).toHaveTextContent('Inbox zero');
+    expect(ph).toHaveAttribute('aria-hidden', 'true');
+    expect(ph.className).toContain('pointer-events-none');
+    expect(ph.className).toContain('border-dashed');
+    expect(ph).toHaveAttribute('data-day-index', '0');
+    expect(ph.style.top).toBe(`${(13.5 / 24) * 100}%`);
+    expect(ph.style.height).toBe(`${(1 / 24) * 100}%`);
+    // Not a tile: the real block keeps lane 0 of 1.
+    const tile = screen.getByTestId('event-block');
+    expect(tile.style.width).toBe(cssCalc(blockWidthCss(100 / 7, 0, 1)));
+    expect(screen.getAllByTestId('event-block')).toHaveLength(1);
+  });
+
   it('puts the hour grid in a scroll container, below the day header', () => {
     renderGrid();
     const scroller = screen.getByTestId('hours-scroll');

@@ -1,5 +1,6 @@
 import { useLocation } from 'react-router-dom';
 import { Icons } from './icons';
+import { ActionIcon } from './ActionIcon';
 import { routeHeader, PAGE_HEADING_ID } from './routeHeader';
 import { AccountMenu } from './AccountMenu';
 import { useNowNextControls } from './useNowNextControls';
@@ -24,7 +25,7 @@ const PILL_ACTION = 'inline-flex h-[34px] shrink-0 items-center gap-1.5 rounded-
 
 export function TopBar({ onNewTask, onSearch, now = Date.now, sidebarHidden, onToggleSidebar }: TopBarProps) {
   const { pathname } = useLocation();
-  const { running, nextBlock, nextTime, start, stop, openPlanner } = useNowNextControls(now);
+  const { running, nextBlock, nextTime, start, stop, openPlanner, startPending, stopPending } = useNowNextControls(now);
   const zone = useTimezone();
   const tasksQ = useTasksQuery();
   const openTaskCount = tasksQ.data ? tasksQ.data.filter(isActiveTask).length : null;
@@ -74,8 +75,8 @@ export function TopBar({ onNewTask, onSearch, now = Date.now, sidebarHidden, onT
               <span aria-hidden="true">·</span>
               <span className="min-w-0 max-w-[24ch] truncate text-fg">{running.title}</span>
             </button>
-            <button type="button" data-testid="stop-task" onClick={stop} className={`btn-glass ${PILL_ACTION} text-danger`}>
-              <Icons.stop size={14} /> Stop
+            <button type="button" data-testid="stop-task" onClick={stop} aria-busy={stopPending || undefined} className={`btn-glass ${PILL_ACTION} text-danger`}>
+              <ActionIcon pending={stopPending} icon={Icons.stop} size={14} /> Stop
             </button>
           </div>
         ) : nextBlock ? (
@@ -93,8 +94,8 @@ export function TopBar({ onNewTask, onSearch, now = Date.now, sidebarHidden, onT
               <span aria-hidden="true" className="hidden xl:inline">·</span>
               <span className="hidden shrink-0 xl:inline">{nextTime}</span>
             </button>
-            <button type="button" data-testid="next-task-start" onClick={start} className={`btn-accent ${PILL_ACTION}`}>
-              <Icons.play size={14} /> Start
+            <button type="button" data-testid="next-task-start" onClick={start} aria-busy={startPending || undefined} className={`btn-accent ${PILL_ACTION}`}>
+              <ActionIcon pending={startPending} icon={Icons.play} size={14} /> Start
             </button>
           </div>
         ) : null}

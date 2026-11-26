@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { DndContext, DragOverlay, type DragEndEvent, type DragMoveEvent, type DragStartEvent } from '@dnd-kit/core';
 import type { CalendarEvent, ScheduledBlock, Task } from '../../api/types';
 import { ApiError } from '../../api/client';
-import { queryKeys, useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useHabitsQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation, useSettingsQuery, useStopBlockMutation } from '../../api/queries';
+import { queryKeys, useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useHabitsQuery, useCategoriesQuery, useUpdateTaskMutation, useDeleteTaskMutation, useSettingsQuery, useStopBlockMutation, usePendingPlannerWrites } from '../../api/queries';
 import { dayColumns, daysThatFit, shiftDays, dayAnchor, rangeLabel, weekdayLabel } from '../planner/weekModel';
 import { toIso } from '../lib/time';
 import { isOverlayOpen } from '../lib/overlay';
@@ -32,6 +32,8 @@ import { classifyBlock } from '../planner/weekModel';
 import { usePlannerFilters, isFilteredOut, ALL_SHOWN } from '../planner/usePlannerFilters';
 import { newBlockIds, dropInDelays, dropInDuration } from '../planner/replanDiff';
 import { usePrefersReducedMotion } from '../../theme/usePrefersReducedMotion';
+import { useDelayedKeys } from '../lib/useDelayed';
+import { pendingTileKeys, dropPlaceholdersFrom } from '../planner/pendingWrites';
 
 /** The Re-plan spinner shows at least this long, so a fast replan does not flicker the button. */
 export const REPLAN_MIN_SPIN_MS = 600;
@@ -229,6 +231,12 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
     return () => clearTimeout(t);
   }, []);
   const rise = (i: 0 | 1 | 2 | 3) => (rising ? RISE[i] : '');
+
+  // Block / event writes in flight from ANY surface (grid, detail card, top bar): a tile shows it is
+  // saving once its write has waited ~400ms; a dropped task shows a placeholder at its slot at once.
+  const pendingWrites = usePendingPlannerWrites();
+  const slowTileKeys = useDelayedKeys(pendingTileKeys(pendingWrites));
+  const dropPlaceholders = useMemo(() => dropPlaceholdersFrom(pendingWrites, tasks), [pendingWrites, tasks]);
 
   const labeledBlocks = useMemo(
     () => labelBlocksWithSubtasks(schedule.data ?? [], tasks),
@@ -436,6 +444,8 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           // First load and each page of days pop in; a refetch of the same range does not.
           // (The tiles only depend on the two ranged queries, not on the unranged preview.)
           entranceKey={rangedLoading ? null : rangeKey}
+          pendingKeys={slowTileKeys}
+          dropPlaceholders={dropPlaceholders}
           accents={accents}
           compact={compact}
           coarse={coarse}

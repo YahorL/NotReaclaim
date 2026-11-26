@@ -91,6 +91,27 @@ describe('CalendarBlock', () => {
     expect(screen.getByTestId('started-bar')).toBeInTheDocument();
   });
 
+  it('a slow write in flight (pending): aria-busy, data-pending, a decorative spinner and "saving" in the name', () => {
+    renderBlock({ kind: 'task', source: null, title: 'Write spec', pending: true });
+    const el = screen.getByTestId('event-block');
+    expect(el).toHaveAttribute('aria-busy', 'true');
+    expect(el).toHaveAttribute('data-pending', 'true');
+    const spinner = screen.getByTestId('block-pending');
+    expect(spinner).toHaveAttribute('aria-hidden', 'true');
+    // Takes no pointer events (the resize handle and drag underneath keep working) and no layout.
+    expect(spinner.className).toContain('pointer-events-none');
+    expect(spinner.className).toContain('absolute');
+    expect(screen.getByTestId('block-body')).toHaveAccessibleName(/^Write spec, .*, saving$/);
+  });
+
+  it('nothing pending: no busy state, no spinner', () => {
+    renderBlock({ kind: 'task', source: null });
+    const el = screen.getByTestId('event-block');
+    expect(el).not.toHaveAttribute('aria-busy');
+    expect(el).not.toHaveAttribute('data-pending');
+    expect(screen.queryByTestId('block-pending')).toBeNull();
+  });
+
   it('the body is a focusable button named with title, time and state', () => {
     renderBlock();
     const body = screen.getByTestId('block-body');
