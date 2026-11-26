@@ -264,8 +264,8 @@ describe('B1 — a running piece stays put (automatic tracking)', () => {
 });
 
 describe('a polled day (replans every 5 minutes, counting mirror)', () => {
-  async function day(requireStartToTrack: boolean, hours: number, events: CalendarEvent[] = []) {
-    const w = world({ settings: weekdaySettings({ requireStartToTrack }), tasks: [task(hours)], events });
+  async function day(requireStartToTrack: boolean, hours: number, events: CalendarEvent[] = [], taskBufferMs = 0) {
+    const w = world({ settings: weekdaySettings({ requireStartToTrack, taskBufferMs }), tasks: [task(hours)], events });
     const { calls, mirror } = countingMirror();
     await replan(w, at('08:00'), mirror);
     const first = { ...calls };
@@ -291,6 +291,12 @@ describe('a polled day (replans every 5 minutes, counting mirror)', () => {
     expect(r.spentH).toBe(3);
     expect(r.times).toEqual(['09:00–10:00', '11:00–12:00', '12:00–13:00']);
     expect(r.writes).toEqual({ create: 0, update: 0, delete: 0 }); // without stable keys: 2 / 1 / 2
+  });
+
+  it('automatic, 3 h around two meetings with a 10-minute task buffer: the same, the buffer around running pieces holds', async () => {
+    const r = await day(false, 3, [ev('m1', '10:00', '11:00'), ev('m2', '13:00', '14:00')], 10 * M);
+    expect(r.spentH).toBe(3);
+    expect(r.writes).toEqual({ create: 0, update: 0, delete: 0 });
   });
 
   it('manual (never pressing Start): unchanged, the pieces slide and nothing counts', async () => {
