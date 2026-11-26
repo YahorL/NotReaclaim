@@ -826,6 +826,13 @@ describe('assembleScheduleInput frozen task pieces (automatic tracking)', () => 
     expect(manual.tasks.find((t) => t.id === 't1')).not.toHaveProperty('firstChunkIndex');
   });
 
+  it('automatic: a piece ending exactly now has handed over to spent: counted once, not busy', async () => {
+    const END = Date.parse('2026-01-05T10:00:00.000Z'); // the running piece's end
+    const input = await assembleScheduleInput(repos(false, [running()]), 'u1', END);
+    expect(input.pinnedBlocks).toEqual([]);
+    expect(input.tasks.find((t) => t.id === 't1')!.durationMs).toBe(3_600_000); // 2 h − the hour done, once
+  });
+
   describe('the trailing task buffer of a piece that just ended (automatic only)', () => {
     const withBuffer = (requireStartToTrack: boolean, blocks: ReturnType<typeof makeBlock>[]) => fakeRepos({
       settings: makeSettings({ requireStartToTrack, taskBufferMs: 600_000, workingHours: [{ weekday: 1, startMinute: 0, endMinute: 1440 }] as never }),
