@@ -4,7 +4,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiProvider } from './ApiProvider';
 import { fakeApiClient } from '../test/fakes';
-import { queryKeys, useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useHabitsQuery, useCreateTaskMutation, useDeleteHabitMutation, useSettingsQuery, useSaveSettingsMutation, useCreateCalendarEventMutation, useCreateScheduledBlockMutation } from './queries';
+import { queryKeys, useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useHabitsQuery, useCreateTaskMutation, useDeleteHabitMutation, useSettingsQuery, useSaveSettingsMutation, useCreateCalendarEventMutation, useCreateScheduledBlockMutation, useStartBlockMutation, useStopBlockMutation, usePendingPlannerWrites } from './queries';
 
 function wrap(api = fakeApiClient(), qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   const Wrapper = ({ children }: { children: ReactNode }) => (
@@ -323,5 +323,88 @@ describe('useDeleteCalendarEventMutation', () => {
     expect(deleteCalendarEvent).toHaveBeenCalledWith('e1');
     expect(spy).toHaveBeenCalledWith({ queryKey: ['calendarEvents'] });
     expect(spy).toHaveBeenCalledWith({ queryKey: ['schedule'] });
+  });
+});
+
+describe('duplicate block writes while one is pending (U2)', () => {
+  /** A request that stays pending until released; counts its calls. */
+  function held<T>() {
+    const releases: Array<(v: T) => void> = [];
+    const fn = vi.fn(() => new Promise<T>((res) => { releases.push(res); }));
+    return { fn, release: (v: T) => releases.shift()?.(v) };
+  }
+
+  it('ignores a second drop of the SAME task while its POST /schedule is pending, from any hook instance', async () => {
+    const req = held<unknown>();
+    const { Wrapper } = wrap(fakeApiClient({ createScheduledBlock: req.fn } as never));
+    const a = renderHook(() => useCreateScheduledBlockMutation(), { wrapper: Wrapper });
+    const b = renderHook(() => useCreateScheduledBlockMutation(), { wrapper: Wrapper });
+    a.result.current.mutate({ taskId: 't1', startsAt: 'S', endsAt: 'E' });
+    a.result.current.mutate({ taskId: 't1', startsAt: 'S2', endsAt: 'E2' });
+    b.result.current.mutate({ taskId: 't1', startsAt: 'S3', endsAt: 'E3' });
+    await waitFor(() => expect(req.fn).toHaveBeenCalledTimes(1));
+    // A different task is independent.
+    b.result.current.mutate({ taskId: 't2', startsAt: 'S', endsAt: 'E' });
+    await waitFor(() => expect(req.fn).toHaveBeenCalledTimes(2));
+    req.release({ id: 'n1' });
+    await waitFor(() => expect(a.result.current.isSuccess).toBe(true));
+    // Settled: the same task can be dropped again.
+    a.result.current.mutate({ taskId: 't1', startsAt: 'S', endsAt: 'E' });
+    await waitFor(() => expect(req.fn).toHaveBeenCalledTimes(3));
+  });
+
+  it.each([
+    ['Start', useStartBlockMutation, 'startBlock'],
+    ['Stop', useStopBlockMutation, 'stopBlock'],
+    ['delete', useDeleteScheduledBlockMutation, 'deleteScheduledBlock'],
+  ] as const)('ignores a second %s on the same block while the first is pending; other blocks stay independent', async (_name, useHook, method) => {
+    const req = held<unknown>();
+    const { Wrapper } = wrap(fakeApiClient({ [method]: req.fn } as never));
+    const topBar = renderHook(() => useHook(), { wrapper: Wrapper });
+    const card = renderHook(() => useHook(), { wrapper: Wrapper });
+    topBar.result.current.mutate('b1');
+    card.result.current.mutate('b1');
+    topBar.result.current.mutate('b1');
+    await waitFor(() => expect(req.fn).toHaveBeenCalledTimes(1));
+    card.result.current.mutate('b2');
+    await waitFor(() => expect(req.fn).toHaveBeenCalledTimes(2));
+    expect(req.fn).toHaveBeenNthCalledWith(2, 'b2');
+    req.release(undefined);
+    await waitFor(() => expect(topBar.result.current.isSuccess).toBe(true));
+    topBar.result.current.mutate('b1');
+    await waitFor(() => expect(req.fn).toHaveBeenCalledTimes(3));
+  });
+
+  it('does NOT de-duplicate block moves: a second drag of the same block is a new edit', async () => {
+    const req = held<unknown>();
+    const { Wrapper } = wrap(fakeApiClient({ updateScheduledBlock: req.fn } as never));
+    const { result } = renderHook(() => useUpdateScheduledBlockMutation(), { wrapper: Wrapper });
+    result.current.mutate({ id: 'b1', patch: { startsAt: 'A', endsAt: 'B', pinned: true } });
+    result.current.mutate({ id: 'b1', patch: { startsAt: 'C', endsAt: 'D', pinned: true } });
+    await waitFor(() => expect(req.fn).toHaveBeenCalledTimes(2));
+  });
+
+  it('usePendingPlannerWrites lists what is in flight, by operation and target, across hook instances', async () => {
+    const create = held<unknown>();
+    const start = held<unknown>();
+    const move = held<unknown>();
+    const { Wrapper } = wrap(fakeApiClient({ createScheduledBlock: create.fn, startBlock: start.fn, updateScheduledBlock: move.fn } as never));
+    const pending = renderHook(() => usePendingPlannerWrites(), { wrapper: Wrapper });
+    expect(pending.result.current).toEqual([]);
+    const c = renderHook(() => useCreateScheduledBlockMutation(), { wrapper: Wrapper });
+    const s = renderHook(() => useStartBlockMutation(), { wrapper: Wrapper });
+    const m = renderHook(() => useUpdateScheduledBlockMutation(), { wrapper: Wrapper });
+    c.result.current.mutate({ taskId: 't1', startsAt: 'S', endsAt: 'E' });
+    s.result.current.mutate('b1');
+    m.result.current.mutate({ id: 'b2', patch: { pinned: false } });
+    await waitFor(() => expect(pending.result.current).toHaveLength(3));
+    expect(pending.result.current).toEqual(expect.arrayContaining([
+      { op: 'blockCreate', target: 't1', variables: { taskId: 't1', startsAt: 'S', endsAt: 'E' } },
+      { op: 'blockStart', target: 'b1', variables: 'b1' },
+      { op: 'blockUpdate', target: 'b2', variables: { id: 'b2', patch: { pinned: false } } },
+    ]));
+    start.release(undefined);
+    await waitFor(() => expect(pending.result.current).toHaveLength(2));
+    expect(pending.result.current.map((p) => p.op).sort()).toEqual(['blockCreate', 'blockUpdate']);
   });
 });

@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { useMutation, useQuery, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query';
+import { useMutation, useMutationState, useQuery, useQueryClient, type Mutation, type QueryClient, type QueryKey } from '@tanstack/react-query';
 import { useApi } from './ApiProvider';
 import type { ApiClient } from './client';
 import type { CreateTaskInput, UpdateTaskInput, CreateHabitInput, UpdateHabitInput, SettingsInput, UpdateScheduledBlockInput, CreateCategoryInput, UpdateCategoryInput, CreateSubtaskInput, UpdateSubtaskInput, CreateCalendarEventInput, UpdateCalendarEventInput, CreateScheduledBlockInput } from './types';
@@ -115,6 +115,76 @@ export function invalidateRoot(qc: QueryClient, queryKey: QueryKey): void {
   }
 }
 
+// ---- Planner writes: one registry for the pending UI, duplicate guards and failure feedback ----
+
+/**
+ * Which planner write a mutation is, tagged on its `meta.plannerWrite` (NOT its mutationKey: keys
+ * match by prefix, and only the optimistic writes may carry SCHEDULE_WRITE_KEY — see above).
+ * Every hook instance (top bar, mobile bar, Next-up card, detail card, grid) is its own observer,
+ * so "is this pending?" is read from the shared mutation cache, by operation + target, never from
+ * one instance's `isPending`.
+ */
+export type PlannerWriteOp = 'blockCreate' | 'blockUpdate' | 'blockDelete' | 'blockStart' | 'blockStop' | 'eventUpdate' | 'eventDelete';
+
+export interface PlannerWriteMeta extends Record<string, unknown> {
+  plannerWrite: PlannerWriteOp;
+  /** The caller shows this write's failures inline (CreatePopover): no toast on top of it. */
+  inlineErrors?: boolean;
+}
+
+/** What a planner write is addressed to: the block / event id, or the task id of a create. */
+export function plannerWriteTarget(op: PlannerWriteOp, vars: unknown): string | null {
+  if (typeof vars === 'string') return vars; // delete / start / stop take the id itself
+  if (vars === null || typeof vars !== 'object') return null;
+  const v = vars as { id?: unknown; taskId?: unknown };
+  const target = op === 'blockCreate' ? v.taskId : v.id;
+  return typeof target === 'string' ? target : null;
+}
+
+/** The planner-write tag of a mutation, or null for any other mutation. */
+export function plannerWriteOf(m: Mutation<unknown, Error, unknown, unknown>): { op: PlannerWriteOp; target: string | null; inlineErrors: boolean } | null {
+  const meta = m.options.meta as Partial<PlannerWriteMeta> | undefined;
+  if (!meta?.plannerWrite) return null;
+  return { op: meta.plannerWrite, target: plannerWriteTarget(meta.plannerWrite, m.state.variables), inlineErrors: meta.inlineErrors === true };
+}
+
+/** True while a write `op` addressed to `target` is in flight (any hook instance). */
+export function isPlannerWritePending(qc: QueryClient, op: PlannerWriteOp, target: string | null): boolean {
+  if (target === null) return false;
+  return qc.getMutationCache().findAll({ status: 'pending', predicate: (m) => {
+    const w = plannerWriteOf(m);
+    return w !== null && w.op === op && w.target === target;
+  } }).length > 0;
+}
+
+export interface PendingPlannerWrite { op: PlannerWriteOp; target: string | null; variables: unknown }
+
+/** Every planner write in flight, for the pending UI (tile indicator, drop placeholder, Start/Stop). */
+export function usePendingPlannerWrites(): PendingPlannerWrite[] {
+  return useMutationState({
+    filters: { status: 'pending', predicate: (m) => plannerWriteOf(m) !== null },
+    select: (m) => {
+      const w = plannerWriteOf(m)!;
+      return { op: w.op, target: w.target, variables: m.state.variables };
+    },
+  });
+}
+
+/**
+ * The result with a `mutate` that ignores a call while the same write (`op` + target) is still in
+ * flight, from this or any other hook instance — a second drop of the same task, a second Start /
+ * Stop / delete of the same block would otherwise queue a second request behind the first (the
+ * server makes block writes wait for a running replan, so "pending" can last seconds). The guard
+ * runs before `mutate`, so an ignored call never reaches onMutate. `mutateAsync` is left alone.
+ */
+function ignoreWhilePending<R extends { mutate: (vars: never, opts?: never) => void }>(qc: QueryClient, op: PlannerWriteOp, result: R): R {
+  const mutate = ((vars: never, opts?: never) => {
+    if (isPlannerWritePending(qc, op, plannerWriteTarget(op, vars))) return;
+    result.mutate(vars, opts);
+  }) as R['mutate'];
+  return { ...result, mutate };
+}
+
 /**
  * A mutation that calls the API, then invalidates each of `roots` (in order) on success — via
  * `invalidateRoot`, so it cannot refetch over a pending planner write's optimistic value. It does
@@ -123,11 +193,13 @@ export function invalidateRoot(qc: QueryClient, queryKey: QueryKey): void {
 function useApiMutation<TVars = void, TResult = unknown>(
   call: (api: ApiClient, vars: TVars) => Promise<TResult>,
   roots: readonly QueryKey[],
+  meta?: PlannerWriteMeta,
 ) {
   const api = useApi();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (vars: TVars) => call(api, vars),
+    meta,
     onSuccess: () => {
       for (const queryKey of roots) invalidateRoot(qc, queryKey);
     },
@@ -145,11 +217,13 @@ function useOptimisticListMutation<TVars, TResult>(
   root: QueryKey,
   apply: (list: Array<{ id: string }>, vars: TVars) => unknown[],
   alsoInvalidate: readonly QueryKey[] = [],
+  meta?: PlannerWriteMeta,
 ) {
   const api = useApi();
   const qc = useQueryClient();
   return useMutation({
     mutationKey: SCHEDULE_WRITE_KEY,
+    meta,
     mutationFn: (vars: TVars) => call(api, vars),
     onMutate: async (vars: TVars) => {
       await qc.cancelQueries({ queryKey: root });
@@ -219,21 +293,28 @@ export function useReplanMutation() {
 
 // Optimistic: patch every cached schedule LIST so the released block renders in place
 // immediately.
+// Never de-duplicated: a second drag (or the next keyboard commit) of the same block is a new
+// edit, and WeekGrid's hold re-baselining relies on each one being sent.
 export function useUpdateScheduledBlockMutation() {
   return useOptimisticListMutation(
     (api, { id, patch }: { id: string; patch: UpdateScheduledBlockInput }) => api.updateScheduledBlock(id, patch),
     queryKeys.scheduleRoot,
     (list, { id, patch }) => list.map((b) => (b.id === id ? { ...b, ...patch } : b)),
+    [],
+    { plannerWrite: 'blockUpdate' },
   );
 }
 
 // Optimistic: drop the block from every cached schedule LIST so it vanishes immediately.
 export function useDeleteScheduledBlockMutation() {
-  return useOptimisticListMutation(
+  const qc = useQueryClient();
+  return ignoreWhilePending(qc, 'blockDelete', useOptimisticListMutation(
     (api, id: string) => api.deleteScheduledBlock(id),
     queryKeys.scheduleRoot,
     (list, id) => list.filter((b) => b.id !== id),
-  );
+    [],
+    { plannerWrite: 'blockDelete' },
+  ));
 }
 
 // Optimistic: patch every cached calendar-event LIST so a dragged event stays where it
@@ -245,16 +326,19 @@ export function useUpdateCalendarEventMutation() {
     queryKeys.calendarEventsRoot,
     (list, { id, ...patch }) => list.map((e) => (e.id === id ? { ...e, ...patch } : e)),
     [queryKeys.scheduleRoot],
+    { plannerWrite: 'eventUpdate' },
   );
 }
 
 export function useDeleteCalendarEventMutation() {
-  return useOptimisticListMutation(
+  const qc = useQueryClient();
+  return ignoreWhilePending(qc, 'eventDelete', useOptimisticListMutation(
     (api, id: string) => api.deleteCalendarEvent(id),
     queryKeys.calendarEventsRoot,
     (list, id) => list.filter((e) => e.id !== id),
     [queryKeys.scheduleRoot],
-  );
+    { plannerWrite: 'eventDelete' },
+  ));
 }
 
 export function useTasksQuery() {
@@ -404,14 +488,34 @@ export function useCreateCalendarEventMutation() {
   );
 }
 
-export function useCreateScheduledBlockMutation() {
-  return useApiMutation((api, body: CreateScheduledBlockInput) => api.createScheduledBlock(body), [queryKeys.scheduleRoot]);
+/**
+ * Pin a task at a slot (panel drop, CreatePopover). Not optimistic; while it is pending the
+ * planner shows a placeholder at the slot. A second create for the same task while one is pending
+ * is ignored. `inlineErrors`: the caller shows failures itself (no toast).
+ */
+export function useCreateScheduledBlockMutation({ inlineErrors = false }: { inlineErrors?: boolean } = {}) {
+  const qc = useQueryClient();
+  return ignoreWhilePending(qc, 'blockCreate', useApiMutation(
+    (api, body: CreateScheduledBlockInput) => api.createScheduledBlock(body),
+    [queryKeys.scheduleRoot],
+    { plannerWrite: 'blockCreate', inlineErrors },
+  ));
 }
 
 export function useStartBlockMutation() {
-  return useApiMutation((api, id: string) => api.startBlock(id), [queryKeys.scheduleRoot, queryKeys.tasksRoot]);
+  const qc = useQueryClient();
+  return ignoreWhilePending(qc, 'blockStart', useApiMutation(
+    (api, id: string) => api.startBlock(id),
+    [queryKeys.scheduleRoot, queryKeys.tasksRoot],
+    { plannerWrite: 'blockStart' },
+  ));
 }
 
 export function useStopBlockMutation() {
-  return useApiMutation((api, id: string) => api.stopBlock(id), [queryKeys.scheduleRoot, queryKeys.tasksRoot]);
+  const qc = useQueryClient();
+  return ignoreWhilePending(qc, 'blockStop', useApiMutation(
+    (api, id: string) => api.stopBlock(id),
+    [queryKeys.scheduleRoot, queryKeys.tasksRoot],
+    { plannerWrite: 'blockStop' },
+  ));
 }
