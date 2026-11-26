@@ -28,11 +28,11 @@ const isShort = (b: ScheduledBlock, now: number) => now - b.startsAt.getTime() <
  * end to Google even when it is already in the past. A shorter one is deleted with its Google
  * event (best effort, like DELETE /schedule/:id). With `startedBlock` (Start), a piece that
  * would run past the started block's new start ends there instead. Returns how many pieces
- * changed, or
- * 'needs-token' when a piece to delete has a Google event and the caller passed no token: it
- * then lets go of the lock, looks one up (token lookups never run under the lock) and comes back
- * once. Nothing is written before that answer. Callers start without a token: a piece to delete
- * that is mirrored is rare (begun under 7.5 minutes ago), and no read happens before the lock.
+ * changed, or 'needs-token' when a piece to delete has a Google event and the caller passed no
+ * token: it then lets go of the lock, looks one up (token lookups never run under the lock) and
+ * comes back once. Nothing is written before that answer. Callers start without a token: a piece
+ * to delete that is mirrored is rare (begun under 7.5 minutes ago), and no read happens before
+ * the lock.
  */
 export async function endRunningPiecesUnderLock(
   app: FastifyInstance,
@@ -44,7 +44,7 @@ export async function endRunningPiecesUnderLock(
   startedBlock?: { start: number },
 ): Promise<number | 'needs-token'> {
   const targets = await runningTargets(deps, userId, now, isTarget);
-  // Where each piece ends, or null when it is deleted.
+  // Where each piece ends, or null when it is deleted (begun less than SHORT_PIECE_MS ago).
   const endOf = (b: ScheduledBlock): number | null => {
     if (isShort(b, now)) return null;
     const start = b.startsAt.getTime();
