@@ -31,7 +31,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
 
     // Manual mode: discard past task blocks that were never started (self-heal on load).
     if (settings?.requireStartToTrack) {
-      const discarded = await discardUnstartedPastBlocks(app, deps, request.userId, now);
+      const discarded = await discardUnstartedPastBlocks(app, deps, request.userId, now, settings.requireStartSince);
       // Only when a row actually went: the refetch this triggers in every tab finds nothing
       // left to discard, so it cannot loop. Un-started blocks never count as spent time in
       // manual mode, so tasks are unaffected.

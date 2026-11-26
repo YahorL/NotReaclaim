@@ -253,3 +253,27 @@ describe('Start on the next piece while one runs reaches Google (automatic track
     expect(w.spentH(at('10:40'))).toBe(1.5);
   });
 });
+
+describe('switching manual tracking on keeps the automatically tracked history (through reconcile)', () => {
+  it('kept rows and their events are never written by manual polls, do not count, and count again once switched back', async () => {
+    const w = world({ requireStartToTrack: false, tasks: [task(2)] });
+    await w.poll(at('08:00'));
+    for (let t = at('08:02'); t <= at('10:27'); t += 5 * M) await w.poll(t);
+    const kept = w.store.rows().find((r) => r.startsAt.getTime() === at('09:00'))!;
+    const keptRow = { ...kept };
+    const keptEvent = { ...w.client.events.get(kept.googleEventId!)! };
+    // PUT /settings at 10:30 (09:00–10:00 has ended; 10:00–11:00 is running, so it is not kept).
+    Object.assign(w.settings, { requireStartToTrack: true, requireStartSince: new Date(at('10:30')) });
+    const touched = (id: string) => [...w.client.updatedEvents, ...w.client.deletedEvents].some((e) => e.googleEventId === id);
+    for (let t = at('10:32'); t <= at('17:30'); t += 5 * M) await w.poll(t);
+    expect(w.store.rows().find((r) => r.id === kept.id)).toMatchObject({
+      startsAt: keptRow.startsAt, endsAt: keptRow.endsAt, googleEventId: keptRow.googleEventId, pinned: false,
+    });
+    expect(touched(kept.googleEventId!)).toBe(false);
+    expect(w.client.events.get(kept.googleEventId!)).toEqual(keptEvent);
+    expect(w.spentH(at('17:30'))).toBe(0); // manual: only Started blocks count
+    Object.assign(w.settings, { requireStartToTrack: false, requireStartSince: null });
+    expect(w.spentH(at('17:30'))).toBeGreaterThanOrEqual(1);
+    expect(computeSpentMs('t1', [w.store.rows().find((r) => r.id === kept.id)!], false, at('17:30'))).toBe(H);
+  });
+});

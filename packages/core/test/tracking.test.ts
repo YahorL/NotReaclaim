@@ -92,7 +92,8 @@ async function replan(w: World, now: number, mirror?: ScheduleMirror): Promise<A
   };
   const desired = await computeDesiredSchedule(repos, 'u1', now);
   const counts = await applyDesiredSchedule(w.store, 'u1', desired, {
-    now, horizonEnd: horizonEndMs(now, w.settings.horizonDays), mirror, requireStartToTrack: w.settings.requireStartToTrack,
+    now, horizonEnd: horizonEndMs(now, w.settings.horizonDays), mirror,
+    requireStartToTrack: w.settings.requireStartToTrack, requireStartSince: w.settings.requireStartSince,
   });
   expect(counts).not.toHaveProperty('createFailed');
   expect(counts).not.toHaveProperty('updateFailed');
@@ -119,8 +120,9 @@ const noWrites = { created: 0, updated: 0, deleted: 0 };
 describe('isFrozenTaskRow', () => {
   const row = (over: Partial<DbScheduledBlock> = {}) =>
     makeBlock({ taskId: 't1', pinned: false, startsAt: new Date(at('09:00')), endsAt: new Date(at('10:00')), ...over });
-  const cases: Array<[string, Partial<DbScheduledBlock>, number, boolean, boolean]> = [
-    // label, row, now, requireStartToTrack, frozen
+  const SWITCH = new Date(at('10:00')); // manual tracking switched on at 10:00
+  const cases: Array<[string, Partial<DbScheduledBlock>, number, boolean, boolean, (Date | null)?]> = [
+    // label, row, now, requireStartToTrack, frozen[, requireStartSince]
     ['auto, before its start', {}, at('08:59'), false, false],
     ['auto, exactly at its start', {}, at('09:00'), false, true],
     ['auto, running', {}, at('09:30'), false, true],
@@ -130,9 +132,16 @@ describe('isFrozenTaskRow', () => {
     ['auto, a habit row (R21 owns it)', { taskId: null, habitId: 'h1' }, at('09:30'), false, false],
     ['manual, running', {}, at('09:30'), true, false],
     ['manual, finished', {}, at('12:00'), true, false],
+    ['manual since forever (null): a finished row is NOT kept, exactly as before', {}, at('12:00'), true, false, null],
+    ['manual since 10:00: a row that ended exactly at the switch is kept history', {}, at('12:00'), true, true, SWITCH],
+    ['manual since 10:00: one ending 1 ms after the switch is not', { endsAt: new Date(at('10:00') + 1) }, at('12:00'), true, false, SWITCH],
+    ['manual since 10:00: a running one (ends after the switch) is not', { endsAt: new Date(at('10:30')) }, at('10:15'), true, false, SWITCH],
+    ['manual since 10:00: a pinned kept row has its own (pinned) path', { pinned: true }, at('12:00'), true, false, SWITCH],
+    ['manual since 10:00: a habit row is not', { taskId: null, habitId: 'h1' }, at('12:00'), true, false, SWITCH],
+    ['automatic ignores the timestamp', {}, at('08:00'), false, false, SWITCH],
   ];
-  it.each(cases)('%s', (_label, over, now, requireStartToTrack, frozen) => {
-    expect(isFrozenTaskRow(row(over), now, requireStartToTrack)).toBe(frozen);
+  it.each(cases)('%s', (_label, over, now, requireStartToTrack, frozen, requireStartSince = null) => {
+    expect(isFrozenTaskRow(row(over), now, { requireStartToTrack, requireStartSince })).toBe(frozen);
   });
 });
 
@@ -394,5 +403,46 @@ describe('edges noticed while building the freeze', () => {
       const { unscheduled } = await computeDesiredSchedule(repos, 'u1', at('09:05'));
       expect(unscheduled.map((u) => u.sourceId), String(requireStartToTrack)).toEqual(requireStartToTrack ? ['t1'] : []);
     }
+  });
+});
+
+describe('switching manual tracking ON keeps the automatically tracked history (requireStartSince)', () => {
+  /** The server's PUT /settings write on the false → true transition, and back. */
+  const switchOn = (w: World, at: number) => { w.settings = { ...w.settings, requireStartToTrack: true, requireStartSince: new Date(at) }; };
+  const switchOff = (w: World) => { w.settings = { ...w.settings, requireStartToTrack: false, requireStartSince: null }; };
+
+  it('kept rows are never moved, re-keyed into the future or swept by manual replans, and do not count; switching back counts them again', async () => {
+    const w = world({ tasks: [task(2)], events: [ev('m', '10:00', '11:00')] });
+    const { calls, mirror } = countingMirror();
+    await replan(w, at('08:00'), mirror);
+    for (const t of ['09:05', '09:30', '10:05']) await replan(w, at(t), mirror);
+    const kept = w.store.rows().find((r) => r.startsAt.getTime() === at('09:00'))!;
+    const before = { ...kept };
+    switchOn(w, at('10:20'));
+    for (let t = at('10:25'); t <= at('16:00'); t += 5 * M) await replan(w, t, mirror);
+    // The kept 09:00–10:00 row is exactly as it was (its key may have been given up), and its event untouched.
+    const now = w.store.rows().find((r) => r.id === kept.id)!;
+    expect({ ...now, engineKey: before.engineKey }).toEqual(before);
+    expect(spent(w, at('16:00'))).toBe(0); // manual: only Started blocks count
+    switchOff(w);
+    expect(spent(w, at('16:00'))).toBeGreaterThanOrEqual(1 * H); // the kept hour counts again
+    expect(computeSpentMs('t1', [now], false, at('16:00'))).toBe(1 * H);
+  });
+
+  it('with the timestamp null (manual since before it existed) nothing changes: the finished row is recycled forward', async () => {
+    const w = world({ tasks: [task(2)], events: [ev('m', '10:00', '11:00')] });
+    await replan(w, at('08:00'));
+    w.settings = { ...w.settings, requireStartToTrack: true, requireStartSince: null };
+    expect(await replan(w, at('10:30'))).toMatchObject({ created: 0, updated: 2, deleted: 0 });
+    expect(times(w)).toEqual(['11:00–12:00', '12:00–13:00']);
+  });
+
+  it('switched on while a piece runs: that piece ends after the switch, so it is an ordinary manual piece (it slides)', async () => {
+    const w = world({ tasks: [task(1)] });
+    await replan(w, at('08:00'));
+    await replan(w, at('09:05'));
+    switchOn(w, at('09:20'));
+    expect(await replan(w, at('09:25'))).toMatchObject({ updated: 1 });
+    expect(times(w)).toEqual(['09:25–10:25']);
   });
 });

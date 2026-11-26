@@ -40,7 +40,7 @@ async function endTaskRunningPieces(
   app: FastifyInstance, deps: AppDeps, userId: string, taskId: string, now: number,
 ): Promise<number> {
   const targetFor = (settings: Settings | null) => (b: ScheduledBlock) =>
-    b.taskId === taskId && (b.pinned || (settings != null && isFrozenTaskRow(b, now, settings.requireStartToTrack)));
+    b.taskId === taskId && (b.pinned || (settings != null && isFrozenTaskRow(b, now, settings)));
   const attempt = (token: PrefetchedToken | null) => deps.withUserLock(userId, async () =>
     endRunningPiecesUnderLock(app, deps, userId, now, targetFor(await deps.repos.settings.getByUserId(userId)), token));
   const first = await attempt(null);

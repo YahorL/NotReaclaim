@@ -302,3 +302,63 @@ describe('settings routes', () => {
     });
   });
 });
+
+describe('requireStartSince follows requireStartToTrack (server clock, never from the client, never sent back)', () => {
+  const T1 = Date.parse('2026-01-05T10:00:00.000Z');
+  const T2 = Date.parse('2026-01-06T10:00:00.000Z');
+  async function setup() {
+    let clock = T1;
+    const ctx = buildTestApp({ now: () => clock });
+    const token = await tokenFor(ctx.app);
+    const auth = { authorization: `Bearer ${token}` };
+    const put = (body: Record<string, unknown>) => ctx.app.inject({ method: 'PUT', url: '/settings', headers: auth, payload: { ...settingsBody, ...body } });
+    const patch = (body: Record<string, unknown>) => ctx.app.inject({ method: 'PATCH', url: '/settings', headers: auth, payload: body });
+    const since = async () => (await ctx.settings.getByUserId('u1'))?.requireStartSince ?? null;
+    return { ctx, put, patch, since, auth, at: (t: number) => { clock = t; } };
+  }
+
+  it('set on false → true, unchanged on true → true (PUT or PATCH), cleared on true → false', async () => {
+    const s = await setup();
+    await s.put({ requireStartToTrack: false });
+    expect(await s.since()).toBeNull();
+    await s.put({ requireStartToTrack: true });
+    expect(await s.since()).toEqual(new Date(T1));
+    s.at(T2);
+    await s.put({ requireStartToTrack: true }); // the settings form re-sends every field on save
+    await s.patch({ requireStartToTrack: true });
+    await s.patch({ taskBufferMs: 600000 });
+    await s.put({ timezone: 'Europe/Paris' }); // not sent: unchanged
+    expect(await s.since()).toEqual(new Date(T1));
+    await s.patch({ requireStartToTrack: false });
+    expect(await s.since()).toBeNull();
+  });
+
+  it('on, off, on again: the second switch gives a new timestamp', async () => {
+    const s = await setup();
+    await s.put({ requireStartToTrack: true });
+    s.at(T1 + 3_600_000);
+    await s.patch({ requireStartToTrack: false });
+    s.at(T2);
+    await s.patch({ requireStartToTrack: true });
+    expect(await s.since()).toEqual(new Date(T2));
+  });
+
+  it('a first PUT that creates the settings in manual mode sets it too', async () => {
+    const s = await setup();
+    await s.put({ requireStartToTrack: true });
+    expect(await s.since()).toEqual(new Date(T1));
+  });
+
+  it('a client cannot set it, and no response carries it', async () => {
+    const s = await setup();
+    const put = await s.put({ requireStartToTrack: false, requireStartSince: '2020-01-01T00:00:00.000Z' });
+    expect(await s.since()).toBeNull();
+    expect(put.json()).not.toHaveProperty('requireStartSince');
+    const patch = await s.patch({ requireStartToTrack: true, requireStartSince: '2020-01-01T00:00:00.000Z' });
+    expect(await s.since()).toEqual(new Date(T1));
+    expect(patch.json()).not.toHaveProperty('requireStartSince');
+    const got = await s.ctx.app.inject({ method: 'GET', url: '/settings', headers: s.auth });
+    expect(got.json()).not.toHaveProperty('requireStartSince');
+    expect(got.json()).toMatchObject({ requireStartToTrack: true });
+  });
+});

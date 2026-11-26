@@ -55,6 +55,12 @@ export interface ApplyScheduleOptions {
    * when the engine reissues it. Required, so no caller can silently fall back to a mode.
    */
   requireStartToTrack: boolean;
+  /**
+   * Settings.requireStartSince: in manual tracking, task rows that ended at or before it are
+   * history kept from automatic tracking and are frozen too (isFrozenTaskRow). Required with the
+   * mode, for the same reason; null = nothing kept.
+   */
+  requireStartSince: Date | null;
   mirror?: ScheduleMirror;
   mirrorSnapshot?: MirrorSnapshot;
   /**
@@ -219,7 +225,7 @@ export async function applyDesiredSchedule(
   // Unlike pinned rows they are not pushed by the pinned pass: nothing ever changes their times.
   const pinnedKeyHolders = new Map<string, DbScheduledBlock>();
   for (const b of existing) {
-    if (b.pinned || isFrozenTaskRow(b, now, opts.requireStartToTrack)) {
+    if (b.pinned || isFrozenTaskRow(b, now, opts)) {
       pinnedIds.add(b.id);
       if (b.engineKey) pinnedKeyHolders.set(b.engineKey, b);
     } else if (b.engineKey) {
@@ -622,7 +628,7 @@ export async function planLocally(
     // No mirror locally, so nothing to push for pinned rows either: apply reports
     // pinnedSynced/pinnedFailed as 0 on this path.
     return applyDesiredSchedule(scheduledBlocks, userId, desired, {
-      now, horizonEnd, requireStartToTrack: settings.requireStartToTrack, onRowFailure,
+      now, horizonEnd, requireStartToTrack: settings.requireStartToTrack, requireStartSince: settings.requireStartSince, onRowFailure,
     });
   });
   return { ...counts, pinned: 0, removed: 0 };

@@ -5,7 +5,9 @@ import type { AppDeps } from './app.js';
 import { isMirrored, prefetchAccessToken, removeMirroredEventWithToken, type PrefetchedToken } from './google-writeback.js';
 
 /**
- * Manual mode: delete the user's past task blocks that were never started, one row at a time
+ * Manual mode: delete the user's past task blocks that were never started — except history kept
+ * from automatic tracking (ended at or before `requireStartSince`, the moment manual tracking was
+ * switched on; see isDiscardableUnstarted) — one row at a time
  * in list order, each followed by the best-effort removal of its mirrored Google event.
  * Returns how many rows THIS call deleted (a row another request removed first is skipped).
  *
@@ -23,14 +25,15 @@ export async function discardUnstartedPastBlocks(
   deps: Pick<AppDeps, 'repos' | 'google' | 'now' | 'withUserLock'>,
   userId: string,
   now: number,
+  requireStartSince: Date | null,
 ): Promise<number> {
   const listPast = () => deps.repos.scheduledBlocks.listByUserInRange(userId, new Date(0), new Date(now));
-  const candidates = (await listPast()).filter((b) => isDiscardableUnstarted(b, now));
+  const candidates = (await listPast()).filter((b) => isDiscardableUnstarted(b, now, requireStartSince));
   if (candidates.length === 0) return 0;
   const candidateIds = new Set(candidates.map((b) => b.id));
 
   const sweepUnderLock = (token: PrefetchedToken | null) => deps.withUserLock(userId, async () => {
-    const rows = (await listPast()).filter((b) => candidateIds.has(b.id) && isDiscardableUnstarted(b, now));
+    const rows = (await listPast()).filter((b) => candidateIds.has(b.id) && isDiscardableUnstarted(b, now, requireStartSince));
     if (!token && rows.some(isMirrored)) return 'needs-token' as const;
     let discarded = 0;
     for (const b of rows) {

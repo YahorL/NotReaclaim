@@ -42,7 +42,7 @@ function fakeRepo(seed: DbScheduledBlock[] = []) {
 describe('applyDesiredSchedule (local, no mirror)', () => {
   it('creates a new block with null google fields and engineKey set', async () => {
     const repo = fakeRepo([]);
-    const res = await applyDesiredSchedule(repo, 'u1', desired([eBlock()]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([eBlock()]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null });
     expect(res).toEqual({ created: 1, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(repo.create).toHaveBeenCalledWith('u1', expect.objectContaining({
       engineKey: 'task:t1:0', googleEventId: null, googleCalendarId: null, title: 'A',
@@ -52,7 +52,7 @@ describe('applyDesiredSchedule (local, no mirror)', () => {
   it('updates a keyed block whose times changed', async () => {
     const repo = fakeRepo([dbBlock()]);
     const moved = eBlock({ start: Date.parse('2026-01-05T11:00:00.000Z'), end: Date.parse('2026-01-05T12:00:00.000Z') });
-    const res = await applyDesiredSchedule(repo, 'u1', desired([moved]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([moved]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null });
     expect(res).toEqual({ created: 0, updated: 1, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
   });
 
@@ -60,7 +60,7 @@ describe('applyDesiredSchedule (local, no mirror)', () => {
     // e.g. renaming a habit: Review 17 made kept slots byte-identical, so times never differ
     const repo = fakeRepo([dbBlock({ title: 'Old name' })]);
     const renamed = eBlock({ title: 'New name' });
-    const res = await applyDesiredSchedule(repo, 'u1', desired([renamed]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([renamed]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null });
     expect(res).toEqual({ created: 0, updated: 1, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(repo.update).toHaveBeenCalledWith('u1', 'b1', expect.objectContaining({ title: 'New name' }));
     expect(repo.rows()[0]!.title).toBe('New name');
@@ -72,7 +72,7 @@ describe('applyDesiredSchedule (local, no mirror)', () => {
       title: 'New name',
       start: Date.parse('2026-01-05T11:00:00.000Z'), end: Date.parse('2026-01-05T12:00:00.000Z'),
     });
-    const res = await applyDesiredSchedule(repo, 'u1', desired([moved]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([moved]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null });
     expect(res).toEqual({ created: 0, updated: 1, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(repo.update).toHaveBeenCalledTimes(1);
     expect(repo.update).toHaveBeenCalledWith('u1', 'b1', {
@@ -84,7 +84,7 @@ describe('applyDesiredSchedule (local, no mirror)', () => {
 
   it('is a complete no-op when title and times are unchanged', async () => {
     const repo = fakeRepo([dbBlock()]);
-    const res = await applyDesiredSchedule(repo, 'u1', desired([eBlock()]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([eBlock()]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null });
     expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(repo.update).not.toHaveBeenCalled();
     expect(repo.create).not.toHaveBeenCalled();
@@ -93,7 +93,7 @@ describe('applyDesiredSchedule (local, no mirror)', () => {
 
   it('deletes a keyed block no longer desired, and leaves pinned blocks untouched', async () => {
     const repo = fakeRepo([dbBlock(), dbBlock({ id: 'b2', engineKey: 'task:t9:0' }), dbBlock({ id: 'p1', pinned: true, engineKey: null })]);
-    const res = await applyDesiredSchedule(repo, 'u1', desired([eBlock()]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([eBlock()]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null });
     expect(res).toEqual({ created: 0, updated: 0, deleted: 1, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(repo.delete).toHaveBeenCalledWith('u1', 'b2');
     expect(repo.delete).not.toHaveBeenCalledWith('u1', 'p1');
@@ -108,7 +108,7 @@ describe('applyDesiredSchedule (with mirror)', () => {
       update: vi.fn(async () => undefined),
       delete: vi.fn(async () => undefined),
     };
-    await applyDesiredSchedule(repo, 'u1', desired([eBlock()]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror });
+    await applyDesiredSchedule(repo, 'u1', desired([eBlock()]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror });
     expect(mirror.create).toHaveBeenCalledTimes(1);
     expect(repo.create).toHaveBeenCalledWith('u1', expect.objectContaining({ googleEventId: 'g1', googleCalendarId: 'cal1' }));
   });
@@ -121,7 +121,7 @@ describe('applyDesiredSchedule (with mirror)', () => {
       delete: vi.fn(async () => undefined),
     };
     const moved = eBlock({ start: Date.parse('2026-01-05T11:00:00.000Z'), end: Date.parse('2026-01-05T12:00:00.000Z') });
-    await applyDesiredSchedule(repo, 'u1', desired([moved]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror });
+    await applyDesiredSchedule(repo, 'u1', desired([moved]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror });
     expect(mirror.update).toHaveBeenCalledTimes(1);
     expect(mirror.delete).toHaveBeenCalledTimes(1);
     expect(mirror.create).not.toHaveBeenCalled();
@@ -135,7 +135,7 @@ describe('applyDesiredSchedule (with mirror)', () => {
       delete: vi.fn(async () => undefined),
     };
     const renamed = eBlock({ title: 'New name' });
-    const res = await applyDesiredSchedule(repo, 'u1', desired([renamed]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([renamed]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror });
     expect(res).toEqual({ created: 0, updated: 1, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(mirror.update).toHaveBeenCalledTimes(1);
     expect(mirror.update).toHaveBeenCalledWith(
@@ -167,7 +167,7 @@ describe('applyDesiredSchedule (pinned blocks are mirrored too)', () => {
     // The POST /schedule state: pinned, googleEventId null — invisible to the engine diff.
     const repo = fakeRepo([pinned()]);
     const mirror = stubMirror();
-    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror });
     expect(mirror.create).toHaveBeenCalledTimes(1);
     expect(mirror.create).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1', sourceType: 'task', sourceId: 't1', title: 'A' }));
     expect(repo.create).not.toHaveBeenCalled(); // the row exists: update it, never re-create it
@@ -177,7 +177,7 @@ describe('applyDesiredSchedule (pinned blocks are mirrored too)', () => {
 
   it('does not mirror a pinned block without a mirror (local planning)', async () => {
     const repo = fakeRepo([pinned()]);
-    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null });
     expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(repo.update).not.toHaveBeenCalled();
   });
@@ -186,7 +186,7 @@ describe('applyDesiredSchedule (pinned blocks are mirrored too)', () => {
     const repo = fakeRepo([pinned()]);
     const mirror = stubMirror();
     const later = Date.parse('2026-01-06T00:00:00.000Z');
-    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: later, horizonEnd: later + 1, requireStartToTrack: false, mirror });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: later, horizonEnd: later + 1, requireStartToTrack: false, requireStartSince: null, mirror });
     expect(mirror.create).not.toHaveBeenCalled();
     expect(res.pinnedSynced).toBe(0);
   });
@@ -200,7 +200,7 @@ describe('applyDesiredSchedule (pinned blocks are mirrored too)', () => {
       endsAt: new Date('2026-01-05T09:30:00.000Z'), updatedAt: new Date(STOPPED_AT), ...over,
     });
     const run = (repo: ReturnType<typeof fakeRepo>, mirror: ScheduleMirror, mirrorSnapshot?: ReturnType<typeof snapshot>) =>
-      applyDesiredSchedule(repo, 'u1', desired([]), { now: STOPPED_AT, horizonEnd: HORIZON, requireStartToTrack: false, mirror, mirrorSnapshot });
+      applyDesiredSchedule(repo, 'u1', desired([]), { now: STOPPED_AT, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror, mirrorSnapshot });
 
     it('pushes the shortened end while the event still runs past now', async () => {
       const repo = fakeRepo([stopped()]);
@@ -238,7 +238,7 @@ describe('applyDesiredSchedule (pinned blocks are mirrored too)', () => {
     })]);
     const mirror = stubMirror();
     const res = await applyDesiredSchedule(repo, 'u1', desired([]), {
-      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror, mirrorSnapshot: snapshot(),
+      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror, mirrorSnapshot: snapshot(),
     });
     expect(mirror.update).toHaveBeenCalledTimes(1);
     expect(mirror.update).toHaveBeenCalledWith(
@@ -253,7 +253,7 @@ describe('applyDesiredSchedule (pinned blocks are mirrored too)', () => {
     const repo = fakeRepo([pinned({ googleEventId: 'g1', googleCalendarId: 'cal1', title: 'Renamed' })]);
     const mirror = stubMirror();
     const res = await applyDesiredSchedule(repo, 'u1', desired([]), {
-      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror, mirrorSnapshot: snapshot(),
+      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror, mirrorSnapshot: snapshot(),
     });
     expect(mirror.update).toHaveBeenCalledTimes(1);
     expect(res.pinnedSynced).toBe(1);
@@ -263,7 +263,7 @@ describe('applyDesiredSchedule (pinned blocks are mirrored too)', () => {
     const repo = fakeRepo([pinned({ googleEventId: 'g1', googleCalendarId: 'cal1' })]);
     const mirror = stubMirror();
     const res = await applyDesiredSchedule(repo, 'u1', desired([]), {
-      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror, mirrorSnapshot: snapshot(),
+      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror, mirrorSnapshot: snapshot(),
     });
     expect(mirror.create).not.toHaveBeenCalled();
     expect(mirror.update).not.toHaveBeenCalled();
@@ -274,7 +274,7 @@ describe('applyDesiredSchedule (pinned blocks are mirrored too)', () => {
     const repo = fakeRepo([pinned({ googleEventId: 'g1', googleCalendarId: 'cal1', title: 'Renamed' })]);
     const mirror = stubMirror();
     const res = await applyDesiredSchedule(repo, 'u1', desired([]), {
-      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror, mirrorSnapshot: new Map(),
+      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror, mirrorSnapshot: new Map(),
     });
     expect(mirror.update).not.toHaveBeenCalled();
     expect(res.pinnedSynced).toBe(0);
@@ -289,7 +289,7 @@ describe('applyDesiredSchedule (pinned blocks are mirrored too)', () => {
     })]);
     const mirror = stubMirror();
     const res = await applyDesiredSchedule(repo, 'u1', desired([]), {
-      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror,
+      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror,
       mirrorSnapshot: snapshot({ title: 'Renamed on Google', updatedAt: Date.parse('2026-01-05T08:30:00.000Z') }),
     });
     expect(mirror.update).not.toHaveBeenCalled();
@@ -303,7 +303,7 @@ describe('applyDesiredSchedule (pinned blocks are mirrored too)', () => {
     })]);
     const mirror = stubMirror();
     const res = await applyDesiredSchedule(repo, 'u1', desired([]), {
-      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror,
+      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror,
       mirrorSnapshot: snapshot({ title: 'App title', updatedAt: Date.parse('2026-01-05T08:00:00.000Z') }),
     });
     expect(mirror.update).toHaveBeenCalledTimes(1);
@@ -324,7 +324,7 @@ describe('applyDesiredSchedule (pinned blocks are mirrored too)', () => {
     });
     const mirror = { ...stubMirror(), create } as unknown as ScheduleMirror;
 
-    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror });
 
     expect(create).toHaveBeenCalledTimes(2);
     expect(repo.update).toHaveBeenCalledWith('u1', 'p2', { googleEventId: 'g2', googleCalendarId: 'cal1' });
@@ -335,7 +335,7 @@ describe('applyDesiredSchedule (pinned blocks are mirrored too)', () => {
   it('skips a pinned row that belongs to neither a task nor a habit', async () => {
     const repo = fakeRepo([pinned({ taskId: null, habitId: null })]);
     const mirror = stubMirror();
-    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror });
     expect(mirror.create).not.toHaveBeenCalled();
     expect(res.pinnedSynced).toBe(0);
   });
@@ -412,7 +412,7 @@ describe('applyDesiredSchedule (unmirrored engine rows)', () => {
     const plan = desired([want('t1', 9), want('t2', 10), want('t3', 11), want('t4', 12)]);
     const first = insertingMirror({ failing: new Set(['task:t2:0']) });
 
-    const res = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror: first.mirror, isRowScoped: googleAnswered });
+    const res = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror: first.mirror, isRowScoped: googleAnswered });
 
     expect(res).toEqual({
       created: 1, updated: 0, deleted: 1, pinnedSynced: 1, pinnedFailed: 0, attached: 2, attachFailed: 1,
@@ -426,7 +426,7 @@ describe('applyDesiredSchedule (unmirrored engine rows)', () => {
     expect(repo.rows().find((r) => r.id === 'p1')!.googleEventId).not.toBeNull(); // pinned pass ran
 
     const second = insertingMirror();
-    const again = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror: second.mirror });
+    const again = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror: second.mirror });
 
     expect(again).toEqual({
       created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 1, attachFailed: 0,
@@ -446,7 +446,7 @@ describe('applyDesiredSchedule (unmirrored engine rows)', () => {
     const plan = desired([want('t1', 9), want('t2', 10), want('t3', 11), want('t4', 12)]);
     const first = insertingMirror({ failing: new Set(['task:t2:0']) });
 
-    const res = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror: first.mirror, isRowScoped: googleAnswered });
+    const res = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror: first.mirror, isRowScoped: googleAnswered });
 
     expect(res).toEqual({
       created: 1, updated: 1, deleted: 1, pinnedSynced: 1, pinnedFailed: 0, attached: 2, attachFailed: 1,
@@ -460,7 +460,7 @@ describe('applyDesiredSchedule (unmirrored engine rows)', () => {
     expect(repo.rows().find((r) => r.id === 'p1')!.googleEventId).not.toBeNull();
 
     const second = insertingMirror();
-    const again = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror: second.mirror });
+    const again = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror: second.mirror });
 
     expect(again).toEqual({
       created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 1, attachFailed: 0,
@@ -472,7 +472,7 @@ describe('applyDesiredSchedule (unmirrored engine rows)', () => {
   it('B1 changed: a successful insert stores the ids with the move and counts as updated AND attached', async () => {
     const repo = fakeRepo([row('t1', 14)]);
     const { mirror } = insertingMirror();
-    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9)]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9)]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror });
     expect(res).toEqual({ created: 0, updated: 1, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 1, attachFailed: 0 });
     expect(repo.update).toHaveBeenCalledTimes(1);
     expect(repo.rows()[0]).toMatchObject({ googleEventId: 'g-1', googleCalendarId: 'cal1', startsAt: at(9).startsAt });
@@ -483,7 +483,7 @@ describe('applyDesiredSchedule (unmirrored engine rows)', () => {
     const plan = desired([want('t1', 9), want('t2', 10), want('t3', 11), want('t4', 12)]);
     const { mirror, inserted } = insertingMirror();
 
-    const res = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror });
+    const res = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror });
 
     expect(inserted).toContain('task:t2:0');
     expect(mirror.delete).toHaveBeenCalledTimes(1);
@@ -499,7 +499,7 @@ describe('applyDesiredSchedule (unmirrored engine rows)', () => {
     const plan = desired([want('t1', 9), want('t2', 10), want('t3', 11)]);
     const { mirror } = insertingMirror({ deleteFails: true });
 
-    const res = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror });
+    const res = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror });
 
     expect(mirror.delete).toHaveBeenCalledWith(expect.objectContaining({ id: 'b-t2', googleEventId: 'g-2' }));
     expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 2, attachFailed: 1 });
@@ -511,7 +511,7 @@ describe('applyDesiredSchedule (unmirrored engine rows)', () => {
     const plan = desired([want('t1', 9), want('t2', 10), want('t3', 11)]);
     const { mirror } = insertingMirror();
 
-    const res = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror });
+    const res = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror });
 
     expect(mirror.delete).toHaveBeenCalledWith(expect.objectContaining({ id: 'b-t2', googleEventId: 'g-2' }));
     expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 2, attachFailed: 0 });
@@ -522,7 +522,7 @@ describe('applyDesiredSchedule (unmirrored engine rows)', () => {
     const plan = desired([want('t1', 9), want('t2', 10), want('t3', 11)]);
     const { mirror } = insertingMirror({ deleteFails: true });
 
-    const res = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror });
+    const res = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror });
 
     expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 2, attachFailed: 1 });
   });
@@ -534,7 +534,7 @@ describe('applyDesiredSchedule (unmirrored engine rows)', () => {
     ], 'p1');
     const { mirror } = insertingMirror();
 
-    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror });
 
     expect(mirror.delete).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1', googleEventId: 'g-1' }));
     expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 1, pinnedFailed: 0, attached: 0, attachFailed: 0 });
@@ -546,7 +546,7 @@ describe('applyDesiredSchedule (unmirrored engine rows)', () => {
     const repo = vanishingRepo([dbBlock({ id: 'p1', pinned: true, engineKey: null, ...at(9) })], 'p1');
     const { mirror } = insertingMirror({ deleteFails: true });
 
-    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror });
 
     expect(mirror.delete).toHaveBeenCalledTimes(1);
     expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 1, attached: 0, attachFailed: 0 });
@@ -564,7 +564,7 @@ describe('applyDesiredSchedule (unmirrored engine rows)', () => {
     const { mirror } = insertingMirror();
 
     await expect(applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10)]), {
-      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror,
+      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror,
     })).rejects.toThrow('connection reset');
     expect(mirror.delete).not.toHaveBeenCalled();
   });
@@ -617,7 +617,7 @@ describe('applyDesiredSchedule across time (stale past blocks)', () => {
     const pinnedHolder = dbBlock({ id: 'p1', pinned: true });
     const repo = fakeRepo([pinnedHolder]);
     const reissued = eBlock({ start: Date.parse('2026-01-05T11:00:00.000Z'), end: Date.parse('2026-01-05T12:00:00.000Z') });
-    const res = await applyDesiredSchedule(repo, 'u1', desired([reissued]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([reissued]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null });
     expect(res).toEqual({ created: 1, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(repo.update).toHaveBeenCalledWith('u1', 'p1', { engineKey: null });
     expect(repo.create).toHaveBeenCalledWith('u1', expect.objectContaining({ engineKey: 'task:t1:0' }));
@@ -631,7 +631,7 @@ describe('applyDesiredSchedule across time (stale past blocks)', () => {
   it('manual tracking: moves a stale past block forward when the engine reuses its key (no unique collision)', async () => {
     const repo = fakeRepo([dbBlock()]); // task:t1:0 placed 2026-01-05, entirely in the past
     const reissued = eBlock({ start: Date.parse('2026-01-12T09:00:00.000Z'), end: Date.parse('2026-01-12T10:00:00.000Z') });
-    const res = await applyDesiredSchedule(repo, 'u1', desired([reissued]), { now: LATER, horizonEnd: LATER_HORIZON, requireStartToTrack: true });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([reissued]), { now: LATER, horizonEnd: LATER_HORIZON, requireStartToTrack: true, requireStartSince: null });
     expect(res).toEqual({ created: 0, updated: 1, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(repo.create).not.toHaveBeenCalled();
     expect(repo.update).toHaveBeenCalledWith('u1', 'b1', {
@@ -643,7 +643,7 @@ describe('applyDesiredSchedule across time (stale past blocks)', () => {
   it('automatic tracking: a past task row keeps its time and gives its key up; the reissued key is a new row', async () => {
     const repo = fakeRepo([dbBlock()]);
     const reissued = eBlock({ start: Date.parse('2026-01-12T09:00:00.000Z'), end: Date.parse('2026-01-12T10:00:00.000Z') });
-    const res = await applyDesiredSchedule(repo, 'u1', desired([reissued]), { now: LATER, horizonEnd: LATER_HORIZON, requireStartToTrack: false });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([reissued]), { now: LATER, horizonEnd: LATER_HORIZON, requireStartToTrack: false, requireStartSince: null });
     expect(res).toEqual({ created: 1, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(repo.update.mock.calls).toEqual([['u1', 'b1', { engineKey: null }]]); // released first, nothing else written to it
     expect(repo.create).toHaveBeenCalledWith('u1', expect.objectContaining({ engineKey: 'task:t1:0', startsAt: new Date('2026-01-12T09:00:00.000Z') }));
@@ -656,7 +656,7 @@ describe('applyDesiredSchedule across time (stale past blocks)', () => {
     const repo = fakeRepo([dbBlock()]);
     repo.update.mockImplementationOnce(async () => { throw Object.assign(new Error('gone'), { name: 'NotFoundError' }); });
     const reissued = eBlock({ start: Date.parse('2026-01-12T09:00:00.000Z'), end: Date.parse('2026-01-12T10:00:00.000Z') });
-    const res = await applyDesiredSchedule(repo, 'u1', desired([reissued]), { now: LATER, horizonEnd: LATER_HORIZON, requireStartToTrack: false });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([reissued]), { now: LATER, horizonEnd: LATER_HORIZON, requireStartToTrack: false, requireStartSince: null });
     expect(res).toMatchObject({ created: 0, createFailed: 1 });
     expect(repo.create).not.toHaveBeenCalled(); // the unique key would still be held
   });
@@ -678,7 +678,7 @@ describe('applyDesiredSchedule across time (stale past blocks)', () => {
       update: vi.fn(async () => { if (failing) throw new Answer('503'); return undefined; }),
       delete: vi.fn(async () => undefined),
     };
-    const opts = { now: LATER, horizonEnd: LATER_HORIZON, requireStartToTrack: false, mirror, isRowScoped: (e: unknown) => e instanceof Answer, isTransient: (e: unknown) => e instanceof Answer };
+    const opts = { now: LATER, horizonEnd: LATER_HORIZON, requireStartToTrack: false, requireStartSince: null, mirror, isRowScoped: (e: unknown) => e instanceof Answer, isTransient: (e: unknown) => e instanceof Answer };
     expect(await applyDesiredSchedule(repo, 'u1', plan, opts)).toMatchObject({ created: 0, createFailed: 1, updateFailed: 3 });
     expect(mirror.create).not.toHaveBeenCalled();
     expect(repo.rows().find((r) => r.id === 'b1')).toMatchObject({ engineKey: null, startsAt: new Date('2026-01-05T09:00:00.000Z') });
@@ -690,7 +690,7 @@ describe('applyDesiredSchedule across time (stale past blocks)', () => {
   it('automatic tracking: the engine echo of a running frozen row (passed to it as pinned) is skipped by row id', async () => {
     const repo = fakeRepo([dbBlock()]); // 09:00–10:00, running at 09:30
     const echo = eBlock({ id: 'b1' }); // pinned blocks come back with the row id
-    const res = await applyDesiredSchedule(repo, 'u1', desired([echo]), { now: Date.parse('2026-01-05T09:30:00.000Z'), horizonEnd: HORIZON, requireStartToTrack: false });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([echo]), { now: Date.parse('2026-01-05T09:30:00.000Z'), horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null });
     expect(res).toMatchObject({ created: 0, updated: 0, deleted: 0 });
     expect(repo.create).not.toHaveBeenCalled();
   });
@@ -698,7 +698,7 @@ describe('applyDesiredSchedule across time (stale past blocks)', () => {
   describe('rows beyond the horizon (left there by a reduced horizonDays)', () => {
     // NOW + 1 day horizon; these rows were planned 3 days out under the old, longer horizon.
     const beyond = { startsAt: new Date('2026-01-08T09:00:00.000Z'), endsAt: new Date('2026-01-08T10:00:00.000Z') };
-    const opts = (mirror?: ScheduleMirror) => ({ now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror });
+    const opts = (mirror?: ScheduleMirror) => ({ now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror });
 
     it('a reissued key moves its row from beyond the horizon instead of colliding on create', async () => {
       const repo = fakeRepo([dbBlock({ ...beyond })]);
@@ -732,35 +732,35 @@ describe('applyDesiredSchedule across time (stale past blocks)', () => {
 
   it('keeps a habit row that has already begun when its key is no longer desired', async () => {
     const repo = fakeRepo([dbBlock({ taskId: null, habitId: 'h1', engineKey: 'habit:h1:day' })]);
-    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: MID_BLOCK, horizonEnd: HORIZON, requireStartToTrack: false });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: MID_BLOCK, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null });
     expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(repo.delete).not.toHaveBeenCalled();
   });
 
   it('manual tracking: still sweeps a TASK row that has begun but is no longer desired', async () => {
     const repo = fakeRepo([dbBlock()]); // task:t1:0, 09:00–10:00, in progress at 09:30
-    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: MID_BLOCK, horizonEnd: HORIZON, requireStartToTrack: true });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: MID_BLOCK, horizonEnd: HORIZON, requireStartToTrack: true, requireStartSince: null });
     expect(res).toEqual({ created: 0, updated: 0, deleted: 1, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(repo.delete).toHaveBeenCalledWith('u1', 'b1');
   });
 
   it('automatic tracking: keeps a TASK row that has begun even when it is no longer desired', async () => {
     const repo = fakeRepo([dbBlock()]);
-    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: MID_BLOCK, horizonEnd: HORIZON, requireStartToTrack: false });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: MID_BLOCK, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null });
     expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(repo.delete).not.toHaveBeenCalled();
   });
 
   it('still sweeps a habit row that has NOT begun yet', async () => {
     const repo = fakeRepo([dbBlock({ taskId: null, habitId: 'h1', engineKey: 'habit:h1:day' })]);
-    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null });
     expect(res).toEqual({ created: 0, updated: 0, deleted: 1, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(repo.delete).toHaveBeenCalledWith('u1', 'b1');
   });
 
   it('preserves past blocks whose keys are no longer desired (history kept)', async () => {
     const repo = fakeRepo([dbBlock()]); // key task:t1:0 not desired anymore
-    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: LATER, horizonEnd: LATER_HORIZON, requireStartToTrack: false });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: LATER, horizonEnd: LATER_HORIZON, requireStartToTrack: false, requireStartSince: null });
     expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0 });
     expect(repo.delete).not.toHaveBeenCalled();
   });
@@ -913,7 +913,7 @@ describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', ()
     const { repo, writes } = failingRepo([row('t1', 14), row('t9', 15)], 'create', 'task:t3:0', prisma('P2003'));
     const plan = desired([want('t1', 9), want('t2', 10), want('t3', 11), want('t4', 12)]);
 
-    const res = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false });
+    const res = await applyDesiredSchedule(repo, 'u1', plan, { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null });
 
     expect(res).toMatchObject({
       created: 2, updated: 1, deleted: 1, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0, createFailed: 1,
@@ -929,7 +929,7 @@ describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', ()
   ])('a DB update failing with %s is isolated', async (_name, err) => {
     const { repo, writes } = failingRepo([row('t1', 14), row('t2', 15), row('t3', 16)], 'update', 'b-t2', err);
 
-    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10), want('t3', 11)]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10), want('t3', 11)]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null });
 
     expect(res).toMatchObject({ updated: 2, updateFailed: 1 });
     expect(writes).toEqual(['update b-t1', 'update b-t2', 'update b-t3']);
@@ -943,7 +943,7 @@ describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', ()
     const { repo, writes } = failingRepo([row('t1', 14), row('t2', 15), row('t3', 16)], 'update', '*', err);
 
     await expect(applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10), want('t3', 11)]), {
-      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, isRowScoped: () => false,
+      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, isRowScoped: () => false,
     })).rejects.toBe(err);
     expect(writes).toEqual(['update b-t1']);
   });
@@ -954,7 +954,7 @@ describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', ()
     const { mirror, calls } = failingMirror({});
 
     await expect(applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10), want('t3', 11)]), {
-      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror, isRowScoped,
+      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror, isRowScoped,
     })).rejects.toBe(down);
     expect(calls).toEqual(['update b-t1']); // exactly one Google push, then stop
   });
@@ -963,7 +963,7 @@ describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', ()
     const repo = fakeRepo([]);
     const { mirror, calls } = failingMirror({ create: 'task:t2:0' });
 
-    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10), want('t3', 11)]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror, isRowScoped });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10), want('t3', 11)]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror, isRowScoped });
 
     expect(res).toMatchObject({ created: 2, createFailed: 1 });
     expect(calls).toEqual(['create task:t1:0', 'create task:t2:0', 'create task:t3:0']);
@@ -976,7 +976,7 @@ describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', ()
     const { repo } = failingRepo([row('t1', 14), row('t2', 15)], 'update', 'b-t1', named('NotFoundError'));
     const { mirror } = failingMirror({ update: 'b-t1' });
 
-    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10)]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror, isRowScoped });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10)]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror, isRowScoped });
 
     expect(res).toEqual({
       created: 0, updated: 1, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0, updateFailed: 1,
@@ -991,7 +991,7 @@ describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', ()
     const { repo } = failingRepo([], 'create', 'task:t2:0', err);
     const { mirror, calls } = failingMirror({});
 
-    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10), want('t3', 11)]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror, isRowScoped });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10), want('t3', 11)]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror, isRowScoped });
 
     expect(res).toMatchObject({ created: 2, createFailed: 1 });
     expect(calls).toEqual(['create task:t1:0', 'create task:t2:0', 'delete ', 'create task:t3:0']);
@@ -1003,7 +1003,7 @@ describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', ()
     const { mirror } = failingMirror({});
     mirror.delete.mockImplementation(async () => { throw new TypeError('fetch failed'); });
 
-    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10)]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror, isRowScoped });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10)]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror, isRowScoped });
 
     expect(res).toMatchObject({ created: 1, createFailed: 1 });
   });
@@ -1012,7 +1012,7 @@ describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', ()
     const lost = new Error('connection reset'); // aborts the apply; the event is not touched
     const { repo } = failingRepo([], 'create', 'task:t1:0', lost);
     const { mirror } = failingMirror({});
-    await expect(applyDesiredSchedule(repo, 'u1', desired([want('t1', 9)]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror, isRowScoped }))
+    await expect(applyDesiredSchedule(repo, 'u1', desired([want('t1', 9)]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror, isRowScoped }))
       .rejects.toBe(lost);
     expect(mirror.delete).not.toHaveBeenCalled();
   });
@@ -1021,7 +1021,7 @@ describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', ()
     const { repo } = failingRepo([mirrored('t1', 14), mirrored('t2', 15)], 'update', 'b-t1', named('NotFoundError'));
     const { mirror, calls } = failingMirror({});
 
-    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10)]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror, isRowScoped });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10)]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror, isRowScoped });
 
     expect(res).toMatchObject({ updated: 1, updateFailed: 1 });
     expect(calls).toEqual(['update b-t1', 'delete b-t1', 'update b-t2']);
@@ -1031,7 +1031,7 @@ describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', ()
   it('a mirrored row whose move failed for another row-scoped reason keeps its event', async () => {
     const { repo } = failingRepo([mirrored('t1', 14)], 'update', 'b-t1', named('ConflictError'));
     const { mirror } = failingMirror({});
-    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9)]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror, isRowScoped });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9)]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror, isRowScoped });
     expect(res).toMatchObject({ updateFailed: 1 });
     expect(mirror.delete).not.toHaveBeenCalled();
   });
@@ -1040,7 +1040,7 @@ describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', ()
     const repo = fakeRepo([mirrored('t1', 14), mirrored('t2', 15), mirrored('t3', 16)]);
     const { mirror, calls } = failingMirror({ update: 'b-t2' });
 
-    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10), want('t3', 11)]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror, isRowScoped });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10), want('t3', 11)]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror, isRowScoped });
 
     expect(res).toEqual({
       created: 0, updated: 2, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0, updateFailed: 1,
@@ -1054,7 +1054,7 @@ describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', ()
     const repo = fakeRepo([mirrored('t7', 13), mirrored('t8', 14), mirrored('t9', 15)]);
     const { mirror, calls } = failingMirror({ delete: 'b-t8' });
 
-    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror, isRowScoped });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror, isRowScoped });
 
     expect(res).toEqual({
       created: 0, updated: 0, deleted: 2, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0, deleteFailed: 1,
@@ -1066,7 +1066,7 @@ describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', ()
   it('a DB delete in the sweep that finds the row gone (NotFound) is counted; the other stale rows go', async () => {
     const { repo } = failingRepo([row('t7', 13), row('t8', 14), row('t9', 15)], 'delete', 'b-t8', named('NotFoundError'));
 
-    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null });
 
     expect(res).toMatchObject({ deleted: 2, deleteFailed: 1 });
   });
@@ -1075,17 +1075,17 @@ describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', ()
     const offline = new TypeError('fetch failed');
     const upd = failingMirror({ update: 'b-t1' }, offline);
     await expect(applyDesiredSchedule(fakeRepo([mirrored('t1', 14), mirrored('t2', 15)]), 'u1', desired([want('t1', 9), want('t2', 10)]), {
-      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror: upd.mirror, isRowScoped,
+      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror: upd.mirror, isRowScoped,
     })).rejects.toBe(offline);
     expect(upd.calls).toEqual(['update b-t1']);
     const create = failingMirror({ create: 'task:t1:0' }, offline);
     await expect(applyDesiredSchedule(fakeRepo([]), 'u1', desired([want('t1', 9), want('t2', 10)]), {
-      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror: create.mirror, isRowScoped,
+      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror: create.mirror, isRowScoped,
     })).rejects.toBe(offline);
     expect(create.calls).toEqual(['create task:t1:0']);
     const sweep = failingMirror({ delete: 'b-t8' }, offline);
     await expect(applyDesiredSchedule(fakeRepo([mirrored('t8', 14), mirrored('t9', 15)]), 'u1', desired([]), {
-      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror: sweep.mirror, isRowScoped,
+      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror: sweep.mirror, isRowScoped,
     })).rejects.toBe(offline);
     expect(sweep.calls).toEqual(['delete b-t8']);
   });
@@ -1095,14 +1095,14 @@ describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', ()
     // Unchanged row with no event yet: the attach insert (mirror.create) throws.
     const unchanged = failingMirror({ create: 'task:t1:0' }, offline);
     await expect(applyDesiredSchedule(fakeRepo([row('t1', 9), row('t2', 10)]), 'u1', desired([want('t1', 9), want('t2', 10)]), {
-      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror: unchanged.mirror, isRowScoped,
+      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror: unchanged.mirror, isRowScoped,
     })).rejects.toBe(offline);
     expect(unchanged.calls).toEqual(['create task:t1:0']);
     // Changed row with no event yet: the inserting mirror.update throws.
     const changed = failingMirror({ update: 'b-t1' }, offline);
     const repoB = fakeRepo([row('t1', 14), row('t2', 15)]);
     await expect(applyDesiredSchedule(repoB, 'u1', desired([want('t1', 9), want('t2', 10)]), {
-      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror: changed.mirror, isRowScoped,
+      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror: changed.mirror, isRowScoped,
     })).rejects.toBe(offline);
     expect(repoB.update).not.toHaveBeenCalled(); // not even the plan's own move went through
     // Storing the inserted ids hits the database going away.
@@ -1110,7 +1110,7 @@ describe('applyDesiredSchedule (per-row failure isolation in the diff loop)', ()
     const repoC = fakeRepo([row('t1', 9), row('t2', 10)]);
     repoC.update.mockImplementation(async () => { throw down; });
     await expect(applyDesiredSchedule(repoC, 'u1', desired([want('t1', 9), want('t2', 10)]), {
-      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror: failingMirror({}).mirror, isRowScoped,
+      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror: failingMirror({}).mirror, isRowScoped,
     })).rejects.toBe(down);
   });
 });
@@ -1157,7 +1157,7 @@ describe('applyDesiredSchedule reports isolated row failures', () => {
     const reports: unknown[] = [];
 
     const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10), want('t3', 11)]), {
-      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror, isRowScoped, onRowFailure: (f) => reports.push(f),
+      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror, isRowScoped, onRowFailure: (f) => reports.push(f),
     });
 
     expect(res).toMatchObject({ updateFailed: 1, attachFailed: 1, createFailed: 1, deleteFailed: 1, pinnedFailed: 1 });
@@ -1171,7 +1171,7 @@ describe('applyDesiredSchedule reports isolated row failures', () => {
     expect(JSON.stringify(res)).not.toContain('google'); // the counts carry no error objects
 
     const clean: unknown[] = [];
-    await applyDesiredSchedule(fakeRepo([]), 'u1', desired([want('t1', 9)]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, onRowFailure: (f) => clean.push(f) });
+    await applyDesiredSchedule(fakeRepo([]), 'u1', desired([want('t1', 9)]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, onRowFailure: (f) => clean.push(f) });
     expect(clean).toEqual([]);
   });
 
@@ -1243,7 +1243,7 @@ describe('applyDesiredSchedule: a streak of transient external failures opens th
   const five = () => [mirrored('t1', 13), mirrored('t2', 14), mirrored('t3', 15), mirrored('t4', 16), mirrored('t5', 17)];
   const moved = () => desired(['t1', 't2', 't3', 't4', 't5'].map((t, i) => want(t, 8 + i)));
   const opts = (mirror: ScheduleMirror, extra: Partial<Parameters<typeof applyDesiredSchedule>[3]> = {}) =>
-    ({ now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror, isRowScoped, isTransient, ...extra });
+    ({ now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror, isRowScoped, isTransient, ...extra });
 
   it('two transient failures, then a success, then two more: all attempted and isolated (the success resets the streak)', async () => {
     const { mirror, calls } = scripted([500, 503, 'ok', 429, 500]);
@@ -1360,7 +1360,7 @@ describe('applyDesiredSchedule: a streak of transient external failures opens th
     const repo = fakeRepo([]);
     repo.create.mockImplementation(async () => { throw Object.assign(new Error('fk'), { code: 'P2003' }); });
     const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 8), want('t2', 9), want('t3', 10), want('t4', 11)]), {
-      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, isTransient: () => true,
+      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, isTransient: () => true,
     });
     expect(res).toMatchObject({ created: 0, createFailed: 4 });
   });
@@ -1374,7 +1374,7 @@ describe('applyDesiredSchedule: a streak of transient external failures opens th
       update: vi.fn(), delete: vi.fn(async () => { throw gone; }),
     } as unknown as ScheduleMirror;
     const reports: unknown[] = [];
-    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror, onRowFailure: (f) => reports.push(f) });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror, onRowFailure: (f) => reports.push(f) });
     expect(res).toMatchObject({ pinnedFailed: 1 });
     expect(reports).toEqual([{ kind: 'orphan', blockId: 'p1', engineKey: null, error: gone }]);
   });
@@ -1398,7 +1398,7 @@ describe('applyDesiredSchedule failure reporting is robust', () => {
     repo.create.mockImplementation(async (u, data) => { if (data.engineKey === 'task:t1:0') throw fk(); return real(u, data); });
 
     const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9), want('t2', 10)]), {
-      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, onRowFailure: () => { throw new Error('logger down'); },
+      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, onRowFailure: () => { throw new Error('logger down'); },
     });
 
     expect(res).toMatchObject({ created: 1, createFailed: 1 });
@@ -1415,7 +1415,7 @@ describe('applyDesiredSchedule failure reporting is robust', () => {
     const reports: Array<{ kind: string }> = [];
 
     const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9)]), {
-      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror, onRowFailure: (f) => reports.push(f),
+      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror, onRowFailure: (f) => reports.push(f),
     });
 
     expect(res).toEqual({ created: 0, updated: 0, deleted: 0, pinnedSynced: 0, pinnedFailed: 0, attached: 0, attachFailed: 0, createFailed: 1 });
@@ -1436,7 +1436,7 @@ describe('applyDesiredSchedule failure reporting is robust', () => {
     const reports: unknown[] = [];
 
     const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 9)]), {
-      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror, onRowFailure: (f) => reports.push(f),
+      now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, requireStartSince: null, mirror, onRowFailure: (f) => reports.push(f),
     });
 
     expect(res).toMatchObject({ attached: 0, attachFailed: 1 });

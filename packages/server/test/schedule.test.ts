@@ -408,31 +408,43 @@ describe('GET /schedule discard sweep (manual mode)', () => {
     expect(ids).toEqual(['future', 'kept']);
   });
 
-  // Characterisation (unchanged by the automatic-tracking freeze, reported to the owner): the
-  // sweep does not look at `pinned`, so the first GET after requireStartToTrack is switched ON
-  // permanently deletes the whole automatically tracked history — frozen auto pieces, pieces
-  // ended by Stop or by completing their task, dragged blocks — with their Google events. Only
-  // Started rows survive. Switching back OFF cannot bring that time back.
-  it('after switching to manual, the first GET deletes every past un-started task block, pinned ones included, with its event', async () => {
-    const deleted: string[] = [];
-    const past = (id: string, hh: string, over: Partial<ScheduledBlock> = {}) => block({
-      id, startsAt: new Date(`2026-01-04T${hh}:00:00.000Z`), endsAt: new Date(`2026-01-04T${hh}:30:00.000Z`),
+  // Manual tracking switched on at 2026-01-04 11:30 (requireStartSince): blocks that ended by then
+  // are history kept from automatic tracking — in the database, the planner and Google — and only
+  // stop counting. Never-Started blocks ending after the switch are discarded as before.
+  const pastBlocks = () => {
+    const past = (id: string, start: string, end: string, over: Partial<ScheduledBlock> = {}) => block({
+      id, startsAt: new Date(`2026-01-04T${start}:00.000Z`), endsAt: new Date(`2026-01-04T${end}:00.000Z`),
       googleEventId: `g-${id}`, googleCalendarId: 'cal-auto', ...over,
     });
+    return [
+      past('auto', '09:00', '09:30'), // a frozen auto piece: tracked while the setting was off
+      past('stopped', '10:00', '10:30', { pinned: true, engineKey: null }), // ended by Stop or by completing its task
+      past('dragged', '11:00', '11:30', { pinned: true, engineKey: null }), // ends exactly at the switch
+      past('later', '11:00', '11:31'), // ends a minute after the switch: an ordinary manual-mode block
+      past('started', '12:00', '12:30', { pinned: true, startedAt: new Date('2026-01-04T12:00:00.000Z') }),
+    ];
+  };
+  async function sweep(requireStartSince: Date | null) {
+    const deleted: string[] = [];
     const { app } = buildTestApp({
-      blocks: [
-        past('auto', '09'), // a frozen auto piece: tracked time while the setting was off
-        past('stopped', '10', { pinned: true, engineKey: null }), // ended by Stop or by completing its task
-        past('dragged', '11', { pinned: true, engineKey: null }),
-        past('started', '12', { pinned: true, startedAt: new Date('2026-01-04T12:00:00.000Z') }),
-      ],
-      settings: settings({ requireStartToTrack: true }), accessToken: 'access-1',
+      blocks: pastBlocks(), settings: settings({ requireStartToTrack: true, requireStartSince }), accessToken: 'access-1',
       deleteEvent: async (_t, _c, googleEventId) => { deleted.push(googleEventId); },
     });
     const token = await tokenFor(app);
     const res = await app.inject({ method: 'GET', url: `/schedule${wide}`, headers: { authorization: `Bearer ${token}` } });
-    expect((res.json() as { id: string }[]).map((b) => b.id)).toEqual(['started']);
-    expect(deleted.sort()).toEqual(['g-auto', 'g-dragged', 'g-stopped']);
+    return { ids: (res.json() as { id: string }[]).map((b) => b.id).sort(), deleted: deleted.sort() };
+  }
+
+  it('after switching to manual, history that ended by the switch is kept (pinned or not, with its event); later un-started blocks go', async () => {
+    const { ids, deleted } = await sweep(new Date('2026-01-04T11:30:00.000Z'));
+    expect(ids).toEqual(['auto', 'dragged', 'started', 'stopped']);
+    expect(deleted).toEqual(['g-later']);
+  });
+
+  it('manual since before the timestamp existed (null): unchanged, every past un-started block goes, pinned ones included', async () => {
+    const { ids, deleted } = await sweep(null);
+    expect(ids).toEqual(['started']);
+    expect(deleted).toEqual(['g-auto', 'g-dragged', 'g-later', 'g-stopped']);
   });
 
   it('keeps un-started past blocks in auto mode', async () => {

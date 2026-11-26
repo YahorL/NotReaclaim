@@ -28,26 +28,37 @@ describe('isDiscardableUnstarted', () => {
   const ended = { taskId: 't1', startedAt: null, endsAt: at('14:00') };
 
   it('an un-started task block that ended before now is discarded', () => {
-    expect(isDiscardableUnstarted(ended, NOW)).toBe(true);
+    expect(isDiscardableUnstarted(ended, NOW, null)).toBe(true);
   });
 
   it('one that ends exactly at now is discarded too', () => {
-    expect(isDiscardableUnstarted({ ...ended, endsAt: at('15:00') }, NOW)).toBe(true);
+    expect(isDiscardableUnstarted({ ...ended, endsAt: at('15:00') }, NOW, null)).toBe(true);
   });
 
   it('one that ends after now is kept', () => {
-    expect(isDiscardableUnstarted({ ...ended, endsAt: at('15:30') }, NOW)).toBe(false);
+    expect(isDiscardableUnstarted({ ...ended, endsAt: at('15:30') }, NOW, null)).toBe(false);
   });
 
   it('a started block is kept (it counts as spent time)', () => {
-    expect(isDiscardableUnstarted({ ...ended, startedAt: at('13:30') }, NOW)).toBe(false);
+    expect(isDiscardableUnstarted({ ...ended, startedAt: at('13:30') }, NOW, null)).toBe(false);
   });
 
   it('a habit block (no taskId) is kept', () => {
-    expect(isDiscardableUnstarted({ ...ended, taskId: null }, NOW)).toBe(false);
+    expect(isDiscardableUnstarted({ ...ended, taskId: null }, NOW, null)).toBe(false);
   });
 
   it('taskId is tested for truthiness: an empty one is kept', () => {
-    expect(isDiscardableUnstarted({ ...ended, taskId: '' }, NOW)).toBe(false);
+    expect(isDiscardableUnstarted({ ...ended, taskId: '' }, NOW, null)).toBe(false);
+  });
+
+  describe('with manual tracking switched on at 14:30 (requireStartSince): history ended by then is kept', () => {
+    const SINCE = at('14:30');
+    it('ended before the switch: kept, pinned or not', () => {
+      expect(isDiscardableUnstarted(ended, NOW, SINCE)).toBe(false);
+    });
+    it('ended exactly at the switch: kept; 1 ms later: discarded', () => {
+      expect(isDiscardableUnstarted({ ...ended, endsAt: at('14:30') }, NOW, SINCE)).toBe(false);
+      expect(isDiscardableUnstarted({ ...ended, endsAt: new Date(at('14:30').getTime() + 1) }, NOW, SINCE)).toBe(true);
+    });
   });
 });

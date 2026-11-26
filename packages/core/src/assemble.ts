@@ -124,7 +124,7 @@ export async function assembleScheduleInput(
   // sides, its full length counted toward the task below (so that time is not planned again),
   // and echoed in the result (apply skips the echo by row id, as for pinned rows).
   const pinnedBlocks: EngineScheduledBlock[] = blocks
-    .filter((b) => (b.pinned || isFrozenTaskRow(b, now, settings.requireStartToTrack)) && b.endsAt.getTime() > now)
+    .filter((b) => (b.pinned || isFrozenTaskRow(b, now, settings)) && b.endsAt.getTime() > now)
     .map(toScheduledBlock);
 
   // A habit occurrence that is running right now is frozen in place (see the begun-habit
@@ -151,7 +151,7 @@ export async function assembleScheduleInput(
   const tailMs = settings.taskBufferMs ?? 0;
   if (!settings.requireStartToTrack && tailMs > 0) {
     for (const b of blocks) {
-      if (b.taskId == null || !(b.pinned || isFrozenTaskRow(b, now, settings.requireStartToTrack))) continue;
+      if (b.taskId == null || !(b.pinned || isFrozenTaskRow(b, now, settings))) continue;
       const end = b.endsAt.getTime();
       if (end <= now && now < end + tailMs) fixedEvents.push({ id: `task-tail:${b.id}`, start: end, end: end + tailMs });
     }
@@ -178,10 +178,12 @@ export async function assembleScheduleInput(
   // frozen piece of it still holds. Without this the engine numbers the remainder from 0 again,
   // so as soon as a piece begins, the frozen piece gives its key up, the remainder is created
   // as a NEW row under it and the next piece's old row is swept: one Google insert and one
-  // delete per piece. With it the next piece keeps matching its own row.
+  // delete per piece. With it the next piece keeps matching its own row. In manual tracking the
+  // frozen rows are the history kept from automatic tracking (none when requireStartSince is
+  // null), so the first manual replan after the switch does not renumber over them either.
   const firstChunkIndex = new Map<string, number>();
   for (const b of blocks) {
-    if (!isFrozenTaskRow(b, now, settings.requireStartToTrack)) continue;
+    if (!isFrozenTaskRow(b, now, settings)) continue;
     const index = taskChunkIndex(b.engineKey, b.taskId!);
     if (index != null) firstChunkIndex.set(b.taskId!, Math.max(firstChunkIndex.get(b.taskId!) ?? 0, index + 1));
   }
