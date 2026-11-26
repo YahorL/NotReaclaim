@@ -36,6 +36,12 @@ export interface FlexibleTask {
    * is left unscheduled. Omit for unrestricted placement (previous behavior).
    */
   allowedWindows?: Interval[];
+  /**
+   * Index of the first piece's id (`task:<id>:<index>`); default 0. The caller sets it past the
+   * indices that earlier pieces of the same task still hold outside the engine (core: pieces
+   * already worked on), so the remaining pieces keep the ids they had instead of shifting down.
+   */
+  firstChunkIndex?: number;
 }
 
 /** A recurring flexible block. `perPeriod` occurrences of `chunkMs` within each period. */

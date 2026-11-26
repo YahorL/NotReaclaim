@@ -786,10 +786,10 @@ describe('assembleScheduleInput frozen task pieces (automatic tracking)', () => 
     id: 'run', taskId: 't1', habitId: null, pinned: false, engineKey: 'task:t1:0',
     startsAt: new Date('2026-01-05T09:00:00.000Z'), endsAt: new Date('2026-01-05T10:00:00.000Z'), ...over,
   });
-  const repos = (requireStartToTrack: boolean, blocks: ReturnType<typeof makeBlock>[]) => fakeRepos({
+  const repos = (requireStartToTrack: boolean, blocks: ReturnType<typeof makeBlock>[], durationMs = 7_200_000) => fakeRepos({
     settings: makeSettings({ requireStartToTrack, workingHours: [{ weekday: 1, startMinute: 0, endMinute: 1440 }] as never }),
     categories: [makeCategory()],
-    tasks: [makeTask({ id: 't1', durationMs: 7_200_000, minChunkMs: 1_800_000, maxChunkMs: 3_600_000 })],
+    tasks: [makeTask({ id: 't1', durationMs, minChunkMs: 1_800_000, maxChunkMs: 3_600_000 })],
     blocks,
   });
 
@@ -810,6 +810,20 @@ describe('assembleScheduleInput frozen task pieces (automatic tracking)', () => 
     const input = await assembleScheduleInput(repos(false, [done, running()]), 'u1', NOW);
     expect(input.pinnedBlocks.map((b) => b.id)).toEqual(['run']);
     expect(input.tasks.find((t) => t.id === 't1')).toBeUndefined(); // 1 h spent + 1 h running = 2 h
+  });
+
+  it('automatic: the remaining pieces are numbered after the highest key a frozen piece holds', async () => {
+    const done = running({ id: 'done', engineKey: 'task:t1:4', startsAt: new Date('2026-01-05T08:00:00.000Z'), endsAt: new Date('2026-01-05T08:30:00.000Z') });
+    const ignored = [
+      running({ id: 'pinned', pinned: true, engineKey: 'task:t1:9', startsAt: new Date('2026-01-05T07:00:00.000Z'), endsAt: new Date('2026-01-05T07:30:00.000Z') }),
+      running({ id: 'future', engineKey: 'task:t1:8', startsAt: new Date('2026-01-05T11:00:00.000Z'), endsAt: new Date('2026-01-05T11:30:00.000Z') }),
+      running({ id: 'released', engineKey: null, startsAt: new Date('2026-01-05T06:00:00.000Z'), endsAt: new Date('2026-01-05T06:30:00.000Z') }),
+      running({ id: 'odd', engineKey: 'task:t1:x', startsAt: new Date('2026-01-05T05:00:00.000Z'), endsAt: new Date('2026-01-05T05:30:00.000Z') }),
+    ];
+    const auto = await assembleScheduleInput(repos(false, [done, running({ engineKey: 'task:t1:2' }), ...ignored], 36_000_000), 'u1', NOW);
+    expect(auto.tasks.find((t) => t.id === 't1')).toMatchObject({ firstChunkIndex: 5 });
+    const manual = await assembleScheduleInput(repos(true, [done, running({ engineKey: 'task:t1:2' })], 36_000_000), 'u1', NOW);
+    expect(manual.tasks.find((t) => t.id === 't1')).not.toHaveProperty('firstChunkIndex');
   });
 
   it('automatic: a running habit row keeps its own (R21) handling, not the task freeze', async () => {

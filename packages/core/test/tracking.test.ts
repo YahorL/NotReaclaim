@@ -110,6 +110,10 @@ const times = (w: World, taskId = 't1') => w.store.rows()
     const day = r.startsAt.toISOString().slice(0, 10) === '2026-01-05' ? '' : `${r.startsAt.toISOString().slice(5, 10)} `;
     return `${day}${hhmm(r.startsAt.getTime())}–${hhmm(r.endsAt.getTime())}`;
   });
+const keys = (w: World, taskId = 't1') => w.store.rows()
+  .filter((r) => r.taskId === taskId)
+  .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime())
+  .map((r) => r.engineKey);
 const noWrites = { created: 0, updated: 0, deleted: 0 };
 
 describe('isFrozenTaskRow', () => {
@@ -137,8 +141,9 @@ describe('B2 — a finished piece keeps its time (automatic tracking)', () => {
     const w = world({ tasks: [task(2)], events: [ev('m', '10:00', '11:00')] });
     await replan(w, at('08:00'));
     expect(times(w)).toEqual(['09:00–10:00', '11:00–12:00']);
-    await replan(w, at('10:30'));
+    expect(await replan(w, at('10:30'))).toMatchObject(noWrites); // stable keys: the remainder is still task:t1:1
     expect(times(w)).toEqual(['09:00–10:00', '11:00–12:00']);
+    expect(keys(w)).toEqual(['task:t1:0', 'task:t1:1']);
     expect(spent(w, at('10:30'))).toBe(1 * H);
     expect(await replan(w, at('10:35'))).toMatchObject(noWrites);
     expect(spent(w, at('12:00'))).toBe(2 * H);
@@ -200,7 +205,7 @@ describe('B1 — a running piece stays put (automatic tracking)', () => {
     const w = world({ tasks: [task(2)] });
     await replan(w, at('08:00'));
     for (const t of ['09:00', '10:00', '11:00']) {
-      expect(await replan(w, at(t)), t).toMatchObject({ updated: 0 }); // nothing is moved
+      expect(await replan(w, at(t)), t).toMatchObject(noWrites);
       expect(times(w), t).toEqual(['09:00–10:00', '10:00–11:00']);
     }
     expect(spent(w, at('10:00'))).toBe(1 * H); // the first counts, the second (running) does not yet
@@ -277,16 +282,15 @@ describe('a polled day (replans every 5 minutes, counting mirror)', () => {
     const r = await day(false, 2);
     expect(r.spentH).toBe(2);
     expect(r.times).toEqual(['09:00–10:00', '10:00–11:00']);
-    // The hand-over to the second piece still renumbers it: the frozen first piece gives key
-    // :0 up, the remainder is created under it and the old :1 row is swept.
-    expect(r.writes).toEqual({ create: 1, update: 0, delete: 1 });
+    // Without stable keys the hand-over to the second piece cost one insert and one delete.
+    expect(r.writes).toEqual({ create: 0, update: 0, delete: 0 });
   });
 
   it('automatic, 3 h around two meetings: the full 3 h is tracked', async () => {
     const r = await day(false, 3, [ev('m1', '10:00', '11:00'), ev('m2', '13:00', '14:00')]);
     expect(r.spentH).toBe(3);
     expect(r.times).toEqual(['09:00–10:00', '11:00–12:00', '12:00–13:00']);
-    expect(r.writes).toEqual({ create: 2, update: 1, delete: 2 });
+    expect(r.writes).toEqual({ create: 0, update: 0, delete: 0 }); // without stable keys: 2 / 1 / 2
   });
 
   it('manual (never pressing Start): unchanged, the pieces slide and nothing counts', async () => {
@@ -294,5 +298,26 @@ describe('a polled day (replans every 5 minutes, counting mirror)', () => {
     expect(r.spentH).toBe(0);
     expect(r.writes).toEqual({ create: 0, update: 159, delete: 0 });
     expect(r.times).toEqual(['01-06 09:00–10:00', '01-06 10:00–11:00']);
+  });
+});
+
+describe('stable keys', () => {
+  it('the first replan after a piece begins makes no write even when more pieces follow', async () => {
+    const w = world({ tasks: [task(3)] });
+    const { calls, mirror } = countingMirror();
+    await replan(w, at('08:00'), mirror);
+    const before = { ...calls };
+    expect(await replan(w, at('09:02'), mirror)).toMatchObject(noWrites);
+    expect(calls).toEqual(before);
+    expect(keys(w)).toEqual(['task:t1:0', 'task:t1:1', 'task:t1:2']);
+  });
+
+  it('a longer task after its pieces are done gets new keys past the ones history holds', async () => {
+    const w = world({ tasks: [task(1)] });
+    await replan(w, at('08:00'));
+    w.tasks[0] = { ...w.tasks[0]!, durationMs: 2 * H };
+    expect(await replan(w, at('10:30'))).toMatchObject({ created: 1, updated: 0, deleted: 0 });
+    expect(keys(w)).toEqual(['task:t1:0', 'task:t1:1']);
+    expect(times(w)).toEqual(['09:00–10:00', '10:30–11:30']);
   });
 });

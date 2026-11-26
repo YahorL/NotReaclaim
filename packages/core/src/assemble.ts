@@ -52,6 +52,14 @@ export type AssembledScheduleInput = ScheduleInput & {
   timezoneFallbackFrom: string | null;
 };
 
+/** The piece index of a `task:<taskId>:<index>` engine key of that task; null for any other key. */
+function taskChunkIndex(engineKey: string | null, taskId: string): number | null {
+  const prefix = `task:${taskId}:`;
+  if (!engineKey?.startsWith(prefix)) return null;
+  const rest = engineKey.slice(prefix.length);
+  return /^\d+$/.test(rest) ? Number(rest) : null;
+}
+
 /** Assemble a complete engine ScheduleInput from persisted user data. */
 export async function assembleScheduleInput(
   repos: SchedulingRepositories,
@@ -144,6 +152,18 @@ export async function assembleScheduleInput(
     }
   }
 
+  // Stable keys: number a task's remaining pieces after the highest `task:<id>:<i>` key that a
+  // frozen piece of it still holds. Without this the engine numbers the remainder from 0 again,
+  // so as soon as a piece begins, the frozen piece gives its key up, the remainder is created
+  // as a NEW row under it and the next piece's old row is swept: one Google insert and one
+  // delete per piece. With it the next piece keeps matching its own row.
+  const firstChunkIndex = new Map<string, number>();
+  for (const b of blocks) {
+    if (!isFrozenTaskRow(b, now, settings.requireStartToTrack)) continue;
+    const index = taskChunkIndex(b.engineKey, b.taskId!);
+    if (index != null) firstChunkIndex.set(b.taskId!, Math.max(firstChunkIndex.get(b.taskId!) ?? 0, index + 1));
+  }
+
   const allTasks = await repos.tasks.listByUser(userId);
   const tasks: FlexibleTask[] = [];
   const undatedTaskIds: string[] = [];
@@ -165,7 +185,8 @@ export async function assembleScheduleInput(
     if (t.notBefore) {
       allowedWindows = intersectIntervals(allowedWindows, [{ start: t.notBefore.getTime(), end: horizonEnd.getTime() }]);
     }
-    tasks.push({ ...flexible, durationMs: remaining, allowedWindows });
+    const first = firstChunkIndex.get(t.id);
+    tasks.push({ ...flexible, durationMs: remaining, allowedWindows, ...(first ? { firstChunkIndex: first } : {}) });
   }
 
   const allHabits = await repos.habits.listByUser(userId);

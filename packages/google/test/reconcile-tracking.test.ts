@@ -147,7 +147,7 @@ describe('reconcile, polled every 5 minutes for a day (Google + drift)', () => {
     expect(r.pinnedByDrift).toBe(0); // drift never mistook a frozen piece for a Google-side edit
     expect(w.rowTimes()).toEqual(['09:00–10:00', '10:00–11:00']);
     expect(w.client.times()).toEqual(['09:00–10:00', '10:00–11:00']);
-    expect(r.writes).toEqual({ insert: 1, update: 0, delete: 1 });
+    expect(r.writes).toEqual({ insert: 0, update: 0, delete: 0 }); // without stable keys: 1 insert + 1 delete
   });
 
   it('manual tracking (never pressing Start): unchanged, the pieces chase the clock', async () => {

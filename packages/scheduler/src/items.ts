@@ -20,7 +20,7 @@ export function scheduleTask(free: Interval[], task: FlexibleTask, gapMs = 0): S
   const result = placeItem(free, chunkSizes, task.dueBy, task.allowedWindows, gapMs);
 
   const blocks: ScheduledBlock[] = result.placements.map((p, i) => ({
-    id: `task:${task.id}:${i}`,
+    id: `task:${task.id}:${(task.firstChunkIndex ?? 0) + i}`,
     sourceType: 'task',
     sourceId: task.id,
     title: task.title,

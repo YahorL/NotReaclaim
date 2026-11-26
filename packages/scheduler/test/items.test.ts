@@ -27,6 +27,11 @@ describe('scheduleTask', () => {
     expect(result.free).toEqual([{ start: 60, end: 100 }]);
   });
 
+  it('numbers the pieces from firstChunkIndex when given (keys already held by earlier pieces are skipped)', () => {
+    const result = scheduleTask([{ start: 0, end: 100 }], task({ firstChunkIndex: 3 }));
+    expect(result.blocks.map((b) => b.id)).toEqual(['task:t1:3', 'task:t1:4']);
+  });
+
   it('reports unplaced time when free space runs out before the due date', () => {
     const free = [{ start: 0, end: 30 }];
     const result = scheduleTask(free, task({ durationMs: 60 }));
