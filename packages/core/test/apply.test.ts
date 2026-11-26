@@ -695,6 +695,39 @@ describe('applyDesiredSchedule across time (stale past blocks)', () => {
     expect(repo.create).not.toHaveBeenCalled();
   });
 
+  describe('rows beyond the horizon (left there by a reduced horizonDays)', () => {
+    // NOW + 1 day horizon; these rows were planned 3 days out under the old, longer horizon.
+    const beyond = { startsAt: new Date('2026-01-08T09:00:00.000Z'), endsAt: new Date('2026-01-08T10:00:00.000Z') };
+    const opts = (mirror?: ScheduleMirror) => ({ now: NOW, horizonEnd: HORIZON, requireStartToTrack: false, mirror });
+
+    it('a reissued key moves its row from beyond the horizon instead of colliding on create', async () => {
+      const repo = fakeRepo([dbBlock({ ...beyond })]);
+      const res = await applyDesiredSchedule(repo, 'u1', desired([eBlock()]), opts());
+      expect(res).toMatchObject({ created: 0, updated: 1, deleted: 0 });
+      expect(repo.create).not.toHaveBeenCalled();
+      expect(repo.rows()).toHaveLength(1);
+    });
+
+    it('a key no longer issued is swept like any stale future row, with its event', async () => {
+      const repo = fakeRepo([dbBlock({ ...beyond, googleEventId: 'g1', googleCalendarId: 'cal1' })]);
+      const mirror: ScheduleMirror = { create: vi.fn(), update: vi.fn(), delete: vi.fn(async () => undefined) };
+      const res = await applyDesiredSchedule(repo, 'u1', desired([]), opts(mirror));
+      expect(res).toMatchObject({ deleted: 1 });
+      expect(mirror.delete).toHaveBeenCalledTimes(1);
+    });
+
+    it('a pinned holder beyond the horizon gives a reissued key up; the pinned pass still leaves it alone', async () => {
+      const repo = fakeRepo([dbBlock({ ...beyond, pinned: true })]);
+      const mirror: ScheduleMirror = {
+        create: vi.fn(async () => ({ googleEventId: 'g-new', googleCalendarId: 'cal1' })), update: vi.fn(), delete: vi.fn(),
+      };
+      const res = await applyDesiredSchedule(repo, 'u1', desired([eBlock()]), opts(mirror));
+      expect(res).toMatchObject({ created: 1, pinnedSynced: 0 });
+      expect(repo.update).toHaveBeenCalledWith('u1', 'b1', { engineKey: null });
+      expect(mirror.create).toHaveBeenCalledTimes(1); // the new block's event only: none for the pinned row beyond the horizon
+    });
+  });
+
   const MID_BLOCK = Date.parse('2026-01-05T09:30:00.000Z'); // inside the seeded 09:00–10:00 block
 
   it('keeps a habit row that has already begun when its key is no longer desired', async () => {
@@ -1278,20 +1311,22 @@ describe('applyDesiredSchedule: a streak of transient external failures opens th
     const repo = fakeRepo([
       mirrored('f1', 13), mirrored('u1', 9), mirrored('f2', 14), mirrored('u2', 11), mirrored('f3', 15),
       row('c1', 20), // changed, never mirrored: its DB move needs no Google call
+      row('a1', 22), // unchanged, never mirrored: only its first insert, which needs Google
       row('s1', 17), // stale, no event: swept without Google
       mirrored('m1', 18), // stale, mirrored: its Google delete would be needed
       dbBlock({ id: 'p1', pinned: true, engineKey: null, ...at(19) }), // pinned, never mirrored
     ]);
-    const plan = desired([want('f1', 8), want('u1', 9), want('f2', 10), want('u2', 11), want('f3', 12), want('c1', 21), want('n1', 16)]);
+    const plan = desired([want('f1', 8), want('u1', 9), want('f2', 10), want('u2', 11), want('f3', 12), want('c1', 21), want('a1', 22), want('n1', 16)]);
     const sick = scripted([503, 503, 503], new TypeError('a call after the circuit opened'));
 
     const res = await applyDesiredSchedule(repo, 'u1', plan, opts(sick.mirror));
 
     expect(sick.calls).toEqual(['update b-f1', 'update b-f2', 'update b-f3']);
     expect(res).toEqual({
-      created: 0, updated: 1, deleted: 1, pinnedSynced: 0, pinnedFailed: 1, attached: 0, attachFailed: 1,
+      created: 0, updated: 1, deleted: 1, pinnedSynced: 0, pinnedFailed: 1, attached: 0, attachFailed: 2, // c1's and a1's inserts
       createFailed: 1, updateFailed: 3, deleteFailed: 1,
     });
+    expect(repo.rows().find((r) => r.id === 'b-a1')!.googleEventId).toBeNull();
     expect(repo.rows().find((r) => r.id === 'b-c1')!.startsAt).toEqual(at(21).startsAt); // DB-only move done
     expect(repo.rows().some((r) => r.id === 'b-s1')).toBe(false); // swept
     expect(repo.rows().some((r) => r.id === 'b-m1')).toBe(true); // its Google delete was needed: kept
@@ -1300,8 +1335,19 @@ describe('applyDesiredSchedule: a streak of transient external failures opens th
     const healthy = scripted([]);
     const next = await applyDesiredSchedule(repo, 'u1', plan, opts(healthy.mirror));
     expect(next).toEqual({
-      created: 1, updated: 3, deleted: 1, pinnedSynced: 1, pinnedFailed: 0, attached: 1, attachFailed: 0,
+      created: 1, updated: 3, deleted: 1, pinnedSynced: 1, pinnedFailed: 0, attached: 2, attachFailed: 0, // c1 and a1
     });
+    expect(repo.rows().find((r) => r.id === 'b-a1')!.googleEventId).toBe('g-task:a1:0');
+  });
+
+  it('with the circuit open, a stale row without an event (null or empty id) is still swept: deleting it is no external call', async () => {
+    const { mirror, calls } = scripted([503, 503, 503], new TypeError('a call after the circuit opened'));
+    const stale = [row('s1', 20), row('s2', 21, { googleEventId: '' })];
+    const repo = fakeRepo([...five(), ...stale]);
+    const res = await applyDesiredSchedule(repo, 'u1', moved(), opts(mirror));
+    expect(calls).toHaveLength(3);
+    expect(res).toMatchObject({ deleted: 2, updateFailed: 5 });
+    expect(res).not.toHaveProperty('deleteFailed');
   });
 
   it('a single transient failure on a first insert is still isolated', async () => {

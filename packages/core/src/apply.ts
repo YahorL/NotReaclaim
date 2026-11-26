@@ -99,6 +99,9 @@ export interface RowFailure {
  */
 const MAX_TRANSIENT_STREAK = 3;
 
+/** Upper bound for "every row": a plain ISO year the database stores as is. */
+const END_OF_TIME = new Date('9999-12-31T23:59:59.999Z');
+
 /** Thrown, instead of making the call, by the mirror once the circuit is open. */
 class ExternalCallSkipped extends Error {
   constructor() {
@@ -202,7 +205,10 @@ export async function applyDesiredSchedule(
   // pinned or frozen row is taken off that row (below); any other old row is MOVED to the new
   // placement — in automatic tracking that is never a task row whose start has passed (frozen),
   // so tracked time is never moved. History stays intact: the delete sweep skips past rows.
-  const existing = await scheduledBlocks.listByUserInRange(userId, new Date(0), new Date(horizonEnd));
+  // No upper bound either: after the user shortens horizonDays, rows planned beyond the new
+  // horizon still hold their keys, and a reissued one must move (or be released), not collide
+  // on every cycle; one no longer issued is swept like any stale future row.
+  const existing = await scheduledBlocks.listByUserInRange(userId, new Date(0), END_OF_TIME);
   const pinnedIds = new Set<string>();
   const existingByKey = new Map<string, DbScheduledBlock>();
   // Pinned rows are detached from engine planning but may still hold a unique
@@ -375,7 +381,10 @@ export async function applyDesiredSchedule(
   }
 
   const { synced: pinnedSynced, failed: pinnedFailed } = mirror
-    ? await mirrorPinnedBlocks(scheduledBlocks, userId, existing, {
+    // Only pinned rows inside the horizon, as before the read lost its upper bound: drift lists
+    // Google only up to the horizon, so further out there is no snapshot to arbitrate a push
+    // against, and a never-mirrored row there is not mirrored ahead of time.
+    ? await mirrorPinnedBlocks(scheduledBlocks, userId, existing.filter((b) => b.startsAt.getTime() < horizonEnd), {
       now, mirror, mirrorSnapshot,
       onFailure: (row, err) => report('pinned', row, null, err),
       onOrphan: (row, err) => report('orphan', row, null, err),
@@ -531,7 +540,8 @@ function guardedMirror(mirror: ScheduleMirror, circuit: { isOpen: () => boolean;
   return {
     create: (block) => call(() => mirror.create(block)),
     update: (block, existing) => call(() => mirror.update(block, existing)),
-    delete: (existing) => (existing.googleEventId == null ? mirror.delete(existing) : call(() => mirror.delete(existing))),
+    // Falsiness, exactly like reconcile's mirror (`if (existing.googleEventId) deleteEvent…`).
+    delete: (existing) => (!existing.googleEventId ? mirror.delete(existing) : call(() => mirror.delete(existing))),
   };
 }
 
