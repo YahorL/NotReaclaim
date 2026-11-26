@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { computeSpentMs, isFrozenTaskRow } from '@notreclaim/core';
 import { NotFoundError, type CategoryRepository, type ScheduledBlock, type Settings } from '@notreclaim/db';
 import { prefetchAccessToken, type PrefetchedToken } from './google-writeback.js';
-import { endRunningPiecesUnderLock, prefetchForEnding } from './running-pieces.js';
+import { endRunningPiecesUnderLock } from './running-pieces.js';
 import type { AppDeps, AfterMutation } from './app.js';
 import { dataChanged } from './events.js';
 import { ZodError } from 'zod';
@@ -43,7 +43,7 @@ async function endTaskRunningPieces(
     b.taskId === taskId && (b.pinned || (settings != null && isFrozenTaskRow(b, now, settings.requireStartToTrack)));
   const attempt = (token: PrefetchedToken | null) => deps.withUserLock(userId, async () =>
     endRunningPiecesUnderLock(app, deps, userId, now, targetFor(await deps.repos.settings.getByUserId(userId)), token));
-  const first = await attempt(await prefetchForEnding(deps, userId, now, targetFor(await deps.repos.settings.getByUserId(userId))));
+  const first = await attempt(null);
   if (first !== 'needs-token') return first;
   // A piece to delete got a Google event while this waited: come back once with a token.
   const second = await attempt(await prefetchAccessToken(deps, userId));

@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { QUARTER_HOUR_MS, stopBlockEndMs } from '@notreclaim/core';
 import { NotFoundError, type ScheduledBlock } from '@notreclaim/db';
 import type { AppDeps } from './app.js';
-import { isMirrored, prefetchAccessToken, removeMirroredEventWithToken, type PrefetchedToken } from './google-writeback.js';
+import { isMirrored, removeMirroredEventWithToken, type PrefetchedToken } from './google-writeback.js';
 
 /**
  * A running piece ended less than half a quarter hour after its start is DELETED instead of
@@ -22,24 +22,15 @@ async function runningTargets(deps: Deps, userId: string, now: number, isTarget:
 const isShort = (b: ScheduledBlock, now: number) => now - b.startsAt.getTime() < SHORT_PIECE_MS;
 
 /**
- * Before taking the user lock: an access token, fetched only when a piece that will be deleted
- * has a Google event (token lookups never run under the lock, see DELETE /schedule/:id).
- */
-export async function prefetchForEnding(
-  deps: Deps, userId: string, now: number, isTarget: (b: ScheduledBlock) => boolean,
-): Promise<PrefetchedToken | null> {
-  const targets = await runningTargets(deps, userId, now, isTarget);
-  return targets.some((b) => isShort(b, now) && isMirrored(b)) ? prefetchAccessToken(deps, userId) : null;
-}
-
-/**
  * Under the user lock: end every running task piece `isTarget` picks, as of `now` (the arrival
  * clock). A piece that ran at least SHORT_PIECE_MS gets Stop's write — end = stopBlockEndMs,
  * pinned, so it is never re-planned, counts once it has ended, and the pinned pass pushes the new
  * end to Google even when it is already in the past. A shorter one is deleted with its Google
  * event (best effort, like DELETE /schedule/:id). Returns how many pieces changed, or
- * 'needs-token' when a piece to delete turned out to be mirrored and no token was prefetched:
- * the caller lets go of the lock, fetches one and comes back (nothing was written).
+ * 'needs-token' when a piece to delete has a Google event and the caller passed no token: it
+ * then lets go of the lock, looks one up (token lookups never run under the lock) and comes back
+ * once. Nothing is written before that answer. Callers start without a token: a piece to delete
+ * that is mirrored is rare (begun under 7.5 minutes ago), and no read happens before the lock.
  */
 export async function endRunningPiecesUnderLock(
   app: FastifyInstance,

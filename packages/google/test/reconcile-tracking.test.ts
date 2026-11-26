@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import type { ScheduledBlock, CreateScheduledBlockInput, UpdateScheduledBlockInput, Settings, Task, CalendarEvent } from '@notreclaim/db';
-import { computeSpentMs, stopBlockEndMs, type SchedulingRepositories } from '@notreclaim/core';
+import { computeSpentMs, startBlockPatch, stopBlockEndMs, type SchedulingRepositories } from '@notreclaim/core';
 import { reconcile } from '../src/reconcile.js';
 import type { GoogleEvent, GoogleEventWrite, ListEventsArgs, ListEventsResult } from '../src/client.js';
 import { FakeGoogleClient, fakeTokenProvider, fakeUserRepo, makeScheduledBlock, makeSettings, makeTask, makeUser } from './fakes.js';
@@ -231,5 +231,25 @@ describe('reconcile reads the tracking mode once, inside the section', () => {
     expect(w.writes().insert).toBe(before.insert);
     expect(w.store.rows().map((r) => r.engineKey).sort()).toEqual(['task:t1:0', 'task:t1:1']);
     expect(w.rowTimes()).toEqual(from ? ['09:00–10:00', '10:00–11:00'] : ['09:30–10:30', '10:30–11:30']);
+  });
+});
+
+describe('Start on the next piece while one runs reaches Google (automatic tracking)', () => {
+  it('the running piece is shortened and the started one moved, on the next poll, once', async () => {
+    const w = world({ requireStartToTrack: false, tasks: [task(2)] });
+    await w.poll(at('08:00'));
+    // POST /schedule/<next>/start at 09:30: the running piece gets Stop's write, the next one Start's.
+    const now = at('09:30');
+    w.client.clock = now;
+    const [p0, p1] = [...w.store.rows()].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+    await w.store.update('u1', p0!.id, { endsAt: new Date(stopBlockEndMs(p0!.startsAt.getTime(), p0!.endsAt.getTime(), now)), pinned: true });
+    await w.store.update('u1', p1!.id, startBlockPatch(p1!.startsAt.getTime(), p1!.endsAt.getTime(), now));
+    const before = w.writes();
+    await w.poll(at('09:35'));
+    expect(w.writes().update - before.update).toBe(2);
+    expect(w.client.times()).toEqual(['09:00–09:30', '09:30–10:30']);
+    await w.poll(at('10:40'));
+    expect(w.writes().update - before.update).toBe(2);
+    expect(w.spentH(at('10:40'))).toBe(1.5);
   });
 });

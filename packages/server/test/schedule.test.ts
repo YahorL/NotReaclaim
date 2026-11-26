@@ -228,6 +228,87 @@ describe('POST /schedule/:id/start', () => {
   });
 });
 
+describe('POST /schedule/:id/start ends the other running automatic pieces (you work on one thing at a time)', () => {
+  const iso = (hm: string) => new Date(`2026-01-05T${hm}:00.000Z`);
+  const taskRow = (id: string) => ({
+    id, userId: 'u1', title: id, priority: 1, sortOrder: 0, durationMs: 7_200_000, dueBy: null, notBefore: null,
+    minChunkMs: 1_800_000, maxChunkMs: 3_600_000, categoryId: null, status: 'pending' as const, completedAt: null,
+    createdAt: new Date(0), updatedAt: new Date(0),
+  });
+  async function start(opts: { now: string; blocks: ScheduledBlock[]; manual?: boolean; id?: string; times?: number }) {
+    const deleted: string[] = [];
+    const ctx = buildTestApp({
+      blocks: opts.blocks, settings: settings({ requireStartToTrack: opts.manual ?? false, horizonDays: 7 }), now: () => iso(opts.now).getTime(),
+      accessToken: 'access-1', deleteEvent: async (_t, _c, googleEventId) => { deleted.push(googleEventId); },
+    });
+    const token = await tokenFor(ctx.app);
+    let res;
+    for (let i = 0; i < (opts.times ?? 1); i++) {
+      res = await ctx.app.inject({ method: 'POST', url: `/schedule/${opts.id ?? 'p1'}/start`, headers: { authorization: `Bearer ${token}` } });
+    }
+    const row = async (id: string) => ctx.scheduledBlocks.findById('u1', id);
+    return { res: res!, row, deleted, ctx };
+  }
+  // The reviewer's probe: a 2 h task, pieces 09:00–10:00 (running, never Started) and 10:00–11:00.
+  const pieces = () => [
+    block({ id: 'p0', engineKey: 'task:t1:0', startsAt: iso('09:00'), endsAt: iso('10:00') }),
+    block({ id: 'p1', engineKey: 'task:t1:1', startsAt: iso('10:00'), endsAt: iso('11:00') }),
+  ];
+
+  it('Start on the next piece at 09:30 ends the running one there: 90 minutes tracked for 90 minutes of work', async () => {
+    const { res, row, ctx } = await start({ now: '09:30', blocks: pieces() });
+    expect(res.statusCode).toBe(200);
+    expect(await row('p0')).toMatchObject({ startsAt: iso('09:00'), endsAt: iso('09:30'), pinned: true, startedAt: null });
+    expect(res.json()).toMatchObject({ id: 'p1', startsAt: '2026-01-05T09:30:00.000Z', endsAt: '2026-01-05T10:30:00.000Z', pinned: true });
+    const repos = {
+      settings: ctx.settings, calendarEvents: ctx.calendarEvents, scheduledBlocks: ctx.scheduledBlocks,
+      tasks: { listByUser: async () => [taskRow('t1')] }, habits: { listByUser: async () => [] }, categories: { listByUser: async () => [] },
+    };
+    await planLocally(repos, ctx.scheduledBlocks, 'u1', iso('09:30').getTime());
+    await planLocally(repos, ctx.scheduledBlocks, 'u1', iso('10:05').getTime());
+    const rows = await ctx.scheduledBlocks.listByUserInRange('u1', new Date(0), new Date(8.64e15));
+    // Was 120 (the frozen 09:00–10:00 kept whole next to the Started 09:30–10:30).
+    expect(computeSpentMs('t1', rows, false, iso('12:00').getTime())).toBe(90 * 60_000);
+  });
+
+  it("another task's running piece is ended too, a pinned (Started) one is left alone", async () => {
+    const { row } = await start({
+      now: '09:30',
+      blocks: [
+        block({ id: 'a', taskId: 'tA', engineKey: 'task:tA:0', startsAt: iso('09:00'), endsAt: iso('10:00') }),
+        block({ id: 'started', taskId: 'tC', pinned: true, startedAt: iso('09:00'), startsAt: iso('09:00'), endsAt: iso('10:00') }),
+        block({ id: 'p1', taskId: 'tB', engineKey: 'task:tB:0', startsAt: iso('11:00'), endsAt: iso('12:00') }),
+      ],
+    });
+    expect(await row('a')).toMatchObject({ endsAt: iso('09:30'), pinned: true });
+    expect(await row('started')).toMatchObject({ endsAt: iso('10:00') });
+  });
+
+  it('pressed twice: the second press changes nothing else', async () => {
+    const { row } = await start({ now: '09:30', blocks: pieces(), times: 2 });
+    expect(await row('p0')).toMatchObject({ endsAt: iso('09:30'), pinned: true });
+    expect(await row('p1')).toMatchObject({ startsAt: iso('09:30'), endsAt: iso('10:30') });
+  });
+
+  it('a running piece begun less than 7.5 minutes ago is deleted with its Google event', async () => {
+    const blocks = [block({ ...pieces()[0]!, startsAt: iso('09:25'), endsAt: iso('10:00'), googleEventId: 'g-p0', googleCalendarId: 'cal-auto' }), pieces()[1]!];
+    const { row, deleted } = await start({ now: '09:30', blocks });
+    expect(await row('p0')).toBeNull();
+    expect(deleted).toEqual(['g-p0']);
+  });
+
+  it('manual tracking: Start touches no other block', async () => {
+    const { row } = await start({ now: '09:30', blocks: pieces(), manual: true });
+    expect(await row('p0')).toMatchObject({ endsAt: iso('10:00'), pinned: false });
+  });
+
+  it('a habit block: 400 and nothing else is touched', async () => {
+    const { res, row } = await start({ now: '09:30', blocks: [...pieces(), block({ id: 'h', taskId: null, habitId: 'hab' })], id: 'h' });
+    expect(res.statusCode).toBe(400);
+    expect(await row('p0')).toMatchObject({ endsAt: iso('10:00'), pinned: false });
+  });
+});
+
 describe('POST /schedule/:id/stop', () => {
   it('automatic tracking: ends a frozen running piece that was never Started, pins it, and the replan keeps it and counts it', async () => {
     // The auto piece 09:00–10:00 has been running since 09:00; nobody pressed Start.

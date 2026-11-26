@@ -4,6 +4,7 @@ import { NotFoundError, type ScheduledBlock, type UpdateScheduledBlockInput } fr
 import type { AppDeps, AfterMutation } from './app.js';
 import { isMirrored, prefetchAccessToken, removeMirroredEventWithToken, type PrefetchedToken } from './google-writeback.js';
 import { discardUnstartedPastBlocks } from './manual-sweep.js';
+import { endRunningPiecesUnderLock } from './running-pieces.js';
 import { resolveRange } from './range.js';
 import { rangeQuerySchema, idParamSchema, updateScheduledBlockSchema, createScheduledBlockSchema } from './schemas.js';
 import { dataChanged } from './events.js';
@@ -103,7 +104,38 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
     return block;
   };
 
-  app.post('/schedule/:id/start', guard, timerRoute('started', (row, now) => startBlockPatch(row.startsAt.getTime(), row.endsAt.getTime(), now)));
+  /**
+   * Start. In automatic tracking it also ends every OTHER running un-pinned task piece (any task:
+   * one thing is worked on at a time), in the same locked section and with the same arrival
+   * clock — otherwise the piece the user moved on from would keep running, frozen, next to the
+   * Started one and both would count. Same rule as completing a task (running-pieces.ts): Stop's
+   * write, or a delete for a piece begun less than 7.5 minutes ago. Manual tracking: only the
+   * block itself is written. 404 for an unknown block, 400 for a non-task one (nothing written).
+   */
+  app.post('/schedule/:id/start', guard, async (request, reply) => {
+    const now = deps.now();
+    const { id } = idParamSchema.parse(request.params);
+    const { userId } = request;
+    const others = (b: ScheduledBlock) => b.id !== id && !b.pinned;
+    const attempt = (token: PrefetchedToken | null) => deps.withUserLock(userId, async () => {
+      const row = await deps.repos.scheduledBlocks.findById(userId, id);
+      if (!row) throw new NotFoundError(`ScheduledBlock ${id} not found`);
+      if (!row.taskId) return null;
+      if ((await deps.repos.settings.getByUserId(userId))?.requireStartToTrack === false) {
+        const ended = await endRunningPiecesUnderLock(app, deps, userId, now, others, token);
+        if (ended === 'needs-token') return 'needs-token' as const;
+      }
+      return deps.repos.scheduledBlocks.update(userId, row.id, startBlockPatch(row.startsAt.getTime(), row.endsAt.getTime(), now));
+    });
+    let block = await attempt(null);
+    // A piece to delete got a Google event while this waited: come back once with a token.
+    if (block === 'needs-token') block = await attempt(await prefetchAccessToken(deps, userId));
+    if (block === 'needs-token') throw new Error('unreachable: a token was passed');
+    if (!block) return reply.code(400).send({ code: 'bad_request', message: 'Only task blocks can be started' });
+    announceBlockWrite(userId);
+    afterMutation(userId);
+    return block;
+  });
 
   app.post('/schedule/:id/stop', guard, timerRoute('stopped', (row, now) => ({
     endsAt: new Date(stopBlockEndMs(row.startsAt.getTime(), row.endsAt.getTime(), now)), pinned: true,
