@@ -271,6 +271,20 @@ describe('POST /schedule/:id/start ends the other running automatic pieces (you 
     expect(computeSpentMs('t1', rows, false, iso('12:00').getTime())).toBe(90 * 60_000);
   });
 
+  it('off the quarter grid: the ended piece stops where the Started one now begins, so no minute counts twice', async () => {
+    // 10-minute buffer layout: 10:10–11:10 running, 11:20–12:20 next; Start pressed at 10:19.
+    // Stop alone would end 10:10 + 15 min = 10:25, over the Started block's 10:15.
+    const { res, row } = await start({
+      now: '10:19',
+      blocks: [
+        block({ id: 'p0', engineKey: 'task:t1:0', startsAt: iso('10:10'), endsAt: iso('11:10') }),
+        block({ id: 'p1', engineKey: 'task:t1:1', startsAt: iso('11:20'), endsAt: iso('12:20') }),
+      ],
+    });
+    expect(res.json()).toMatchObject({ startsAt: '2026-01-05T10:15:00.000Z', endsAt: '2026-01-05T11:15:00.000Z' });
+    expect(await row('p0')).toMatchObject({ startsAt: iso('10:10'), endsAt: iso('10:15'), pinned: true });
+  });
+
   it("another task's running piece is ended too, a pinned (Started) one is left alone", async () => {
     const { row } = await start({
       now: '09:30',

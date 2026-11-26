@@ -26,7 +26,9 @@ const isShort = (b: ScheduledBlock, now: number) => now - b.startsAt.getTime() <
  * clock). A piece that ran at least SHORT_PIECE_MS gets Stop's write — end = stopBlockEndMs,
  * pinned, so it is never re-planned, counts once it has ended, and the pinned pass pushes the new
  * end to Google even when it is already in the past. A shorter one is deleted with its Google
- * event (best effort, like DELETE /schedule/:id). Returns how many pieces changed, or
+ * event (best effort, like DELETE /schedule/:id). With `startedBlock` (Start), a piece that
+ * would run past the started block's new start ends there instead. Returns how many pieces
+ * changed, or
  * 'needs-token' when a piece to delete has a Google event and the caller passed no token: it
  * then lets go of the lock, looks one up (token lookups never run under the lock) and comes back
  * once. Nothing is written before that answer. Callers start without a token: a piece to delete
@@ -39,14 +41,26 @@ export async function endRunningPiecesUnderLock(
   now: number,
   isTarget: (b: ScheduledBlock) => boolean,
   token: PrefetchedToken | null,
+  startedBlock?: { start: number },
 ): Promise<number | 'needs-token'> {
   const targets = await runningTargets(deps, userId, now, isTarget);
-  if (!token && targets.some((b) => isShort(b, now) && isMirrored(b))) return 'needs-token';
-  for (const b of targets) {
-    if (!isShort(b, now)) {
-      await deps.repos.scheduledBlocks.update(userId, b.id, {
-        endsAt: new Date(stopBlockEndMs(b.startsAt.getTime(), b.endsAt.getTime(), now)), pinned: true,
-      });
+  // Where each piece ends, or null when it is deleted.
+  const endOf = (b: ScheduledBlock): number | null => {
+    if (isShort(b, now)) return null;
+    const start = b.startsAt.getTime();
+    const end = stopBlockEndMs(start, b.endsAt.getTime(), now);
+    // Start: the block being started now counts from its (new) start, so the ended piece stops
+    // there. Stop's 15-minute floor and a start off the quarter grid would otherwise make the
+    // two overlap (10:10 running, Start at 10:19: ended at 10:25, Started from 10:15).
+    // (A Started block beginning at or before the piece's own start — only a block that has
+    // already ended can, since Start never moves one later — is left to Stop's arithmetic.)
+    return startedBlock && startedBlock.start > start && startedBlock.start < end ? startedBlock.start : end;
+  };
+  const plan = targets.map((b) => ({ b, end: endOf(b) }));
+  if (!token && plan.some(({ b, end }) => end == null && isMirrored(b))) return 'needs-token';
+  for (const { b, end } of plan) {
+    if (end != null) {
+      await deps.repos.scheduledBlocks.update(userId, b.id, { endsAt: new Date(end), pinned: true });
       continue;
     }
     if (token) {

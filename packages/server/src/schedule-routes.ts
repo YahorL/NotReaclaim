@@ -121,11 +121,13 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
       const row = await deps.repos.scheduledBlocks.findById(userId, id);
       if (!row) throw new NotFoundError(`ScheduledBlock ${id} not found`);
       if (!row.taskId) return null;
+      const patch = startBlockPatch(row.startsAt.getTime(), row.endsAt.getTime(), now);
       if ((await deps.repos.settings.getByUserId(userId))?.requireStartToTrack === false) {
-        const ended = await endRunningPiecesUnderLock(app, deps, userId, now, others, token);
+        const started = { start: (patch.startsAt ?? row.startsAt).getTime() };
+        const ended = await endRunningPiecesUnderLock(app, deps, userId, now, others, token, started);
         if (ended === 'needs-token') return 'needs-token' as const;
       }
-      return deps.repos.scheduledBlocks.update(userId, row.id, startBlockPatch(row.startsAt.getTime(), row.endsAt.getTime(), now));
+      return deps.repos.scheduledBlocks.update(userId, row.id, patch);
     });
     let block = await attempt(null);
     // A piece to delete got a Google event while this waited: come back once with a token.
