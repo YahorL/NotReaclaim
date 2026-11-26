@@ -1054,12 +1054,15 @@ describe('applyDesiredSchedule reports isolated row failures', () => {
 /**
  * A row-scoped error the caller marks transient (Google: a 5xx or 429 answer) is isolated —
  * but a run of them means Google itself is struggling, and each further call holds the user's
- * lock (and may even have been applied on Google's side). So the apply aborts on the THIRD
- * consecutive transient failure. The streak: only transient failures count; any successful
- * external call resets it; other isolated failures leave it unchanged. One streak per apply,
- * across the main loop and the first inserts (the pinned pass is not part of it).
+ * lock (and may even have been applied on Google's side). On the THIRD consecutive transient
+ * failure the "circuit opens": the apply makes no further external call, skips (and counts as
+ * failed) every remaining step that needs one, still does the steps that need none, and
+ * RETURNS — so the caller still announces the result, and the next cycle retries.
+ * The streak: only transient failures count; a successful external call resets it; other
+ * isolated failures leave it unchanged. One streak per apply (diff loop, first inserts, sweep);
+ * the pinned pass honours the open circuit.
  */
-describe('applyDesiredSchedule: a streak of transient external failures aborts', () => {
+describe('applyDesiredSchedule: a streak of transient external failures opens the circuit', () => {
   const at = (hh: number) => ({
     startsAt: new Date(`2026-01-05T${String(hh).padStart(2, '0')}:00:00.000Z`),
     endsAt: new Date(`2026-01-05T${String(hh).padStart(2, '0')}:30:00.000Z`),
@@ -1075,70 +1078,155 @@ describe('applyDesiredSchedule: a streak of transient external failures aborts',
   const isRowScoped = (err: unknown) => err instanceof Answer;
   const isTransient = (err: unknown) => err instanceof Answer && (err.status === 429 || err.status >= 500);
 
-  /** A mirror whose n-th external call (any method) answers outcomes[n]: a status to throw, or 'ok'. */
-  function scripted(outcomes: Array<number | 'ok'>) {
+  /**
+   * A mirror whose n-th external call answers outcomes[n] (a status to throw, or 'ok'); once the
+   * script runs out every call succeeds — or throws `after` when given (proves no call is made).
+   * Like reconcile's, deleting a row with no event makes no external call (not recorded).
+   */
+  function scripted(outcomes: Array<number | 'ok'>, after?: Error) {
     let n = 0;
     const calls: string[] = [];
     const next = (label: string) => {
       calls.push(label);
-      const o = outcomes[n++] ?? 'ok';
-      if (o !== 'ok') throw new Answer(o);
+      const o = n < outcomes.length ? outcomes[n] : 'ok';
+      n += 1;
+      if (n > outcomes.length && after) throw after;
+      if (o !== 'ok') throw new Answer(o!);
     };
     const mirror = {
       create: vi.fn(async (block: { id: string }) => { next(`create ${block.id}`); return { googleEventId: `g-${block.id}`, googleCalendarId: 'cal1' }; }),
-      update: vi.fn(async (_b: unknown, existing: DbScheduledBlock) => { next(`update ${existing.id}`); return undefined; }),
-      delete: vi.fn(async (existing: DbScheduledBlock) => { next(`delete ${existing.id}`); }),
+      update: vi.fn(async (block: { id: string }, existing: DbScheduledBlock) => {
+        next(`update ${existing.id}`);
+        return existing.googleEventId == null ? { googleEventId: `g-${block.id}`, googleCalendarId: 'cal1' } : undefined;
+      }),
+      delete: vi.fn(async (existing: DbScheduledBlock) => { if (existing.googleEventId) next(`delete ${existing.id}`); }),
     } as unknown as ScheduleMirror;
     return { mirror, calls };
   }
-  const five = (n: number) => [mirrored('t1', 13), mirrored('t2', 14), mirrored('t3', 15), mirrored('t4', 16), mirrored('t5', 17)].slice(0, n);
-  const moved = (n: number) => desired(['t1', 't2', 't3', 't4', 't5'].slice(0, n).map((t, i) => want(t, 8 + i)));
+  const five = () => [mirrored('t1', 13), mirrored('t2', 14), mirrored('t3', 15), mirrored('t4', 16), mirrored('t5', 17)];
+  const moved = () => desired(['t1', 't2', 't3', 't4', 't5'].map((t, i) => want(t, 8 + i)));
+  const opts = (mirror: ScheduleMirror, extra: Partial<Parameters<typeof applyDesiredSchedule>[3]> = {}) =>
+    ({ now: NOW, horizonEnd: HORIZON, mirror, isRowScoped, isTransient, ...extra });
 
-  it('two transient failures, then a success, then two more: all isolated (the success resets the streak)', async () => {
+  it('two transient failures, then a success, then two more: all attempted and isolated (the success resets the streak)', async () => {
     const { mirror, calls } = scripted([500, 503, 'ok', 429, 500]);
-    const res = await applyDesiredSchedule(fakeRepo(five(5)), 'u1', moved(5), { now: NOW, horizonEnd: HORIZON, mirror, isRowScoped, isTransient });
+    const res = await applyDesiredSchedule(fakeRepo(five()), 'u1', moved(), opts(mirror));
     expect(res).toMatchObject({ updated: 1, updateFailed: 4 });
     expect(calls).toHaveLength(5);
   });
 
-  it('three consecutive transient failures abort on the third, after exactly three external calls', async () => {
-    const { mirror, calls } = scripted([500, 502, 503, 'ok', 'ok']);
-    await expect(applyDesiredSchedule(fakeRepo(five(5)), 'u1', moved(5), { now: NOW, horizonEnd: HORIZON, mirror, isRowScoped, isTransient }))
-      .rejects.toMatchObject({ status: 503 });
+  it('three consecutive transient failures open the circuit: no further call, the rest skipped and counted, the apply returns', async () => {
+    const { mirror, calls } = scripted([500, 502, 503]);
+    const reports: Array<{ kind: string }> = [];
+    const res = await applyDesiredSchedule(fakeRepo(five()), 'u1', moved(), opts(mirror, { onRowFailure: (f) => reports.push(f) }));
+    expect(res).toMatchObject({ updated: 0, updateFailed: 5 });
     expect(calls).toEqual(['update b-t1', 'update b-t2', 'update b-t3']);
+    expect(reports.map((r) => r.kind)).toEqual(['update', 'update', 'circuit-open', 'update']);
+    expect(reports[2]).toMatchObject({ kind: 'circuit-open', blockId: null, engineKey: null, error: { status: 503 } });
   });
 
-  it('429, 429, 403, 429: the 403 neither counts nor resets, so the fourth call aborts', async () => {
-    const { mirror, calls } = scripted([429, 429, 403, 429, 'ok']);
-    await expect(applyDesiredSchedule(fakeRepo(five(5)), 'u1', moved(5), { now: NOW, horizonEnd: HORIZON, mirror, isRowScoped, isTransient }))
-      .rejects.toMatchObject({ status: 429 });
+  it('once the circuit is open no external call is made at all, so nothing later can fail fatally', async () => {
+    const { mirror, calls } = scripted([500, 500, 500], new TypeError('fetch failed'));
+    const res = await applyDesiredSchedule(fakeRepo(five()), 'u1', moved(), opts(mirror));
+    expect(res).toMatchObject({ updateFailed: 5 });
+    expect(calls).toHaveLength(3);
+  });
+
+  it('429, 429, 403, 429: the 403 neither counts nor resets, so the fourth call opens the circuit', async () => {
+    const { mirror, calls } = scripted([429, 429, 403, 429]);
+    const res = await applyDesiredSchedule(fakeRepo(five()), 'u1', moved(), opts(mirror));
+    expect(res).toMatchObject({ updated: 0, updateFailed: 5 });
     expect(calls).toHaveLength(4);
   });
 
-  it('one streak per apply: a first-insert 429, a move 500 and a create 500 in a row abort on the create', async () => {
+  it('one streak per apply: a first-insert 429, a move 500 and a create 500 in a row open the circuit at the create', async () => {
     const repo = fakeRepo([row('t1', 8) /* unchanged, never mirrored */, mirrored('t2', 14)]);
     const { mirror, calls } = scripted([429, 500, 500]);
-    await expect(applyDesiredSchedule(repo, 'u1', desired([want('t1', 8), want('t2', 9), want('t3', 10)]), {
-      now: NOW, horizonEnd: HORIZON, mirror, isRowScoped, isTransient,
-    })).rejects.toMatchObject({ status: 500 });
+    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 8), want('t2', 9), want('t3', 10), want('t4', 11)]), opts(mirror));
+    expect(res).toMatchObject({ attachFailed: 1, updateFailed: 1, createFailed: 2 });
     expect(calls).toEqual(['create task:t1:0', 'update b-t2', 'create task:t3:0']);
+  });
+
+  it('a successful create resets the streak', async () => {
+    const repo = fakeRepo([mirrored('t1', 13), mirrored('t2', 14), mirrored('t4', 16), mirrored('t5', 17)]);
+    const { mirror, calls } = scripted([503, 503, 'ok', 503, 503]);
+    const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 8), want('t2', 9), want('t3', 10), want('t4', 11), want('t5', 12)]), opts(mirror));
+    expect(res).toMatchObject({ created: 1, updateFailed: 4 });
+    expect(calls).toHaveLength(5);
+  });
+
+  it('sweep deletes count toward the streak, and a successful one resets it', async () => {
+    const stale = () => [mirrored('s1', 18), mirrored('s2', 19), mirrored('s3', 20)];
+    // 503, 503 in the loop; the sweep's first delete succeeds (reset), then two more 503s: all attempted.
+    const reset = scripted([503, 503, 'ok', 503, 503]);
+    const r1 = await applyDesiredSchedule(fakeRepo([mirrored('t1', 13), mirrored('t2', 14), ...stale()]), 'u1', desired([want('t1', 8), want('t2', 9)]), opts(reset.mirror));
+    expect(r1).toMatchObject({ updateFailed: 2, deleted: 1, deleteFailed: 2 });
+    expect(reset.calls).toHaveLength(5);
+    // Three sweep deletes failing in a row open the circuit: the pinned pass makes no call.
+    const open = scripted([503, 503, 503]);
+    const pinned = dbBlock({ id: 'p1', pinned: true, engineKey: null, ...at(21) });
+    const r2 = await applyDesiredSchedule(fakeRepo([...stale(), mirrored('s4', 22), pinned]), 'u1', desired([]), opts(open.mirror));
+    expect(r2).toMatchObject({ deleted: 0, deleteFailed: 4, pinnedSynced: 0, pinnedFailed: 1 });
+    expect(open.calls).toEqual(['delete b-s1', 'delete b-s2', 'delete b-s3']);
+  });
+
+  it('the probe: three rows always 503 with unchanged rows between them — the apply finishes without Google, then the next cycle applies everything', async () => {
+    const repo = fakeRepo([
+      mirrored('f1', 13), mirrored('u1', 9), mirrored('f2', 14), mirrored('u2', 11), mirrored('f3', 15),
+      row('c1', 20), // changed, never mirrored: its DB move needs no Google call
+      row('s1', 17), // stale, no event: swept without Google
+      mirrored('m1', 18), // stale, mirrored: its Google delete would be needed
+      dbBlock({ id: 'p1', pinned: true, engineKey: null, ...at(19) }), // pinned, never mirrored
+    ]);
+    const plan = desired([want('f1', 8), want('u1', 9), want('f2', 10), want('u2', 11), want('f3', 12), want('c1', 21), want('n1', 16)]);
+    const sick = scripted([503, 503, 503], new TypeError('a call after the circuit opened'));
+
+    const res = await applyDesiredSchedule(repo, 'u1', plan, opts(sick.mirror));
+
+    expect(sick.calls).toEqual(['update b-f1', 'update b-f2', 'update b-f3']);
+    expect(res).toEqual({
+      created: 0, updated: 1, deleted: 1, pinnedSynced: 0, pinnedFailed: 1, attached: 0, attachFailed: 1,
+      createFailed: 1, updateFailed: 3, deleteFailed: 1,
+    });
+    expect(repo.rows().find((r) => r.id === 'b-c1')!.startsAt).toEqual(at(21).startsAt); // DB-only move done
+    expect(repo.rows().some((r) => r.id === 'b-s1')).toBe(false); // swept
+    expect(repo.rows().some((r) => r.id === 'b-m1')).toBe(true); // its Google delete was needed: kept
+    expect(repo.rows().find((r) => r.id === 'b-f1')!.startsAt).toEqual(at(13).startsAt); // no DB write without Google
+
+    const healthy = scripted([]);
+    const next = await applyDesiredSchedule(repo, 'u1', plan, opts(healthy.mirror));
+    expect(next).toEqual({
+      created: 1, updated: 3, deleted: 1, pinnedSynced: 1, pinnedFailed: 0, attached: 1, attachFailed: 0,
+    });
   });
 
   it('a single transient failure on a first insert is still isolated', async () => {
     const { mirror } = scripted([429]);
-    const res = await applyDesiredSchedule(fakeRepo([row('t1', 8), row('t2', 9)]), 'u1', desired([want('t1', 8), want('t2', 9)]), {
-      now: NOW, horizonEnd: HORIZON, mirror, isRowScoped, isTransient,
-    });
+    const res = await applyDesiredSchedule(fakeRepo([row('t1', 8), row('t2', 9)]), 'u1', desired([want('t1', 8), want('t2', 9)]), opts(mirror));
     expect(res).toMatchObject({ attached: 1, attachFailed: 1 });
   });
 
-  it('DB row-scoped failures never count: a local plan with three foreign-key failures in a row carries on', async () => {
+  it('DB row-scoped failures never count: a local plan with four foreign-key failures in a row carries on', async () => {
     const repo = fakeRepo([]);
     repo.create.mockImplementation(async () => { throw Object.assign(new Error('fk'), { code: 'P2003' }); });
     const res = await applyDesiredSchedule(repo, 'u1', desired([want('t1', 8), want('t2', 9), want('t3', 10), want('t4', 11)]), {
       now: NOW, horizonEnd: HORIZON, isTransient: () => true,
     });
     expect(res).toMatchObject({ created: 0, createFailed: 4 });
+  });
+
+  it("the pinned pass reports an event it could not remove again as an 'orphan'", async () => {
+    const repo = fakeRepo([dbBlock({ id: 'p1', pinned: true, engineKey: null, ...at(9) })]);
+    repo.update.mockImplementation(async () => { throw Object.assign(new Error('gone'), { name: 'NotFoundError' }); });
+    const gone = new Error('google 503');
+    const mirror = {
+      create: vi.fn(async () => ({ googleEventId: 'g-1', googleCalendarId: 'cal1' })),
+      update: vi.fn(), delete: vi.fn(async () => { throw gone; }),
+    } as unknown as ScheduleMirror;
+    const reports: unknown[] = [];
+    const res = await applyDesiredSchedule(repo, 'u1', desired([]), { now: NOW, horizonEnd: HORIZON, mirror, onRowFailure: (f) => reports.push(f) });
+    expect(res).toMatchObject({ pinnedFailed: 1 });
+    expect(reports).toEqual([{ kind: 'orphan', blockId: 'p1', engineKey: null, error: gone }]);
   });
 });
 

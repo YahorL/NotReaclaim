@@ -543,7 +543,7 @@ describe('reconcile: an error about one event is isolated to its row; anything e
     expect(startOf(store, 'c')).not.toBe('2026-01-05T15:00:00.000Z');
   });
 
-  it('two 5xx in a row then a success are isolated; three 5xx/429 in a row abort on the third', async () => {
+  it('two 5xx in a row then a success are isolated; three 5xx/429 in a row open the circuit and the cycle still returns its counts', async () => {
     const twoThenOk = seeded();
     const attempts: string[] = [];
     twoThenOk.client.onUpdateEvent = (id) => { attempts.push(id); if (id !== 'g-c') throw new GoogleApiError(503, 'backend error'); };
@@ -557,8 +557,11 @@ describe('reconcile: an error about one event is isolated to its row; anything e
       tried.push(id);
       throw id === 'g-c' ? third : new GoogleApiError(500, 'backend error');
     };
-    await expect(reconcile(three.deps, 'u1', NOW)).rejects.toBe(third);
+    const reports: Array<{ kind: string; error: unknown }> = [];
+    const result = await reconcile({ ...three.deps, onRowFailure: (f) => reports.push(f) }, 'u1', NOW);
+    expect(result).toMatchObject({ updated: 0, updateFailed: 3 });
     expect(tried).toEqual(['g-a', 'g-b', 'g-c']);
+    expect(reports.find((r) => r.kind === 'circuit-open')?.error).toBe(third);
   });
 
   it('reports the isolated failure (row and error) through onRowFailure', async () => {

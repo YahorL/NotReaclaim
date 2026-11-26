@@ -22,6 +22,7 @@ export interface ScheduleMirror {
    * which the caller stores on the row. A plain in-place update returns undefined.
    */
   update(block: EngineScheduledBlock, existing: DbScheduledBlock): Promise<MirrorIds | undefined>;
+  /** Remove a row's event. A row with no googleEventId has none: that call is a no-op (no external call). */
   delete(existing: DbScheduledBlock): Promise<void>;
 }
 
@@ -58,22 +59,25 @@ export interface ApplyScheduleOptions {
   /**
    * Of the caller's row-scoped errors, the ones that may be systemic rather than about the one
    * row (Google: a 5xx or 429 answer). Each is isolated, but MAX_TRANSIENT_STREAK of them in
-   * a row abort the apply (see the diff loop). DB errors are never transient.
+   * a row open the circuit: the apply makes no further external call (see applyDesiredSchedule).
+   * DB errors are never transient.
    */
   isTransient?: (err: unknown) => boolean;
   /**
    * Told about every write failure the apply isolates, with the row and the error, so the
    * caller can log them: the counts deliberately carry no error objects (they are sent to
    * clients). A compensating event delete that failed (the event is left behind) is reported
-   * as an extra 'orphan' entry next to the row's own failure, without a count of its own. A
-   * callback that throws is ignored: reporting never aborts the apply.
+   * as an extra 'orphan' entry next to the row's own failure, without a count of its own. The
+   * circuit opening is reported once, as a 'circuit-open' entry carrying the failure that
+   * opened it; the steps skipped after it are only counted. A callback that throws is
+   * ignored: reporting never aborts the apply.
    */
   onRowFailure?: (failure: RowFailure) => void;
 }
 
 /** One row the apply skipped: what it was doing, which row (null for a not-yet-created one), and why. */
 export interface RowFailure {
-  kind: 'create' | 'update' | 'delete' | 'attach' | 'pinned' | 'orphan';
+  kind: 'create' | 'update' | 'delete' | 'attach' | 'pinned' | 'orphan' | 'circuit-open';
   blockId: string | null;
   engineKey: string | null;
   error: unknown;
@@ -81,11 +85,20 @@ export interface RowFailure {
 
 /**
  * Consecutive transient external failures (see ApplyScheduleOptions.isTransient) after which
- * the apply aborts: a struggling external calendar is not called once per remaining row while
- * the user's lock is held, and a 5xx may even have been applied remotely (the next cycle's
- * drift would then pin that row at the remote time).
+ * the circuit opens and the apply makes no further external call: a struggling external
+ * calendar is not called once per remaining row while the user's lock is held, and a 5xx may
+ * even have been applied remotely (the next cycle's drift would then pin that row at the
+ * remote time).
  */
 const MAX_TRANSIENT_STREAK = 3;
+
+/** Thrown, instead of making the call, by the mirror once the circuit is open. */
+class ExternalCallSkipped extends Error {
+  constructor() {
+    super('external call skipped: too many consecutive transient failures in this apply');
+    this.name = 'ExternalCallSkipped';
+  }
+}
 
 /**
  * A DB error that belongs to the one row being written, so the diff loop may skip that row
@@ -142,20 +155,32 @@ export async function applyDesiredSchedule(
   opts: ApplyScheduleOptions,
 ): Promise<ApplyCounts> {
   const { now, horizonEnd, mirrorSnapshot } = opts;
-  // The streak of transient external failures: only isTransient errors extend it, any
-  // successful external call in the diff loop resets it, other isolated failures leave it be.
+  // The streak of transient external failures: only isTransient errors extend it, a successful
+  // external call resets it, other isolated failures leave it be. At MAX_TRANSIENT_STREAK the
+  // circuit opens for the rest of this apply: the mirror then throws ExternalCallSkipped
+  // instead of calling out, so every step that needs an external call fails like an isolated
+  // row (counted, no DB write — Google first) while steps that need none still run, and the
+  // apply returns its counts (the caller announces them; the next cycle retries).
   let transientStreak = 0;
-  const mirror: ScheduleMirror | undefined = opts.mirror && resettingStreak(opts.mirror, () => { transientStreak = 0; });
+  let circuitOpen = false;
+  const mirror: ScheduleMirror | undefined = opts.mirror && guardedMirror(opts.mirror, {
+    isOpen: () => circuitOpen,
+    onSuccess: () => { transientStreak = 0; },
+  });
   // Per-row isolation: a row whose write throws an error that belongs to that row alone is
   // skipped and counted, and the loop goes on. Every other error is rethrown, aborting the
   // apply at that row exactly as before isolation existed — so a database or network outage
   // stops at the first row instead of pushing every remaining row to Google with no DB write.
   const skipIfRowScoped = (err: unknown): void => {
-    if (isRowScopedDbError(err)) return;
+    if (err instanceof ExternalCallSkipped || isRowScopedDbError(err)) return;
     if (!opts.isRowScoped?.(err)) throw err;
-    if (opts.isTransient?.(err) && ++transientStreak >= MAX_TRANSIENT_STREAK) throw err;
+    if (opts.isTransient?.(err) && ++transientStreak >= MAX_TRANSIENT_STREAK && !circuitOpen) {
+      circuitOpen = true;
+      report('circuit-open', null, null, err);
+    }
   };
   const report = (kind: RowFailure['kind'], row: { id: string; engineKey: string | null } | null, engineKey: string | null, error: unknown) => {
+    if (error instanceof ExternalCallSkipped) return; // counted only: 'circuit-open' says why
     try {
       opts.onRowFailure?.({ kind, blockId: row?.id ?? null, engineKey: row?.engineKey ?? engineKey, error });
     } catch {
@@ -335,9 +360,9 @@ export async function applyDesiredSchedule(
     }
   }
 
-  const { synced: pinnedSynced, failed: pinnedFailed } = opts.mirror
+  const { synced: pinnedSynced, failed: pinnedFailed } = mirror
     ? await mirrorPinnedBlocks(scheduledBlocks, userId, existing, {
-      now, mirror: opts.mirror, mirrorSnapshot,
+      now, mirror, mirrorSnapshot,
       onFailure: (row, err) => report('pinned', row, null, err),
       onOrphan: (row, err) => report('orphan', row, null, err),
     })
@@ -468,12 +493,23 @@ async function storeInsertedIds(
   }
 }
 
-/** The mirror, with `onSuccess` called after each external call that succeeded. */
-function resettingStreak(mirror: ScheduleMirror, onSuccess: () => void): ScheduleMirror {
+/**
+ * The mirror as the apply uses it: while `isOpen()` every external call is skipped (throws
+ * ExternalCallSkipped), and each external call that succeeds calls `onSuccess`. Deleting a row
+ * with no event is no external call (ScheduleMirror.delete), so it is neither skipped nor a
+ * success.
+ */
+function guardedMirror(mirror: ScheduleMirror, circuit: { isOpen: () => boolean; onSuccess: () => void }): ScheduleMirror {
+  const call = async <T>(fn: () => Promise<T>): Promise<T> => {
+    if (circuit.isOpen()) throw new ExternalCallSkipped();
+    const out = await fn();
+    circuit.onSuccess();
+    return out;
+  };
   return {
-    create: async (block) => { const ids = await mirror.create(block); onSuccess(); return ids; },
-    update: async (block, existing) => { const ids = await mirror.update(block, existing); onSuccess(); return ids; },
-    delete: async (existing) => { await mirror.delete(existing); onSuccess(); },
+    create: (block) => call(() => mirror.create(block)),
+    update: (block, existing) => call(() => mirror.update(block, existing)),
+    delete: (existing) => (existing.googleEventId == null ? mirror.delete(existing) : call(() => mirror.delete(existing))),
   };
 }
 
