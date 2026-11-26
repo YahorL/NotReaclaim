@@ -106,13 +106,14 @@ Without the stable keys of §3, the automatic polled day costs 1 insert and 1 de
 - **Ending running pieces** (`server/src/running-pieces.ts`, `endRunningPiecesUnderLock`), used by the two paths below, under the per-user lock and clocked once at arrival:
   - a piece that ran **7.5 minutes or more** gets Stop's write (end at `stopBlockEndMs`, pinned);
   - a piece begun **less than 7.5 minutes ago** (where Stop's floor would leave a 15-minute block ending in the future and counting 15 minutes) is **deleted**, row and Google event, with the same token handling as `DELETE /schedule/:id`: no read or token lookup happens before the lock; if a piece to delete turns out to have an event and no token was passed, the section returns without writing, the token is looked up outside the lock, and the section runs once more. Boundaries: 7 min 29 s → deleted; 7 min 30 s → a 15-minute block (`round15` rounds half up).
+  - **Elapsed is measured from when the user began** (`beganAt`): for a Started block whose `startedAt` lies within the snapping distance of its start (`startedAt ≥ startsAt − 7.5 min`), from `startedAt`; for any other block (never Started, or Started long ago and dragged since), from `startsAt`. Start snaps to the nearest quarter, so a block Started at 09:08 runs from 09:15: completing its task at 09:22 used to measure 7 minutes and delete 14 minutes of work; it now ends it at 09:30 (Stop's write, 15 minutes counted). Started at 09:08 and completed at 09:10: deleted. A Started block dragged to begin in 5 minutes, completed now: measured from its start, not begun, deleted with its event.
   - The explicit Stop route keeps its 15-minute floor (owner decision O3).
 - **Completing, backlogging or archiving a task** (`PATCH /tasks/:id` with `status` `completed`, `backlog` or `archived`) ends its running pieces, after the task update:
   - **automatic tracking:** every running piece of the task (frozen or pinned);
   - **manual tracking** (owner decision O2): the pinned (Started, or dragged) running pieces; an un-started piece never counted and is swept by the replan anyway;
   - "running" includes a Started block whose start Start snapped up to 7.5 minutes ahead (Start at 09:08 → 09:15, task completed at 09:10): it is short, so it is deleted;
   - it emits `data.changed [schedule, tasks]` when a piece changed, then the usual replan re-plans the freed time.
-- **Start ends the other running pieces** (automatic tracking only; review finding R1): `POST /schedule/:id/start` ends every OTHER running **un-pinned** task piece of the user, any task (one thing is worked on at a time), in the same locked section, before the Start write. Before, the piece the user moved on from stayed frozen whole next to the Started one: a 2 h task, Start on the second piece at 09:30, counted 120 minutes for 90 of work. An ended piece also never runs past the started block's new start: with a piece begun at 10:10 and Start at 10:19 (the started block moves to 10:15), Stop's floor alone would end it at 10:25 and 10 minutes would count twice; it ends at 10:15. Pinned running pieces (Started earlier) are left alone. Manual tracking: Start writes only the started block, as before.
+- **Start ends the other running blocks** (automatic tracking only; review finding R1 and owner decision F2): `POST /schedule/:id/start` ends every OTHER running task block of the user that was **never Started**, auto-placed or hand-placed (pinned: dragged, created on the planner, dropped from the task panel), any task (one thing is worked on at a time), in the same locked section, before the Start write. A hand-placed block is **never deleted** by this path: young or not, it ends where the Started block begins, or is left as it is when that would leave it with no length (it begins at or after the Started block's start). Only auto pieces are deleted when begun under 7.5 minutes ago. Before, the piece the user moved on from stayed frozen whole next to the Started one: a 2 h task, Start on the second piece at 09:30, counted 120 minutes for 90 of work. An ended piece also never runs past the started block's new start: with a piece begun at 10:10 and Start at 10:19 (the started block moves to 10:15), Stop's floor alone would end it at 10:25 and 10 minutes would count twice; it ends at 10:15. Running blocks that were Started earlier are left alone (both modes). Manual tracking: Start writes only the started block, as before.
 - **S4: a shortened end never reached Google.** Stop rounds to the nearest quarter, so the new end can already be at or before `now`.
   - **Why it was lost:** the pinned pass skipped every ended row, and drift only reads rows overlapping `[now, horizon]`. The Google event kept its old, later end (stop at 09:37 → 09:30: never pushed; stop at 09:38 → 09:45: pushed).
   - **The fix:** the pinned pass lets an ended pinned row through when it is mirrored and the event observed this cycle still ends after `now`. The usual stamp arbitration and difference check follow.
@@ -130,6 +131,7 @@ Without the stable keys of §3, the automatic polled day costs 1 insert and 1 de
 | `now < startsAt` but `round15(now) ≥ startsAt` (pressed within 7.5 minutes of a start that is not on the quarter grid, e.g. 09:08 for 09:10) | Its times are kept: Start never pushes a block later than planned. |
 | `startsAt ≤ now`, including `now == startsAt` | As before: the start is pulled to `round15(now)` and the end is kept. That shortens the block, or grows it by up to 7.5 minutes when round15 lands before an off-grid start. If `round15(now) ≥ endsAt`, the times are left alone. |
 | The moved block overlaps whatever follows | No clamping. The replan plans around a Started block. |
+| The new start would lie before the end of a block that ended a moment ago (both modes) | When Start moves a start EARLIER (either branch), it is raised to the latest end, in `(new start, now]`, of the user's other task blocks that count as spent — every one in automatic tracking, the Started ones in manual tracking (an un-started one never counts and is about to be swept, so it does not hold the start back) — never past the block's own start. The early branch keeps the length, the begun branch the end; capped at the block's own start, the clamp cannot empty a block. Example (10-minute buffer): 11:20–12:20 ended, Start at 12:21 on 12:30–13:30 → 12:20–13:20 (was 12:15–13:15: 5 minutes counted twice). The route passes the ends of the blocks that ended in the last 7.5 minutes (`recentEnds`). |
 
 This supersedes the lost-edits design's §3.4 and §10 Q4, which described Start keeping the end.
 
@@ -163,7 +165,7 @@ This supersedes the lost-edits design's §3.4 and §10 Q4, which described Start
 **Off → on (to manual)** — owner decision O1: history is kept, it merely stops counting.
 
 - **Storage:** `Settings.requireStartSince TIMESTAMPTZ NULL`, migration `20261125000000_settings_require_start_since` (one additive nullable column, no default, no backfill).
-- **Transitions** (`server/src/settings-routes.ts`, the only writers of the setting; `ensureUserDefaults` and the admin CLI never set it): on `PUT`/`PATCH /settings`, on the server clock,
+- **Transitions** (`server/src/settings-routes.ts`, the only writers of the setting; `ensureUserDefaults` and the admin CLI never set it): on `PUT`/`PATCH /settings`, on the server clock, read and written under the per-user lock, and always written as a pair (on → on writes back the timestamp it read). Before, a save keeping manual tracking on that read "on" before a concurrent switch off and wrote after it left manual tracking on with a NULL timestamp, and the next `GET /schedule` swept all kept history. The lock makes the read-modify-write atomic within the one server process (like every other user write); the pair write keeps even a non-serialised interleaving consistent. Cost: a settings save waits for an in-flight replan's compute + apply, like a block edit.
   - false (or no settings row yet) → true: set to now;
   - true → true: unchanged (the settings form re-sends every field on save);
   - → false: cleared (it means nothing in automatic mode, and the next switch on sets it afresh);
@@ -196,7 +198,7 @@ This holds whatever `pinned` and `startedAt` are; a frozen auto piece has `pinne
 
 **Completing, backlogging or archiving a task** (`PATCH /tasks/:id {status}`) ends its running blocks (§4: all of them in automatic mode, the pinned ones in manual mode; deleted when begun under 7.5 minutes ago). The client can refetch on the `data.changed [schedule, tasks]` it emits.
 
-**Start** (`POST /schedule/:id/start`) in automatic mode also ends (or deletes) the other running un-pinned task pieces; the response is the started row only, so the client refetches the schedule (it already does on `data.changed`).
+**Start** (`POST /schedule/:id/start`) in automatic mode also ends the other running task blocks that were never Started (auto pieces begun under 7.5 minutes ago are deleted; hand-placed blocks never are), and in both modes never moves the block back over a block that has just ended and counts; the response is the started row only, so the client refetches the schedule (it already does on `data.changed`).
 
 **Mode-switch confirmation** (switching "Require Start to track" on): "Time tracked automatically so far is kept on the calendar but will no longer count as time spent while Require Start is on." The settings responses do not carry `requireStartSince`.
 
@@ -226,7 +228,7 @@ Existing assertions changed:
 - `core/test/spent.test.ts`: `isDiscardableUnstarted` takes the timestamp; the existing cases pass `null`, expectations unchanged.
 - `server/test/schedule.test.ts`: "pulls an upcoming block start…, keeping the end" (`endsAt` 03:00) is now "moves an upcoming block…, keeping its length" (`endsAt` 01:00). The mode-switch characterisation ("the first GET deletes every past un-started task block…") became the null-timestamp case beside the kept-history case.
 - `server/test/block-route-lock.test.ts`: "Start: clocked at ARRIVAL…" expects `endsAt` 01:15 (was 10:00).
-- `server/test/write-order.test.ts`: "Start reads the clock ONCE…" traces one more read under the lock (`blocks.listByUserInRange`, the other running pieces) before the Start write.
+- `server/test/write-order.test.ts`: "Start reads the clock ONCE…" traces two more reads under the lock before the Start write (`blocks.listByUserInRange` twice: the blocks that ended in the last 7.5 minutes, then the other running pieces).
 - `server/test/tasks.test.ts` (this branch's own): "manual tracking: unchanged, the running pieces keep their planned end" became "manual tracking, %s: the Started running piece ends too…" (O2).
 
 ## 10. Open items
@@ -239,4 +241,7 @@ Existing assertions changed:
   - A Google-side delete of a finished piece's event leaves the row (drift reads `[now, horizon]` only).
   - Unpinning a key-less row leaves an invisible zombie (lost-edits design §9): any such row in manual mode outside kept history, and in automatic mode one whose start has not passed yet.
   - Task deletes orphan Google events.
-  - Two concurrent settings writes toggling the mode can both see "off" and both set the timestamp (milliseconds apart); harmless.
+- **Completion is not atomic** (`PATCH /tasks/:id`): the task is updated first and its running pieces ended second. If ending them throws, the task is already completed and the reply is a 500; repeating the request is safe (it ends the pieces then).
+- **For the owner:**
+  - After switching to manual, never-Started rows created DURING the manual interval that neither the sweep nor a replan touched (no `GET /schedule` and no replan before they ended) count again after switching back to automatic.
+  - `GET /schedule` reads the settings before taking the lock and its sweep does not re-read them: a switch to automatic racing a GET can still delete rows that now count.
