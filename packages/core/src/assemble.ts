@@ -20,7 +20,7 @@ import { toFixedEvent, toFlexibleTask, toScheduledBlock } from '@notreclaim/db/m
 import { expandWorkingWindows, horizonEndMs, isValidTimezone, type WorkingHourEntry } from './time-windows.js';
 import { expandHabit } from './habit-expansion.js';
 import { SettingsRequiredError } from './errors.js';
-import { computeSpentMs } from './spent.js';
+import { computeSpentMs, isFrozenTaskRow } from './spent.js';
 
 /** The repository surface the scheduling layer reads from (DI seam). */
 export interface SchedulingRepositories {
@@ -105,8 +105,12 @@ export async function assembleScheduleInput(
   });
 
   const blocks = await repos.scheduledBlocks.listByUserInRange(userId, new Date(0), horizonEnd);
+  // A frozen task piece (automatic tracking, start passed: isFrozenTaskRow) that is still
+  // running goes to the engine exactly like a pinned block: busy with the task buffer on both
+  // sides, its full length counted toward the task below (so that time is not planned again),
+  // and echoed in the result (apply skips the echo by row id, as for pinned rows).
   const pinnedBlocks: EngineScheduledBlock[] = blocks
-    .filter((b) => b.pinned && b.endsAt.getTime() > now)
+    .filter((b) => (b.pinned || isFrozenTaskRow(b, now, settings.requireStartToTrack)) && b.endsAt.getTime() > now)
     .map(toScheduledBlock);
 
   // A habit occurrence that is running right now is frozen in place (see the begun-habit
@@ -130,7 +134,9 @@ export async function assembleScheduleInput(
     blocks.filter((b) => b.startedAt != null && b.taskId != null).map((b) => b.taskId as string),
   );
 
-  // Pinned-block coverage reduces the work the engine must (re)place.
+  // Pinned-block coverage (running frozen pieces included) reduces the work the engine must
+  // (re)place. A frozen piece's full length counts while it runs and its finished length counts
+  // as spent once it ends (`end > now` vs `end <= now`), so it is never counted twice.
   const taskCoverageMs = new Map<string, number>();
   for (const b of pinnedBlocks) {
     if (b.sourceType === 'task') {

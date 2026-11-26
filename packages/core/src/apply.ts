@@ -6,6 +6,7 @@ import { computeDesiredSchedule } from './compute.js';
 import { SettingsRequiredError } from './errors.js';
 import type { SchedulingRepositories } from './assemble.js';
 import { horizonEndMs } from './time-windows.js';
+import { isFrozenTaskRow } from './spent.js';
 
 /** The external calendar's ids for one mirrored block. */
 export interface MirrorIds {
@@ -48,6 +49,12 @@ export type MirrorSnapshot = ReadonlyMap<string, MirrorEventState>;
 export interface ApplyScheduleOptions {
   now: number;
   horizonEnd: number;
+  /**
+   * Settings.requireStartToTrack. In automatic tracking (false) an un-pinned task row whose start
+   * has passed is frozen (isFrozenTaskRow): never moved or swept, and it gives its engine key up
+   * when the engine reissues it. Required, so no caller can silently fall back to a mode.
+   */
+  requireStartToTrack: boolean;
   mirror?: ScheduleMirror;
   mirrorSnapshot?: MirrorSnapshot;
   /**
@@ -191,16 +198,22 @@ export async function applyDesiredSchedule(
     (err: unknown) => report('orphan', row, engineKey, err);
   // The keyed map must span ALL prior placements, not just [now, horizonEnd]: engine keys
   // (task:<id>:<chunk>, habit:<id>:<occurrence>) are horizon-relative and recur over time,
-  // so a reissued key must MOVE its old (possibly past) row — unique (userId, engineKey) —
-  // instead of colliding on create. History stays intact: the delete sweep skips past rows.
+  // so a reissued key must not collide on create (unique (userId, engineKey)). A key held by a
+  // pinned or frozen row is taken off that row (below); any other old row is MOVED to the new
+  // placement — in automatic tracking that is never a task row whose start has passed (frozen),
+  // so tracked time is never moved. History stays intact: the delete sweep skips past rows.
   const existing = await scheduledBlocks.listByUserInRange(userId, new Date(0), new Date(horizonEnd));
   const pinnedIds = new Set<string>();
   const existingByKey = new Map<string, DbScheduledBlock>();
   // Pinned rows are detached from engine planning but may still hold a unique
-  // (userId, engineKey) — e.g. a drag-pinned chunk, or a pinned row now in the past.
+  // (userId, engineKey) — e.g. a drag-pinned chunk, or a pinned row now in the past. Frozen task
+  // rows (automatic tracking, start passed) are treated exactly the same here: never matched,
+  // so never moved; not in existingByKey, so never swept; their engine echo (assemble passes
+  // the running ones as pinned blocks) is skipped by row id; their key is released on reissue.
+  // Unlike pinned rows they are not pushed by the pinned pass: nothing ever changes their times.
   const pinnedKeyHolders = new Map<string, DbScheduledBlock>();
   for (const b of existing) {
-    if (b.pinned) {
+    if (b.pinned || isFrozenTaskRow(b, now, opts.requireStartToTrack)) {
       pinnedIds.add(b.id);
       if (b.engineKey) pinnedKeyHolders.set(b.engineKey, b);
     } else if (b.engineKey) {
@@ -345,8 +358,9 @@ export async function applyDesiredSchedule(
     if (block.endsAt.getTime() <= now) continue; // ended in the past: history, not a stale placement
     // A habit occurrence that has already STARTED is history too — missed or done, the
     // app has no habit-completion concept — so it freezes in place instead of vanishing
-    // when the engine stops emitting its (now consumed) day. Tasks keep the old sweep:
-    // an in-progress task placement superseded by a replan must still be removable.
+    // when the engine stops emitting its (now consumed) day. Task rows that have begun reach
+    // this sweep only in manual tracking (in automatic tracking they are frozen, see above), so
+    // there an in-progress un-started placement superseded by a replan is still removable.
     if (block.habitId != null && block.startsAt.getTime() <= now) continue;
     try {
       // Google first: a failed event delete keeps the row, so the next cycle retries both.
@@ -586,7 +600,9 @@ export async function planLocally(
     const desired = await computeDesiredSchedule(repos, userId, now);
     // No mirror locally, so nothing to push for pinned rows either: apply reports
     // pinnedSynced/pinnedFailed as 0 on this path.
-    return applyDesiredSchedule(scheduledBlocks, userId, desired, { now, horizonEnd, onRowFailure });
+    return applyDesiredSchedule(scheduledBlocks, userId, desired, {
+      now, horizonEnd, requireStartToTrack: settings.requireStartToTrack, onRowFailure,
+    });
   });
   return { ...counts, pinned: 0, removed: 0 };
 }

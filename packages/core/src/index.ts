@@ -6,5 +6,5 @@ export { applyDesiredSchedule, planLocally, isRowScopedDbError } from './apply.j
 export type {
   ScheduleMirror, BlocksRepo, ReplanCounts, MirrorSnapshot, MirrorEventState, Exclusive, RowFailure,
 } from './apply.js';
-export { computeSpentMs, isDiscardableUnstarted } from './spent.js';
+export { computeSpentMs, isDiscardableUnstarted, isFrozenTaskRow } from './spent.js';
 export { startBlockPatch, stopBlockEndMs } from './block-timer.js';

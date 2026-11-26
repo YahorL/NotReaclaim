@@ -779,3 +779,43 @@ describe('assembleScheduleInput started tasks', () => {
     expect(input.tasks.find((t) => t.id === 't1')).toBeDefined();
   });
 });
+
+describe('assembleScheduleInput frozen task pieces (automatic tracking)', () => {
+  const NOW = Date.parse('2026-01-05T09:30:00.000Z');
+  const running = (over: Partial<Parameters<typeof makeBlock>[0]> = {}) => makeBlock({
+    id: 'run', taskId: 't1', habitId: null, pinned: false, engineKey: 'task:t1:0',
+    startsAt: new Date('2026-01-05T09:00:00.000Z'), endsAt: new Date('2026-01-05T10:00:00.000Z'), ...over,
+  });
+  const repos = (requireStartToTrack: boolean, blocks: ReturnType<typeof makeBlock>[]) => fakeRepos({
+    settings: makeSettings({ requireStartToTrack, workingHours: [{ weekday: 1, startMinute: 0, endMinute: 1440 }] as never }),
+    categories: [makeCategory()],
+    tasks: [makeTask({ id: 't1', durationMs: 7_200_000, minChunkMs: 1_800_000, maxChunkMs: 3_600_000 })],
+    blocks,
+  });
+
+  it('automatic: a running un-pinned task piece is a pinned block for the engine and its full length counts', async () => {
+    const input = await assembleScheduleInput(repos(false, [running()]), 'u1', NOW);
+    expect(input.pinnedBlocks.map((b) => b.id)).toEqual(['run']);
+    expect(input.tasks.find((t) => t.id === 't1')!.durationMs).toBe(3_600_000); // 2 h − the running hour
+  });
+
+  it('manual: the same piece is neither busy nor coverage (it keeps sliding)', async () => {
+    const input = await assembleScheduleInput(repos(true, [running()]), 'u1', NOW);
+    expect(input.pinnedBlocks).toEqual([]);
+    expect(input.tasks.find((t) => t.id === 't1')!.durationMs).toBe(7_200_000);
+  });
+
+  it('automatic: a finished piece is not a pinned block (it counts as spent instead, never both)', async () => {
+    const done = running({ id: 'done', startsAt: new Date('2026-01-05T08:00:00.000Z'), endsAt: new Date('2026-01-05T09:00:00.000Z') });
+    const input = await assembleScheduleInput(repos(false, [done, running()]), 'u1', NOW);
+    expect(input.pinnedBlocks.map((b) => b.id)).toEqual(['run']);
+    expect(input.tasks.find((t) => t.id === 't1')).toBeUndefined(); // 1 h spent + 1 h running = 2 h
+  });
+
+  it('automatic: a running habit row keeps its own (R21) handling, not the task freeze', async () => {
+    const habitRow = running({ id: 'hab', taskId: null, habitId: 'h1', engineKey: 'habit:h1:x' });
+    const input = await assembleScheduleInput(repos(false, [habitRow]), 'u1', NOW);
+    expect(input.pinnedBlocks).toEqual([]);
+    expect(input.fixedEvents.map((e) => e.id)).toEqual(['habit-running:hab']);
+  });
+});
