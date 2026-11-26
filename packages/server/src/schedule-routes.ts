@@ -103,7 +103,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
     return block;
   };
 
-  app.post('/schedule/:id/start', guard, timerRoute('started', (row, now) => startBlockPatch(row.endsAt.getTime(), now)));
+  app.post('/schedule/:id/start', guard, timerRoute('started', (row, now) => startBlockPatch(row.startsAt.getTime(), row.endsAt.getTime(), now)));
 
   app.post('/schedule/:id/stop', guard, timerRoute('stopped', (row, now) => ({
     endsAt: new Date(stopBlockEndMs(row.startsAt.getTime(), row.endsAt.getTime(), now)), pinned: true,

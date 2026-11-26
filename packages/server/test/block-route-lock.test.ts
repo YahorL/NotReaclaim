@@ -127,8 +127,11 @@ describe('block routes wait for a replan that holds the user lock, then apply on
     await held.release(() => h.raw.update('u1', 'b1', { startsAt: T('2026-01-05T09:00:00.000Z'), endsAt: T('2026-01-05T10:00:00.000Z') }));
     const reply = await res;
     expect(reply.statusCode).toBe(200);
+    // The fresh row (09:00–10:00, not begun at 00:08) moves to round15(00:08) keeping its hour.
+    // A stale row would have stayed 00:00–00:10 (round15 is not before its end); a late clock
+    // would give 00:45–01:45.
     expect(reply.json()).toMatchObject({
-      startedAt: '2026-01-05T00:08:00.000Z', startsAt: '2026-01-05T00:15:00.000Z', endsAt: '2026-01-05T10:00:00.000Z', pinned: true,
+      startedAt: '2026-01-05T00:08:00.000Z', startsAt: '2026-01-05T00:15:00.000Z', endsAt: '2026-01-05T01:15:00.000Z', pinned: true,
     });
   });
 
