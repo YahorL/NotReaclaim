@@ -13,10 +13,16 @@ export const SHORT_PIECE_MS = QUARTER_HOUR_MS / 2;
 
 type Deps = Pick<AppDeps, 'repos' | 'google' | 'now'>;
 
-/** The user's task blocks running at `now` (start ≤ now < end) that `isTarget` picks. */
+/**
+ * The user's task blocks running at `now` that `isTarget` picks: start ≤ now < end, or Started
+ * with a start still ahead — Start snaps to the NEAREST quarter, so a block Started at 09:08 runs
+ * from 09:15 (at most 7.5 minutes ahead); it is running all the same (the web's rule is
+ * `startedAt != null && endsAt > now`) and, having begun "in the future", it is short.
+ */
 async function runningTargets(deps: Deps, userId: string, now: number, isTarget: (b: ScheduledBlock) => boolean) {
-  return (await deps.repos.scheduledBlocks.listByUserInRange(userId, new Date(now), new Date(now + 1)))
-    .filter((b) => b.taskId != null && b.startsAt.getTime() <= now && b.endsAt.getTime() > now && isTarget(b));
+  return (await deps.repos.scheduledBlocks.listByUserInRange(userId, new Date(now), new Date(now + SHORT_PIECE_MS + 1)))
+    .filter((b) => b.taskId != null && b.endsAt.getTime() > now
+      && (b.startsAt.getTime() <= now || b.startedAt != null) && isTarget(b));
 }
 
 const isShort = (b: ScheduledBlock, now: number) => now - b.startsAt.getTime() < SHORT_PIECE_MS;

@@ -508,6 +508,16 @@ describe('PATCH /tasks/:id taking a task out of the plan while one of its pieces
       expect(row).toMatchObject({ endsAt: iso('09:30'), pinned: true });
     });
 
+    it.each([false, true])('a Started block whose snapped start is still ahead (Start at 09:08 → 09:15, completed at 09:10) is deleted too (manual: %s)', async (manual) => {
+      const ctx = buildTestApp({
+        tasks: [taskRow('t1')], settings: settingsRow(manual), now: () => after(10 * 60_000),
+        blocks: [blockRow({ id: 's', pinned: true, startedAt: iso('09:08'), startsAt: iso('09:15'), endsAt: iso('10:15') })],
+      });
+      const token = await tokenFor(ctx.app);
+      await ctx.app.inject({ method: 'PATCH', url: '/tasks/t1', headers: { authorization: `Bearer ${token}` }, payload: { status: 'completed' } });
+      expect(await ctx.scheduledBlocks.findById('u1', 's')).toBeNull();
+    });
+
     it('a piece mirrored by a replan while the request waited: it lets go, fetches a token, and comes back once', async () => {
       const deleted: string[] = [];
       let entries = 0;

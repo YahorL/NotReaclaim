@@ -88,8 +88,8 @@ W3 for a Google user is one Google round trip per changed, created or swept row 
 ### 3.2 As built
 
 - `server/src/user-lock.ts`: `createUserLock()` returns `withUserLock(userId, fn)`, a FIFO mutex per user. Users never block each other; a rejected `fn` releases the lock and rejects only its caller; the map entry is dropped when idle (`held()` for tests). Not re-entrant.
-- `core`: `Exclusive = <T>(fn: () => Promise<T>) => Promise<T>`; `planLocally(repos, blocks, userId, now, exclusive = run directly)` reads settings outside, then runs `computeDesiredSchedule` + `applyDesiredSchedule` inside `exclusive`.
-- `google`: `ReconcileDeps.exclusive?`; `reconcile` runs token refresh, `ensureAutoScheduledCalendar`, `detectDrift` and the mirror construction outside, compute + apply inside.
+- `core`: `Exclusive = <T>(fn: () => Promise<T>) => Promise<T>`; `planLocally(repos, blocks, userId, now, exclusive = run directly)` runs the settings read, `computeDesiredSchedule` and `applyDesiredSchedule` inside `exclusive`, compute and apply sharing that one settings read (since 2026-11-25: the tracking mode must not differ between them, see `2026-11-25-automatic-tracking-freeze-design.md` §1).
+- `google`: `ReconcileDeps.exclusive?`; `reconcile` runs token refresh, `ensureAutoScheduledCalendar`, `detectDrift` and the mirror construction outside, compute + apply inside (with their own settings read, taken inside; the read before drift only sizes drift's window).
 - `server.ts`: one `createUserLock()`; both `reconcileBound` and `planLocallyBound` get `exclusive: (fn) => userLock(userId, fn)`; the app gets it as the required `AppDeps.withUserLock`. `test/fakes.ts` `buildTestApp` uses a real lock by default and returns it.
 - Routes (`schedule-routes.ts`), each releasing the lock before `data.changed` and `afterMutation`:
   - `POST /schedule`: task lookup outside; `create` inside.
@@ -163,7 +163,7 @@ A route waiting on the lock widens the known snap-back race (a `schedule.updated
 ## 7. Tests
 
 - `server/test/user-lock.test.ts`: FIFO, per-user isolation, release on throw (async and sync), idle entries dropped.
-- `core/test/plan-locally-exclusive.test.ts`: a drag committed right after apply's read, through the same lock, is not overwritten; compute and apply run inside the section, settings outside.
+- `core/test/plan-locally-exclusive.test.ts`: a drag committed right after apply's read, through the same lock, is not overwritten; the settings read, compute and apply run inside the section (one settings read).
 - `google/test/reconcile-exclusive.test.ts`: the engine-diff overwrite through `reconcile` (drag during the first PUT); the stale pinned push re-imported by drift across two cycles (one fake clock stamping both sides in execution order); only compute + apply inside the section.
 - `server/test/block-route-lock.test.ts`: PATCH / POST / Start / Stop / DELETE issued while a replan holds the lock wait and then apply on top of its writes (Start/Stop clocked at arrival, computed from the fresh row); DELETE 204 when the row vanished; a DELETE or sweep whose token lookup hangs does not hold the lock; the sweep takes the lock only with candidates and re-checks them; a real `makeReplan` + `planLocally(…, exclusive)` and a concurrent drag share the lock both ways.
 - `server/test/write-order.test.ts`: traces updated where the order deliberately changed (DELETE peek + in-lock re-read, token before the lock, unknown-id 404 from the peek, vanished row 204; sweep token looked up once before its in-lock re-read).
