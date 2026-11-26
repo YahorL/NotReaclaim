@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { buildTestApp, tokenFor } from './fakes.js';
 
 const settingsBody = {
@@ -366,6 +366,9 @@ describe('requireStartSince follows requireStartToTrack (server clock, never fro
 describe('mode switches racing each other always leave a consistent (mode, timestamp) pair', () => {
   const T0 = new Date('2026-01-05T08:00:00.000Z');
   const NOW = Date.parse('2026-01-05T12:00:00.000Z');
+  let clockNow = NOW;
+  const setClock = (t: number) => { clockNow = t; };
+  beforeEach(() => { clockNow = NOW; });
   /** Holds the FIRST settings read (the first request's stored read) until `release` is called. */
   function gated(initial: { requireStartToTrack: boolean; requireStartSince: Date | null }) {
     const ctx = buildTestApp({
@@ -374,7 +377,7 @@ describe('mode switches racing each other always leave a consistent (mode, times
         defaultMaxChunkMs: 3600000, meetingBufferMs: 0, taskBufferMs: 0, dayStartMinute: 0,
         createdAt: new Date(0), updatedAt: new Date(0), ...initial,
       },
-      now: () => NOW,
+      now: () => clockNow,
     });
     const realGet = ctx.settings.getByUserId.bind(ctx.settings);
     let release!: () => void;
@@ -426,5 +429,34 @@ describe('mode switches racing each other always leave a consistent (mode, times
     const s = await final();
     expect(s?.requireStartToTrack ? s.requireStartSince : null).toEqual(s?.requireStartToTrack ? new Date(NOW) : null);
     expect(s?.requireStartToTrack === true && s.requireStartSince == null).toBe(false);
+  });
+
+  it('a save held across a switch off and back on (13:00) cannot bring back the old timestamp (the lock serialises them)', async () => {
+    // Without the lock (on the PUT or on the PATCHes) the save, read at "on since 08:00", lands
+    // last and writes 08:00 back: a STALE marker, and the sweep would delete rows that ended in
+    // (08:00, 13:00] — automatically tracked time that should have been kept.
+    const { ctx, release, final } = gated({ requireStartToTrack: true, requireStartSince: T0 });
+    const auth = { authorization: `Bearer ${await tokenFor(ctx.app)}` };
+    const saving = ctx.app.inject({ method: 'PUT', url: '/settings', headers: auth, payload: { ...put, requireStartToTrack: true } });
+    await new Promise((r) => setTimeout(r, 20));
+    const off = ctx.app.inject({ method: 'PATCH', url: '/settings', headers: auth, payload: { requireStartToTrack: false } });
+    await new Promise((r) => setTimeout(r, 20));
+    setClock(Date.parse('2026-01-05T13:00:00.000Z'));
+    const on = ctx.app.inject({ method: 'PATCH', url: '/settings', headers: auth, payload: { requireStartToTrack: true } });
+    await new Promise((r) => setTimeout(r, 20));
+    release();
+    await Promise.all([saving, off, on]);
+    expect(await final()).toMatchObject({ requireStartToTrack: true, requireStartSince: new Date('2026-01-05T13:00:00.000Z') });
+  });
+
+  it('a save keeping manual tracking on writes the timestamp it read together with the mode', async () => {
+    const { ctx, release } = gated({ requireStartToTrack: true, requireStartSince: T0 });
+    release();
+    const writes: unknown[] = [];
+    const upsert = ctx.settings.upsert.bind(ctx.settings);
+    ctx.settings.upsert = async (u, data) => { writes.push(data); return upsert(u, data); };
+    const auth = { authorization: `Bearer ${await tokenFor(ctx.app)}` };
+    await ctx.app.inject({ method: 'PUT', url: '/settings', headers: auth, payload: { ...put, requireStartToTrack: true } });
+    expect(writes).toEqual([expect.objectContaining({ requireStartToTrack: true, requireStartSince: T0 })]);
   });
 });

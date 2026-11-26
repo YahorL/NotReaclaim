@@ -285,7 +285,7 @@ describe('POST /schedule/:id/start ends the other running automatic pieces (you 
     expect(await row('p0')).toMatchObject({ startsAt: iso('10:10'), endsAt: iso('10:15'), pinned: true });
   });
 
-  it('a hand-placed (pinned, never Started) running block is ended too, where the Started block begins: no double count', async () => {
+  it('a hand-placed (pinned, never Started) running block is ended too, where the Started block begins: nothing overlaps the Started block', async () => {
     const { row, ctx } = await start({
       now: '09:30',
       blocks: [
@@ -341,6 +341,17 @@ describe('POST /schedule/:id/start ends the other running automatic pieces (you 
     const rows = await ctx.scheduledBlocks.listByUserInRange('u1', new Date(0), new Date(8.64e15));
     // 11:20 → 13:20 is 120 minutes of wall time; 120 minutes tracked (it was 125).
     expect(computeSpentMs('t1', rows, false, iso('14:00').getTime())).toBe(120 * 60_000);
+  });
+
+  it('a block that ends exactly now holds the start back too', async () => {
+    const { res } = await start({
+      now: '12:21', id: 'b',
+      blocks: [
+        block({ id: 'a', engineKey: 'task:t1:2', startsAt: iso('11:21'), endsAt: iso('12:21') }),
+        block({ id: 'b', engineKey: 'task:t1:3', startsAt: iso('12:30'), endsAt: iso('13:30') }),
+      ],
+    });
+    expect(res.json()).toMatchObject({ startsAt: '2026-01-05T12:21:00.000Z', endsAt: '2026-01-05T13:21:00.000Z' });
   });
 
   it('an off-grid end: 09:05–10:05 ended, Start at 10:06 on 10:15–11:15 → 10:05–11:05, tracked = wall time', async () => {
