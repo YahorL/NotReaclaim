@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { ScheduledBlock, Settings } from '@notreclaim/db';
 import { GoogleApiError } from '@notreclaim/google';
-import { planLocally } from '@notreclaim/core';
+import { computeSpentMs, planLocally } from '@notreclaim/core';
 import { makeReplan } from '../src/replan-router.js';
 import { buildTestApp, tokenFor } from './fakes.js';
 
@@ -229,6 +229,35 @@ describe('POST /schedule/:id/start', () => {
 });
 
 describe('POST /schedule/:id/stop', () => {
+  it('automatic tracking: ends a frozen running piece that was never Started, pins it, and the replan keeps it and counts it', async () => {
+    // The auto piece 09:00–10:00 has been running since 09:00; nobody pressed Start.
+    const now = Date.parse('2026-01-05T09:37:00.000Z');
+    const piece = block({ id: 'b1', startsAt: new Date('2026-01-05T09:00:00.000Z'), endsAt: new Date('2026-01-05T10:00:00.000Z') });
+    const ctx = buildTestApp({ blocks: [piece], settings: settings(), now: () => now });
+    const token = await tokenFor(ctx.app);
+    const res = await ctx.app.inject({ method: 'POST', url: '/schedule/b1/stop', headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(200);
+    // round15(09:37) = 09:30, above the start + 15 min floor and below the planned end.
+    expect(res.json()).toMatchObject({ startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T09:30:00.000Z', pinned: true, startedAt: null });
+
+    const task = {
+      id: 't1', userId: 'u1', title: 'Focus', priority: 1, sortOrder: 0, durationMs: 3_600_000, dueBy: null, notBefore: null,
+      minChunkMs: 1_800_000, maxChunkMs: 1_800_000, categoryId: null, status: 'pending' as const, completedAt: null,
+      createdAt: new Date(0), updatedAt: new Date(0),
+    };
+    const repos = {
+      settings: ctx.settings, calendarEvents: ctx.calendarEvents, scheduledBlocks: ctx.scheduledBlocks,
+      tasks: { listByUser: async () => [task] }, habits: { listByUser: async () => [] }, categories: { listByUser: async () => [] },
+    };
+    await planLocally(repos, ctx.scheduledBlocks, 'u1', now);
+    const rows = await ctx.scheduledBlocks.listByUserInRange('u1', new Date(0), new Date(8.64e15));
+    expect(rows.find((r) => r.id === 'b1')).toMatchObject({ startsAt: new Date('2026-01-05T09:00:00.000Z'), endsAt: new Date('2026-01-05T09:30:00.000Z') });
+    expect(computeSpentMs('t1', rows, false, now)).toBe(1_800_000); // the stopped half hour counts
+    // …and only the other half hour is planned again, after it.
+    expect(rows.filter((r) => r.id !== 'b1').map((r) => [r.startsAt.toISOString(), r.endsAt.toISOString()]))
+      .toEqual([['2026-01-05T09:40:00.000Z', '2026-01-05T10:10:00.000Z']]);
+  });
+
   it('snaps the end to the nearest 15 min of now, keeping the start', async () => {
     // block 2026-01-04T23:00 → 2026-01-05T01:00 spans FIXED_NOW (00:00); round15(00:00)=00:00
     const b = block({ id: 'b1', startsAt: new Date('2026-01-04T23:00:00.000Z'), endsAt: new Date('2026-01-05T01:00:00.000Z') });

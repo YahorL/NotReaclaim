@@ -191,6 +191,46 @@ describe('applyDesiredSchedule (pinned blocks are mirrored too)', () => {
     expect(res.pinnedSynced).toBe(0);
   });
 
+  describe('a pinned block whose end was moved down to or before now (Stop, completing its task)', () => {
+    // Stopped at 09:37: round15 gives 09:30, so the row has already ended while its Google
+    // event (as drift listed it this cycle) still runs to 10:00.
+    const STOPPED_AT = Date.parse('2026-01-05T09:37:00.000Z');
+    const stopped = (over: Partial<DbScheduledBlock> = {}) => pinned({
+      googleEventId: 'g1', googleCalendarId: 'cal1', engineKey: 'task:t1:0',
+      endsAt: new Date('2026-01-05T09:30:00.000Z'), updatedAt: new Date(STOPPED_AT), ...over,
+    });
+    const run = (repo: ReturnType<typeof fakeRepo>, mirror: ScheduleMirror, mirrorSnapshot?: ReturnType<typeof snapshot>) =>
+      applyDesiredSchedule(repo, 'u1', desired([]), { now: STOPPED_AT, horizonEnd: HORIZON, requireStartToTrack: false, mirror, mirrorSnapshot });
+
+    it('pushes the shortened end while the event still runs past now', async () => {
+      const repo = fakeRepo([stopped()]);
+      const mirror = stubMirror();
+      const res = await run(repo, mirror, snapshot({ updatedAt: Date.parse('2026-01-05T08:00:00.000Z') }));
+      expect(mirror.update).toHaveBeenCalledTimes(1);
+      expect(mirror.update).toHaveBeenCalledWith(
+        expect.objectContaining({ start: Date.parse('2026-01-05T09:00:00.000Z'), end: Date.parse('2026-01-05T09:30:00.000Z') }),
+        expect.objectContaining({ id: 'p1' }),
+      );
+      expect(res.pinnedSynced).toBe(1);
+    });
+
+    it('pushes once: an event that already ends at or before now is history', async () => {
+      const mirror = stubMirror();
+      await run(fakeRepo([stopped()]), mirror, snapshot({ end: Date.parse('2026-01-05T09:30:00.000Z') }));
+      await run(fakeRepo([stopped()]), mirror, snapshot({ end: STOPPED_AT })); // ends exactly at now
+      await run(fakeRepo([stopped()]), mirror, new Map()); // not listed at all (ends before now)
+      expect(mirror.update).not.toHaveBeenCalled();
+    });
+
+    it('keeps a newer Google-side edit, and never inserts an event for an ended unmirrored row', async () => {
+      const mirror = stubMirror();
+      await run(fakeRepo([stopped()]), mirror, snapshot({ updatedAt: STOPPED_AT + 1 }));
+      await run(fakeRepo([stopped({ googleEventId: null, googleCalendarId: null })]), mirror, snapshot());
+      expect(mirror.update).not.toHaveBeenCalled();
+      expect(mirror.create).not.toHaveBeenCalled();
+    });
+  });
+
   it('pushes a pinned block whose stored times diverge from the mirror snapshot', async () => {
     const repo = fakeRepo([pinned({
       googleEventId: 'g1', googleCalendarId: 'cal1',

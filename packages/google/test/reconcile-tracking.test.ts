@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import type { ScheduledBlock, CreateScheduledBlockInput, UpdateScheduledBlockInput, Settings, Task, CalendarEvent } from '@notreclaim/db';
-import { computeSpentMs, type SchedulingRepositories } from '@notreclaim/core';
+import { computeSpentMs, stopBlockEndMs, type SchedulingRepositories } from '@notreclaim/core';
 import { reconcile } from '../src/reconcile.js';
 import type { GoogleEvent, GoogleEventWrite, ListEventsArgs, ListEventsResult } from '../src/client.js';
 import { FakeGoogleClient, fakeTokenProvider, fakeUserRepo, makeScheduledBlock, makeSettings, makeTask, makeUser } from './fakes.js';
@@ -165,5 +165,36 @@ describe('reconcile, polled every 5 minutes for a day (Google + drift)', () => {
     await w.poll(at('09:05'));
     expect(w.writes()).toEqual(before);
     expect(w.client.times()).toEqual(['09:00–10:00']);
+  });
+});
+
+describe('Stop on a frozen running piece reaches Google (automatic tracking)', () => {
+  /** POST /schedule/:id/stop's write, at `now`: end = stopBlockEndMs, pinned. */
+  async function stop(w: ReturnType<typeof world>, now: number) {
+    w.client.clock = now;
+    const row = w.store.rows().find((r) => r.startsAt.getTime() <= now && r.endsAt.getTime() > now)!;
+    await w.store.update('u1', row.id, { endsAt: new Date(stopBlockEndMs(row.startsAt.getTime(), row.endsAt.getTime(), now)), pinned: true });
+  }
+
+  it.each([
+    ['09:37', 'rounds DOWN to 09:30, so the row has already ended', '09:00–09:30', 0.5],
+    ['09:38', 'rounds UP to 09:45', '09:00–09:45', 0.75],
+  ])('stopped at %s (%s): the event is shortened on the next poll, once, and the time counts', async (when, _why, shortened, spentH) => {
+    const w = world({ requireStartToTrack: false, tasks: [task(1)] });
+    await w.poll(at('08:00'));
+    await w.poll(at('09:05'));
+    await stop(w, at(when));
+    const before = w.writes();
+    await w.poll(at('09:40'));
+    expect(w.writes().update - before.update).toBe(1);
+    expect(w.client.times()).toContain(shortened);
+    expect(w.client.times()).not.toContain('09:00–10:00');
+    const after = w.writes();
+    await w.poll(at('09:50'));
+    await w.poll(at('10:30'));
+    expect(w.writes().update).toBe(after.update); // pushed once
+    expect(w.spentH(at('09:50'))).toBe(spentH); // the stopped piece; the re-planned rest is running
+    expect(w.spentH(at('10:30'))).toBe(1); // and once the rest has run too, the full hour
+    expect(w.rowTimes()).toContain(shortened); // drift never pulled the old end back
   });
 });

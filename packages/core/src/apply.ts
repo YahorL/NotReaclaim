@@ -423,7 +423,15 @@ async function mirrorPinnedBlocks(
 
   for (const row of existing) {
     if (!row.pinned) continue;
-    if (row.endsAt.getTime() <= now) continue; // ended: history, not worth a write
+    // Ended: history, not worth a write — unless its event still runs past now. Stop (and
+    // completing a task mid-piece) moves the end down to round15(now), which can already be in
+    // the past: the shortened end must still reach the event once. Drift never fixes it (it
+    // only reads rows overlapping [now, horizon]), and after this push the event ends before
+    // now, drops out of drift's listing and is never pushed again.
+    if (row.endsAt.getTime() <= now) {
+      const observed = row.googleEventId ? mirrorSnapshot?.get(row.googleEventId) : undefined;
+      if (!observed || observed.end <= now) continue;
+    }
     if (!row.taskId && !row.habitId) continue; // not a mappable placement
     const block = toScheduledBlock(row); // engine id === row id (mappers.ts)
 
