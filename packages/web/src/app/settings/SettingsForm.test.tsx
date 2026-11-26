@@ -63,7 +63,99 @@ describe('SettingsForm', () => {
     render(<SettingsForm initial={{ ...initial(), requireStartToTrack: false }} onSave={onSave} timezones={['UTC']} />);
     fireEvent.click(screen.getByTestId('require-start'));
     fireEvent.click(screen.getByTestId('save'));
+    // Switching it ON asks first (U5).
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ requireStartToTrack: true }), expect.any(Function));
+  });
+
+  describe('confirming before switching Require Start ON (U5)', () => {
+    const TEXT = 'Time tracked automatically so far is kept on the calendar but will no longer count as time spent while Require Start is on.';
+
+    it('asks in a modal alert dialog before saving, with the owner-approved text; Confirm saves', () => {
+      const onSave = vi.fn();
+      render(<SettingsForm initial={initial({ requireStartToTrack: false })} onSave={onSave} timezones={['UTC']} />);
+      fireEvent.click(screen.getByTestId('require-start'));
+      fireEvent.click(screen.getByTestId('save'));
+      expect(onSave).not.toHaveBeenCalled();
+      const dialog = screen.getByRole('alertdialog');
+      expect(dialog).toHaveAttribute('aria-modal', 'true');
+      expect(dialog).toHaveAccessibleDescription(TEXT);
+      // Portalled out of the page's `.glass` cards (a backdrop-filter would trap the fixed backdrop).
+      expect(screen.getByTestId('confirm-backdrop').parentElement).toBe(document.body);
+      // Focus starts on the safe choice.
+      expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+      expect(onSave).toHaveBeenCalledTimes(1);
+      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ requireStartToTrack: true }), expect.any(Function));
+      expect(screen.queryByRole('alertdialog')).toBeNull();
+    });
+
+    it('Cancel saves nothing and turns the toggle back off', () => {
+      const onSave = vi.fn();
+      render(<SettingsForm initial={initial({ requireStartToTrack: false })} onSave={onSave} timezones={['UTC']} />);
+      fireEvent.click(screen.getByTestId('require-start'));
+      fireEvent.click(screen.getByTestId('save'));
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(onSave).not.toHaveBeenCalled();
+      expect(screen.queryByRole('alertdialog')).toBeNull();
+      expect(screen.getByTestId('require-start')).not.toBeChecked();
+      // Nothing else was changed, so nothing is unsaved.
+      expect(screen.queryByTestId('unsaved')).toBeNull();
+    });
+
+    it('Escape cancels the same way', () => {
+      const onSave = vi.fn();
+      render(<SettingsForm initial={initial({ requireStartToTrack: false })} onSave={onSave} timezones={['UTC']} />);
+      fireEvent.click(screen.getByTestId('require-start'));
+      fireEvent.click(screen.getByTestId('save'));
+      fireEvent.keyDown(screen.getByRole('alertdialog'), { key: 'Escape' });
+      expect(onSave).not.toHaveBeenCalled();
+      expect(screen.queryByRole('alertdialog')).toBeNull();
+      expect(screen.getByTestId('require-start')).not.toBeChecked();
+    });
+
+    it('Cancel keeps the other unsaved edits (still "Unsaved changes")', () => {
+      render(<SettingsForm initial={initial({ requireStartToTrack: false })} onSave={vi.fn()} timezones={['UTC']} />);
+      fireEvent.click(screen.getByTestId('day-1-toggle'));
+      fireEvent.click(screen.getByTestId('require-start'));
+      fireEvent.click(screen.getByTestId('save'));
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(screen.getByTestId('unsaved')).toBeInTheDocument();
+    });
+
+    it('turning it OFF needs no confirmation', () => {
+      const onSave = vi.fn();
+      render(<SettingsForm initial={initial({ requireStartToTrack: true })} onSave={onSave} timezones={['UTC']} />);
+      fireEvent.click(screen.getByTestId('require-start'));
+      fireEvent.click(screen.getByTestId('save'));
+      expect(screen.queryByRole('alertdialog')).toBeNull();
+      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ requireStartToTrack: false }), expect.any(Function));
+    });
+
+    it('a save that keeps it on (already on) does not ask', () => {
+      const onSave = vi.fn();
+      render(<SettingsForm initial={initial({ requireStartToTrack: true })} onSave={onSave} timezones={['UTC']} />);
+      fireEvent.click(screen.getByTestId('day-1-toggle'));
+      fireEvent.click(screen.getByTestId('save'));
+      expect(screen.queryByRole('alertdialog')).toBeNull();
+      expect(onSave).toHaveBeenCalledTimes(1);
+    });
+
+    it('compares with what the server holds: on → save → off → save → on asks again', () => {
+      const onSave = vi.fn((_input: SettingsInput, onSaved: () => void) => onSaved());
+      render(<SettingsForm initial={initial({ requireStartToTrack: false })} onSave={onSave} timezones={['UTC']} />);
+      fireEvent.click(screen.getByTestId('require-start'));
+      fireEvent.click(screen.getByTestId('save'));
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+      fireEvent.click(screen.getByTestId('require-start'));
+      fireEvent.click(screen.getByTestId('save'));
+      expect(screen.queryByRole('alertdialog')).toBeNull();
+      expect(onSave).toHaveBeenCalledTimes(2);
+      fireEvent.click(screen.getByTestId('require-start'));
+      fireEvent.click(screen.getByTestId('save'));
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+      expect(onSave).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('edits the planner day start and saves it as minutes past midnight', () => {

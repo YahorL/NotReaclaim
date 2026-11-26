@@ -3,6 +3,7 @@ import type { SettingsInput } from '../../api/types';
 import { DurationStepper } from '../components/DurationStepper';
 import { FieldBox } from '../components/FieldBox';
 import { PrimaryButton } from '../components/Buttons';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { FIELD_ERROR } from '../components/formStyles';
 import { CAPS_LABEL, CHECKBOX, INPUT } from '../forms/controls';
 import { minutesToHHMM, hhmmToMinutes } from '../lib/duration';
@@ -15,6 +16,9 @@ import { WeeklyHoursEditor } from './WeeklyHoursEditor';
 const CARD_CLS = 'glass flex min-w-0 flex-col gap-3.5 rounded-panel px-[22px] py-5';
 /** Prototype `.ctl`: the recessed control inside a field box. */
 const CTL = `${INPUT} h-10 rounded-input px-3 text-[16px] tabular-nums`;
+
+/** Switching manual tracking on keeps the history but stops it counting (server spec §7, §8). */
+export const REQUIRE_START_CONFIRM_TEXT = 'Time tracked automatically so far is kept on the calendar but will no longer count as time spent while Require Start is on.';
 
 export interface SettingsFormProps {
   initial: SettingsFormState;
@@ -35,11 +39,28 @@ export function SettingsForm({ initial, onSave, saving = false, error = null, ju
   // form still matches it — a mutation that succeeded earlier says nothing about later edits.
   const [baseline, setBaseline] = useState(() => JSON.stringify(toSettingsInput(initial)));
   const dirty = JSON.stringify(toSettingsInput(form)) !== baseline;
+  const commit = (input: SettingsInput) => {
+    const snap = JSON.stringify(input);
+    onSave(input, () => setBaseline(snap));
+  };
+  // Off → on (against what the server holds, not the form's first state) asks first.
+  const [confirmOn, setConfirmOn] = useState<SettingsInput | null>(null);
   const save = () => {
     if (!ok) return;
     const input = toSettingsInput(form);
-    const snap = JSON.stringify(input);
-    onSave(input, () => setBaseline(snap));
+    const savedRequireStart = (JSON.parse(baseline) as SettingsInput).requireStartToTrack === true;
+    if (input.requireStartToTrack === true && !savedRequireStart) { setConfirmOn(input); return; }
+    commit(input);
+  };
+  const confirmRequireStart = () => {
+    const input = confirmOn;
+    setConfirmOn(null);
+    if (input) commit(input);
+  };
+  // Cancel turns the toggle back off; any other edit stays (and stays "Unsaved changes").
+  const cancelRequireStart = () => {
+    setConfirmOn(null);
+    setForm((f) => ({ ...f, requireStartToTrack: false }));
   };
   const zones = useMemo(() => timezones ?? supportedTimezones(), [timezones]);
   const zoneOptions = zones.includes(form.timezone) ? zones : [form.timezone, ...zones];
@@ -166,6 +187,15 @@ export function SettingsForm({ initial, onSave, saving = false, error = null, ju
             : justSaved && <span data-testid="saved">Saved</span>}
         </span>
       </div>
+
+      {confirmOn && (
+        <ConfirmDialog
+          title="Only count time after you press Start?"
+          message={REQUIRE_START_CONFIRM_TEXT}
+          onConfirm={confirmRequireStart}
+          onCancel={cancelRequireStart}
+        />
+      )}
     </div>
   );
 }
