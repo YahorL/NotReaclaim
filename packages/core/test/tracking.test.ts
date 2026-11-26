@@ -353,3 +353,46 @@ describe('a task completed while its piece runs (PATCH /tasks ends the piece lik
     expect(times(w, 't2')).toEqual(['10:00–11:00']);
   });
 });
+
+describe('edges noticed while building the freeze', () => {
+  it('first replan on rows left by the old code (a past row holds a higher key than a future one): settles in one cycle', async () => {
+    // Today's code at 11:30 on a 3 h task: 09–10 recycled forward as :0, 10–11 kept as history
+    // under :1, and the replan after that placed :0 later in the day.
+    const w = world({ tasks: [task(3)] });
+    const seed = (id: string, key: string, a: string, b: string) => w.store.rows().push(makeBlock({
+      id, taskId: 't1', engineKey: key, startsAt: new Date(at(a)), endsAt: new Date(at(b)), googleEventId: `g-${id}`, googleCalendarId: 'auto',
+    }));
+    seed('past', 'task:t1:1', '10:00', '11:00');
+    seed('future', 'task:t1:0', '13:00', '14:00');
+    const { calls, mirror } = countingMirror();
+    // The offset numbers the remainder after the past :1, so the future :0 row is swept and its
+    // time re-created under new keys: a one-time delete + inserts per such future piece.
+    expect(await replan(w, at('12:00'), mirror)).toMatchObject({ created: 2, updated: 0, deleted: 1 });
+    expect(calls).toEqual({ create: 2, update: 0, delete: 1 });
+    expect(keys(w)).toEqual(['task:t1:1', 'task:t1:2', 'task:t1:3']);
+    expect(await replan(w, at('12:05'), mirror)).toMatchObject(noWrites);
+  });
+
+  it('a task renamed while a piece runs: the frozen piece keeps its old title (never matched by the keyed diff)', async () => {
+    const w = world({ tasks: [task(2, { title: 'Old' })] });
+    await replan(w, at('08:00'));
+    w.tasks[0] = { ...w.tasks[0]!, title: 'New' };
+    await replan(w, at('09:30'));
+    const titles = w.store.rows().sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime()).map((r) => r.title);
+    expect(titles).toEqual(['Old', 'New']); // the running piece, then the next one
+  });
+
+  it('a running piece can no longer jump past its deadline, so it raises no unscheduled warning (automatic only)', async () => {
+    for (const requireStartToTrack of [false, true]) {
+      const w = world({
+        settings: weekdaySettings({ requireStartToTrack }),
+        tasks: [task(1, { dueBy: new Date(at('10:00')) })],
+      });
+      await replan(w, at('08:00'));
+      expect(times(w)).toEqual(['09:00–10:00']);
+      const repos = { ...fakeRepos({ settings: w.settings, tasks: w.tasks }), scheduledBlocks: { listByUserInRange: w.store.listByUserInRange } };
+      const { unscheduled } = await computeDesiredSchedule(repos, 'u1', at('09:05'));
+      expect(unscheduled.map((u) => u.sourceId), String(requireStartToTrack)).toEqual(requireStartToTrack ? ['t1'] : []);
+    }
+  });
+});

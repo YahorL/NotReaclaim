@@ -149,6 +149,8 @@ This supersedes the lost-edits design's §3.4 and §10 Q4, which described Start
 | **Completed-task purge (30 days)** | Cascades the rows. Unchanged. |
 | **Stats** (`/schedule/preview`) | The running frozen piece is echoed at its real time. Finished pieces were never in the preview. |
 | **Due dates and the unscheduled banner** | Coverage takes the running piece out of `remaining`, so a piece can no longer jump past its deadline while it is being worked on. |
+| **Task renamed while a piece runs** | The running (and every finished) piece keeps its old title, in the DB and on Google: titles only travel through the keyed diff, which never matches a frozen row. Before, the sliding piece picked up the new title. Pinned by a test; not changed. |
+| **First replan after deploy** | Rows left by the old code can have a past row holding a higher key than a future one (B2 recycled `:0` forward and kept `:1` as history). The offset then numbers the remainder after the past key, so such a future row is swept and its time re-created under new keys: a one-time Google delete plus insert per affected future piece, settled in one cycle. |
 | **Two pieces back to back** | The first is frozen and finished, the second frozen and running. Both keep their keys; no write. |
 | **Meeting added on top of a running piece** | The piece stays whole and they overlap (owner decision 3). The full piece counts. |
 | **Higher-priority task created mid-piece** | It is planned around the running piece. |
@@ -189,7 +191,7 @@ This holds whatever `pinned` and `startedAt` are; a frozen auto piece has `pinne
 
 | Package | What |
 |---|---|
-| `core/test/tracking.test.ts` | Predicate truth table. The B2 and B1 scenarios in both modes: single and multi-piece tasks, zero remainder, boundaries, a meeting on top, a higher-priority task, duration shortened, frozen plus pinned pieces. Polled days with a counting mirror, including a buffer case and manual unchanged. Stable keys. Completion freeing the slot. |
+| `core/test/tracking.test.ts` | Predicate truth table. The legacy key layout, a rename mid-piece, and the deadline warning (§6). The B2 and B1 scenarios in both modes: single and multi-piece tasks, zero remainder, boundaries, a meeting on top, a higher-priority task, duration shortened, frozen plus pinned pieces. Polled days with a counting mirror, including a buffer case and manual unchanged. Stable keys. Completion freeing the slot. |
 | `core/test/apply.test.ts` | The two pre-existing move/sweep tests made explicitly manual, with automatic twins. Release-then-create as one unit, including with the circuit open. The echo skip. S4 (pushed once; no push for a newer Google edit or an unmirrored row). Rows beyond a shortened horizon. The circuit-open probe extended with an unchanged never-mirrored row. An event-less delete with an empty id passing an open circuit. |
 | `core/test/assemble.test.ts` | Running frozen rows become pinned blocks with coverage in automatic mode only (not in manual mode; finished rows never; habit rows never). `firstChunkIndex`. |
 | `core/test/block-timer.test.ts` | The Start table of §5. |
@@ -216,6 +218,7 @@ Existing assertions changed:
   - Should completing in the first 7.5 minutes of a piece delete it instead of leaving 15 minutes (§4)?
   - Is "backlog" wanted alongside "completed" (§4)?
 - **Known, unchanged:**
+  - A task renamed mid-piece leaves the frozen pieces with the old title (§6).
   - A frozen row that was never mirrored stays without a Google event.
   - The manual sweep deletes pinned history (§7).
   - Unpinning a key-less row leaves an invisible zombie (lost-edits design §9): any such row in manual mode, and in automatic mode one whose start has not passed yet (once it has, it is frozen and handled).
