@@ -19,7 +19,7 @@ type Deps = Pick<AppDeps, 'repos' | 'google' | 'now'>;
  * from 09:15 (at most 7.5 minutes ahead); it is running all the same (the web's rule is
  * `startedAt != null && endsAt > now`) and, having begun "in the future", it is short.
  */
-async function runningTargets(deps: Deps, userId: string, now: number, isTarget: (b: ScheduledBlock) => boolean) {
+export async function runningTargets(deps: Deps, userId: string, now: number, isTarget: (b: ScheduledBlock) => boolean) {
   return (await deps.repos.scheduledBlocks.listByUserInRange(userId, new Date(now), new Date(now + SHORT_PIECE_MS + 1)))
     .filter((b) => b.taskId != null && b.endsAt.getTime() > now
       && (b.startsAt.getTime() <= now || b.startedAt != null) && isTarget(b));
@@ -44,18 +44,7 @@ const isShort = (b: ScheduledBlock, now: number) => now - beganAt(b) < SHORT_PIE
 
 /**
  * Under the user lock: end every running task piece `isTarget` picks, as of `now` (the arrival
- * clock). A piece that ran at least SHORT_PIECE_MS gets Stop's write — end = stopBlockEndMs,
- * pinned, so it is never re-planned, counts once it has ended, and the pinned pass pushes the new
- * end to Google even when it is already in the past. A shorter one is deleted with its Google
- * event (best effort, like DELETE /schedule/:id). With `startedBlock` (Start), a piece that
- * would run past the started block's new start ends there instead, and a hand-placed (pinned)
- * block is never deleted: young or not, it ends at the started block's start, or is left as it
- * is when that would leave it with no length. Returns how many pieces
- * changed, or 'needs-token' when a piece to delete has a Google event and the caller passed no
- * token: it then lets go of the lock, looks one up (token lookups never run under the lock) and
- * comes back once. Nothing is written before that answer. Callers start without a token: a piece
- * to delete that is mirrored is rare (begun under 7.5 minutes ago), and no read happens before
- * the lock.
+ * clock). See endRunningPieces.
  */
 export async function endRunningPiecesUnderLock(
   app: FastifyInstance,
@@ -64,9 +53,36 @@ export async function endRunningPiecesUnderLock(
   now: number,
   isTarget: (b: ScheduledBlock) => boolean,
   token: PrefetchedToken | null,
-  startedBlock?: { start: number },
 ): Promise<number | 'needs-token'> {
-  const targets = await runningTargets(deps, userId, now, isTarget);
+  return endRunningPieces(app, deps, userId, now, await runningTargets(deps, userId, now, isTarget), token);
+}
+
+/**
+ * Under the user lock: end the running task pieces `targets` (from runningTargets), as of `now`
+ * (the arrival clock). A piece that ran at least SHORT_PIECE_MS gets Stop's write — end =
+ * stopBlockEndMs, pinned, so it is never re-planned, counts once it has ended, and the pinned pass
+ * pushes the new end to Google even when it is already in the past. A shorter one is deleted with
+ * its Google event (best effort, like DELETE /schedule/:id). With `startedBlock` (Start), a piece
+ * that would run past the started block's new start ends there instead, and a hand-placed
+ * (pinned) block is never deleted: young or not, it ends at the started block's start, or is left
+ * as it is when that would leave it with no length. With `startedBlock.exact` (Start at the exact
+ * minute, see exactStartMs) every piece begun before the started block's start ends exactly
+ * there, even where Stop's arithmetic would end it earlier (round15(now) rounded down), so no
+ * minute between the two is left uncounted. Returns how many pieces changed, or 'needs-token'
+ * when a piece to delete has a Google event and the caller passed no token: it then lets go of
+ * the lock, looks one up (token lookups never run under the lock) and comes back once. Nothing is
+ * written before that answer. Callers start without a token: a piece to delete that is mirrored
+ * is rare (begun under 7.5 minutes ago), and no read happens before the lock.
+ */
+export async function endRunningPieces(
+  app: FastifyInstance,
+  deps: Deps,
+  userId: string,
+  now: number,
+  targets: ScheduledBlock[],
+  token: PrefetchedToken | null,
+  startedBlock?: { start: number; exact: boolean },
+): Promise<number | 'needs-token'> {
   // What becomes of each piece: a new end, 'delete' (begun less than SHORT_PIECE_MS ago), or
   // 'keep' (a hand-placed block that Start may not shorten to nothing).
   const fate = (b: ScheduledBlock): number | 'delete' | 'keep' => {
@@ -80,6 +96,9 @@ export async function endRunningPiecesUnderLock(
     // there. Stop's 15-minute floor and a start off the quarter grid would otherwise make the
     // two overlap (10:10 running, Start at 10:19: ended at 10:25, Started from 10:15).
     if (startedBlock.start > start && startedBlock.start < end) return startedBlock.start;
+    // At the exact minute (at most `now`, so before the piece's end): ending at round15(now) would
+    // leave a gap before it (a piece running at 09:17 would end at 09:15, the Started one 09:17).
+    if (startedBlock.exact && startedBlock.start > start && startedBlock.start < b.endsAt.getTime()) return startedBlock.start;
     // A hand-placed block that begins where (or after) the Started block begins would be left
     // with no length at all: it is left as it is. An auto piece in that position (only a Started
     // block that has already ended can begin before it) keeps Stop's arithmetic.

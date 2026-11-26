@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import type { ScheduledBlock, CreateScheduledBlockInput, UpdateScheduledBlockInput, Settings, Task, CalendarEvent } from '@notreclaim/db';
-import { computeSpentMs, startBlockPatch, stopBlockEndMs, type SchedulingRepositories } from '@notreclaim/core';
+import { computeSpentMs, exactStartMs, startBlockPatch, stopBlockEndMs, type SchedulingRepositories } from '@notreclaim/core';
 import { reconcile } from '../src/reconcile.js';
 import type { GoogleEvent, GoogleEventWrite, ListEventsArgs, ListEventsResult } from '../src/client.js';
 import { FakeGoogleClient, fakeTokenProvider, fakeUserRepo, makeScheduledBlock, makeSettings, makeTask, makeUser } from './fakes.js';
@@ -251,6 +251,29 @@ describe('Start on the next piece while one runs reaches Google (automatic track
     await w.poll(at('10:40'));
     expect(w.writes().update - before.update).toBe(2);
     expect(w.spentH(at('10:40'))).toBe(1.5);
+  });
+
+  it('Start at the exact minute: the cut hand-placed block and the off-grid Started one reach Google, once', async () => {
+    const w = world({ requireStartToTrack: false, tasks: [task(1)] });
+    // A hand-placed block for another task, 09:15–10:15; the first poll mirrors it and plans t1 around it.
+    await w.store.create('u1', { taskId: 'tH', title: 'tH', startsAt: new Date(at('09:15')), endsAt: new Date(at('10:15')), pinned: true });
+    await w.poll(at('08:00'));
+    const handPlaced = w.store.rows().find((r) => r.taskId === 'tH')!;
+    const next = w.store.rows().find((r) => r.taskId === 't1')!;
+    expect(handPlaced.googleEventId).not.toBeNull();
+    // POST /schedule/<t1>/start at 09:17: H ends at the exact minute, the Started block begins there.
+    const now = at('09:17');
+    w.client.clock = now;
+    const from = exactStartMs(now, [handPlaced.startsAt.getTime()])!;
+    await w.store.update('u1', handPlaced.id, { endsAt: new Date(from), pinned: true });
+    await w.store.update('u1', next.id, startBlockPatch(next.startsAt.getTime(), next.endsAt.getTime(), now, [], from));
+    const before = w.writes();
+    await w.poll(at('09:20'));
+    expect(w.writes().update - before.update).toBe(2);
+    expect(w.client.times()).toEqual(['09:15–09:17', '09:17–10:17']);
+    await w.poll(at('10:40'));
+    expect(w.writes().update - before.update).toBe(2); // pushed once
+    expect(w.rowTimes()).toEqual(['09:15–09:17', '09:17–10:17']); // drift never pulled the old times back
   });
 });
 

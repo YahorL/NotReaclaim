@@ -229,7 +229,8 @@ describe('POST /schedule/:id/start', () => {
 });
 
 describe('POST /schedule/:id/start ends the other running automatic pieces (you work on one thing at a time)', () => {
-  const iso = (hm: string) => new Date(`2026-01-05T${hm}:00.000Z`);
+  /** 'HH:MM' or 'HH:MM:SS'. */
+  const iso = (hm: string) => new Date(`2026-01-05T${hm.length === 5 ? `${hm}:00` : hm}.000Z`);
   const taskRow = (id: string) => ({
     id, userId: 'u1', title: id, priority: 1, sortOrder: 0, durationMs: 7_200_000, dueBy: null, notBefore: null,
     minChunkMs: 1_800_000, maxChunkMs: 3_600_000, categoryId: null, status: 'pending' as const, completedAt: null,
@@ -318,8 +319,8 @@ describe('POST /schedule/:id/start ends the other running automatic pieces (you 
     expect(deleted).toEqual([]);
   });
 
-  it('a hand-placed block that begins where (or after) the Started block begins is left untouched', async () => {
-    const { row } = await start({
+  it('residual: a hand-placed block that began at this very instant is left untouched (nothing to cut), and Start keeps round15', async () => {
+    const { res, row } = await start({
       now: '09:30',
       blocks: [
         block({ id: 'c', taskId: 'tC', pinned: true, startsAt: iso('09:30'), endsAt: iso('10:30') }),
@@ -327,6 +328,157 @@ describe('POST /schedule/:id/start ends the other running automatic pieces (you 
       ],
     });
     expect(await row('c')).toMatchObject({ startsAt: iso('09:30'), endsAt: iso('10:30'), pinned: true });
+    expect(res.json()).toMatchObject({ startsAt: '2026-01-05T09:30:00.000Z', endsAt: '2026-01-05T10:30:00.000Z' });
+  });
+
+  describe('Start at the exact minute: a hand-placed running block that begins at or after the snapped start is cut, not left whole', () => {
+    async function trackedAfter(ctx: Awaited<ReturnType<typeof start>>['ctx'], taskIds: string[], at: string) {
+      const rows = await ctx.scheduledBlocks.listByUserInRange('u1', new Date(0), new Date(8.64e15));
+      return taskIds.reduce((sum, t) => sum + computeSpentMs(t, rows, false, iso(at).getTime()), 0) / 60_000;
+    }
+    // The reviewer's T4f2: hand-placed H 09:15–10:15 running, Start on Y (planned 11:00) at 09:17.
+    const h = (over: Partial<ScheduledBlock> = {}) =>
+      block({ id: 'h', taskId: 'tH', engineKey: null, pinned: true, startsAt: iso('09:15'), endsAt: iso('10:15'), ...over });
+    const y = (over: Partial<ScheduledBlock> = {}) =>
+      block({ id: 'y', taskId: 'tY', engineKey: 'task:tY:0', startsAt: iso('11:00'), endsAt: iso('12:00'), ...over });
+
+    it('T4f2, early branch: Y begins at 09:17 (keeps its hour), H ends there; tracked == wall time', async () => {
+      const { res, row, ctx, deleted } = await start({ now: '09:17', id: 'y', blocks: [h(), y()] });
+      expect(res.json()).toMatchObject({ id: 'y', startsAt: '2026-01-05T09:17:00.000Z', endsAt: '2026-01-05T10:17:00.000Z', pinned: true });
+      expect(await row('h')).toMatchObject({ startsAt: iso('09:15'), endsAt: iso('09:17'), pinned: true, startedAt: null });
+      expect(deleted).toEqual([]);
+      // 09:15 → 10:17 is 62 minutes of wall time (was 120 tracked: H whole beside Y 09:15–10:15).
+      expect(await trackedAfter(ctx, ['tH', 'tY'], '12:00')).toBe(62);
+    });
+
+    it('seconds are truncated to the whole minute', async () => {
+      const { res, row } = await start({ now: '09:17:40', id: 'y', blocks: [h(), y()] });
+      expect(res.json()).toMatchObject({ startsAt: '2026-01-05T09:17:00.000Z', endsAt: '2026-01-05T10:17:00.000Z', startedAt: '2026-01-05T09:17:40.000Z' });
+      expect(await row('h')).toMatchObject({ endsAt: iso('09:17') });
+    });
+
+    it('has-begun branch: Y (begun 09:16) keeps its end and begins at 09:17; H ends at 09:17', async () => {
+      const { res, row, ctx } = await start({ now: '09:17', id: 'y', blocks: [h(), y({ startsAt: iso('09:16'), endsAt: iso('10:00') })] });
+      expect(res.json()).toMatchObject({ startsAt: '2026-01-05T09:17:00.000Z', endsAt: '2026-01-05T10:00:00.000Z' });
+      expect(await row('h')).toMatchObject({ startsAt: iso('09:15'), endsAt: iso('09:17'), pinned: true });
+      // H 09:15–09:17 + Y 09:17–10:00 = 45 (Y's own 09:16–09:17 is dropped: Start pulls a begun start later, as before).
+      expect(await trackedAfter(ctx, ['tH', 'tY'], '12:00')).toBe(45);
+    });
+
+    it('pressed within the minute H began: Y begins at the raw instant, seconds and all', async () => {
+      const { res, row } = await start({ now: '09:15:40', id: 'y', blocks: [h(), y()] });
+      expect(res.json()).toMatchObject({ startsAt: '2026-01-05T09:15:40.000Z', endsAt: '2026-01-05T10:15:40.000Z' });
+      expect(await row('h')).toMatchObject({ startsAt: iso('09:15'), endsAt: iso('09:15:40') });
+    });
+
+    it('two hand-placed blocks: both end at Y\'s start', async () => {
+      const { res, row, ctx } = await start({
+        now: '09:17', id: 'y',
+        blocks: [h(), h({ id: 'h2', taskId: 'tH2', startsAt: iso('09:16'), endsAt: iso('09:45') }), y()],
+      });
+      expect(res.json()).toMatchObject({ startsAt: '2026-01-05T09:17:00.000Z' });
+      expect(await row('h')).toMatchObject({ endsAt: iso('09:17') });
+      expect(await row('h2')).toMatchObject({ startsAt: iso('09:16'), endsAt: iso('09:17') });
+      // Nothing overlaps Y.
+      const rows = await ctx.scheduledBlocks.listByUserInRange('u1', new Date(0), new Date(8.64e15));
+      for (const x of rows.filter((b) => b.id !== 'y')) expect(x.endsAt.getTime() <= iso('09:17').getTime(), x.id).toBe(true);
+    });
+
+    it('a hand-placed block that began before the snapped start ends at the exact start too (no gap)', async () => {
+      const { row } = await start({
+        now: '09:17', id: 'y',
+        blocks: [h(), h({ id: 'early', taskId: 'tE', startsAt: iso('09:00'), endsAt: iso('09:45') }), y()],
+      });
+      expect(await row('early')).toMatchObject({ startsAt: iso('09:00'), endsAt: iso('09:17') });
+      expect(await row('h')).toMatchObject({ endsAt: iso('09:17') });
+    });
+
+    it('with an un-pinned running piece too: it ends at Y\'s exact start (no gap), tracked == wall time', async () => {
+      const { row, ctx } = await start({
+        now: '09:17', id: 'y',
+        blocks: [h(), block({ id: 'a', taskId: 'tA', engineKey: 'task:tA:0', startsAt: iso('08:30'), endsAt: iso('10:00') }), y()],
+      });
+      // Stop's arithmetic alone would end it at round15(09:17) = 09:15 and leave 09:15–09:17 counted nowhere.
+      expect(await row('a')).toMatchObject({ startsAt: iso('08:30'), endsAt: iso('09:17'), pinned: true });
+      expect(await row('h')).toMatchObject({ endsAt: iso('09:17') });
+      // a 47 + H 2 (H and a overlapping 09:15–09:17 is the user's doing) + Y 60.
+      expect(await trackedAfter(ctx, ['tA', 'tH', 'tY'], '12:00')).toBe(109);
+    });
+
+    it('with a short un-pinned running piece: still deleted, with its Google event', async () => {
+      const { row, deleted } = await start({
+        now: '09:17', id: 'y',
+        blocks: [h(), block({ id: 'a', taskId: 'tA', engineKey: 'task:tA:0', startsAt: iso('09:12'), endsAt: iso('10:00'), googleEventId: 'g-a', googleCalendarId: 'cal-auto' }), y()],
+      });
+      expect(await row('a')).toBeNull();
+      expect(deleted).toEqual(['g-a']);
+      expect(await row('h')).toMatchObject({ endsAt: iso('09:17') });
+    });
+
+    it('with the recent-end clamp: the clamped start (09:16) is the one H is judged against; H began there, so Y begins at 09:17', async () => {
+      // An auto piece ended at 09:16 (off the grid), H hand-placed from 09:16; Start Y at 09:17.
+      const { res, row, ctx } = await start({
+        now: '09:17', id: 'y',
+        blocks: [h({ startsAt: iso('09:16'), endsAt: iso('10:16') }), block({ id: 'done', taskId: 'tD', engineKey: 'task:tD:0', startsAt: iso('08:00'), endsAt: iso('09:16') }), y()],
+      });
+      expect(res.json()).toMatchObject({ startsAt: '2026-01-05T09:17:00.000Z', endsAt: '2026-01-05T10:17:00.000Z' });
+      expect(await row('h')).toMatchObject({ startsAt: iso('09:16'), endsAt: iso('09:17') });
+      expect(await row('done')).toMatchObject({ endsAt: iso('09:16') });
+      // 08:00 → 10:17 is 137 minutes of wall time (was 196: H whole beside Y 09:16–10:16).
+      expect(await trackedAfter(ctx, ['tD', 'tH', 'tY'], '12:00')).toBe(137);
+    });
+
+    it('the clamp alone already past H (an end at 09:17:20, Start at 09:17:40): unchanged, Y from 09:17:20 and H ends there', async () => {
+      const { res, row } = await start({
+        now: '09:17:40', id: 'y',
+        blocks: [h(), block({ id: 'done', taskId: 'tD', engineKey: 'task:tD:0', startsAt: iso('08:00'), endsAt: iso('09:17:20') }), y()],
+      });
+      expect(res.json()).toMatchObject({ startsAt: '2026-01-05T09:17:20.000Z', endsAt: '2026-01-05T10:17:20.000Z' });
+      expect(await row('h')).toMatchObject({ endsAt: iso('09:17:20') });
+    });
+
+    it('a never-Started block pinned by Stop whose floor end is still ahead is cut the same way', async () => {
+      // Auto 09:15–10:15 stopped at 09:16 → 09:15–09:30 (pinned, never Started); Start Y at 09:17.
+      const { res, row, ctx } = await start({ now: '09:17', id: 'y', blocks: [h({ endsAt: iso('09:30'), engineKey: 'task:tH:0' }), y()] });
+      expect(res.json()).toMatchObject({ startsAt: '2026-01-05T09:17:00.000Z' });
+      expect(await row('h')).toMatchObject({ startsAt: iso('09:15'), endsAt: iso('09:17') });
+      expect(await trackedAfter(ctx, ['tH', 'tY'], '12:00')).toBe(62); // was 75 (09:15–09:30 twice)
+    });
+
+    it('pressed twice: the second press changes nothing (H\'s new end holds Y at 09:17)', async () => {
+      const { res, row } = await start({ now: '09:17:40', id: 'y', blocks: [h(), y()], times: 2 });
+      expect(res.json()).toMatchObject({ startsAt: '2026-01-05T09:17:00.000Z', endsAt: '2026-01-05T10:17:00.000Z' });
+      expect(await row('h')).toMatchObject({ startsAt: iso('09:15'), endsAt: iso('09:17') });
+    });
+
+    it('on the grid with no such block: unchanged, round15', async () => {
+      // H began before the snapped start (09:15): it ends there, Y begins at 09:15.
+      const { res, row } = await start({ now: '09:17', id: 'y', blocks: [h({ startsAt: iso('09:00') }), y()] });
+      expect(res.json()).toMatchObject({ startsAt: '2026-01-05T09:15:00.000Z', endsAt: '2026-01-05T10:15:00.000Z' });
+      expect(await row('h')).toMatchObject({ endsAt: iso('09:15') });
+    });
+
+    it('fallback: a begun Y that has already ended at the exact minute keeps today\'s round15 patch, and H is left whole', async () => {
+      // Y 08:00–09:16, Start at 09:17 (outside the web: it has ended) → round15 makes it 09:15–09:16.
+      const { res, row } = await start({ now: '09:17', id: 'y', blocks: [h(), y({ startsAt: iso('08:00'), endsAt: iso('09:16') })] });
+      expect(res.json()).toMatchObject({ startsAt: '2026-01-05T09:15:00.000Z', endsAt: '2026-01-05T09:16:00.000Z' });
+      expect(await row('h')).toMatchObject({ startsAt: iso('09:15'), endsAt: iso('10:15') });
+    });
+
+    it('only hand-placed blocks trigger it: an auto piece begun after the snapped start is deleted (short) and Start keeps round15', async () => {
+      const { res, row } = await start({
+        now: '09:17', id: 'y',
+        blocks: [block({ id: 'a', taskId: 'tA', engineKey: 'task:tA:0', startsAt: iso('09:16'), endsAt: iso('10:00') }), y()],
+      });
+      expect(res.json()).toMatchObject({ startsAt: '2026-01-05T09:15:00.000Z', endsAt: '2026-01-05T10:15:00.000Z' });
+      expect(await row('a')).toBeNull();
+    });
+
+    it('manual tracking: unchanged, round15 and H untouched', async () => {
+      const { res, row } = await start({ now: '09:17', id: 'y', manual: true, blocks: [h(), y()] });
+      expect(res.json()).toMatchObject({ startsAt: '2026-01-05T09:15:00.000Z', endsAt: '2026-01-05T10:15:00.000Z' });
+      expect(await row('h')).toMatchObject({ startsAt: iso('09:15'), endsAt: iso('10:15') });
+    });
   });
 
   it('never moved back over a piece that ended a moment ago (10-minute buffer: 11:20–12:20 ended, Start at 12:21)', async () => {

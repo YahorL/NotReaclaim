@@ -1,10 +1,10 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { computeDesiredSchedule, startBlockPatch, stopBlockEndMs } from '@notreclaim/core';
+import { computeDesiredSchedule, exactStartMs, startBlockPatch, stopBlockEndMs } from '@notreclaim/core';
 import { NotFoundError, type ScheduledBlock, type UpdateScheduledBlockInput } from '@notreclaim/db';
 import type { AppDeps, AfterMutation } from './app.js';
 import { isMirrored, prefetchAccessToken, removeMirroredEventWithToken, type PrefetchedToken } from './google-writeback.js';
 import { discardUnstartedPastBlocks } from './manual-sweep.js';
-import { endRunningPiecesUnderLock, SHORT_PIECE_MS } from './running-pieces.js';
+import { endRunningPieces, runningTargets, SHORT_PIECE_MS } from './running-pieces.js';
 import { resolveRange } from './range.js';
 import { rangeQuerySchema, idParamSchema, updateScheduledBlockSchema, createScheduledBlockSchema } from './schemas.js';
 import { dataChanged } from './events.js';
@@ -110,7 +110,10 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
    * locked section and with the same arrival clock — otherwise the block the user moved on from
    * would keep running next to the Started one and both would count. Each ends where the Started
    * block begins at the latest (running-pieces.ts); an auto piece begun less than 7.5 minutes
-   * ago is deleted, a hand-placed block never is. Started blocks are left alone. Manual
+   * ago is deleted, a hand-placed block never is. A hand-placed block that begins at or after the
+   * snapped start would be left whole beside it, so then the Started block begins at the exact
+   * minute instead (exactStartMs) and every running block begun before that ends exactly there;
+   * one begun at this very instant is still left whole. Started blocks are left alone. Manual
    * tracking: only the block itself is written. In both modes the block is never moved back over a
    * block that has just ended and counts (see recentEnds). 404 for an unknown block, 400 for a
    * non-task one (nothing written).
@@ -133,10 +136,21 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
       const recentEnds = (await deps.repos.scheduledBlocks.listByUserInRange(userId, new Date(now - SHORT_PIECE_MS), new Date(now + 1)))
         .filter((b) => b.id !== row.id && b.taskId != null && b.endsAt.getTime() <= now && (automatic || b.startedAt != null))
         .map((b) => b.endsAt.getTime());
-      const patch = startBlockPatch(row.startsAt.getTime(), row.endsAt.getTime(), now, recentEnds);
+      let patch = startBlockPatch(row.startsAt.getTime(), row.endsAt.getTime(), now, recentEnds);
       if (automatic) {
-        const started = { start: (patch.startsAt ?? row.startsAt).getTime() };
-        const ended = await endRunningPiecesUnderLock(app, deps, userId, now, others, token, started);
+        const targets = await runningTargets(deps, userId, now, others);
+        // Start at the exact minute (owner decision): a hand-placed running block that begins at or
+        // after the snapped start would be left whole beside the Started block (both counting).
+        // The Started block then begins at the exact minute instead, and that block ends there.
+        const snappedStart = (patch.startsAt ?? row.startsAt).getTime();
+        const from = exactStartMs(now, targets
+          .filter((b) => b.pinned && b.startsAt.getTime() >= snappedStart).map((b) => b.startsAt.getTime()));
+        const exactPatch = from == null ? null : startBlockPatch(row.startsAt.getTime(), row.endsAt.getTime(), now, recentEnds, from);
+        // No startsAt: the block has already ended at that start; Start keeps round15 as before.
+        const exact = exactPatch?.startsAt != null;
+        if (exact) patch = exactPatch!;
+        const started = { start: (patch.startsAt ?? row.startsAt).getTime(), exact };
+        const ended = await endRunningPieces(app, deps, userId, now, targets, token, started);
         if (ended === 'needs-token') return 'needs-token' as const;
       }
       return deps.repos.scheduledBlocks.update(userId, row.id, patch);

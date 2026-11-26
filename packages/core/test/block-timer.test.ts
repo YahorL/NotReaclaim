@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { startBlockPatch, stopBlockEndMs } from '../src/block-timer.js';
+import { exactStartMs, startBlockPatch, stopBlockEndMs } from '../src/block-timer.js';
 
 const at = (hm: string) => Date.parse(`2026-01-05T${hm}:00.000Z`);
 
@@ -92,6 +92,62 @@ describe('startBlockPatch never moves a block back over time that already counte
 
   it('a begun block whose start moves LATER (it shrinks) is not affected', () => {
     expect(startBlockPatch(at('09:00'), at('11:00'), at('10:08'), [at('10:05')]).startsAt).toEqual(new Date(at('10:15')));
+  });
+});
+
+describe('startBlockPatch from an exact start (the 5th argument replaces round15(now))', () => {
+  it('early Start: the block moves to the exact start and keeps its length', () => {
+    // Hand-placed 09:15–10:15 running, Start at 09:17:40 on 11:00–12:00 → 09:17–10:17, not 09:15–10:15.
+    expect(startBlockPatch(at('11:00'), at('12:00'), at('09:17') + 40_000, [], at('09:17'))).toStrictEqual({
+      pinned: true, startedAt: new Date(at('09:17') + 40_000), startsAt: new Date(at('09:17')), endsAt: new Date(at('10:17')),
+    });
+  });
+
+  it('begun block: the start is pulled to the exact start, the end is kept', () => {
+    expect(startBlockPatch(at('09:00'), at('10:00'), at('09:17') + 40_000, [], at('09:17'))).toStrictEqual({
+      pinned: true, startedAt: new Date(at('09:17') + 40_000), startsAt: new Date(at('09:17')),
+    });
+    // Begun within the current minute: pulled EARLIER to the exact start (it grows by the seconds).
+    expect(startBlockPatch(at('09:17') + 30_000, at('10:00'), at('09:17') + 40_000, [], at('09:17')).startsAt).toEqual(new Date(at('09:17')));
+  });
+
+  it('the recentEnds clamp still holds it back: the start is the later of the exact start and the latest counted end', () => {
+    expect(startBlockPatch(at('11:00'), at('12:00'), at('09:17') + 40_000, [at('09:17') + 20_000], at('09:17'))).toMatchObject({
+      startsAt: new Date(at('09:17') + 20_000), endsAt: new Date(at('10:17') + 20_000),
+    });
+    // An end at or before the exact start does not move it (from round15 = 09:15, this 09:16 would).
+    expect(startBlockPatch(at('11:00'), at('12:00'), at('09:17') + 40_000, [at('09:16')], at('09:17')).startsAt).toEqual(new Date(at('09:17')));
+  });
+
+  it('a begun block that has already ended at the exact start keeps its times (no startsAt key)', () => {
+    expect(startBlockPatch(at('09:00'), at('09:17'), at('09:17') + 40_000, [], at('09:17'))).toStrictEqual({
+      pinned: true, startedAt: new Date(at('09:17') + 40_000),
+    });
+  });
+});
+
+describe('exactStartMs: where Start begins a block when a hand-placed running block would otherwise be left whole beside it', () => {
+  it('no such block: null (Start keeps round15)', () => {
+    expect(exactStartMs(at('09:17'), [])).toBeNull();
+  });
+
+  it('the current minute, truncated, when every such block began before it', () => {
+    expect(exactStartMs(at('09:17') + 40_000, [at('09:15')])).toBe(at('09:17'));
+    expect(exactStartMs(at('09:17'), [at('09:15'), at('09:16')])).toBe(at('09:17'));
+  });
+
+  it('pressed within the minute such a block began: the raw instant (seconds and all)', () => {
+    expect(exactStartMs(at('09:15') + 40_000, [at('09:15')])).toBe(at('09:15') + 40_000);
+    expect(exactStartMs(at('09:17') + 40_000, [at('09:15'), at('09:17') + 10_000])).toBe(at('09:17') + 40_000);
+  });
+
+  it('every such block began at this very instant: null (nothing can be cut, Start keeps round15)', () => {
+    expect(exactStartMs(at('09:17'), [at('09:17')])).toBeNull();
+  });
+
+  it('some began at this very instant, others before: chosen for the others alone (the ones begun now are left whole)', () => {
+    expect(exactStartMs(at('09:17') + 40_000, [at('09:16'), at('09:17') + 40_000])).toBe(at('09:17'));
+    expect(exactStartMs(at('09:17') + 40_000, [at('09:17') + 10_000, at('09:17') + 40_000])).toBe(at('09:17') + 40_000);
   });
 });
 
