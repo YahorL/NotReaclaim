@@ -313,6 +313,33 @@ describe('GET /schedule discard sweep (manual mode)', () => {
     expect(ids).toEqual(['future', 'kept']);
   });
 
+  // Characterisation (unchanged by the automatic-tracking freeze, reported to the owner): the
+  // sweep does not look at `pinned`, so the first GET after requireStartToTrack is switched ON
+  // permanently deletes the whole automatically tracked history — frozen auto pieces, pieces
+  // ended by Stop or by completing their task, dragged blocks — with their Google events. Only
+  // Started rows survive. Switching back OFF cannot bring that time back.
+  it('after switching to manual, the first GET deletes every past un-started task block, pinned ones included, with its event', async () => {
+    const deleted: string[] = [];
+    const past = (id: string, hh: string, over: Partial<ScheduledBlock> = {}) => block({
+      id, startsAt: new Date(`2026-01-04T${hh}:00:00.000Z`), endsAt: new Date(`2026-01-04T${hh}:30:00.000Z`),
+      googleEventId: `g-${id}`, googleCalendarId: 'cal-auto', ...over,
+    });
+    const { app } = buildTestApp({
+      blocks: [
+        past('auto', '09'), // a frozen auto piece: tracked time while the setting was off
+        past('stopped', '10', { pinned: true, engineKey: null }), // ended by Stop or by completing its task
+        past('dragged', '11', { pinned: true, engineKey: null }),
+        past('started', '12', { pinned: true, startedAt: new Date('2026-01-04T12:00:00.000Z') }),
+      ],
+      settings: settings({ requireStartToTrack: true }), accessToken: 'access-1',
+      deleteEvent: async (_t, _c, googleEventId) => { deleted.push(googleEventId); },
+    });
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: 'GET', url: `/schedule${wide}`, headers: { authorization: `Bearer ${token}` } });
+    expect((res.json() as { id: string }[]).map((b) => b.id)).toEqual(['started']);
+    expect(deleted.sort()).toEqual(['g-auto', 'g-dragged', 'g-stopped']);
+  });
+
   it('keeps un-started past blocks in auto mode', async () => {
     const missed = block({ id: 'missed', startsAt: new Date('2026-01-04T09:00:00.000Z'), endsAt: new Date('2026-01-04T09:30:00.000Z'), startedAt: null });
     const { app } = buildTestApp({ blocks: [missed], settings: settings({ requireStartToTrack: false }) });
