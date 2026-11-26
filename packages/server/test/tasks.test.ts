@@ -456,7 +456,7 @@ describe('PATCH /tasks/:id taking a task out of the plan while one of its pieces
     return { res, byId, ctx };
   }
 
-  it.each(['completed', 'backlog'])('automatic tracking, %s: every running piece of the task ends at round15(now) and is pinned, like Stop', async (status) => {
+  it.each(['completed', 'backlog', 'archived'])('automatic tracking, %s: every running piece of the task ends at round15(now) and is pinned, like Stop', async (status) => {
     const { res, byId, ctx } = await patch(status);
     expect(res.statusCode).toBe(200);
     expect(byId('running')).toMatchObject({ startsAt: iso('09:00'), endsAt: iso('09:30'), pinned: true, startedAt: null });
@@ -469,10 +469,80 @@ describe('PATCH /tasks/:id taking a task out of the plan while one of its pieces
     expect(ctx.reconcileCalls).toHaveLength(1); // then the usual replan, which re-plans the freed time
   });
 
-  it('manual tracking: unchanged, the running pieces keep their planned end', async () => {
-    const { byId } = await patch('completed', true);
-    expect(byId('running')).toMatchObject({ endsAt: iso('10:00'), pinned: false });
-    expect(byId('started')).toMatchObject({ endsAt: iso('10:15') });
+  it.each(['completed', 'backlog', 'archived'])('manual tracking, %s: the Started running piece ends too; an un-started one is left to the replan', async (status) => {
+    const { byId } = await patch(status, true);
+    expect(byId('started')).toMatchObject({ startsAt: iso('09:15'), endsAt: iso('09:30'), pinned: true });
+    expect(byId('running')).toMatchObject({ endsAt: iso('10:00'), pinned: false }); // never counted; the replan sweeps it
+  });
+
+  describe('a piece ended less than 7.5 minutes after its start is deleted, with its Google event', () => {
+    const run = async (now: number) => {
+      const deleted: string[] = [];
+      const ctx = buildTestApp({
+        tasks: [taskRow('t1')], settings: settingsRow(false), now: () => now, accessToken: 'access-1',
+        blocks: [blockRow({ id: 'p', engineKey: 'task:t1:0', googleEventId: 'g-p', googleCalendarId: 'cal-auto' })],
+        deleteEvent: async (_t, _c, googleEventId) => { deleted.push(googleEventId); },
+      });
+      const token = await tokenFor(ctx.app);
+      const res = await ctx.app.inject({ method: 'PATCH', url: '/tasks/t1', headers: { authorization: `Bearer ${token}` }, payload: { status: 'completed' } });
+      expect(res.statusCode).toBe(200);
+      return { row: await ctx.scheduledBlocks.findById('u1', 'p'), deleted, ctx };
+    };
+    const after = (ms: number) => Date.parse('2026-01-05T09:00:00.000Z') + ms;
+
+    it('at 7 min 29 s: the row and its event go', async () => {
+      const { row, deleted, ctx } = await run(after(7 * 60_000 + 29_000));
+      expect(row).toBeNull();
+      expect(deleted).toEqual(['g-p']);
+      expect(ctx.emitted).toContainEqual(expect.objectContaining({ type: 'data.changed', resources: ['schedule', 'tasks'] }));
+    });
+
+    it("at 7 min 30 s: Stop's write (a 15-minute piece), the event stays for the pinned pass to shorten", async () => {
+      const { row, deleted } = await run(after(7 * 60_000 + 30_000));
+      expect(row).toMatchObject({ endsAt: iso('09:15'), pinned: true });
+      expect(deleted).toEqual([]);
+    });
+
+    it('well past: ended at round15(now)', async () => {
+      const { row } = await run(after(37 * 60_000));
+      expect(row).toMatchObject({ endsAt: iso('09:30'), pinned: true });
+    });
+
+    it('a piece mirrored by a replan while the request waited: it lets go, fetches a token, and comes back once', async () => {
+      const deleted: string[] = [];
+      let entries = 0;
+      const ctx = buildTestApp({
+        tasks: [taskRow('t1')], settings: settingsRow(false), now: () => after(60_000), accessToken: 'access-1',
+        blocks: [blockRow({ id: 'p', engineKey: 'task:t1:0' })], // no event at the peek
+        deleteEvent: async (_t, _c, googleEventId) => { deleted.push(googleEventId); },
+        withUserLock: async (_u, fn) => {
+          // The replan that held the lock gave the row its event.
+          if (++entries === 1) await ctx.scheduledBlocks.update('u1', 'p', { googleEventId: 'g-p', googleCalendarId: 'cal-auto' });
+          return fn();
+        },
+      });
+      const token = await tokenFor(ctx.app);
+      await ctx.app.inject({ method: 'PATCH', url: '/tasks/t1', headers: { authorization: `Bearer ${token}` }, payload: { status: 'completed' } });
+      expect(entries).toBe(2);
+      expect(deleted).toEqual(['g-p']);
+      expect(await ctx.scheduledBlocks.findById('u1', 'p')).toBeNull();
+    });
+
+    it('the token is looked up before the lock, and only when a short piece has an event', async () => {
+      let lookups = 0;
+      let inLock = false;
+      const ctx = buildTestApp({
+        tasks: [taskRow('t1')], settings: settingsRow(false), now: () => after(60_000),
+        blocks: [blockRow({ id: 'p', engineKey: 'task:t1:0', googleEventId: 'g-p', googleCalendarId: 'cal-auto' })],
+        getAccessToken: async () => { lookups += 1; expect(inLock).toBe(false); return 'access-1'; },
+        deleteEvent: async () => undefined,
+        withUserLock: async (_u, fn) => { inLock = true; try { return await fn(); } finally { inLock = false; } },
+      });
+      const token = await tokenFor(ctx.app);
+      await ctx.app.inject({ method: 'PATCH', url: '/tasks/t1', headers: { authorization: `Bearer ${token}` }, payload: { status: 'completed' } });
+      expect(lookups).toBe(1);
+      expect(await ctx.scheduledBlocks.findById('u1', 'p')).toBeNull();
+    });
   });
 
   it.each([

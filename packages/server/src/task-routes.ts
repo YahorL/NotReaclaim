@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
-import { computeSpentMs, stopBlockEndMs } from '@notreclaim/core';
-import { NotFoundError, type CategoryRepository } from '@notreclaim/db';
+import { computeSpentMs, isFrozenTaskRow } from '@notreclaim/core';
+import { NotFoundError, type CategoryRepository, type ScheduledBlock, type Settings } from '@notreclaim/db';
+import { prefetchAccessToken, type PrefetchedToken } from './google-writeback.js';
+import { endRunningPiecesUnderLock, prefetchForEnding } from './running-pieces.js';
 import type { AppDeps, AfterMutation } from './app.js';
 import { dataChanged } from './events.js';
 import { ZodError } from 'zod';
@@ -21,27 +23,31 @@ async function assertOwnCategory(
   if (!owned.some((c) => c.id === categoryId)) throw new NotFoundError(`Category ${categoryId} not found for user`);
 }
 
+/** A task in one of these statuses has left the plan: nothing more is worked on it. */
+const LEAVES_PLAN: ReadonlySet<string> = new Set(['completed', 'backlog', 'archived']);
+
 /**
- * Automatic tracking: a task that leaves the plan (completed, or moved to the backlog) while one
- * of its pieces is running ends that piece now, with Stop's write (end = stopBlockEndMs, pinned),
- * so the rest of the piece is freed for other work instead of staying busy until its planned end
- * and counting as time spent on a task that is already done. Pinned (Started, dragged) pieces end
- * the same way. The pin keeps the shortened piece from being re-planned, and the pinned pass
- * pushes the new end to Google even when it is already in the past. Manual tracking is
- * unchanged. Under the user lock, like every block write; returns how many pieces it ended.
+ * A task that leaves the plan (completed, backlogged or archived) while one of its pieces is
+ * running ends that piece now, so the rest of it is freed for other work instead of staying busy
+ * until its planned end and counting as time spent on a task that is done. Which pieces: those
+ * that count or hold their place — every running piece of the task in automatic tracking
+ * (frozen or pinned), the pinned (Started, dragged) ones in manual tracking, where an un-started
+ * piece is simply swept by the replan. A piece that ran SHORT_PIECE_MS or more gets Stop's write;
+ * a shorter one is deleted with its Google event (running-pieces.ts). The tracking mode is read
+ * under the lock, with the write; returns how many pieces changed.
  */
-async function endRunningPieces(deps: AppDeps, userId: string, taskId: string, now: number): Promise<number> {
-  const settings = await deps.repos.settings.getByUserId(userId);
-  if (!settings || settings.requireStartToTrack) return 0;
-  return deps.withUserLock(userId, async () => {
-    const running = (await deps.repos.scheduledBlocks.listByUserInRange(userId, new Date(now), new Date(now + 1)))
-      .filter((b) => b.taskId === taskId && b.startsAt.getTime() <= now && b.endsAt.getTime() > now);
-    for (const b of running) {
-      const endsAt = new Date(stopBlockEndMs(b.startsAt.getTime(), b.endsAt.getTime(), now));
-      await deps.repos.scheduledBlocks.update(userId, b.id, { endsAt, pinned: true });
-    }
-    return running.length;
-  });
+async function endTaskRunningPieces(
+  app: FastifyInstance, deps: AppDeps, userId: string, taskId: string, now: number,
+): Promise<number> {
+  const targetFor = (settings: Settings | null) => (b: ScheduledBlock) =>
+    b.taskId === taskId && (b.pinned || (settings != null && isFrozenTaskRow(b, now, settings.requireStartToTrack)));
+  const attempt = (token: PrefetchedToken | null) => deps.withUserLock(userId, async () =>
+    endRunningPiecesUnderLock(app, deps, userId, now, targetFor(await deps.repos.settings.getByUserId(userId)), token));
+  const first = await attempt(await prefetchForEnding(deps, userId, now, targetFor(await deps.repos.settings.getByUserId(userId))));
+  if (first !== 'needs-token') return first;
+  // A piece to delete got a Google event while this waited: come back once with a token.
+  const second = await attempt(await prefetchAccessToken(deps, userId));
+  return second === 'needs-token' ? 0 : second; // unreachable: a token was passed
 }
 
 export function registerTaskRoutes(app: FastifyInstance, deps: AppDeps, afterMutation: AfterMutation): void {
@@ -109,9 +115,9 @@ export function registerTaskRoutes(app: FastifyInstance, deps: AppDeps, afterMut
         : {}),
     };
     const task = await deps.repos.tasks.update(request.userId, id, data);
-    if (rest.status === 'completed' || rest.status === 'backlog') {
+    if (rest.status !== undefined && LEAVES_PLAN.has(rest.status)) {
       // A block write: it changes the schedule and the task's spentMs.
-      if ((await endRunningPieces(deps, request.userId, id, now)) > 0) {
+      if ((await endTaskRunningPieces(app, deps, request.userId, id, now)) > 0) {
         deps.events.emit(dataChanged(request.userId, 'schedule', 'tasks'));
       }
     }
