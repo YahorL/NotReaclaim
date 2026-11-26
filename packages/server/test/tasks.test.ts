@@ -518,6 +518,36 @@ describe('PATCH /tasks/:id taking a task out of the plan while one of its pieces
       expect(await ctx.scheduledBlocks.findById('u1', 's')).toBeNull();
     });
 
+    it.each([false, true])('a Started block is measured from when the user pressed Start: Start at 09:08 (snapped to 09:15), complete at 09:22 → kept as 09:15–09:30 (manual: %s)', async (manual) => {
+      let clock = after(8 * 60_000);
+      const deleted: string[] = [];
+      const ctx = buildTestApp({
+        tasks: [taskRow('t1')], settings: settingsRow(manual), now: () => clock, accessToken: 'access-1',
+        blocks: [blockRow({ id: 'p', engineKey: 'task:t1:0', googleEventId: 'g-p', googleCalendarId: 'cal-auto' })],
+        deleteEvent: async (_t, _c, googleEventId) => { deleted.push(googleEventId); },
+      });
+      const token = await tokenFor(ctx.app);
+      const auth = { authorization: `Bearer ${token}` };
+      expect((await ctx.app.inject({ method: 'POST', url: '/schedule/p/start', headers: auth })).json()).toMatchObject({ startsAt: '2026-01-05T09:15:00.000Z' });
+      clock = after(22 * 60_000); // 14 minutes after Start, 7 after the snapped start
+      await ctx.app.inject({ method: 'PATCH', url: '/tasks/t1', headers: auth, payload: { status: 'completed' } });
+      expect(await ctx.scheduledBlocks.findById('u1', 'p')).toMatchObject({ startsAt: iso('09:15'), endsAt: iso('09:30'), pinned: true });
+      expect(deleted).toEqual([]);
+    });
+
+    it('a Started block dragged to begin in 5 minutes (Started long before) is measured from its start: not begun, deleted with its event', async () => {
+      const deleted: string[] = [];
+      const ctx = buildTestApp({
+        tasks: [taskRow('t1')], settings: settingsRow(false), now: () => after(30 * 60_000), accessToken: 'access-1',
+        blocks: [blockRow({ id: 's', pinned: true, startedAt: iso('08:30'), startsAt: iso('09:35'), endsAt: iso('10:35'), googleEventId: 'g-s', googleCalendarId: 'cal-auto' })],
+        deleteEvent: async (_t, _c, googleEventId) => { deleted.push(googleEventId); },
+      });
+      const token = await tokenFor(ctx.app);
+      await ctx.app.inject({ method: 'PATCH', url: '/tasks/t1', headers: { authorization: `Bearer ${token}` }, payload: { status: 'completed' } });
+      expect(await ctx.scheduledBlocks.findById('u1', 's')).toBeNull();
+      expect(deleted).toEqual(['g-s']);
+    });
+
     it('a piece mirrored by a replan while the request waited: it lets go, fetches a token, and comes back once', async () => {
       const deleted: string[] = [];
       let entries = 0;
