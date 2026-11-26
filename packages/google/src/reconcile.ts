@@ -25,7 +25,8 @@ import { GoogleApiError, GoogleTimeoutError } from './errors.js';
  * - 429 and 5xx count as answers too: the row is retried next cycle either way, and
  *   isolating them is the long-standing rule for first inserts (a rate-limited insert must
  *   not abort a first link's mass attach). But they may be Google-wide, so they are also
- *   transient (isTransientGoogleError): three in a row abort the apply.
+ *   transient (isTransientGoogleError): three in a row open apply's circuit (no further
+ *   Google call in that apply; it still finishes).
  * - A 401 says the access token itself was rejected, so every later call would fail too.
  * - A timeout, a network failure (`fetch failed` surfaces as a plain TypeError), any auth
  *   error and anything unknown are not answers at all: they abort the apply, so a Google that
@@ -38,7 +39,7 @@ function isRowScopedGoogleError(err: unknown): boolean {
 /**
  * A row-scoped Google answer that may say Google itself is struggling: 429 or 5xx. Each takes
  * up to the client's 15 s timeout and a 5xx write may even have been applied, so apply
- * aborts after three in a row (any successful call resets the run).
+ * stops calling Google after three in a row (any successful call resets the run).
  */
 function isTransientGoogleError(err: unknown): boolean {
   return err instanceof GoogleApiError && (err.status === 429 || err.status >= 500);
