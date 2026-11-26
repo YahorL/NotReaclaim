@@ -826,6 +826,35 @@ describe('assembleScheduleInput frozen task pieces (automatic tracking)', () => 
     expect(manual.tasks.find((t) => t.id === 't1')).not.toHaveProperty('firstChunkIndex');
   });
 
+  describe('the trailing task buffer of a piece that just ended (automatic only)', () => {
+    const withBuffer = (requireStartToTrack: boolean, blocks: ReturnType<typeof makeBlock>[]) => fakeRepos({
+      settings: makeSettings({ requireStartToTrack, taskBufferMs: 600_000, workingHours: [{ weekday: 1, startMinute: 0, endMinute: 1440 }] as never }),
+      categories: [makeCategory()], tasks: [], blocks,
+    });
+    const ended = (over: Partial<Parameters<typeof makeBlock>[0]> = {}) => running({
+      id: 'ended', startsAt: new Date('2026-01-05T08:30:00.000Z'), endsAt: new Date('2026-01-05T09:25:00.000Z'), ...over,
+    });
+    const tails = async (requireStartToTrack: boolean, blocks: ReturnType<typeof makeBlock>[], now = NOW) =>
+      (await assembleScheduleInput(withBuffer(requireStartToTrack, blocks), 'u1', now)).fixedEvents.filter((e) => e.id.startsWith('task-tail:'));
+
+    it('a frozen piece that ended 5 minutes ago keeps [end, end + buffer) busy', async () => {
+      expect(await tails(false, [ended()])).toEqual([
+        { id: 'task-tail:ended', start: Date.parse('2026-01-05T09:25:00.000Z'), end: Date.parse('2026-01-05T09:35:00.000Z') },
+      ]);
+    });
+
+    it('also right at its end (end == now), and for a pinned (stopped, completed, dragged) piece', async () => {
+      expect(await tails(false, [ended()], Date.parse('2026-01-05T09:25:00.000Z'))).toHaveLength(1);
+      expect(await tails(false, [ended({ pinned: true })])).toHaveLength(1);
+    });
+
+    it('not once the buffer has passed, not for a habit row, not in manual tracking', async () => {
+      expect(await tails(false, [ended()], Date.parse('2026-01-05T09:35:00.000Z'))).toEqual([]);
+      expect(await tails(false, [ended({ taskId: null, habitId: 'h1' })])).toEqual([]);
+      expect(await tails(true, [ended(), ended({ id: 'p', pinned: true })])).toEqual([]);
+    });
+  });
+
   it('automatic: a running habit row keeps its own (R21) handling, not the task freeze', async () => {
     const habitRow = running({ id: 'hab', taskId: null, habitId: 'h1', engineKey: 'habit:h1:x' });
     const input = await assembleScheduleInput(repos(false, [habitRow]), 'u1', NOW);

@@ -141,6 +141,22 @@ export async function assembleScheduleInput(
     }
   }
 
+  // Automatic tracking: a task piece that has just ended keeps its trailing task buffer busy
+  // until `end + buffer`. While it ran it was busy with ±buffer (pinned or frozen), and the
+  // pieces behind it were placed after that buffer; without this, a replan in the buffer window
+  // would see the time as free and re-plan the next piece from `now`, so back-to-back pieces
+  // crept forward by up to the buffer after every hand-over (and pushed each move to Google).
+  // Stopped, completed or dragged (pinned) pieces too: the same hand-over, the same creep.
+  // Manual tracking is left exactly as it was (there un-started pieces slide anyway).
+  const tailMs = settings.taskBufferMs ?? 0;
+  if (!settings.requireStartToTrack && tailMs > 0) {
+    for (const b of blocks) {
+      if (b.taskId == null || !(b.pinned || isFrozenTaskRow(b, now, settings.requireStartToTrack))) continue;
+      const end = b.endsAt.getTime();
+      if (end <= now && now < end + tailMs) fixedEvents.push({ id: `task-tail:${b.id}`, start: end, end: end + tailMs });
+    }
+  }
+
   // A task the user has Started becomes user-managed: stop auto-scheduling it (no surprise
   // "remainder" tiles when Start shrinks its block). Its pinned/started blocks stay; apply
   // clears its stale auto blocks since it drops out of the desired schedule.

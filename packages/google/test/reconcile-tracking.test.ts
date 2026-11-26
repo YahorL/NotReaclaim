@@ -89,11 +89,11 @@ function blockStore(clock: () => number) {
   };
 }
 
-function world(opts: { requireStartToTrack: boolean; tasks: Task[]; events?: CalendarEvent[] }) {
+function world(opts: { requireStartToTrack: boolean; tasks: Task[]; events?: CalendarEvent[]; taskBufferMs?: number }) {
   const client = new CalendarClient();
   const store = blockStore(() => client.clock);
   const settings: Settings = makeSettings({
-    requireStartToTrack: opts.requireStartToTrack, horizonDays: 7,
+    requireStartToTrack: opts.requireStartToTrack, horizonDays: 7, taskBufferMs: opts.taskBufferMs ?? 0,
     workingHours: [1, 2, 3, 4, 5].map((weekday) => ({ weekday, startMinute: 540, endMinute: 1020 })) as never,
   });
   const schedulingRepos: SchedulingRepositories = {
@@ -122,7 +122,9 @@ function world(opts: { requireStartToTrack: boolean; tasks: Task[]; events?: Cal
   return { client, store, poll, writes, spentH, rowTimes, settings };
 }
 
-const task = (hours: number) => makeTask({ id: 't1', durationMs: hours * H, minChunkMs: 30 * M, maxChunkMs: 60 * M, dueBy: new Date('2026-01-09T17:00:00.000Z') });
+const task = (hours: number, id = 't1', priority = 1) => makeTask({
+  id, title: id, priority, durationMs: hours * H, minChunkMs: 30 * M, maxChunkMs: 60 * M, dueBy: new Date('2026-01-09T17:00:00.000Z'),
+});
 
 async function pollDay(w: ReturnType<typeof world>) {
   await w.poll(at('08:00'));
@@ -148,6 +150,19 @@ describe('reconcile, polled every 5 minutes for a day (Google + drift)', () => {
     expect(w.rowTimes()).toEqual(['09:00–10:00', '10:00–11:00']);
     expect(w.client.times()).toEqual(['09:00–10:00', '10:00–11:00']);
     expect(r.writes).toEqual({ insert: 0, update: 0, delete: 0 }); // without stable keys: 1 insert + 1 delete
+  });
+
+  it('automatic tracking with a 10-minute task buffer: back-to-back pieces keep their gaps (no creep after a piece ends)', async () => {
+    const w = world({ requireStartToTrack: false, tasks: [task(3), task(2, 't2', 2)], taskBufferMs: 10 * M });
+    await w.poll(at('08:00'));
+    const planned = w.rowTimes();
+    expect(planned).toEqual(['09:00–10:00', '10:10–11:10', '11:20–12:20', '12:30–13:30', '13:40–14:40']);
+    const r = await pollDay(w);
+    // Before: a poll inside a finished piece's trailing buffer re-planned the next piece from now,
+    // so each gap shrank to 5 minutes (09:00, 10:05, 11:10 | 12:15, 13:20) with 10 event updates.
+    expect(w.rowTimes()).toEqual(planned);
+    expect(w.client.times()).toEqual(planned);
+    expect(r.writes).toEqual({ insert: 0, update: 0, delete: 0 });
   });
 
   it('manual tracking (never pressing Start): unchanged, the pieces chase the clock', async () => {
