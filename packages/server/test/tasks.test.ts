@@ -548,6 +548,70 @@ describe('PATCH /tasks/:id taking a task out of the plan while one of its pieces
       expect(deleted).toEqual(['g-s']);
     });
 
+    // Real request sequences: Start (and a drag) through the routes, then completion.
+    async function sequence(manual: boolean, steps: Array<[string, 'start' | 'drag' | 'complete', Record<string, unknown>?]>) {
+      let clock = after(0);
+      const deleted: string[] = [];
+      const ctx = buildTestApp({
+        tasks: [taskRow('t1')], settings: settingsRow(manual), now: () => clock, accessToken: 'access-1',
+        blocks: [blockRow({ id: 'p', engineKey: 'task:t1:0', googleEventId: 'g-p', googleCalendarId: 'cal-auto' })],
+        deleteEvent: async (_t, _c, googleEventId) => { deleted.push(googleEventId); },
+      });
+      const auth = { authorization: `Bearer ${await tokenFor(ctx.app)}` };
+      for (const [hm, step, payload] of steps) {
+        clock = iso(hm).getTime();
+        if (step === 'start') await ctx.app.inject({ method: 'POST', url: '/schedule/p/start', headers: auth });
+        if (step === 'drag') await ctx.app.inject({ method: 'PATCH', url: '/schedule/p', headers: auth, payload: payload! });
+        if (step === 'complete') await ctx.app.inject({ method: 'PATCH', url: '/tasks/t1', headers: auth, payload: { status: 'completed' } });
+      }
+      return { row: await ctx.scheduledBlocks.findById('u1', 'p'), deleted };
+    }
+
+    it.each([false, true])('E1: Start after the block began, round15 down (09:05 on 09:00–10:00), complete at 09:12 → kept 09:00–09:15 (manual: %s)', async (manual) => {
+      const { row, deleted } = await sequence(manual, [['09:05', 'start'], ['09:12', 'complete']]);
+      expect(row).toMatchObject({ startsAt: iso('09:00'), endsAt: iso('09:15') });
+      expect(deleted).toEqual([]);
+    });
+
+    it('E1b: Start at 09:07 on 09:00–10:00 (start unchanged), complete at 09:14 → kept 09:00–09:15', async () => {
+      const { row } = await sequence(false, [['09:07', 'start'], ['09:14', 'complete']]);
+      expect(row).toMatchObject({ startsAt: iso('09:00'), endsAt: iso('09:15') });
+    });
+
+    it.each([false, true])('E2: Started at 09:30 on 09:30–10:30, dragged EARLIER to 09:00–10:00 at 09:35, complete at 09:36 → kept 09:00–09:30 (manual: %s)', async (manual) => {
+      const { row } = await sequence(manual, [
+        ['09:30', 'drag', { startsAt: '2026-01-05T09:30:00.000Z', endsAt: '2026-01-05T10:30:00.000Z' }],
+        ['09:30', 'start'],
+        ['09:35', 'drag', { startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T10:00:00.000Z' }],
+        ['09:36', 'complete'],
+      ]);
+      expect(row).toMatchObject({ startsAt: iso('09:00'), endsAt: iso('09:30') });
+    });
+
+    // The piece began at the EARLIER of its start and startedAt when they are within the snapping
+    // distance; otherwise at its start. Each row: what Start (and any drag) left, then completion.
+    it.each([
+      ['never Started, 5 min in', null, '09:00', '10:00', '09:05', null],
+      ['never Started, 20 min in', null, '09:00', '10:00', '09:20', '09:15'],
+      ['Start before the block, round15 up (09:08 → 09:15), completed 09:10', '09:08', '09:15', '10:15', '09:10', null],
+      ['Start before the block, round15 up (09:08 → 09:15), completed 09:22', '09:08', '09:15', '10:15', '09:22', '09:30'],
+      ['Start before the block, round15 down (09:05 on 10:00 → 09:00), completed 09:12', '09:05', '09:00', '10:00', '09:12', '09:15'],
+      ['Start after it began, round15 down (E1b)', '09:07', '09:00', '10:00', '09:14', '09:15'],
+      ['Started, then dragged later by under 7.5 min', '09:00', '09:05', '10:05', '09:10', '09:20'],
+      ['Started, then dragged later by over 7.5 min (starts in 5 min)', '09:00', '09:35', '10:35', '09:30', null],
+      ['Started, then dragged EARLIER (E2)', '09:30', '09:00', '10:00', '09:36', '09:30'],
+      ['Started, start still ahead (now < startsAt)', '09:13', '09:15', '10:15', '09:14', null],
+    ] as const)('%s', async (_label, startedAt, start, end, now, endsAfter) => {
+      const ctx = buildTestApp({
+        tasks: [taskRow('t1')], settings: settingsRow(false), now: () => iso(now).getTime(),
+        blocks: [blockRow({ id: 'p', engineKey: 'task:t1:0', pinned: startedAt != null, startedAt: startedAt ? iso(startedAt) : null, startsAt: iso(start), endsAt: iso(end) })],
+      });
+      await ctx.app.inject({ method: 'PATCH', url: '/tasks/t1', headers: { authorization: `Bearer ${await tokenFor(ctx.app)}` }, payload: { status: 'completed' } });
+      const row = await ctx.scheduledBlocks.findById('u1', 'p');
+      if (endsAfter == null) expect(row).toBeNull();
+      else expect(row).toMatchObject({ startsAt: iso(start), endsAt: iso(endsAfter) });
+    });
+
     it('a piece mirrored by a replan while the request waited: it lets go, fetches a token, and comes back once', async () => {
       const deleted: string[] = [];
       let entries = 0;

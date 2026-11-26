@@ -27,15 +27,17 @@ async function runningTargets(deps: Deps, userId: string, now: number, isTarget:
 
 /**
  * When the user began working on a piece. Start snaps a block's start to the NEAREST quarter (up
- * to 7.5 minutes either way), so for a Started block whose `startedAt` is within that distance of
- * its start, `startedAt` is the real beginning (Started at 09:08 → runs from 09:15: at 09:22 it
- * has been worked on for 14 minutes, not 7). Otherwise — never Started, or Started long ago and
- * dragged since — its start is.
+ * to 7.5 minutes either way), so when a Started block's `startedAt` lies within that distance of
+ * its start, the piece began at the EARLIER of the two: Started at 09:08 → runs from 09:15, so at
+ * 09:22 it has been worked on for 14 minutes, not 7; Started at 09:07 on a block that began at
+ * 09:00 → it began at 09:00 (Start did not move it), as did a Started block dragged earlier ("I
+ * actually began at 9"). Otherwise — never Started, or Started long ago and dragged since — its
+ * start.
  */
 function beganAt(b: ScheduledBlock): number {
   const start = b.startsAt.getTime();
   const started = b.startedAt?.getTime();
-  return started != null && started >= start - SHORT_PIECE_MS ? started : start;
+  return started != null && started >= start - SHORT_PIECE_MS ? Math.min(started, start) : start;
 }
 
 const isShort = (b: ScheduledBlock, now: number) => now - beganAt(b) < SHORT_PIECE_MS;
