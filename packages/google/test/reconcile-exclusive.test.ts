@@ -161,8 +161,9 @@ describe('reconcile with an exclusive section (per-user lock)', () => {
 
     await reconcile({ ...deps, schedulingRepos, exclusive }, 'u1', NOW);
 
-    // One read outside (drift's window) and ONE inside: a PUT /settings (which takes no user lock)
-    // landing between two inside reads would give compute and apply different tracking modes.
+    // One read outside (drift's window) and ONE inside: compute and apply must share one read of the
+    // tracking mode. (PUT /settings now takes the user lock, but reconcile's callers need not pass
+    // one, and a second read inside would still be a second chance to see a different mode.)
     expect(reads).toEqual(['outside', 'inside']);
   });
 });
