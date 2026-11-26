@@ -142,8 +142,12 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
         // Start at the exact minute (owner decision): a hand-placed running block that begins at or
         // after the snapped start would be left whole beside the Started block (both counting).
         // The Started block then begins at the exact minute instead, and that block ends there.
-        const snappedStart = (patch.startsAt ?? row.startsAt).getTime();
-        const from = exactStartMs(now, targets
+        // Only when Start sets the block's start: a begun block that round15 leaves where it is
+        // (round15 at or past its end) keeps its start, so moving it to the exact minute would drop
+        // its own elapsed time from the record (Y 08:00–09:10, H 08:30–09:30, Start at 09:08: 68
+        // minutes) — that overlap is left as before.
+        const snappedStart = patch.startsAt?.getTime();
+        const from = snappedStart == null ? null : exactStartMs(now, targets
           .filter((b) => b.pinned && b.startsAt.getTime() >= snappedStart).map((b) => b.startsAt.getTime()));
         const exactPatch = from == null ? null : startBlockPatch(row.startsAt.getTime(), row.endsAt.getTime(), now, recentEnds, from);
         // No startsAt: the block has already ended at that start; Start keeps round15 as before.

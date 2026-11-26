@@ -45,6 +45,7 @@ export function startBlockPatch(
   return patch;
 }
 
+const SECOND_MS = 1_000;
 const MINUTE_MS = 60_000;
 
 /**
@@ -53,15 +54,20 @@ const MINUTE_MS = 60_000;
  * block's snapped start, so Start would leave them whole beside it (both counting). Returns where
  * the Started block begins instead, so that they can end there: the current minute, truncated
  * (times without seconds), when every one of them that began before `now` began before it;
- * otherwise `now` itself (pressed within the minute one began). One that began at this very
- * instant cannot be cut (it would have no length): it is ignored here and left whole by the
- * caller. Null when none can be cut: Start keeps round15(now).
+ * otherwise (pressed within the minute one began) the current second, truncated — Google keeps
+ * whole seconds, so a row with milliseconds would never match its event and drift would rewrite
+ * it — or, within the second one began, `now` itself. One that began at this very instant cannot
+ * be cut (it would have no length): it is ignored here and left whole by the caller. Null when
+ * none can be cut: Start keeps round15(now).
  */
 export function exactStartMs(now: number, startsToCut: number[]): number | null {
   const cuttable = startsToCut.filter((s) => s < now);
   if (cuttable.length === 0) return null;
+  const latest = Math.max(...cuttable);
   const minute = Math.floor(now / MINUTE_MS) * MINUTE_MS;
-  return minute > Math.max(...cuttable) ? minute : now;
+  if (minute > latest) return minute;
+  const second = Math.floor(now / SECOND_MS) * SECOND_MS;
+  return second > latest ? second : now;
 }
 
 /** Stop: end at round15(now), never before start+15min, never after the original end. */

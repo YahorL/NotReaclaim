@@ -136,9 +136,13 @@ describe('exactStartMs: where Start begins a block when a hand-placed running bl
     expect(exactStartMs(at('09:17'), [at('09:15'), at('09:16')])).toBe(at('09:17'));
   });
 
-  it('pressed within the minute such a block began: the raw instant (seconds and all)', () => {
-    expect(exactStartMs(at('09:15') + 40_000, [at('09:15')])).toBe(at('09:15') + 40_000);
-    expect(exactStartMs(at('09:17') + 40_000, [at('09:15'), at('09:17') + 10_000])).toBe(at('09:17') + 40_000);
+  it('pressed within the minute such a block began: the current second, truncated (Google keeps whole seconds)', () => {
+    expect(exactStartMs(at('09:15') + 40_123, [at('09:15')])).toBe(at('09:15') + 40_000);
+    expect(exactStartMs(at('09:17') + 40_123, [at('09:15'), at('09:17') + 10_000])).toBe(at('09:17') + 40_000);
+  });
+
+  it('pressed within the second such a block began: the raw instant', () => {
+    expect(exactStartMs(at('09:15') + 40_123, [at('09:15') + 40_000])).toBe(at('09:15') + 40_123);
   });
 
   it('every such block began at this very instant: null (nothing can be cut, Start keeps round15)', () => {
@@ -147,7 +151,7 @@ describe('exactStartMs: where Start begins a block when a hand-placed running bl
 
   it('some began at this very instant, others before: chosen for the others alone (the ones begun now are left whole)', () => {
     expect(exactStartMs(at('09:17') + 40_000, [at('09:16'), at('09:17') + 40_000])).toBe(at('09:17'));
-    expect(exactStartMs(at('09:17') + 40_000, [at('09:17') + 10_000, at('09:17') + 40_000])).toBe(at('09:17') + 40_000);
+    expect(exactStartMs(at('09:17') + 40_500, [at('09:17') + 10_000, at('09:17') + 40_500])).toBe(at('09:17') + 40_000);
   });
 });
 

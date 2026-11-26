@@ -236,10 +236,10 @@ describe('POST /schedule/:id/start ends the other running automatic pieces (you 
     minChunkMs: 1_800_000, maxChunkMs: 3_600_000, categoryId: null, status: 'pending' as const, completedAt: null,
     createdAt: new Date(0), updatedAt: new Date(0),
   });
-  async function start(opts: { now: string; blocks: ScheduledBlock[]; manual?: boolean; id?: string; times?: number }) {
+  async function start(opts: { now: string; ms?: number; blocks: ScheduledBlock[]; manual?: boolean; id?: string; times?: number }) {
     const deleted: string[] = [];
     const ctx = buildTestApp({
-      blocks: opts.blocks, settings: settings({ requireStartToTrack: opts.manual ?? false, horizonDays: 7 }), now: () => iso(opts.now).getTime(),
+      blocks: opts.blocks, settings: settings({ requireStartToTrack: opts.manual ?? false, horizonDays: 7 }), now: () => iso(opts.now).getTime() + (opts.ms ?? 0),
       accessToken: 'access-1', deleteEvent: async (_t, _c, googleEventId) => { deleted.push(googleEventId); },
     });
     const token = await tokenFor(ctx.app);
@@ -365,10 +365,18 @@ describe('POST /schedule/:id/start ends the other running automatic pieces (you 
       expect(await trackedAfter(ctx, ['tH', 'tY'], '12:00')).toBe(45);
     });
 
-    it('pressed within the minute H began: Y begins at the raw instant, seconds and all', async () => {
-      const { res, row } = await start({ now: '09:15:40', id: 'y', blocks: [h(), y()] });
-      expect(res.json()).toMatchObject({ startsAt: '2026-01-05T09:15:40.000Z', endsAt: '2026-01-05T10:15:40.000Z' });
+    it('pressed within the minute H began: Y begins at the current second (milliseconds dropped: Google keeps whole seconds)', async () => {
+      const { res, row } = await start({ now: '09:15:40', ms: 123, id: 'y', blocks: [h(), y()] });
+      expect(res.json()).toMatchObject({ startsAt: '2026-01-05T09:15:40.000Z', endsAt: '2026-01-05T10:15:40.000Z', startedAt: '2026-01-05T09:15:40.123Z' });
       expect(await row('h')).toMatchObject({ startsAt: iso('09:15'), endsAt: iso('09:15:40') });
+    });
+
+    it('a begun Y that Start leaves where it is (round15 at or past its end) does not trigger it: Y keeps its start, H is left whole', async () => {
+      // Y 08:00–09:10 running, H hand-placed 08:30–09:30 over it, Start on Y at 09:08 (round15 = 09:15 ≥ 09:10).
+      // Cutting would move Y to 09:08 and drop its own 08:00–09:08 from the record (68 minutes).
+      const { res, row } = await start({ now: '09:08', id: 'y', blocks: [h({ startsAt: iso('08:30'), endsAt: iso('09:30') }), y({ startsAt: iso('08:00'), endsAt: iso('09:10') })] });
+      expect(res.json()).toMatchObject({ startsAt: '2026-01-05T08:00:00.000Z', endsAt: '2026-01-05T09:10:00.000Z', pinned: true });
+      expect(await row('h')).toMatchObject({ startsAt: iso('08:30'), endsAt: iso('09:30') });
     });
 
     it('two hand-placed blocks: both end at Y\'s start', async () => {
