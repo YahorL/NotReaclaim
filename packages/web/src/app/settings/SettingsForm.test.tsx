@@ -103,6 +103,19 @@ describe('SettingsForm', () => {
       expect(screen.queryByTestId('unsaved')).toBeNull();
     });
 
+    it('focus goes back to Save when the dialog closes (a click does not focus a button in Safari or jsdom)', () => {
+      const onSave = vi.fn();
+      render(<SettingsForm initial={initial({ requireStartToTrack: false })} onSave={onSave} timezones={['UTC']} />);
+      fireEvent.click(screen.getByTestId('require-start'));
+      fireEvent.click(screen.getByTestId('save'));
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(screen.getByTestId('save')).toHaveFocus();
+      fireEvent.click(screen.getByTestId('require-start'));
+      fireEvent.click(screen.getByTestId('save'));
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+      expect(screen.getByTestId('save')).toHaveFocus();
+    });
+
     it('Escape cancels the same way', () => {
       const onSave = vi.fn();
       render(<SettingsForm initial={initial({ requireStartToTrack: false })} onSave={onSave} timezones={['UTC']} />);

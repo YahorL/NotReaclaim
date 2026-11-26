@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { SettingsInput } from '../../api/types';
 import { DurationStepper } from '../components/DurationStepper';
 import { FieldBox } from '../components/FieldBox';
@@ -45,6 +45,8 @@ export function SettingsForm({ initial, onSave, saving = false, error = null, ju
   };
   // Off → on (against what the server holds, not the form's first state) asks first.
   const [confirmOn, setConfirmOn] = useState<SettingsInput | null>(null);
+  // Taken from the click itself, like NewTaskModal's opener: focus returns there on close.
+  const saveButtonRef = useRef<HTMLElement | null>(null);
   const save = () => {
     if (!ok) return;
     const input = toSettingsInput(form);
@@ -178,7 +180,7 @@ export function SettingsForm({ initial, onSave, saving = false, error = null, ju
       {error && <p data-testid="form-error" className={errCls}>{error.message}</p>}
 
       <div className="flex items-center gap-3.5">
-        <PrimaryButton large data-testid="save" disabled={!ok || saving} onClick={save}>
+        <PrimaryButton large data-testid="save" disabled={!ok || saving} onClick={(e) => { saveButtonRef.current = e.currentTarget; save(); }}>
           Save
         </PrimaryButton>
         <span role="status" className="text-[13px] text-fg-2">
@@ -194,6 +196,7 @@ export function SettingsForm({ initial, onSave, saving = false, error = null, ju
           message={REQUIRE_START_CONFIRM_TEXT}
           onConfirm={confirmRequireStart}
           onCancel={cancelRequireStart}
+          restoreTo={saveButtonRef}
         />
       )}
     </div>

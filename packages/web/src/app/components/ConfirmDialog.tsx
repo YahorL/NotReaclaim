@@ -1,4 +1,4 @@
-import { useId, useRef, type ReactElement } from 'react';
+import { useId, useRef, type ReactElement, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { useFocusTrap } from './Sheet';
 import { PrimaryButton } from './Buttons';
@@ -11,6 +11,8 @@ export interface ConfirmDialogProps {
   onConfirm: () => void;
   /** Cancel, Escape and a press on the backdrop. */
   onCancel: () => void;
+  /** The control that opened it, for focus return (a click does not focus a button in Safari). */
+  restoreTo?: RefObject<HTMLElement | null>;
 }
 
 /**
@@ -22,10 +24,10 @@ export interface ConfirmDialogProps {
  * Cancel — the choice that changes nothing. Portalled to <body>: a `.glass` ancestor's
  * backdrop-filter would otherwise trap its `fixed` backdrop inside that card.
  */
-export function ConfirmDialog({ title, message, confirmLabel = 'Confirm', onConfirm, onCancel }: ConfirmDialogProps): ReactElement {
+export function ConfirmDialog({ title, message, confirmLabel = 'Confirm', onConfirm, onCancel, restoreTo }: ConfirmDialogProps): ReactElement {
   const dialogRef = useRef<HTMLDivElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
-  const onKeyDown = useFocusTrap(dialogRef, { onEscape: onCancel, initialFocus: () => cancelRef.current });
+  const onKeyDown = useFocusTrap(dialogRef, { onEscape: onCancel, initialFocus: () => cancelRef.current, restoreTo });
   const titleId = useId();
   const messageId = useId();
   // Only a press that STARTED on the backdrop closes (a selection dragged out of the dialog doesn't).
