@@ -8,6 +8,7 @@ import type {
 } from '@notreclaim/scheduler';
 import { mergeIntervals, intersectIntervals } from '@notreclaim/scheduler';
 import type {
+  Settings,
   SettingsRepository,
   CalendarEventRepository,
   HabitRepository,
@@ -60,13 +61,18 @@ function taskChunkIndex(engineKey: string | null, taskId: string): number | null
   return /^\d+$/.test(rest) ? Number(rest) : null;
 }
 
-/** Assemble a complete engine ScheduleInput from persisted user data. */
+/**
+ * Assemble a complete engine ScheduleInput from persisted user data. A replan passes the
+ * `settings` it read inside its locked section, so assemble and apply see the same tracking
+ * mode; without them they are read here.
+ */
 export async function assembleScheduleInput(
   repos: SchedulingRepositories,
   userId: string,
   now: number,
+  settingsRead?: Settings,
 ): Promise<AssembledScheduleInput> {
-  const settings = await repos.settings.getByUserId(userId);
+  const settings = settingsRead ?? await repos.settings.getByUserId(userId);
   if (!settings) throw new SettingsRequiredError(userId);
 
   // An invalid stored zone would make every schedule read throw; plan in UTC until the user

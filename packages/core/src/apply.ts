@@ -601,7 +601,10 @@ const runDirectly: Exclusive = (fn) => fn();
 
 /**
  * Compute the desired schedule and persist it to the DB with no external sync (no Google).
- * The compute (its block read) and the whole apply run inside `exclusive`.
+ * The settings read, the compute (its block read) and the whole apply run inside `exclusive`,
+ * and assemble and apply share that one settings read: the tracking mode decides which rows
+ * are frozen, so the two must never see different modes (a PUT /settings landing while the
+ * replan waits for the lock would otherwise double-count or sweep a running piece).
  */
 export async function planLocally(
   repos: SchedulingRepositories,
@@ -611,11 +614,11 @@ export async function planLocally(
   exclusive: Exclusive = runDirectly,
   onRowFailure?: (failure: RowFailure) => void,
 ): Promise<ReplanCounts> {
-  const settings = await repos.settings.getByUserId(userId);
-  if (!settings) throw new SettingsRequiredError(userId);
-  const horizonEnd = horizonEndMs(now, settings.horizonDays);
   const counts = await exclusive(async () => {
-    const desired = await computeDesiredSchedule(repos, userId, now);
+    const settings = await repos.settings.getByUserId(userId);
+    if (!settings) throw new SettingsRequiredError(userId);
+    const horizonEnd = horizonEndMs(now, settings.horizonDays);
+    const desired = await computeDesiredSchedule(repos, userId, now, settings);
     // No mirror locally, so nothing to push for pinned rows either: apply reports
     // pinnedSynced/pinnedFailed as 0 on this path.
     return applyDesiredSchedule(scheduledBlocks, userId, desired, {

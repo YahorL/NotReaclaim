@@ -73,9 +73,9 @@ export async function reconcile(deps: ReconcileDeps, userId: string, now: number
     accessToken,
   );
 
-  const settings = await deps.schedulingRepos.settings.getByUserId(userId);
-  if (!settings) throw new SettingsRequiredError(userId);
-  const horizonEnd = horizonEndMs(now, settings.horizonDays);
+  // Read here only for drift's listing window; compute and apply use their own read below.
+  const driftSettings = await deps.schedulingRepos.settings.getByUserId(userId);
+  if (!driftSettings) throw new SettingsRequiredError(userId);
 
   const { pinned, removed, observed } = await detectDrift(
     { client: deps.client, scheduledBlocks: deps.scheduledBlocks },
@@ -83,7 +83,7 @@ export async function reconcile(deps: ReconcileDeps, userId: string, now: number
     calendarId,
     accessToken,
     now,
-    horizonEnd,
+    horizonEndMs(now, driftSettings.horizonDays),
   );
 
   const insert: ScheduleMirror['create'] = async (block) => {
@@ -106,10 +106,15 @@ export async function reconcile(deps: ReconcileDeps, userId: string, now: number
 
   // Compute reads the blocks and apply writes from that read (with a Google call before most
   // writes), so both run inside `exclusive`: a block route's write can then never land
-  // between them and be overwritten, swept, or pushed stale to Google.
+  // between them and be overwritten, swept, or pushed stale to Google. They also share ONE
+  // settings read taken inside it: the tracking mode decides which rows are frozen, and a
+  // PUT /settings landing during drift or the lock wait must not give them different modes.
   const exclusive = deps.exclusive ?? ((fn) => fn());
   const counts = await exclusive(async () => {
-    const desired = await computeDesiredSchedule(deps.schedulingRepos, userId, now);
+    const settings = await deps.schedulingRepos.settings.getByUserId(userId);
+    if (!settings) throw new SettingsRequiredError(userId);
+    const horizonEnd = horizonEndMs(now, settings.horizonDays);
+    const desired = await computeDesiredSchedule(deps.schedulingRepos, userId, now, settings);
     // `observed` is Google's pre-apply state: it lets the pinned pass push exactly the blocks
     // the app moved, once, instead of re-writing every pinned event on every poll cycle.
     return applyDesiredSchedule(deps.scheduledBlocks, userId, desired, {

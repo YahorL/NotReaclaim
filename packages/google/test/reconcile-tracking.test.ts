@@ -97,7 +97,7 @@ function world(opts: { requireStartToTrack: boolean; tasks: Task[]; events?: Cal
     workingHours: [1, 2, 3, 4, 5].map((weekday) => ({ weekday, startMinute: 540, endMinute: 1020 })) as never,
   });
   const schedulingRepos: SchedulingRepositories = {
-    settings: { getByUserId: async () => settings },
+    settings: { getByUserId: async () => ({ ...settings }) }, // a copy per read, like a row off the wire
     calendarEvents: { listByUserInRange: async () => opts.events ?? [] },
     tasks: { listByUser: async () => opts.tasks },
     habits: { listByUser: async () => [] },
@@ -119,7 +119,7 @@ function world(opts: { requireStartToTrack: boolean; tasks: Task[]; events?: Cal
   const writes = () => ({ insert: client.insertedEvents.length, update: client.updatedEvents.length, delete: client.deletedEvents.length });
   const spentH = (now: number) => computeSpentMs('t1', store.rows(), settings.requireStartToTrack, now) / H;
   const rowTimes = () => store.rows().map((r) => span(r.startsAt.toISOString(), r.endsAt.toISOString())).sort();
-  return { client, store, poll, writes, spentH, rowTimes };
+  return { client, store, poll, writes, spentH, rowTimes, settings };
 }
 
 const task = (hours: number) => makeTask({ id: 't1', durationMs: hours * H, minChunkMs: 30 * M, maxChunkMs: 60 * M, dueBy: new Date('2026-01-09T17:00:00.000Z') });
@@ -196,5 +196,25 @@ describe('Stop on a frozen running piece reaches Google (automatic tracking)', (
     expect(w.spentH(at('09:50'))).toBe(spentH); // the stopped piece; the re-planned rest is running
     expect(w.spentH(at('10:30'))).toBe(1); // and once the rest has run too, the full hour
     expect(w.rowTimes()).toContain(shortened); // drift never pulled the old end back
+  });
+});
+
+describe('reconcile reads the tracking mode once, inside the section', () => {
+  it.each([
+    [true, 'switched to automatic while drift ran: the running piece stays whole, nothing is created over it', 0],
+    [false, 'switched to manual while drift ran: plain manual behaviour (the un-started piece slides), no echo copy', 2],
+  ] as const)('%s → %s', async (from, _label, moved) => {
+    const w = world({ requireStartToTrack: from, tasks: [task(2)] });
+    await w.poll(at('08:00'));
+    const settings = w.settings;
+    // The PUT /settings lands after the pre-lock settings read (drift's horizon) and before the section.
+    const listEvents = w.client.listEvents.bind(w.client);
+    w.client.listEvents = async (args) => { settings.requireStartToTrack = !from; return listEvents(args); };
+    const before = w.writes();
+    const res = await w.poll(at('09:30'));
+    expect(res).toMatchObject({ created: 0, deleted: 0, updated: moved });
+    expect(w.writes().insert).toBe(before.insert);
+    expect(w.store.rows().map((r) => r.engineKey).sort()).toEqual(['task:t1:0', 'task:t1:1']);
+    expect(w.rowTimes()).toEqual(from ? ['09:00–10:00', '10:00–11:00'] : ['09:30–10:30', '10:30–11:30']);
   });
 });

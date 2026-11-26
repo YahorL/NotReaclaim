@@ -96,7 +96,7 @@ describe('planLocally with an exclusive section (per-user lock)', () => {
     expect(store.row('b')).toMatchObject({ startsAt: at('14:00'), endsAt: at('15:00'), pinned: true });
   });
 
-  it('runs the compute read and the whole apply inside the section, the settings read outside', async () => {
+  it('runs the settings read, the compute read and the whole apply inside the section; nothing outside', async () => {
     const { store, repos } = setup();
     const log: string[] = [];
     const tracedRepos = {
@@ -120,7 +120,9 @@ describe('planLocally with an exclusive section (per-user lock)', () => {
     expect(counts).toMatchObject({ created: 1, updated: 1, pinned: 0, removed: 0 });
     const enter = log.indexOf('enter');
     const exit = log.indexOf('exit');
-    expect(log.slice(0, enter)).toEqual(['settings']);
+    expect(log.slice(0, enter)).toEqual([]);
+    // ONE settings read, shared by assemble and apply: the tracking mode cannot change between them.
+    expect(log.slice(enter + 1, exit).filter((e) => e === 'settings')).toHaveLength(1);
     expect(log.slice(enter + 1, exit)).toContain('assemble read');
     expect(log.slice(enter + 1, exit)).toContain('apply read');
     expect(log.slice(enter + 1, exit).filter((e) => e === 'apply write')).toHaveLength(2);
@@ -137,5 +139,44 @@ describe('planLocally with an exclusive section (per-user lock)', () => {
     };
     await expect(planLocally(repos, blocks, 'u1', NOW, exclusive)).rejects.toBe(boom);
     expect(exited).toBe(true);
+  });
+});
+
+describe('planLocally reads the tracking mode once, inside the section', () => {
+  // Pieces 09:00–10:00 (task:t1:0, running at 09:30) and 10:00–11:00 (task:t1:1) of a 2 h task.
+  const NOW_RUNNING = Date.parse('2026-01-05T09:30:00.000Z');
+  const pieces = () => [
+    makeBlock({ id: 'p0', taskId: 't1', engineKey: 'task:t1:0', startsAt: at('09:00'), endsAt: at('10:00'), title: 'Task' }),
+    makeBlock({ id: 'p1', taskId: 't1', engineKey: 'task:t1:1', startsAt: at('10:00'), endsAt: at('11:00'), title: 'Task' }),
+  ];
+  /** The setting is flipped while the replan waits for the lock (e.g. a PUT /settings landing first). */
+  async function flipDuringWait(from: boolean) {
+    const store = dbLikeBlocks(pieces());
+    let requireStartToTrack = from;
+    const settings = () => makeSettings({
+      requireStartToTrack, workingHours: [{ weekday: 1, startMinute: 540, endMinute: 1020 }] as never,
+    });
+    const repos = {
+      ...fakeRepos({ tasks: [makeTask({ id: 't1', title: 'Task', durationMs: 7_200_000, minChunkMs: 1_800_000, maxChunkMs: 3_600_000 })] }),
+      settings: { getByUserId: async () => settings() },
+      scheduledBlocks: store.assembleView,
+    };
+    const exclusive = async <T>(fn: () => Promise<T>): Promise<T> => { requireStartToTrack = !from; return fn(); };
+    const counts = await planLocally(repos, store.blocks, 'u1', NOW_RUNNING, exclusive);
+    const rows = (await store.assembleView.listByUserInRange('u1', new Date(0), new Date(8.64e15)))
+      .map((r) => `${r.engineKey} ${r.startsAt.toISOString().slice(11, 16)}-${r.endsAt.toISOString().slice(11, 16)}`);
+    return { counts, rows };
+  }
+
+  it('switched to automatic while waiting: the running piece is frozen whole, nothing is created over it', async () => {
+    const { counts, rows } = await flipDuringWait(true);
+    expect(counts).toMatchObject({ created: 0, updated: 0, deleted: 0 });
+    expect(rows).toEqual(['task:t1:0 09:00-10:00', 'task:t1:1 10:00-11:00']);
+  });
+
+  it('switched to manual while waiting: plain manual behaviour (the un-started piece slides), no echo copy', async () => {
+    const { counts, rows } = await flipDuringWait(false);
+    expect(counts).toMatchObject({ created: 0, deleted: 0 });
+    expect(rows).toEqual(['task:t1:0 09:30-10:30', 'task:t1:1 10:30-11:30']);
   });
 });
