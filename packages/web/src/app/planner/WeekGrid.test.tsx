@@ -281,6 +281,12 @@ describe('WeekGrid', () => {
     expect(tiles.map((t) => t.getAttribute('data-pending'))).toEqual(['true', 'true']);
   });
 
+  it('marks the tiles named in runningKeys as running', () => {
+    renderGrid({ events: [], runningKeys: new Set(['b:b1']) });
+    expect(screen.getByTestId('event-block')).toHaveAttribute('data-running', 'true');
+    expect(screen.getByTestId('started-bar')).toBeInTheDocument();
+  });
+
   it('draws a placeholder at the slot of a dropped task while its POST is pending, outside the tiles\' lanes', () => {
     // Overlaps the Monday 13:00–14:00 block: the real tile must keep its full width.
     renderGrid({

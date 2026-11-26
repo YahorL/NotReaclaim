@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ScheduledBlock } from '../../api/types';
-import { pickCurrentOrNext } from './currentOrNext';
+import { pickCurrentOrNext, isRunningBlock, trackingModeOf, nextBoundaryMs } from './currentOrNext';
 
 const NOW = Date.parse('2026-06-11T12:00:00Z');
 
@@ -50,5 +50,82 @@ describe('pickCurrentOrNext', () => {
     const r = pickCurrentOrNext([done], NOW);
     expect(r.running).toBeNull();
     expect(r.nextBlock).toBeNull();
+  });
+});
+
+describe('trackingModeOf', () => {
+  it('automatic only when the settings say requireStartToTrack: false (as the server decides)', () => {
+    expect(trackingModeOf({ requireStartToTrack: false })).toBe('automatic');
+    expect(trackingModeOf({ requireStartToTrack: true })).toBe('manual');
+    // Not loaded yet / no settings row / field absent: today's (manual) rule.
+    expect(trackingModeOf(undefined)).toBe('manual');
+    expect(trackingModeOf({})).toBe('manual');
+  });
+});
+
+describe('pickCurrentOrNext in AUTOMATIC tracking (U4)', () => {
+  const auto = (over: Partial<ScheduledBlock>) => block({ startsAt: '2026-06-11T11:30:00Z', endsAt: '2026-06-11T12:30:00Z', ...over });
+
+  it('a task block whose time has come is running, never Started and not pinned', () => {
+    const r = pickCurrentOrNext([auto({ id: 'piece' }), block({ id: 'later' })], NOW, 'automatic');
+    expect(r.running?.id).toBe('piece');
+    expect(r.nextBlock).toBeNull(); // no "Next … Start" while something runs
+  });
+
+  it('manual tracking: the same block is neither running nor next (unchanged)', () => {
+    const r = pickCurrentOrNext([auto({ id: 'piece' })], NOW, 'manual');
+    expect(r.running).toBeNull();
+    expect(r.nextBlock).toBeNull();
+  });
+
+  it('a hand-placed (pinned) block counts too', () => {
+    expect(pickCurrentOrNext([auto({ id: 'p', pinned: true })], NOW, 'automatic').running?.id).toBe('p');
+  });
+
+  it('start is inclusive, end exclusive', () => {
+    expect(pickCurrentOrNext([auto({ id: 's', startsAt: '2026-06-11T12:00:00Z' })], NOW, 'automatic').running?.id).toBe('s');
+    expect(pickCurrentOrNext([auto({ id: 'e', endsAt: '2026-06-11T12:00:00Z' })], NOW, 'automatic').running).toBeNull();
+  });
+
+  it('habit blocks never run', () => {
+    expect(pickCurrentOrNext([auto({ taskId: null, habitId: 'h1' })], NOW, 'automatic').running).toBeNull();
+  });
+
+  it('overlapping pieces: the one that started most recently', () => {
+    const early = auto({ id: 'early', startsAt: '2026-06-11T11:00:00Z', endsAt: '2026-06-11T12:15:00Z' });
+    const late = auto({ id: 'late', startsAt: '2026-06-11T11:45:00Z', endsAt: '2026-06-11T13:00:00Z' });
+    expect(pickCurrentOrNext([early, late], NOW, 'automatic').running?.id).toBe('late');
+    expect(pickCurrentOrNext([late, early], NOW, 'automatic').running?.id).toBe('late');
+  });
+
+  it('a just-Started block whose snapped start is a few minutes ahead still runs (else Start would be offered again)', () => {
+    const started = block({ id: 'snap', startsAt: '2026-06-11T12:15:00Z', endsAt: '2026-06-11T13:00:00Z', startedAt: '2026-06-11T12:10:00Z' });
+    expect(pickCurrentOrNext([started], NOW, 'automatic').running?.id).toBe('snap');
+  });
+
+  it('nothing running: next is the earliest task block still to come', () => {
+    const r = pickCurrentOrNext([block({ id: 'b' }), auto({ id: 'past', startsAt: '2026-06-11T09:00:00Z', endsAt: '2026-06-11T10:00:00Z' })], NOW, 'automatic');
+    expect(r.running).toBeNull();
+    expect(r.nextBlock?.id).toBe('b');
+  });
+});
+
+describe('isRunningBlock', () => {
+  it('is the one rule behind the top bar, the detail card and the tile', () => {
+    const piece = block({ startsAt: '2026-06-11T11:30:00Z', endsAt: '2026-06-11T12:30:00Z' });
+    expect(isRunningBlock(piece, NOW, 'automatic')).toBe(true);
+    expect(isRunningBlock(piece, NOW, 'manual')).toBe(false);
+    expect(isRunningBlock({ ...piece, startedAt: '2026-06-11T11:30:00Z' }, NOW, 'manual')).toBe(true);
+  });
+});
+
+describe('nextBoundaryMs', () => {
+  it('the next moment a task block starts or ends after now (when running / next can change), or null', () => {
+    const a = block({ id: 'a', startsAt: '2026-06-11T11:30:00Z', endsAt: '2026-06-11T12:30:00Z' });
+    const b = block({ id: 'b', startsAt: '2026-06-11T12:10:00Z', endsAt: '2026-06-11T13:00:00Z' });
+    expect(nextBoundaryMs([a, b], NOW)).toBe(Date.parse('2026-06-11T12:10:00Z'));
+    expect(nextBoundaryMs([a], NOW)).toBe(Date.parse('2026-06-11T12:30:00Z'));
+    expect(nextBoundaryMs([block({ startsAt: '2026-06-11T09:00:00Z', endsAt: '2026-06-11T10:00:00Z' })], NOW)).toBeNull();
+    expect(nextBoundaryMs([block({ taskId: null })], NOW)).toBeNull();
   });
 });

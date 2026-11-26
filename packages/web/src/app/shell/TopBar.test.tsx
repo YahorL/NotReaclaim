@@ -158,6 +158,20 @@ describe('TopBar Next-task indicator', () => {
     await waitFor(() => expect(btn).not.toHaveAttribute('aria-busy'));
   });
 
+  it('automatic tracking: the pill reads Now · <piece> with Stop for a running piece never Started', async () => {
+    const stopBlock = vi.fn(async () => ({} as never));
+    const api = fakeApiClient({
+      getSettings: async () => ({ requireStartToTrack: false } as never),
+      getSchedule: async () => [block({ id: 'auto', title: 'Auto piece', startsAt: '2026-06-11T11:30:00Z', endsAt: '2026-06-11T12:30:00Z' }), block()],
+      stopBlock,
+    });
+    renderWithProviders(<TopBar onNewTask={() => {}} now={nowFn} />, { api, initialEntries: ['/priorities'] });
+    expect(await screen.findByTestId('current-task')).toHaveTextContent('Auto piece');
+    expect(screen.queryByTestId('next-task-start')).toBeNull();
+    fireEvent.click(screen.getByTestId('stop-task'));
+    await waitFor(() => expect(stopBlock).toHaveBeenCalledWith('auto'));
+  });
+
   it('is hidden when the schedule is empty', async () => {
     const api = fakeApiClient({
       getSchedule: async () => [],

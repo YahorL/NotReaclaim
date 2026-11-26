@@ -752,3 +752,41 @@ describe('Planner: an edit answered 404 (U3)', () => {
     await waitFor(() => expect(tileOf('Write spec')).toBeUndefined());
   });
 });
+
+describe('Planner: automatic tracking (U4)', () => {
+  beforeEach(() => { localStorage.removeItem('nr.plannerPanelHidden'); });
+  // NOW = Wed 12:00. A never-Started, un-pinned piece 11:30–12:30 is running in automatic mode.
+  const piece: ScheduledBlock = { ...blocks[0]!, id: 'p1', title: 'Auto piece', startsAt: '2026-01-07T11:30:00.000Z', endsAt: '2026-01-07T12:30:00.000Z', startedAt: null };
+  const tileOf = (title: string) => within(screen.getByTestId('block-layer')).getAllByTestId('event-block').find((b) => b.textContent?.includes(title))!;
+  const tap = (el: HTMLElement) => {
+    fireEvent.pointerDown(el, { clientX: 40, clientY: 80, pointerId: 1 });
+    fireEvent.pointerUp(el, { clientX: 40, clientY: 80, pointerId: 1 });
+  };
+
+  it('the running piece gets the running treatment, and its card offers Stop', async () => {
+    const stopBlock = vi.fn(async () => piece);
+    renderWithProviders(<Planner now={() => NOW} />, { api: makeApi({
+      getSettings: vi.fn(async () => ({ requireStartToTrack: false, timezone: 'UTC', dayStartMinute: 0 })),
+      getSchedule: vi.fn(async () => [piece]),
+      stopBlock,
+    }) });
+    await waitFor(() => expect(tileOf('Auto piece')).toHaveAttribute('data-running', 'true'));
+    expect(tileOf('Auto piece')).toHaveAttribute('data-started', 'false');
+    tap(tileOf('Auto piece'));
+    expect(screen.getByTestId('detail-chip')).toHaveTextContent('Task · In progress');
+    fireEvent.click(screen.getByTestId('detail-stop'));
+    await waitFor(() => expect(stopBlock).toHaveBeenCalledWith('p1'));
+  });
+
+  it('manual tracking: the same piece is not running (no bar, card offers Delete)', async () => {
+    renderWithProviders(<Planner now={() => NOW} />, { api: makeApi({
+      getSettings: vi.fn(async () => ({ requireStartToTrack: true, timezone: 'UTC', dayStartMinute: 0 })),
+      getSchedule: vi.fn(async () => [piece]),
+    }) });
+    await waitFor(() => expect(tileOf('Auto piece')).toBeTruthy());
+    expect(tileOf('Auto piece')).not.toHaveAttribute('data-running');
+    tap(tileOf('Auto piece'));
+    expect(screen.queryByTestId('detail-stop')).toBeNull();
+    expect(screen.getByTestId('detail-delete')).toBeInTheDocument();
+  });
+});

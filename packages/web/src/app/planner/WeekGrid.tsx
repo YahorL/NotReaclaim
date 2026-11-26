@@ -206,6 +206,8 @@ export interface WeekGridProps {
   entranceKey?: string | null;
   /** Tiles (`b:<id>` / `e:<id>`) with a slow write in flight: shown as saving (display only). */
   pendingKeys?: ReadonlySet<string>;
+  /** Task blocks (`b:<id>`) running now by the tracking mode's rule (display only). */
+  runningKeys?: ReadonlySet<string>;
   /**
    * Tasks dropped / pinned onto the grid whose POST is still waiting: a dashed placeholder at the
    * slot until the real tile arrives. Not tiles — they take no overlap lane and no pointer events.
@@ -288,7 +290,7 @@ function toItems(blocks: ScheduledBlock[], events: CalendarEvent[], zone: string
 }
 
 export function WeekGrid(props: WeekGridProps) {
-  const { days, nowMs, weekLabel, blocks, events, onPrev, onToday, onNext, onCommit, onCommitEvent, onEditEvent, onDeleteBlock, onDeleteEvent, taskDrop = null, accents = {}, zone = 'UTC', dayStartMinute = 0, panelHidden, onTogglePanel, compact = false, coarse = false, onEditTask, selectedKey = null, onSelect, filters = ALL_SHOWN, onToggleFilter, landing, entranceKey = null, pendingKeys, dropPlaceholders = NO_PLACEHOLDERS } = props;
+  const { days, nowMs, weekLabel, blocks, events, onPrev, onToday, onNext, onCommit, onCommitEvent, onEditEvent, onDeleteBlock, onDeleteEvent, taskDrop = null, accents = {}, zone = 'UTC', dayStartMinute = 0, panelHidden, onTogglePanel, compact = false, coarse = false, onEditTask, selectedKey = null, onSelect, filters = ALL_SHOWN, onToggleFilter, landing, entranceKey = null, pendingKeys, runningKeys, dropPlaceholders = NO_PLACEHOLDERS } = props;
   const gridCols = `${timeGutterPx(compact)}px repeat(${days.length}, minmax(0, 1fr))`;
   const dataItems = toItems(blocks, events, zone);
   const [pending, setPending] = useState<Record<string, Pending>>({});
@@ -573,6 +575,7 @@ export function WeekGrid(props: WeekGridProps) {
                         coarse={coarse}
                         getScrollContainer={() => scrollRef.current}
                         pending={pendingKeys?.has(it.key) ?? false}
+                        running={runningKeys?.has(it.key) ?? false}
                       />
                     );
                   }

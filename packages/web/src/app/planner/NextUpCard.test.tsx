@@ -74,6 +74,38 @@ describe('NextUpCard', () => {
     await waitFor(() => expect(btn).not.toHaveAttribute('aria-busy'));
   });
 
+  it('automatic tracking: a piece whose time has come shows as Now with Stop, though it was never Started', async () => {
+    const stopBlock = vi.fn(async () => ({} as never));
+    const api = fakeApiClient({
+      getSettings: vi.fn(async () => ({ requireStartToTrack: false } as never)),
+      getSchedule: vi.fn(async () => [
+        block({ id: 'auto', title: 'Auto piece', startsAt: '2026-01-05T13:30:00.000Z', endsAt: '2026-01-05T14:45:00.000Z' }),
+        block({ id: 'nb', title: 'Next thing' }),
+      ]),
+      stopBlock,
+    });
+    renderWithProviders(<NextUpCard now={() => NOW} />, { api });
+    expect(await screen.findByTestId('current-task')).toHaveTextContent('Auto piece');
+    expect(screen.getByTestId('next-up-card')).toHaveTextContent('Now · until 2:45 PM');
+    // No "Next … Start" as the primary action while a piece runs (same as manual mode).
+    expect(screen.queryByTestId('next-task-start')).toBeNull();
+    fireEvent.click(screen.getByTestId('stop-task'));
+    await waitFor(() => expect(stopBlock).toHaveBeenCalledWith('auto'));
+  });
+
+  it('manual tracking: the same never-Started piece is not running (unchanged)', async () => {
+    const api = fakeApiClient({
+      getSettings: vi.fn(async () => ({ requireStartToTrack: true } as never)),
+      getSchedule: vi.fn(async () => [
+        block({ id: 'auto', title: 'Auto piece', startsAt: '2026-01-05T13:30:00.000Z', endsAt: '2026-01-05T14:45:00.000Z' }),
+        block({ id: 'nb', title: 'Next thing' }),
+      ]),
+    });
+    renderWithProviders(<NextUpCard now={() => NOW} />, { api });
+    expect(await screen.findByTestId('next-task')).toHaveTextContent('Next thing');
+    expect(screen.queryByTestId('current-task')).toBeNull();
+  });
+
   it('names the block after the next one on its second line', async () => {
     const api = fakeApiClient({
       getSchedule: vi.fn(async () => [block(), block({ id: 'b2', title: 'Then this', taskId: 't2', startsAt: '2026-01-06T16:30:00.000Z', endsAt: '2026-01-06T17:00:00.000Z' })]),

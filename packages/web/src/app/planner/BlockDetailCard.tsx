@@ -15,7 +15,7 @@ export interface BlockDetail {
   endMs: number;
   pinned: boolean;
   started: boolean;
-  /** A started block that has not ended yet — Stop applies. */
+  /** Being worked on now by the tracking mode's rule (isRunningBlock) — Stop applies. */
   running: boolean;
   taskId: string | null;
   event: CalendarEvent | null;
@@ -61,7 +61,8 @@ const ACTION = 'inline-flex h-10 items-center justify-center gap-1.5 rounded-pil
 export function BlockDetailCard({
   detail, zone, task = null, autoFocus = false, onClose, onOpenTask, onOpenEvent, onOpenHabits, onUnpin, onStop, onDelete, className = '',
 }: BlockDetailCardProps) {
-  const v = blockVariant({ kind: detail.kind, source: detail.source, pinned: detail.pinned, started: detail.started });
+  // A piece running without a Start (automatic tracking) is in progress too.
+  const v = blockVariant({ kind: detail.kind, source: detail.source, pinned: detail.pinned, started: detail.started || detail.running });
   const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     if (autoFocus) headingRef.current?.focus({ preventScroll: true });

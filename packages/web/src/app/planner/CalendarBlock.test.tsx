@@ -112,6 +112,14 @@ describe('CalendarBlock', () => {
     expect(screen.queryByTestId('block-pending')).toBeNull();
   });
 
+  it('a running piece that was never Started gets the same accent bar, marked data-running (not data-started)', () => {
+    renderBlock({ kind: 'task', source: null, running: true });
+    const el = screen.getByTestId('event-block');
+    expect(el).toHaveAttribute('data-running', 'true');
+    expect(el).toHaveAttribute('data-started', 'false');
+    expect(screen.getByTestId('started-bar')).toBeInTheDocument();
+  });
+
   it('the body is a focusable button named with title, time and state', () => {
     renderBlock();
     const body = screen.getByTestId('block-body');

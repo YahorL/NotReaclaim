@@ -68,6 +68,8 @@ export interface InteractiveBlockProps {
   getScrollContainer?: () => HTMLElement | null;
   /** A slow write for this tile is in flight: passed straight to CalendarBlock (display only). */
   pending?: boolean;
+  /** Running without a Start (automatic tracking): passed straight to CalendarBlock (display only). */
+  running?: boolean;
 }
 
 /**
@@ -85,7 +87,7 @@ export interface InteractiveBlockProps {
  * - Resize: the height follows the pointer exactly; the ghost shows the snapped end.
  */
 export function InteractiveBlock(props: InteractiveBlockProps) {
-  const { blockKey, dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, leftPct = 0, widthPct = 100, lane = 0, lanes = 1, startLabel, title, kind, pinned, source = null, started = false, selected = false, onCommit, onPreview, describedBy, hidden = false, landDelayMs, enterDelayMs, onUnpin, onDelete, onClick, deleteLabel = 'Delete block', dayCount = 7, accent, zone = 'UTC', coarse = false, getScrollContainer, pending = false } = props;
+  const { blockKey, dayStartMs, dayIndex, startMs, endMs, topPct, heightPct, leftPct = 0, widthPct = 100, lane = 0, lanes = 1, startLabel, title, kind, pinned, source = null, started = false, selected = false, onCommit, onPreview, describedBy, hidden = false, landDelayMs, enterDelayMs, onUnpin, onDelete, onClick, deleteLabel = 'Delete block', dayCount = 7, accent, zone = 'UTC', coarse = false, getScrollContainer, pending = false, running = false } = props;
   const startMin = (startMs - dayStartMs) / MS_PER_MIN;
   const endMin = (endMs - dayStartMs) / MS_PER_MIN;
   const durationMin = endMin - startMin;
@@ -253,6 +255,7 @@ export function InteractiveBlock(props: InteractiveBlockProps) {
         onBodyFocus={() => { if (lastInputModality() === 'pointer') pointerFocus.current = true; }}
         describedBy={describedBy}
         pending={pending}
+        running={running}
         {...drag.handlers}
         onPointerDown={(e) => { pointerFocus.current = true; drag.handlers.onPointerDown(e); }}
         motion={motion}

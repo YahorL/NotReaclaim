@@ -34,6 +34,8 @@ import { newBlockIds, dropInDelays, dropInDuration } from '../planner/replanDiff
 import { usePrefersReducedMotion } from '../../theme/usePrefersReducedMotion';
 import { useDelayedKeys } from '../lib/useDelayed';
 import { pendingTileKeys, dropPlaceholdersFrom } from '../planner/pendingWrites';
+import { isRunningBlock, nextBoundaryMs, useTrackingMode } from '../shell/currentOrNext';
+import { useRerenderAt } from '../lib/useRerenderAt';
 
 /** The Re-plan spinner shows at least this long, so a fast replan does not flicker the button. */
 export const REPLAN_MIN_SPIN_MS = 600;
@@ -243,6 +245,12 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
     [schedule.data, tasks],
   );
 
+  // Running = the top bar's rule (automatic tracking: any task block whose time has come). The
+  // page re-renders when a block starts or ends, so the tile and the card follow the clock.
+  const trackingMode = useTrackingMode();
+  useRerenderAt(nextBoundaryMs(schedule.data ?? [], nowMs), nowMs);
+  const runningKeys = new Set(labeledBlocks.filter((b) => isRunningBlock(b, nowMs, trackingMode)).map((b) => `b:${b.id}`));
+
   // Selection (spec §5.4): `b:<id>` / `e:<id>`. md+ only — below md a tap opens the drawer.
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   // The selection came from the keyboard: the card takes focus (and hands it back on close).
@@ -255,13 +263,13 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
       const cls = classifyBlock(b);
       const endMs = Date.parse(b.endsAt);
       return { key: selectedKey, kind: cls.kind, source: null, title: b.title, startMs: Date.parse(b.startsAt), endMs,
-        pinned: cls.pinned, started: b.startedAt != null, running: b.startedAt != null && endMs > nowMs, taskId: b.taskId, event: null };
+        pinned: cls.pinned, started: b.startedAt != null, running: isRunningBlock(b, nowMs, trackingMode), taskId: b.taskId, event: null };
     }
     const ev = (calendar.data ?? []).find((x) => `e:${x.id}` === selectedKey);
     if (!ev) return null;
     return { key: selectedKey, kind: ev.kind === 'blocked' ? 'blocked' : 'meeting', source: ev.source, title: ev.title,
       startMs: Date.parse(ev.startsAt), endMs: Date.parse(ev.endsAt), pinned: false, started: false, running: false, taskId: null, event: ev };
-  }, [selectedKey, labeledBlocks, calendar.data, nowMs]);
+  }, [selectedKey, labeledBlocks, calendar.data, nowMs, trackingMode]);
   // Meetings / Movable toggles live in the md+ toolbar, so a phone always shows everything (a
   // filter saved on the desktop must not strand hidden tiles where there is no toggle).
   const { filters: savedFilters, toggle: toggleFilter } = usePlannerFilters();
@@ -445,6 +453,7 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
           // (The tiles only depend on the two ranged queries, not on the unranged preview.)
           entranceKey={rangedLoading ? null : rangeKey}
           pendingKeys={slowTileKeys}
+          runningKeys={runningKeys}
           dropPlaceholders={dropPlaceholders}
           accents={accents}
           compact={compact}

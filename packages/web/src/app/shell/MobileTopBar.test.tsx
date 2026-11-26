@@ -82,6 +82,19 @@ describe('MobileTopBar', () => {
     await waitFor(() => expect(btn).not.toHaveAttribute('aria-busy'));
   });
 
+  it('automatic tracking: a running piece never Started shows Now with Stop', async () => {
+    const stopBlock = vi.fn(async () => ({} as never));
+    const api = fakeApiClient({
+      getSettings: async () => ({ requireStartToTrack: false } as never),
+      getSchedule: async () => [block({ id: 'auto', title: 'Auto piece', startsAt: '2026-06-11T11:30:00Z', endsAt: '2026-06-11T12:30:00Z' })],
+      stopBlock,
+    });
+    renderWithProviders(<MobileTopBar onNewTask={() => {}} now={nowFn} />, { api });
+    expect(await screen.findByTestId('mobile-current-task')).toHaveTextContent('Auto piece');
+    fireEvent.click(screen.getByTestId('mobile-stop-task'));
+    await waitFor(() => expect(stopBlock).toHaveBeenCalledWith('auto'));
+  });
+
   it('gives the + button a touch-sized target', () => {
     const api = fakeApiClient({ getSchedule: async () => [] });
     renderWithProviders(<MobileTopBar onNewTask={() => {}} now={nowFn} />, { api });

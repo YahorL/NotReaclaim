@@ -15,6 +15,11 @@ export interface CalendarBlockProps {
   source?: 'app' | 'google' | null;
   pinned?: boolean;
   started?: boolean;
+  /**
+   * Being worked on now without a Start (automatic tracking: its time has come). Gets the same
+   * accent bar a Started tile has; exposed as data-running, data-started stays "pressed Start".
+   */
+  running?: boolean;
   accent?: string;
   /** Start time label ("09:00 AM"), in the settings zone. */
   startLabel: string;
@@ -112,7 +117,7 @@ export function CalendarBlock(props: CalendarBlockProps) {
     style, className = '', dayIndex, selected = false, coarse = false, onDelete, deleteLabel = 'Delete block',
     onUnpin, onBodyClick, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onLostPointerCapture, resize, children,
     motion = 'idle', pressed = false, settling = false, shake = false, hidden = false, landDelayMs, enterDelayMs, onTransitionEnd, onBodyKeyDown, onBodyBlur, onBodyFocus, describedBy,
-    pending = false,
+    pending = false, running = false,
   } = props;
   const v = blockVariant({ kind, source, pinned, started, accent });
   // 11px time label: dimmed on the translucent tiles, full strength on the violet meeting fill
@@ -140,6 +145,7 @@ export function CalendarBlock(props: CalendarBlockProps) {
       data-locked={v.locked}
       data-source={source ?? undefined}
       data-started={started}
+      data-running={running ? 'true' : undefined}
       data-selected={selected}
       data-day-index={dayIndex}
       data-dragging={motion === 'dragging' ? 'true' : undefined}
@@ -166,7 +172,7 @@ export function CalendarBlock(props: CalendarBlockProps) {
       className={`group select-none ${hidden ? 'pointer-events-none scale-[.92] opacity-0' : 'pointer-events-auto'} absolute overflow-hidden rounded-event ${v.className} ${MOTION_CLASS[motion]} ${settling ? 'z-20' : ''} ${shake ? 'animate-shake' : landing ? 'animate-land' : entering ? 'animate-ev-in' : ''} ${selected ? 'z-[3] outline outline-2 outline-offset-2 outline-fg' : ''} ${className}`}
       style={{ ...style, ...v.style, ...(landing ? { animationDelay: `${landDelayMs}ms` } : entering ? { animationDelay: `${enterDelayMs}ms` } : null) }}
     >
-      {started && <span aria-hidden="true" data-testid="started-bar" className="absolute inset-y-0 left-0 w-[3px] bg-accent" />}
+      {(started || running) && <span aria-hidden="true" data-testid="started-bar" className="absolute inset-y-0 left-0 w-[3px] bg-accent" />}
       <button
         type="button"
         data-testid="block-body"
