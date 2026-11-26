@@ -94,13 +94,17 @@ export function fakeSettingsRepo(seed: Settings | null = null) {
     async getByUserId(userId: string): Promise<Settings | null> {
       return row && row.userId === userId ? row : null;
     },
+    // Like Prisma's upsert: create from the defaults, or update ONLY the columns sent (a column
+    // left out, e.g. requireStartSince, keeps its stored value).
     async upsert(userId: string, data: UpsertSettingsInput): Promise<Settings> {
-      row = {
-        id: 'settings-1', userId, horizonDays: 14, meetingBufferMs: 0, taskBufferMs: 0,
-        requireStartToTrack: false, dayStartMinute: 0,
-        createdAt: new Date(0), updatedAt: new Date(0),
-        ...data,
-      } as Settings;
+      row = row && row.userId === userId
+        ? { ...row, ...data } as Settings
+        : {
+          id: 'settings-1', userId, horizonDays: 14, meetingBufferMs: 0, taskBufferMs: 0,
+          requireStartToTrack: false, requireStartSince: null, dayStartMinute: 0,
+          createdAt: new Date(0), updatedAt: new Date(0),
+          ...data,
+        } as Settings;
       return row;
     },
     async update(userId: string, data: Partial<UpsertSettingsInput>): Promise<Settings> {

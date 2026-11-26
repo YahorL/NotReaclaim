@@ -31,6 +31,18 @@ describe('SettingsRepository', () => {
     expect(fetched?.timezone).toBe('Europe/Paris');
   });
 
+  it('requireStartSince: null by default; upsert and update set and clear it, and keep it when not sent', async () => {
+    const user = await users.create({ email: 'since@example.com' });
+    const created = await repo.upsert(user.id, settingsInput());
+    expect(created.requireStartSince).toBeNull();
+    const at = new Date('2026-01-05T09:30:00.123Z');
+    expect((await repo.upsert(user.id, { ...settingsInput(), requireStartToTrack: true, requireStartSince: at })).requireStartSince).toEqual(at);
+    expect((await repo.upsert(user.id, { ...settingsInput(), requireStartToTrack: true })).requireStartSince).toEqual(at);
+    expect((await repo.update(user.id, { horizonDays: 7 })).requireStartSince).toEqual(at);
+    expect((await repo.update(user.id, { requireStartToTrack: false, requireStartSince: null })).requireStartSince).toBeNull();
+    expect((await repo.getByUserId(user.id))?.requireStartSince).toBeNull();
+  });
+
   it('persists requireStartToTrack through upsert', async () => {
     const user = await users.create({ email: 'rst@example.com' });
     const created = await repo.upsert(user.id, { ...settingsInput(), requireStartToTrack: true });

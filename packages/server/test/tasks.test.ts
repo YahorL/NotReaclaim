@@ -437,7 +437,7 @@ describe('PATCH /tasks/:id taking a task out of the plan while one of its pieces
   const settingsRow = (requireStartToTrack: boolean) => ({
     id: 's1', userId: 'u1', timezone: 'UTC', workingHours: [] as never, horizonDays: 7,
     defaultMinChunkMs: 1_800_000, defaultMaxChunkMs: 3_600_000, meetingBufferMs: 0, taskBufferMs: 0,
-    requireStartToTrack, dayStartMinute: 0, createdAt: new Date(0), updatedAt: new Date(0),
+    requireStartToTrack, requireStartSince: null, dayStartMinute: 0, createdAt: new Date(0), updatedAt: new Date(0),
   });
   const blocks = () => [
     blockRow({ id: 'running', engineKey: 'task:t1:0' }), // the frozen auto piece, never Started

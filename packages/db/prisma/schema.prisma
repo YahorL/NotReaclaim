@@ -60,6 +60,11 @@ model Settings {
   meetingBufferMs   Int      @default(0)
   taskBufferMs      Int      @default(0)
   requireStartToTrack Boolean @default(false)
+  /// When manual tracking (requireStartToTrack) was last switched ON; null while it is off. Task
+  /// blocks that ended by then are kept as history (not swept, not re-planned) but do not count
+  /// as spent in manual mode. Null with manual tracking on = on since before this column existed:
+  /// nothing is kept, exactly as before.
+  requireStartSince DateTime? @db.Timestamptz
   /// Visual planner day boundary, in minutes past local midnight (0-1439). 180 = a day column
   /// runs 03:00 → 03:00. Display only: scheduling semantics keep the midnight boundary.
   dayStartMinute    Int      @default(0)

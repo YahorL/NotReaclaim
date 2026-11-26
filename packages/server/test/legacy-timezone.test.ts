@@ -8,7 +8,7 @@ const settings = (timezone: string): Settings => ({
   id: 's1', userId: 'u1', timezone,
   workingHours: [{ weekday: 1, startMinute: 540, endMinute: 1020 }] as unknown as Settings['workingHours'],
   horizonDays: 1, defaultMinChunkMs: 1800000, defaultMaxChunkMs: 1800000,
-  meetingBufferMs: 0, taskBufferMs: 0, requireStartToTrack: false, dayStartMinute: 0,
+  meetingBufferMs: 0, taskBufferMs: 0, requireStartToTrack: false, requireStartSince: null, dayStartMinute: 0,
   createdAt: new Date(0), updatedAt: new Date(0),
 });
 const task: Task = {

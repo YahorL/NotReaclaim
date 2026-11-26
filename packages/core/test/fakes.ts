@@ -35,7 +35,7 @@ export function makeSettings(over: Partial<Settings> = {}): Settings {
     meetingBufferMs: 0,
     taskBufferMs: 0,
     requireStartToTrack: false,
-    dayStartMinute: 0,
+    requireStartSince: null, dayStartMinute: 0,
     createdAt: new Date(0),
     updatedAt: new Date(0),
     ...over,

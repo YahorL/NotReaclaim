@@ -11,6 +11,8 @@ export interface UpsertSettingsInput {
   meetingBufferMs?: number;
   taskBufferMs?: number;
   requireStartToTrack?: boolean;
+  /** See the schema. Absent = unchanged; the server sets it on the requireStartToTrack transitions. */
+  requireStartSince?: Date | null;
   dayStartMinute?: number;
 }
 

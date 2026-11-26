@@ -7,7 +7,7 @@ import { buildTestApp, tokenFor } from './fakes.js';
 const settings: Settings = {
   id: 's1', userId: 'u1', timezone: 'utc', workingHours: [] as unknown as Settings['workingHours'],
   horizonDays: 14, defaultMinChunkMs: 0, defaultMaxChunkMs: 0,
-  meetingBufferMs: 0, taskBufferMs: 0, requireStartToTrack: false, dayStartMinute: 0,
+  meetingBufferMs: 0, taskBufferMs: 0, requireStartToTrack: false, requireStartSince: null, dayStartMinute: 0,
   createdAt: new Date(0), updatedAt: new Date(0),
 };
 const event: CalendarEvent = {
