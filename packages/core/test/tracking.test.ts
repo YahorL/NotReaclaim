@@ -321,3 +321,29 @@ describe('stable keys', () => {
     expect(times(w)).toEqual(['09:00–10:00', '10:30–11:30']);
   });
 });
+
+describe('a task completed while its piece runs (PATCH /tasks ends the piece like Stop)', () => {
+  it('the rest of the piece is freed for the next task, and the stopped part counts', async () => {
+    const w = world({ tasks: [task(2), task(1, { id: 't2', title: 'Next', priority: 2 })] });
+    await replan(w, at('08:00'));
+    expect(times(w)).toEqual(['09:00–10:00', '10:00–11:00']);
+    expect(times(w, 't2')).toEqual(['11:00–12:00']);
+    // 09:37: the task is completed; the server ends the running piece at round15 = 09:30 and pins it.
+    w.tasks[0] = { ...w.tasks[0]!, status: 'completed' };
+    const piece = w.store.rows().find((r) => r.taskId === 't1' && r.startsAt.getTime() === at('09:00'))!;
+    Object.assign(piece, { endsAt: new Date(at('09:30')), pinned: true });
+    await replan(w, at('09:37'));
+    expect(times(w)).toEqual(['09:00–09:30']); // the piece not begun yet is swept
+    expect(times(w, 't2')).toEqual(['09:40–10:40']);
+    expect(spent(w, at('17:00'))).toBe(30 * M);
+  });
+
+  it('without ending it, the completed task would keep the slot busy until its planned end', async () => {
+    const w = world({ tasks: [task(2), task(1, { id: 't2', title: 'Next', priority: 2 })] });
+    await replan(w, at('08:00'));
+    w.tasks[0] = { ...w.tasks[0]!, status: 'completed' };
+    await replan(w, at('09:37'));
+    expect(times(w)).toEqual(['09:00–10:00']);
+    expect(times(w, 't2')).toEqual(['10:00–11:00']);
+  });
+});

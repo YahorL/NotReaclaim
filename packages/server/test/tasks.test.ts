@@ -420,3 +420,89 @@ describe('min/max chunk order', () => {
     expect(res.json()).toMatchObject({ minChunkMs: 60 * M, maxChunkMs: 90 * M });
   });
 });
+
+describe('PATCH /tasks/:id taking a task out of the plan while one of its pieces runs', () => {
+  const NOW = Date.parse('2026-01-05T09:37:00.000Z'); // round15 → 09:30
+  const iso = (hm: string) => new Date(`2026-01-05T${hm}:00.000Z`);
+  const taskRow = (id: string): Task => ({
+    id, userId: 'u1', title: id, priority: 1, sortOrder: 0, durationMs: 7_200_000, dueBy: null, notBefore: null,
+    minChunkMs: 1_800_000, maxChunkMs: 3_600_000, categoryId: null, status: 'pending', completedAt: null,
+    createdAt: new Date(0), updatedAt: new Date(0),
+  });
+  const blockRow = (over: Partial<ScheduledBlock>): ScheduledBlock => ({
+    id: 'b', userId: 'u1', taskId: 't1', habitId: null, title: 't1', startsAt: iso('09:00'), endsAt: iso('10:00'),
+    pinned: false, googleEventId: null, googleCalendarId: null, engineKey: null, startedAt: null,
+    createdAt: new Date(0), updatedAt: new Date(0), ...over,
+  });
+  const settingsRow = (requireStartToTrack: boolean) => ({
+    id: 's1', userId: 'u1', timezone: 'UTC', workingHours: [] as never, horizonDays: 7,
+    defaultMinChunkMs: 1_800_000, defaultMaxChunkMs: 3_600_000, meetingBufferMs: 0, taskBufferMs: 0,
+    requireStartToTrack, dayStartMinute: 0, createdAt: new Date(0), updatedAt: new Date(0),
+  });
+  const blocks = () => [
+    blockRow({ id: 'running', engineKey: 'task:t1:0' }), // the frozen auto piece, never Started
+    blockRow({ id: 'started', pinned: true, startedAt: iso('09:00'), startsAt: iso('09:15'), endsAt: iso('10:15') }), // Started
+    blockRow({ id: 'later', engineKey: 'task:t1:1', startsAt: iso('10:00'), endsAt: iso('11:00') }), // not begun
+    blockRow({ id: 'done', engineKey: null, startsAt: iso('08:00'), endsAt: iso('08:30') }), // finished
+    blockRow({ id: 'other', taskId: 't2', engineKey: 'task:t2:0' }), // another task's running piece
+  ];
+
+  async function patch(status: string, requireStartToTrack = false, payload: Record<string, unknown> = { status }) {
+    const ctx = buildTestApp({ tasks: [taskRow('t1'), taskRow('t2')], blocks: blocks(), settings: settingsRow(requireStartToTrack), now: () => NOW });
+    const token = await tokenFor(ctx.app);
+    const res = await ctx.app.inject({ method: 'PATCH', url: '/tasks/t1', headers: { authorization: `Bearer ${token}` }, payload });
+    const rows = await ctx.scheduledBlocks.listByUserInRange('u1', new Date(0), new Date(8.64e15));
+    const byId = (id: string) => rows.find((r) => r.id === id)!;
+    return { res, byId, ctx };
+  }
+
+  it.each(['completed', 'backlog'])('automatic tracking, %s: every running piece of the task ends at round15(now) and is pinned, like Stop', async (status) => {
+    const { res, byId, ctx } = await patch(status);
+    expect(res.statusCode).toBe(200);
+    expect(byId('running')).toMatchObject({ startsAt: iso('09:00'), endsAt: iso('09:30'), pinned: true, startedAt: null });
+    expect(byId('started')).toMatchObject({ startsAt: iso('09:15'), endsAt: iso('09:30'), pinned: true }); // start + 15 min floor
+    // Untouched: a piece that has not begun (the replan sweeps it), a finished one, another task's.
+    expect(byId('later')).toMatchObject({ endsAt: iso('11:00'), pinned: false });
+    expect(byId('done')).toMatchObject({ endsAt: iso('08:30'), pinned: false });
+    expect(byId('other')).toMatchObject({ endsAt: iso('10:00'), pinned: false });
+    expect(ctx.emitted).toContainEqual(expect.objectContaining({ type: 'data.changed', userId: 'u1', resources: ['schedule', 'tasks'] }));
+    expect(ctx.reconcileCalls).toHaveLength(1); // then the usual replan, which re-plans the freed time
+  });
+
+  it('manual tracking: unchanged, the running pieces keep their planned end', async () => {
+    const { byId } = await patch('completed', true);
+    expect(byId('running')).toMatchObject({ endsAt: iso('10:00'), pinned: false });
+    expect(byId('started')).toMatchObject({ endsAt: iso('10:15') });
+  });
+
+  it.each([
+    ['back to pending', { status: 'pending' }],
+    ['a change that is not a status', { title: 'Renamed' }],
+  ])('%s: no block is touched', async (_label, payload) => {
+    const { byId, ctx } = await patch('', false, payload);
+    expect(byId('running')).toMatchObject({ endsAt: iso('10:00'), pinned: false });
+    expect(ctx.emitted.some((e) => e.type === 'data.changed')).toBe(false);
+  });
+
+  it('an unknown task: 404 and no block is touched', async () => {
+    const ctx = buildTestApp({ tasks: [], blocks: blocks(), settings: settingsRow(false), now: () => NOW });
+    const token = await tokenFor(ctx.app);
+    const res = await ctx.app.inject({ method: 'PATCH', url: '/tasks/t1', headers: { authorization: `Bearer ${token}` }, payload: { status: 'completed' } });
+    expect(res.statusCode).toBe(404);
+    expect((await ctx.scheduledBlocks.findById('u1', 'running'))).toMatchObject({ endsAt: iso('10:00') });
+  });
+
+  it('the block writes run under the per-user lock (a replan in flight cannot interleave)', async () => {
+    let inLock = false;
+    const log: string[] = [];
+    const ctx = buildTestApp({
+      tasks: [taskRow('t1')], blocks: blocks(), settings: settingsRow(false), now: () => NOW,
+      withUserLock: async (_u, fn) => { inLock = true; try { return await fn(); } finally { inLock = false; } },
+    });
+    const update = ctx.scheduledBlocks.update;
+    ctx.scheduledBlocks.update = async (u, id, data) => { log.push(`${id}:${inLock}`); return update(u, id, data); };
+    const token = await tokenFor(ctx.app);
+    await ctx.app.inject({ method: 'PATCH', url: '/tasks/t1', headers: { authorization: `Bearer ${token}` }, payload: { status: 'completed' } });
+    expect(log.sort()).toEqual(['running:true', 'started:true']);
+  });
+});

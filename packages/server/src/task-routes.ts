@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { computeSpentMs } from '@notreclaim/core';
+import { computeSpentMs, stopBlockEndMs } from '@notreclaim/core';
 import { NotFoundError, type CategoryRepository } from '@notreclaim/db';
 import type { AppDeps, AfterMutation } from './app.js';
 import { dataChanged } from './events.js';
@@ -19,6 +19,29 @@ async function assertOwnCategory(
   if (categoryId == null) return;
   const owned = await categories.listByUser(userId);
   if (!owned.some((c) => c.id === categoryId)) throw new NotFoundError(`Category ${categoryId} not found for user`);
+}
+
+/**
+ * Automatic tracking: a task that leaves the plan (completed, or moved to the backlog) while one
+ * of its pieces is running ends that piece now, with Stop's write (end = stopBlockEndMs, pinned),
+ * so the rest of the piece is freed for other work instead of staying busy until its planned end
+ * and counting as time spent on a task that is already done. Pinned (Started, dragged) pieces end
+ * the same way. The pin keeps the shortened piece from being re-planned, and the pinned pass
+ * pushes the new end to Google even when it is already in the past. Manual tracking is
+ * unchanged. Under the user lock, like every block write; returns how many pieces it ended.
+ */
+async function endRunningPieces(deps: AppDeps, userId: string, taskId: string, now: number): Promise<number> {
+  const settings = await deps.repos.settings.getByUserId(userId);
+  if (!settings || settings.requireStartToTrack) return 0;
+  return deps.withUserLock(userId, async () => {
+    const running = (await deps.repos.scheduledBlocks.listByUserInRange(userId, new Date(now), new Date(now + 1)))
+      .filter((b) => b.taskId === taskId && b.startsAt.getTime() <= now && b.endsAt.getTime() > now);
+    for (const b of running) {
+      const endsAt = new Date(stopBlockEndMs(b.startsAt.getTime(), b.endsAt.getTime(), now));
+      await deps.repos.scheduledBlocks.update(userId, b.id, { endsAt, pinned: true });
+    }
+    return running.length;
+  });
 }
 
 export function registerTaskRoutes(app: FastifyInstance, deps: AppDeps, afterMutation: AfterMutation): void {
@@ -66,6 +89,7 @@ export function registerTaskRoutes(app: FastifyInstance, deps: AppDeps, afterMut
   });
 
   app.patch('/tasks/:id', guard, async (request) => {
+    const now = deps.now();
     const { id } = idParamSchema.parse(request.params);
     const { dueBy: dueByStr, notBefore: nbStr, ...rest } = updateTaskSchema.parse(request.body);
     await assertOwnCategory(deps.repos.categories, request.userId, rest.categoryId);
@@ -81,10 +105,16 @@ export function registerTaskRoutes(app: FastifyInstance, deps: AppDeps, afterMut
       ...(dueByStr !== undefined ? { dueBy: dueByStr === null ? null : new Date(dueByStr) } : {}),
       ...(nbStr !== undefined ? { notBefore: nbStr === null ? null : new Date(nbStr) } : {}),
       ...(rest.status !== undefined
-        ? { completedAt: rest.status === 'completed' ? new Date(deps.now()) : null }
+        ? { completedAt: rest.status === 'completed' ? new Date(now) : null }
         : {}),
     };
     const task = await deps.repos.tasks.update(request.userId, id, data);
+    if (rest.status === 'completed' || rest.status === 'backlog') {
+      // A block write: it changes the schedule and the task's spentMs.
+      if ((await endRunningPieces(deps, request.userId, id, now)) > 0) {
+        deps.events.emit(dataChanged(request.userId, 'schedule', 'tasks'));
+      }
+    }
     afterMutation(request.userId, { taskId: id, action: 'updated' });
     return task;
   });
