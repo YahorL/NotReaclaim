@@ -362,3 +362,69 @@ describe('requireStartSince follows requireStartToTrack (server clock, never fro
     expect(got.json()).toMatchObject({ requireStartToTrack: true });
   });
 });
+
+describe('mode switches racing each other always leave a consistent (mode, timestamp) pair', () => {
+  const T0 = new Date('2026-01-05T08:00:00.000Z');
+  const NOW = Date.parse('2026-01-05T12:00:00.000Z');
+  /** Holds the FIRST settings read (the first request's stored read) until `release` is called. */
+  function gated(initial: { requireStartToTrack: boolean; requireStartSince: Date | null }) {
+    const ctx = buildTestApp({
+      settings: {
+        id: 's1', userId: 'u1', timezone: 'UTC', workingHours: [] as never, horizonDays: 7, defaultMinChunkMs: 1800000,
+        defaultMaxChunkMs: 3600000, meetingBufferMs: 0, taskBufferMs: 0, dayStartMinute: 0,
+        createdAt: new Date(0), updatedAt: new Date(0), ...initial,
+      },
+      now: () => NOW,
+    });
+    const realGet = ctx.settings.getByUserId.bind(ctx.settings);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    let first = true;
+    ctx.settings.getByUserId = async (u: string) => {
+      const v = await realGet(u);
+      if (first) { first = false; await gate; }
+      return v;
+    };
+    return { ctx, release, final: () => realGet('u1') };
+  }
+  const put = { timezone: 'UTC', workingHours: [], defaultMinChunkMs: 1800000, defaultMaxChunkMs: 3600000 };
+
+  it('a save that keeps manual tracking on (read: on) racing a switch off ends off with no timestamp, or on with its own', async () => {
+    const { ctx, release, final } = gated({ requireStartToTrack: true, requireStartSince: T0 });
+    const auth = { authorization: `Bearer ${await tokenFor(ctx.app)}` };
+    const saving = ctx.app.inject({ method: 'PUT', url: '/settings', headers: auth, payload: { ...put, requireStartToTrack: true } });
+    await new Promise((r) => setTimeout(r, 20)); // the save has read "on" and waits
+    const switchingOff = ctx.app.inject({ method: 'PATCH', url: '/settings', headers: auth, payload: { requireStartToTrack: false } });
+    await new Promise((r) => setTimeout(r, 20));
+    release();
+    await Promise.all([saving, switchingOff]);
+    const s = await final();
+    // Never manual with a null timestamp (the next GET /schedule would sweep all kept history).
+    expect([[false, null], [true, T0]]).toContainEqual([s?.requireStartToTrack, s?.requireStartSince]);
+  });
+
+  it('two switches on at once: one timestamp, the first one', async () => {
+    const { ctx, release, final } = gated({ requireStartToTrack: false, requireStartSince: null });
+    const auth = { authorization: `Bearer ${await tokenFor(ctx.app)}` };
+    const a = ctx.app.inject({ method: 'PATCH', url: '/settings', headers: auth, payload: { requireStartToTrack: true } });
+    await new Promise((r) => setTimeout(r, 20));
+    const b = ctx.app.inject({ method: 'PUT', url: '/settings', headers: auth, payload: { ...put, requireStartToTrack: true } });
+    release();
+    await Promise.all([a, b]);
+    expect(await final()).toMatchObject({ requireStartToTrack: true, requireStartSince: new Date(NOW) });
+  });
+
+  it('a save that keeps automatic tracking (read: off) racing a switch on: on with a timestamp, or off without', async () => {
+    const { ctx, release, final } = gated({ requireStartToTrack: false, requireStartSince: null });
+    const auth = { authorization: `Bearer ${await tokenFor(ctx.app)}` };
+    const saving = ctx.app.inject({ method: 'PUT', url: '/settings', headers: auth, payload: { ...put, requireStartToTrack: false } });
+    await new Promise((r) => setTimeout(r, 20));
+    const switchingOn = ctx.app.inject({ method: 'PATCH', url: '/settings', headers: auth, payload: { requireStartToTrack: true } });
+    await new Promise((r) => setTimeout(r, 20));
+    release();
+    await Promise.all([saving, switchingOn]);
+    const s = await final();
+    expect(s?.requireStartToTrack ? s.requireStartSince : null).toEqual(s?.requireStartToTrack ? new Date(NOW) : null);
+    expect(s?.requireStartToTrack === true && s.requireStartSince == null).toBe(false);
+  });
+});
