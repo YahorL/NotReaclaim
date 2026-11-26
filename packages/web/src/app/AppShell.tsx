@@ -13,6 +13,7 @@ import { ShellTaskDrawer } from './shell/ShellTaskDrawer';
 import { useTasksQuery } from '../api/queries';
 import { useTimezone } from './settings/useTimezone';
 import { ToastProvider } from './shell/ToastProvider';
+import { PlannerWriteFeedback } from './shell/PlannerWriteFeedback';
 import { RecentlyCreatedProvider } from './shell/RecentlyCreated';
 import { OpenTaskDrawersProvider, type OpenTaskDrawers } from './shell/OpenTaskDrawers';
 
@@ -91,6 +92,8 @@ export function AppShell() {
   // above the page. Phones keep the edge-to-edge chrome.
   return (
     <ToastProvider>
+      {/* A failed block / event write, from any page or bar, says why (spec U3). */}
+      <PlannerWriteFeedback />
       <RecentlyCreatedProvider>
       <OpenTaskDrawersProvider value={openTaskDrawers}>
       <div ref={rootRef} data-testid="app-shell" className="flex h-dvh overflow-hidden bg-page md:gap-5 md:p-5">

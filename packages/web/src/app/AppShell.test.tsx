@@ -9,6 +9,8 @@ import { COMPACT_WIDTH_QUERY } from './lib/useMediaQuery';
 import { AppShell } from './AppShell';
 import { TaskDrawer } from './tasks/TaskDrawer';
 import type { Task } from '../api/types';
+import { ApiError } from '../api/client';
+import { BLOCK_REPLANNED_TEXT } from './shell/PlannerWriteFeedback';
 
 function makeApi(over: Parameters<typeof fakeApiClient>[0] = {}) {
   return fakeApiClient({
@@ -376,5 +378,15 @@ describe('AppShell new task dialog', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New task' })).toBeNull());
     expect(plus).toHaveFocus();
+  });
+});
+
+describe('AppShell planner-write feedback (U3)', () => {
+  it('a Start refused with 404 (the block was re-planned away) says so in the shell toast', async () => {
+    const future = { id: 'b1', userId: 'u1', title: 'Write docs', startsAt: '2099-01-01T10:00:00.000Z', endsAt: '2099-01-01T11:00:00.000Z', taskId: 't1', habitId: null, pinned: false, engineKey: null, startedAt: null };
+    const startBlock = vi.fn(async () => { throw new ApiError(404, 'not_found', 'ScheduledBlock b1 not found'); });
+    renderWithProviders(<AppShell />, { api: makeApi({ getSchedule: async () => [future], startBlock }) });
+    fireEvent.click(await screen.findByTestId('mobile-next-task-start'));
+    await waitFor(() => expect(screen.getByTestId('toast-region')).toHaveTextContent(BLOCK_REPLANNED_TEXT));
   });
 });

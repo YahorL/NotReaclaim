@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { useMutation, useMutationState, useQuery, useQueryClient, type Mutation, type QueryClient, type QueryKey } from '@tanstack/react-query';
 import { useApi } from './ApiProvider';
-import type { ApiClient } from './client';
+import { ApiError, type ApiClient } from './client';
 import type { CreateTaskInput, UpdateTaskInput, CreateHabitInput, UpdateHabitInput, SettingsInput, UpdateScheduledBlockInput, CreateCategoryInput, UpdateCategoryInput, CreateSubtaskInput, UpdateSubtaskInput, CreateCalendarEventInput, UpdateCalendarEventInput, CreateScheduledBlockInput, ScheduledBlock } from './types';
 
 export const queryKeys = {
@@ -196,6 +196,8 @@ function useApiMutation<TVars = void, TResult = unknown>(
   meta?: PlannerWriteMeta,
   /** Runs on success before the invalidation (while the mutation still counts as pending). */
   onData?: (qc: QueryClient, data: TResult) => void,
+  /** Refreshed on failure too: what the UI offered was stale (e.g. a 404 for a block that is gone). */
+  errorRoots: readonly QueryKey[] = [],
 ) {
   const api = useApi();
   const qc = useQueryClient();
@@ -205,6 +207,9 @@ function useApiMutation<TVars = void, TResult = unknown>(
     onSuccess: (data: TResult) => {
       onData?.(qc, data);
       for (const queryKey of roots) invalidateRoot(qc, queryKey);
+    },
+    onError: () => {
+      for (const queryKey of errorRoots) invalidateRoot(qc, queryKey);
     },
   });
 }
@@ -258,11 +263,17 @@ function useOptimisticListMutation<TVars, TResult>(
       qc.setQueriesData<unknown>({ queryKey: root }, (old: unknown) => (Array.isArray(old) ? apply(old, vars) : old));
       return { snapshots };
     },
-    onError: (_err, _vars, ctx) => {
+    onError: (err, vars, ctx) => {
       // A write no longer in the mutation cache was dropped by a session swap: its snapshots hold
       // the previous session's data and must not be restored over the new session's cache.
       if (!qc.getMutationCache().getAll().some((m) => m.state.context === ctx)) return;
-      ctx?.snapshots.forEach(([key, data]) => qc.setQueryData(key, data));
+      // 404: the row is gone (a replan removed it while the edit waited, or another tab deleted
+      // it). Restoring it would flash it back until the refetch removes it again, so roll back
+      // everything else but leave it out — a failed move then vanishes, a delete stays done.
+      const gone = meta && err instanceof ApiError && err.status === 404 ? plannerWriteTarget(meta.plannerWrite, vars) : null;
+      ctx?.snapshots.forEach(([key, data]) => qc.setQueryData(key, gone !== null && Array.isArray(data)
+        ? (data as Array<{ id: string }>).filter((x) => x.id !== gone)
+        : data));
     },
     // Record only, never refetch here: the drain runs once no planner write is pending (see
     // drainWhenIdle), i.e. after this write has left the pending state, so a write is never
@@ -525,6 +536,8 @@ export function useCreateScheduledBlockMutation({ inlineErrors = false }: { inli
     [queryKeys.scheduleRoot],
     { plannerWrite: 'blockCreate', inlineErrors },
     addCreatedBlock,
+    // A 404 here means the task is gone: refresh the panel too.
+    [queryKeys.scheduleRoot, queryKeys.tasksRoot],
   ));
 }
 
@@ -534,6 +547,8 @@ export function useStartBlockMutation() {
     (api, id: string) => api.startBlock(id),
     [queryKeys.scheduleRoot, queryKeys.tasksRoot],
     { plannerWrite: 'blockStart' },
+    undefined,
+    [queryKeys.scheduleRoot, queryKeys.tasksRoot],
   ));
 }
 
@@ -543,5 +558,7 @@ export function useStopBlockMutation() {
     (api, id: string) => api.stopBlock(id),
     [queryKeys.scheduleRoot, queryKeys.tasksRoot],
     { plannerWrite: 'blockStop' },
+    undefined,
+    [queryKeys.scheduleRoot, queryKeys.tasksRoot],
   ));
 }

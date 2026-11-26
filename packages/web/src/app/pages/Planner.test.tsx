@@ -3,6 +3,7 @@ import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { ScheduledBlock, CalendarEvent, SchedulePreview, Task, Category, Habit } from '../../api/types';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 import { Planner, REPLAN_MIN_SPIN_MS } from './Planner';
+import { ApiError } from '../../api/client';
 import { installMatchMedia, type FakeMatchMedia } from '../../test/matchMedia';
 
 const NOW = Date.parse('2026-01-07T12:00:00.000Z'); // Wednesday
@@ -724,5 +725,30 @@ describe('Planner: block writes that are still saving (U1)', () => {
     release(created);
     await waitFor(() => expect(within(layer()).queryByTestId('drop-placeholder')).toBeNull());
     expect(tileOf('Inbox zero')).toBeTruthy();
+  });
+});
+
+describe('Planner: an edit answered 404 (U3)', () => {
+  beforeEach(() => { localStorage.removeItem('nr.plannerPanelHidden'); });
+  const layer = () => screen.getByTestId('block-layer');
+  const tileOf = (title: string) => within(layer()).queryAllByTestId('event-block').find((b) => b.textContent?.includes(title));
+  const tap = (el: HTMLElement) => {
+    fireEvent.pointerDown(el, { clientX: 40, clientY: 80, pointerId: 1 });
+    fireEvent.pointerUp(el, { clientX: 40, clientY: 80, pointerId: 1 });
+  };
+
+  it('the tile of a block a replan removed does not come back: it leaves once the write is refused', async () => {
+    const pinned = [{ ...blocks[0]!, pinned: true }];
+    // After the 404 the refetch hangs: only the write's own error handling can remove the tile
+    // (before, the rollback restored it — the "flash back" — until a refetch removed it again).
+    let gone = false;
+    const getSchedule = vi.fn(() => (gone ? new Promise<ScheduledBlock[]>(() => {}) : Promise.resolve(pinned)));
+    const updateScheduledBlock = vi.fn(async () => { gone = true; throw new ApiError(404, 'not_found', 'ScheduledBlock b1 not found'); });
+    renderWithProviders(<Planner now={() => NOW} />, { api: makeApi({ getSchedule, updateScheduledBlock }) });
+    await waitFor(() => expect(tileOf('Write spec')).toBeTruthy());
+    tap(tileOf('Write spec')!);
+    fireEvent.click(screen.getByTestId('detail-unpin'));
+    await waitFor(() => expect(updateScheduledBlock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(tileOf('Write spec')).toBeUndefined());
   });
 });

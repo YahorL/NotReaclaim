@@ -6,7 +6,7 @@ import { Icons } from './icons';
 /** Enter + hold + exit, matching `--dur-toast` (the `animate-toast` keyframe length). */
 export const TOAST_MS = 2400;
 
-export type ToastIcon = 'lock' | 'check';
+export type ToastIcon = 'lock' | 'check' | 'warning';
 
 export interface ToastApi {
   /** Show `text` now, replacing any toast on screen. */
@@ -51,7 +51,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const api = useMemo<ToastApi>(() => ({ show, setAnchor }), [show]);
 
-  const Icon = current?.icon === 'lock' ? Icons.lock : current?.icon === 'check' ? Icons.check : null;
+  const Icon = current?.icon === 'lock' ? Icons.lock : current?.icon === 'check' ? Icons.check : current?.icon === 'warning' ? Icons.warning : null;
   // Keyed per show(), so a replacement restarts the enter animation. Under reduced motion the
   // keyframe is left off entirely: it ends at opacity 0, and the kill switch would collapse it
   // to that end state at once, hiding the text.

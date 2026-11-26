@@ -2,6 +2,9 @@ import { describe, it, expect, vi } from 'vitest';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 import { CreatePopover } from './CreatePopover';
+import { ApiError } from '../../api/client';
+import { ToastProvider } from '../shell/ToastProvider';
+import { PlannerWriteFeedback } from '../shell/PlannerWriteFeedback';
 
 const DAY = Date.parse('2026-01-05T00:00:00.000Z'); // local midnight, TZ=UTC
 // now fixed to 8 days before DAY so that localMidnight(now)+7d < DAY → due = DAY 23:59
@@ -501,5 +504,24 @@ describe('CreatePopover due-default in the settings zone', () => {
     fireEvent.change(screen.getByTestId('create-due'), { target: { value: '2026-01-20T10:00' } });
     rerender(<CreatePopover dayStartMs={col} startMin={540} topPct={18} onClose={vi.fn()} now={now} zone="Asia/Tokyo" />);
     expect(screen.getByTestId('create-due')).toHaveValue('2026-01-20T10:00');
+  });
+});
+
+describe('CreatePopover failures are shown once (U3)', () => {
+  it('pinning an existing task that fails shows the inline error and no shell toast on top of it', async () => {
+    const listTasks = vi.fn(async () => [
+      { id: 't1', userId: 'u1', title: 'Existing job', priority: 2, durationMs: 3_600_000, dueBy: '2026-01-09T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1, categoryId: null, status: 'pending', createdAt: '', updatedAt: '' },
+    ]);
+    const createScheduledBlock = vi.fn(async () => { throw new ApiError(404, 'not_found', 'Task t1 not found'); });
+    renderWithProviders(
+      <ToastProvider><PlannerWriteFeedback /><CreatePopover {...baseProps} /></ToastProvider>,
+      { api: fakeApiClient({ listTasks, createScheduledBlock } as never) },
+    );
+    fireEvent.click(screen.getByTestId('mode-task'));
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Existing job' })).toBeInTheDocument());
+    fireEvent.change(screen.getByTestId('task-select'), { target: { value: 't1' } });
+    fireEvent.click(screen.getByTestId('create-submit'));
+    await waitFor(() => expect(screen.getByTestId('create-error')).toHaveTextContent('Task t1 not found'));
+    expect(screen.queryByTestId('toast')).toBeNull();
   });
 });

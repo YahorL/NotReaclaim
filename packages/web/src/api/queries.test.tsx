@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiProvider } from './ApiProvider';
+import { ApiError } from './client';
 import { fakeApiClient } from '../test/fakes';
 import { queryKeys, useScheduleQuery, useCalendarEventsQuery, useSchedulePreviewQuery, useReplanMutation, useUpdateScheduledBlockMutation, useDeleteScheduledBlockMutation, useDeleteCalendarEventMutation, useUpdateCalendarEventMutation, useHabitsQuery, useCreateTaskMutation, useDeleteHabitMutation, useSettingsQuery, useSaveSettingsMutation, useCreateCalendarEventMutation, useCreateScheduledBlockMutation, useStartBlockMutation, useStopBlockMutation, usePendingPlannerWrites } from './queries';
 
@@ -448,5 +449,65 @@ describe('useCreateScheduledBlockMutation: the placeholder hands over to the rea
     result.current.mutate({ taskId: 't1', startsAt: created.startsAt, endsAt: created.endsAt });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(qc.getQueryData(week)).toEqual([created]);
+  });
+});
+
+describe('a block write answered 404: the block no longer exists (U3)', () => {
+  const b1 = { id: 'b1', startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T10:00:00.000Z', pinned: false };
+  const b2 = { id: 'b2', startsAt: '2026-01-05T11:00:00.000Z', endsAt: '2026-01-05T12:00:00.000Z', pinned: false };
+  const notFound = () => new ApiError(404, 'not_found', 'ScheduledBlock b1 not found');
+
+  it('a move is not rolled back onto a block that is gone: the block leaves the cache (no flash back)', async () => {
+    const { Wrapper, qc } = wrap(fakeApiClient({ updateScheduledBlock: vi.fn(async () => { throw notFound(); }) } as never));
+    vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    qc.setQueryData(queryKeys.schedule('a', 'b'), [b1, b2]);
+    const { result } = renderHook(() => useUpdateScheduledBlockMutation(), { wrapper: Wrapper });
+    result.current.mutate({ id: 'b1', patch: { startsAt: '2026-01-06T09:00:00.000Z', endsAt: '2026-01-06T10:00:00.000Z', pinned: true } });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(qc.getQueryData(queryKeys.schedule('a', 'b'))).toEqual([b2]);
+  });
+
+  it('a delete answered 404 is not undone: the block stays gone', async () => {
+    const { Wrapper, qc } = wrap(fakeApiClient({ deleteScheduledBlock: vi.fn(async () => { throw notFound(); }) } as never));
+    vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    qc.setQueryData(queryKeys.schedule('a', 'b'), [b1, b2]);
+    const { result } = renderHook(() => useDeleteScheduledBlockMutation(), { wrapper: Wrapper });
+    result.current.mutate('b1');
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(qc.getQueryData(queryKeys.schedule('a', 'b'))).toEqual([b2]);
+  });
+
+  it('an app-event move answered 404 drops the event the same way', async () => {
+    const e1 = { id: 'e1', startsAt: 'A', endsAt: 'B' };
+    const { Wrapper, qc } = wrap(fakeApiClient({ updateCalendarEvent: vi.fn(async () => { throw notFound(); }) } as never));
+    vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    qc.setQueryData(queryKeys.calendarEvents('a', 'b'), [e1]);
+    const { result } = renderHook(() => useUpdateCalendarEventMutation(), { wrapper: Wrapper });
+    result.current.mutate({ id: 'e1', startsAt: 'C', endsAt: 'D' });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(qc.getQueryData(queryKeys.calendarEvents('a', 'b'))).toEqual([]);
+  });
+
+  it.each([
+    ['Start', useStartBlockMutation, 'startBlock'],
+    ['Stop', useStopBlockMutation, 'stopBlock'],
+  ] as const)('a failed %s refreshes the schedule and tasks (the top bar must not keep offering a dead block)', async (_n, useHook, method) => {
+    const { Wrapper, qc } = wrap(fakeApiClient({ [method]: vi.fn(async () => { throw notFound(); }) } as never));
+    const spy = vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    const { result } = renderHook(() => useHook(), { wrapper: Wrapper });
+    result.current.mutate('b1');
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(spy).toHaveBeenCalledWith({ queryKey: queryKeys.scheduleRoot });
+    expect(spy).toHaveBeenCalledWith({ queryKey: queryKeys.tasksRoot });
+  });
+
+  it('a failed drop refreshes the schedule and the tasks (a 404 means the task is gone)', async () => {
+    const { Wrapper, qc } = wrap(fakeApiClient({ createScheduledBlock: vi.fn(async () => { throw new ApiError(404, 'not_found', 'Task t1 not found'); }) } as never));
+    const spy = vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    const { result } = renderHook(() => useCreateScheduledBlockMutation(), { wrapper: Wrapper });
+    result.current.mutate({ taskId: 't1', startsAt: 'S', endsAt: 'E' });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(spy).toHaveBeenCalledWith({ queryKey: queryKeys.scheduleRoot });
+    expect(spy).toHaveBeenCalledWith({ queryKey: queryKeys.tasksRoot });
   });
 });

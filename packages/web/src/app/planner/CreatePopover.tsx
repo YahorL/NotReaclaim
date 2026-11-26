@@ -56,7 +56,8 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
   const ref = useRef<HTMLDivElement>(null);
   const createTaskM = useCreateTaskMutation();
   const createEventM = useCreateCalendarEventMutation();
-  const createBlockM = useCreateScheduledBlockMutation();
+  // Its failures already show inline (create-error), so no toast on top.
+  const createBlockM = useCreateScheduledBlockMutation({ inlineErrors: true });
   const tasksQ = useTasksQuery();
   const categoriesQ = useCategoriesQuery();
   const categories = categoriesQ.data ?? [];
