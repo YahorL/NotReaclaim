@@ -329,6 +329,44 @@ describe('POST /schedule/:id/start ends the other running automatic pieces (you 
     expect(await row('c')).toMatchObject({ startsAt: iso('09:30'), endsAt: iso('10:30'), pinned: true });
   });
 
+  it('never moved back over a piece that ended a moment ago (10-minute buffer: 11:20–12:20 ended, Start at 12:21)', async () => {
+    const { res, ctx } = await start({
+      now: '12:21', id: 'b',
+      blocks: [
+        block({ id: 'a', engineKey: 'task:t1:2', startsAt: iso('11:20'), endsAt: iso('12:20') }),
+        block({ id: 'b', engineKey: 'task:t1:3', startsAt: iso('12:30'), endsAt: iso('13:30') }),
+      ],
+    });
+    expect(res.json()).toMatchObject({ startsAt: '2026-01-05T12:20:00.000Z', endsAt: '2026-01-05T13:20:00.000Z' }); // was 12:15–13:15
+    const rows = await ctx.scheduledBlocks.listByUserInRange('u1', new Date(0), new Date(8.64e15));
+    // 11:20 → 13:20 is 120 minutes of wall time; 120 minutes tracked (it was 125).
+    expect(computeSpentMs('t1', rows, false, iso('14:00').getTime())).toBe(120 * 60_000);
+  });
+
+  it('an off-grid end: 09:05–10:05 ended, Start at 10:06 on 10:15–11:15 → 10:05–11:05, tracked = wall time', async () => {
+    const { res, ctx } = await start({
+      now: '10:06', id: 'b',
+      blocks: [
+        block({ id: 'a', engineKey: 'task:t1:0', startsAt: iso('09:05'), endsAt: iso('10:05') }),
+        block({ id: 'b', engineKey: 'task:t1:1', startsAt: iso('10:15'), endsAt: iso('11:15') }),
+      ],
+    });
+    expect(res.json()).toMatchObject({ startsAt: '2026-01-05T10:05:00.000Z', endsAt: '2026-01-05T11:05:00.000Z' });
+    const rows = await ctx.scheduledBlocks.listByUserInRange('u1', new Date(0), new Date(8.64e15));
+    expect(computeSpentMs('t1', rows, false, iso('12:00').getTime())).toBe(120 * 60_000); // 09:05 → 11:05 (was 125 over 120)
+  });
+
+  it('manual tracking: only blocks that count (Started ones) hold the start back', async () => {
+    const blocks = (startedAt: Date | null) => [
+      block({ id: 'a', pinned: startedAt != null, startedAt, startsAt: iso('11:20'), endsAt: iso('12:20') }),
+      block({ id: 'b', engineKey: 'task:t1:3', startsAt: iso('12:30'), endsAt: iso('13:30') }),
+    ];
+    const unstarted = await start({ now: '12:21', id: 'b', manual: true, blocks: blocks(null) });
+    expect(unstarted.res.json()).toMatchObject({ startsAt: '2026-01-05T12:15:00.000Z' }); // never counted: ignored
+    const started = await start({ now: '12:21', id: 'b', manual: true, blocks: blocks(iso('11:20')) });
+    expect(started.res.json()).toMatchObject({ startsAt: '2026-01-05T12:20:00.000Z' });
+  });
+
   it("another task's running piece is ended too, a pinned (Started) one is left alone", async () => {
     const { row } = await start({
       now: '09:30',

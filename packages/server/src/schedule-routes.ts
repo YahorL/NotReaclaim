@@ -4,7 +4,7 @@ import { NotFoundError, type ScheduledBlock, type UpdateScheduledBlockInput } fr
 import type { AppDeps, AfterMutation } from './app.js';
 import { isMirrored, prefetchAccessToken, removeMirroredEventWithToken, type PrefetchedToken } from './google-writeback.js';
 import { discardUnstartedPastBlocks } from './manual-sweep.js';
-import { endRunningPiecesUnderLock } from './running-pieces.js';
+import { endRunningPiecesUnderLock, SHORT_PIECE_MS } from './running-pieces.js';
 import { resolveRange } from './range.js';
 import { rangeQuerySchema, idParamSchema, updateScheduledBlockSchema, createScheduledBlockSchema } from './schemas.js';
 import { dataChanged } from './events.js';
@@ -111,8 +111,9 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
    * would keep running next to the Started one and both would count. Each ends where the Started
    * block begins at the latest (running-pieces.ts); an auto piece begun less than 7.5 minutes
    * ago is deleted, a hand-placed block never is. Started blocks are left alone. Manual
-   * tracking: only the block itself is written. 404 for an unknown block, 400 for a non-task one
-   * (nothing written).
+   * tracking: only the block itself is written. In both modes the block is never moved back over a
+   * block that has just ended and counts (see recentEnds). 404 for an unknown block, 400 for a
+   * non-task one (nothing written).
    */
   app.post('/schedule/:id/start', guard, async (request, reply) => {
     const now = deps.now();
@@ -125,8 +126,15 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
       const row = await deps.repos.scheduledBlocks.findById(userId, id);
       if (!row) throw new NotFoundError(`ScheduledBlock ${id} not found`);
       if (!row.taskId) return null;
-      const patch = startBlockPatch(row.startsAt.getTime(), row.endsAt.getTime(), now);
-      if ((await deps.repos.settings.getByUserId(userId))?.requireStartToTrack === false) {
+      const automatic = (await deps.repos.settings.getByUserId(userId))?.requireStartToTrack === false;
+      // Ends of the other task blocks that ended in the last 7.5 minutes and count as spent (every
+      // one in automatic tracking, the Started ones in manual): Start never moves this block back
+      // over them (startBlockPatch), so no minute is counted twice.
+      const recentEnds = (await deps.repos.scheduledBlocks.listByUserInRange(userId, new Date(now - SHORT_PIECE_MS), new Date(now + 1)))
+        .filter((b) => b.id !== row.id && b.taskId != null && b.endsAt.getTime() <= now && (automatic || b.startedAt != null))
+        .map((b) => b.endsAt.getTime());
+      const patch = startBlockPatch(row.startsAt.getTime(), row.endsAt.getTime(), now, recentEnds);
+      if (automatic) {
         const started = { start: (patch.startsAt ?? row.startsAt).getTime() };
         const ended = await endRunningPiecesUnderLock(app, deps, userId, now, others, token, started);
         if (ended === 'needs-token') return 'needs-token' as const;

@@ -64,6 +64,37 @@ describe('startBlockPatch', () => {
   });
 });
 
+describe('startBlockPatch never moves a block back over time that already counted (recentEnds)', () => {
+  it('early Start: the new start is clamped to the latest end in (candidate, now], keeping the length', () => {
+    // 10-minute buffer layout: 11:20–12:20 has ended, 12:30–13:30 next, Start at 12:21 (round15 = 12:15).
+    expect(startBlockPatch(at('12:30'), at('13:30'), at('12:21'), [at('12:20')])).toMatchObject({
+      startsAt: new Date(at('12:20')), endsAt: new Date(at('13:20')),
+    });
+    // An off-grid end: 09:05–10:05 ended, Start at 10:06 on 10:15–11:15 (round15 = 10:00).
+    expect(startBlockPatch(at('10:15'), at('11:15'), at('10:06'), [at('10:05'), at('09:30')])).toMatchObject({
+      startsAt: new Date(at('10:05')), endsAt: new Date(at('11:05')),
+    });
+  });
+
+  it('an end at or before the candidate start does not move it', () => {
+    expect(startBlockPatch(at('12:30'), at('13:30'), at('12:21'), [at('12:15'), at('12:10')])).toMatchObject({
+      startsAt: new Date(at('12:15')), endsAt: new Date(at('13:15')),
+    });
+  });
+
+  it('begun block whose snapped start moves EARLIER: clamped too, the end is kept; never later than its own start', () => {
+    // Off-grid 09:05–10:05, Start at 09:06 (round15 = 09:00), another piece ended 09:04.
+    expect(startBlockPatch(at('09:05'), at('10:05'), at('09:06'), [at('09:04')])).toStrictEqual({
+      pinned: true, startedAt: new Date(at('09:06')), startsAt: new Date(at('09:04')),
+    });
+    expect(startBlockPatch(at('09:05'), at('10:05'), at('09:06'), [at('09:05') + 30_000]).startsAt).toEqual(new Date(at('09:05')));
+  });
+
+  it('a begun block whose start moves LATER (it shrinks) is not affected', () => {
+    expect(startBlockPatch(at('09:00'), at('11:00'), at('10:08'), [at('10:05')]).startsAt).toEqual(new Date(at('10:15')));
+  });
+});
+
 describe('stopBlockEndMs', () => {
   it('ends at round15(now) inside the block', () => {
     expect(stopBlockEndMs(at('09:00'), at('11:00'), at('10:08'))).toBe(at('10:15'));

@@ -275,9 +275,10 @@ describe('POST /schedule/:id/start and /stop: time snapping', () => {
     expect(res.json()).toMatchObject({
       startsAt: '2026-01-05T00:15:00.000Z', endsAt: '2026-01-05T01:00:00.000Z', startedAt: '2026-01-05T00:08:00.000Z', pinned: true,
     });
-    // Automatic tracking: under the lock, after the row read, the other running pieces are read
-    // (to be ended) before the Start write.
-    expect(h.trace).toEqual(['blocks.findById b1', 'blocks.listByUserInRange', 'blocks.update b1', 'emit data.changed [schedule,tasks] | replans=0']);
+    // Under the lock, after the row read: the blocks that ended in the last 7.5 minutes (Start never
+    // moves the block back over them), then (automatic tracking) the other running pieces to end,
+    // then the Start write.
+    expect(h.trace).toEqual(['blocks.findById b1', 'blocks.listByUserInRange', 'blocks.listByUserInRange', 'blocks.update b1', 'emit data.changed [schedule,tasks] | replans=0']);
     expect(h.reconcileCalls).toEqual([{ userId: 'u1', now: reads[1] }]);
   });
 
