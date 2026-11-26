@@ -99,6 +99,73 @@ describe('makeReplan logs the rows a replan skipped', () => {
     );
   });
 
+  it('a replan that THROWS after skipping rows still logs the reports gathered so far, then rethrows unchanged', async () => {
+    const warn = vi.fn();
+    const fatal = new TypeError('fetch failed');
+    const forbidden = Object.assign(new Error('Google API error 403: forbidden'), { status: 403 });
+    const replan = makeReplan({
+      reconcile: async (_u, _n, report) => {
+        report({ kind: 'update', blockId: 'b1', engineKey: 'task:t1:0', error: forbidden });
+        report({ kind: 'orphan', blockId: null, engineKey: 'task:t2:0', error: new Error('google 503') });
+        throw fatal;
+      },
+      planLocally: async () => COUNTS,
+      isConnected: async () => true,
+      warn,
+    });
+
+    await expect(replan('u1', NOW)).rejects.toBe(fatal);
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith({
+      userId: 'u1',
+      failed: 'unavailable: the replan failed after skipping these rows',
+      failures: [
+        { kind: 'update', blockId: 'b1', engineKey: 'task:t1:0', error: { name: 'Error', message: 'Google API error 403: forbidden', status: 403 } },
+        { kind: 'orphan', blockId: null, engineKey: 'task:t2:0', error: { name: 'Error', message: 'google 503' } },
+      ],
+    }, 'replan skipped blocks that failed to save (retried next cycle)');
+  });
+
+  it('a replan that throws without having skipped anything logs nothing here', async () => {
+    const warn = vi.fn();
+    const replan = makeReplan({
+      reconcile: async () => { throw new Error('boom'); }, planLocally: async () => COUNTS, isConnected: async () => true, warn,
+    });
+    await expect(replan('u1', NOW)).rejects.toThrow('boom');
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['an Error whose message is a number', Object.assign(new Error(), { message: 42 }), { name: 'Error', message: '42' }],
+    ['an Error whose message is undefined', Object.assign(new Error(), { message: undefined }), { name: 'Error', message: 'undefined' }],
+    ['an Error whose name is not a string', Object.assign(new Error('x'), { name: { odd: true } }), { name: '[object Object]', message: 'x' }],
+    ['a thrown string', 'plain string', { message: 'plain string' }],
+    ['a null-prototype object', Object.create(null) as unknown, { message: '[unprintable]' }],
+    ['undefined', undefined, { message: 'undefined' }],
+  ])('describes %s without throwing', async (_name, error, expected) => {
+    const { replan, warn } = setup((report) => {
+      report({ kind: 'update', blockId: 'b1', engineKey: null, error });
+      return { updateFailed: 1 };
+    });
+    await replan('u1', NOW);
+    const logged = warn.mock.calls[0]![0] as { failures: Array<{ error: unknown }> };
+    expect(logged.failures[0]!.error).toEqual(expected);
+  });
+
+  it('a warn that throws never turns a successful replan into a failed one', async () => {
+    const replan = makeReplan({
+      reconcile: async (_u, _n, report) => {
+        report({ kind: 'update', blockId: 'b1', engineKey: null, error: new Error('x') });
+        return { ...COUNTS, updateFailed: 1 };
+      },
+      planLocally: async () => COUNTS,
+      isConnected: async () => true,
+      warn: () => { throw new Error('logger down'); },
+    });
+    await expect(replan('u1', NOW)).resolves.toMatchObject({ updateFailed: 1 });
+  });
+
   it('stays silent on a clean run', async () => {
     const { replan, warn } = setup(() => ({ attachFailed: 0 }));
     await replan('u1', NOW);
