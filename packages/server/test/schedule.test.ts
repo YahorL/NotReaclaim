@@ -285,6 +285,50 @@ describe('POST /schedule/:id/start ends the other running automatic pieces (you 
     expect(await row('p0')).toMatchObject({ startsAt: iso('10:10'), endsAt: iso('10:15'), pinned: true });
   });
 
+  it('a hand-placed (pinned, never Started) running block is ended too, where the Started block begins: no double count', async () => {
+    const { row, ctx } = await start({
+      now: '09:30',
+      blocks: [
+        block({ id: 'a', taskId: 'tA', engineKey: 'task:tA:0', startsAt: iso('09:00'), endsAt: iso('10:00') }),
+        block({ id: 'c', taskId: 'tC', pinned: true, startsAt: iso('09:10'), endsAt: iso('09:50') }), // dragged there
+        block({ id: 'p1', taskId: 'tB', engineKey: 'task:tB:0', startsAt: iso('11:00'), endsAt: iso('12:00') }),
+      ],
+    });
+    expect(await row('c')).toMatchObject({ startsAt: iso('09:10'), endsAt: iso('09:30'), pinned: true });
+    expect(await row('a')).toMatchObject({ endsAt: iso('09:30') });
+    // Nothing overlaps the Started block (09:30–10:30). (a and c overlapping 09:10–09:30 is the
+    // user's own doing: c was dragged over the running a before Start.)
+    const rows = await ctx.scheduledBlocks.listByUserInRange('u1', new Date(0), new Date(8.64e15));
+    const started = rows.find((b) => b.id === 'p1')!;
+    expect(started).toMatchObject({ startsAt: iso('09:30'), endsAt: iso('10:30') });
+    for (const x of rows.filter((b) => b.id !== 'p1')) {
+      expect(x.endsAt.getTime() <= started.startsAt.getTime() || x.startsAt.getTime() >= started.endsAt.getTime(), x.id).toBe(true);
+    }
+  });
+
+  it('a hand-placed block begun 3 minutes ago is never deleted: it ends where the Started block begins', async () => {
+    const { row, deleted } = await start({
+      now: '09:30',
+      blocks: [
+        block({ id: 'c', taskId: 'tC', pinned: true, startsAt: iso('09:27'), endsAt: iso('10:27'), googleEventId: 'g-c', googleCalendarId: 'cal-auto' }),
+        block({ id: 'p1', taskId: 'tB', engineKey: 'task:tB:0', startsAt: iso('11:00'), endsAt: iso('12:00') }),
+      ],
+    });
+    expect(await row('c')).toMatchObject({ startsAt: iso('09:27'), endsAt: iso('09:30'), pinned: true });
+    expect(deleted).toEqual([]);
+  });
+
+  it('a hand-placed block that begins where (or after) the Started block begins is left untouched', async () => {
+    const { row } = await start({
+      now: '09:30',
+      blocks: [
+        block({ id: 'c', taskId: 'tC', pinned: true, startsAt: iso('09:30'), endsAt: iso('10:30') }),
+        block({ id: 'p1', taskId: 'tB', engineKey: 'task:tB:0', startsAt: iso('11:00'), endsAt: iso('12:00') }),
+      ],
+    });
+    expect(await row('c')).toMatchObject({ startsAt: iso('09:30'), endsAt: iso('10:30'), pinned: true });
+  });
+
   it("another task's running piece is ended too, a pinned (Started) one is left alone", async () => {
     const { row } = await start({
       now: '09:30',

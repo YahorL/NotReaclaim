@@ -46,7 +46,9 @@ const isShort = (b: ScheduledBlock, now: number) => now - beganAt(b) < SHORT_PIE
  * pinned, so it is never re-planned, counts once it has ended, and the pinned pass pushes the new
  * end to Google even when it is already in the past. A shorter one is deleted with its Google
  * event (best effort, like DELETE /schedule/:id). With `startedBlock` (Start), a piece that
- * would run past the started block's new start ends there instead. Returns how many pieces
+ * would run past the started block's new start ends there instead, and a hand-placed (pinned)
+ * block is never deleted: young or not, it ends at the started block's start, or is left as it
+ * is when that would leave it with no length. Returns how many pieces
  * changed, or 'needs-token' when a piece to delete has a Google event and the caller passed no
  * token: it then lets go of the lock, looks one up (token lookups never run under the lock) and
  * comes back once. Nothing is written before that answer. Callers start without a token: a piece
@@ -63,22 +65,29 @@ export async function endRunningPiecesUnderLock(
   startedBlock?: { start: number },
 ): Promise<number | 'needs-token'> {
   const targets = await runningTargets(deps, userId, now, isTarget);
-  // Where each piece ends, or null when it is deleted (begun less than SHORT_PIECE_MS ago).
-  const endOf = (b: ScheduledBlock): number | null => {
-    if (isShort(b, now)) return null;
+  // What becomes of each piece: a new end, 'delete' (begun less than SHORT_PIECE_MS ago), or
+  // 'keep' (a hand-placed block that Start may not shorten to nothing).
+  const fate = (b: ScheduledBlock): number | 'delete' | 'keep' => {
+    // Start never deletes a hand-placed (pinned) block: the user put it there.
+    const handPlaced = startedBlock != null && b.pinned;
+    if (isShort(b, now) && !handPlaced) return 'delete';
     const start = b.startsAt.getTime();
     const end = stopBlockEndMs(start, b.endsAt.getTime(), now);
+    if (!startedBlock) return end;
     // Start: the block being started now counts from its (new) start, so the ended piece stops
     // there. Stop's 15-minute floor and a start off the quarter grid would otherwise make the
     // two overlap (10:10 running, Start at 10:19: ended at 10:25, Started from 10:15).
-    // (A Started block beginning at or before the piece's own start — only a block that has
-    // already ended can, since Start never moves one later — is left to Stop's arithmetic.)
-    return startedBlock && startedBlock.start > start && startedBlock.start < end ? startedBlock.start : end;
+    if (startedBlock.start > start && startedBlock.start < end) return startedBlock.start;
+    // A hand-placed block that begins where (or after) the Started block begins would be left
+    // with no length at all: it is left as it is. An auto piece in that position (only a Started
+    // block that has already ended can begin before it) keeps Stop's arithmetic.
+    if (handPlaced && startedBlock.start <= start) return 'keep';
+    return end;
   };
-  const plan = targets.map((b) => ({ b, end: endOf(b) }));
-  if (!token && plan.some(({ b, end }) => end == null && isMirrored(b))) return 'needs-token';
+  const plan = targets.map((b) => ({ b, end: fate(b) })).filter(({ end }) => end !== 'keep');
+  if (!token && plan.some(({ b, end }) => end === 'delete' && isMirrored(b))) return 'needs-token';
   for (const { b, end } of plan) {
-    if (end != null) {
+    if (typeof end === 'number') {
       await deps.repos.scheduledBlocks.update(userId, b.id, { endsAt: new Date(end), pinned: true });
       continue;
     }
@@ -93,5 +102,5 @@ export async function endRunningPiecesUnderLock(
       if (!(err instanceof NotFoundError)) throw err; // gone meanwhile (a cascade or drift): already done
     }
   }
-  return targets.length;
+  return plan.length;
 }

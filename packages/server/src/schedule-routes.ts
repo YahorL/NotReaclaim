@@ -105,18 +105,22 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
   };
 
   /**
-   * Start. In automatic tracking it also ends every OTHER running un-pinned task piece (any task:
-   * one thing is worked on at a time), in the same locked section and with the same arrival
-   * clock — otherwise the piece the user moved on from would keep running, frozen, next to the
-   * Started one and both would count. Same rule as completing a task (running-pieces.ts): Stop's
-   * write, or a delete for a piece begun less than 7.5 minutes ago. Manual tracking: only the
-   * block itself is written. 404 for an unknown block, 400 for a non-task one (nothing written).
+   * Start. In automatic tracking it also ends every OTHER running task block that was never
+   * Started (any task: one thing is worked on at a time), auto-placed or hand-placed, in the same
+   * locked section and with the same arrival clock — otherwise the block the user moved on from
+   * would keep running next to the Started one and both would count. Each ends where the Started
+   * block begins at the latest (running-pieces.ts); an auto piece begun less than 7.5 minutes
+   * ago is deleted, a hand-placed block never is. Started blocks are left alone. Manual
+   * tracking: only the block itself is written. 404 for an unknown block, 400 for a non-task one
+   * (nothing written).
    */
   app.post('/schedule/:id/start', guard, async (request, reply) => {
     const now = deps.now();
     const { id } = idParamSchema.parse(request.params);
     const { userId } = request;
-    const others = (b: ScheduledBlock) => b.id !== id && !b.pinned;
+    // Every other running task block that was never Started, auto-placed or hand-placed: both
+    // count while they run in automatic tracking. Started ones are the user's own explicit timers.
+    const others = (b: ScheduledBlock) => b.id !== id && b.startedAt == null;
     const attempt = (token: PrefetchedToken | null) => deps.withUserLock(userId, async () => {
       const row = await deps.repos.scheduledBlocks.findById(userId, id);
       if (!row) throw new NotFoundError(`ScheduledBlock ${id} not found`);
