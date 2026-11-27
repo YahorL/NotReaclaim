@@ -106,6 +106,19 @@ describe('NextUpCard', () => {
     expect(screen.queryByTestId('current-task')).toBeNull();
   });
 
+  it('after Start answers, the card shows Now with Stop at once, before any refetch, so Start cannot be sent twice (W5)', async () => {
+    let refetchHangs = false;
+    const getSchedule = vi.fn(() => (refetchHangs ? new Promise<ScheduledBlock[]>(() => {}) : Promise.resolve([block()])));
+    const started = block({ startsAt: '2026-01-05T14:00:00.000Z', endsAt: '2026-01-05T14:31:00.000Z', pinned: true, startedAt: '2026-01-05T14:00:00.000Z' });
+    const startBlock = vi.fn(async () => { refetchHangs = true; return started; });
+    renderWithProviders(<NextUpCard now={() => NOW} />, { api: fakeApiClient({ getSchedule, startBlock } as never) });
+    fireEvent.click(await screen.findByTestId('next-task-start'));
+    expect(await screen.findByTestId('stop-task')).toBeInTheDocument();
+    expect(screen.getByTestId('current-task')).toHaveTextContent('Next thing');
+    expect(screen.queryByTestId('next-task-start')).toBeNull();
+    expect(startBlock).toHaveBeenCalledTimes(1);
+  });
+
   it('names the block after the next one on its second line', async () => {
     const api = fakeApiClient({
       getSchedule: vi.fn(async () => [block(), block({ id: 'b2', title: 'Then this', taskId: 't2', startsAt: '2026-01-06T16:30:00.000Z', endsAt: '2026-01-06T17:00:00.000Z' })]),

@@ -224,22 +224,30 @@ function scheduleListCovers(queryKey: QueryKey, block: ScheduledBlock): boolean 
 }
 
 /**
- * Write a just-created block into every cached schedule list whose range it falls in, so the
- * planner's drop placeholder hands over to the real tile in the same render instead of leaving a
- * gap until the refetch (which may be deferred behind another planner write) lands.
+ * Write a block row the server just returned (a create, a Start, a Stop) into every cached
+ * schedule list, by its range: replaced by id where the list covers it, added where it newly
+ * does, removed where its new times left the list's range. Runs on success while the mutation
+ * still counts as pending, so the screen shows the server's answer in the same render the request
+ * stops being pending — the drop placeholder hands over to the real tile, Start turns into
+ * "Now … Stop" — instead of leaving a gap until the refetch (which may be deferred behind another
+ * planner write) lands. Anything that is not a block row is ignored.
  */
-function addCreatedBlock(qc: QueryClient, block: ScheduledBlock): void {
+function writeBlockRow(qc: QueryClient, block: ScheduledBlock): void {
+  if (!block || typeof block.id !== 'string' || typeof block.startsAt !== 'string' || typeof block.endsAt !== 'string') return;
   for (const [key, data] of qc.getQueriesData<unknown>({ queryKey: queryKeys.scheduleRoot })) {
-    if (!Array.isArray(data) || !scheduleListCovers(key, block)) continue;
-    if ((data as Array<{ id: string }>).some((b) => b.id === block.id)) continue;
-    qc.setQueryData(key, [...data, block]);
+    if (!Array.isArray(data)) continue; // the preview entry
+    const list = data as Array<{ id: string }>;
+    const present = list.some((b) => b.id === block.id);
+    const covers = scheduleListCovers(key, block);
+    if (covers) qc.setQueryData(key, present ? list.map((b) => (b.id === block.id ? block : b)) : [...list, block]);
+    else if (present) qc.setQueryData(key, list.filter((b) => b.id !== block.id));
   }
 }
 
 /**
  * Undo ONE optimistic write in a cached list: only its own row (`target`) goes back to what the
  * snapshot held; everything that changed in the list since — a block created meanwhile (written
- * in by `addCreatedBlock`), another write's move, a concurrent optimistic delete — is kept. A
+ * in by `writeBlockRow`), another write's move, a concurrent optimistic delete — is kept. A
  * whole-snapshot restore would wipe those until the next refetch.
  *
  * - Row still in the list: replaced by its snapshot version (or dropped on a 404, `gone`).
@@ -566,7 +574,7 @@ export function useCreateScheduledBlockMutation({ inlineErrors = false }: { inli
     (api, body: CreateScheduledBlockInput) => api.createScheduledBlock(body),
     [queryKeys.scheduleRoot],
     { plannerWrite: 'blockCreate', inlineErrors },
-    addCreatedBlock,
+    writeBlockRow,
     // A 404 here means the task is gone: refresh the panel too.
     [queryKeys.scheduleRoot, queryKeys.tasksRoot],
   ));
@@ -578,7 +586,8 @@ export function useStartBlockMutation() {
     (api, id: string) => api.startBlock(id),
     [queryKeys.scheduleRoot, queryKeys.tasksRoot],
     { plannerWrite: 'blockStart' },
-    undefined,
+    // The started row only: other pieces the server ended arrive with the refetch.
+    writeBlockRow,
     [queryKeys.scheduleRoot, queryKeys.tasksRoot],
   ));
 }
@@ -589,7 +598,7 @@ export function useStopBlockMutation() {
     (api, id: string) => api.stopBlock(id),
     [queryKeys.scheduleRoot, queryKeys.tasksRoot],
     { plannerWrite: 'blockStop' },
-    undefined,
+    writeBlockRow,
     [queryKeys.scheduleRoot, queryKeys.tasksRoot],
   ));
 }

@@ -593,3 +593,58 @@ describe('a failed optimistic write rolls back only its own row (W4)', () => {
     expect(qc.getQueryData(other)).toEqual([b2, n2]);
   });
 });
+
+describe('Start / Stop write the returned row into the cache before the refetch (W5)', () => {
+  const day1 = queryKeys.schedule('2026-01-05T00:00:00.000Z', '2026-01-06T00:00:00.000Z');
+  const day2 = queryKeys.schedule('2026-01-06T00:00:00.000Z', '2026-01-07T00:00:00.000Z');
+  const unranged = queryKeys.schedule(undefined, undefined);
+  const b5 = { id: 'b5', taskId: 't5', startsAt: '2026-01-05T15:00:00.000Z', endsAt: '2026-01-05T16:00:00.000Z', pinned: false, startedAt: null };
+
+  it.each([
+    ['Start', useStartBlockMutation, 'startBlock'],
+    ['Stop', useStopBlockMutation, 'stopBlock'],
+  ] as const)('%s: replaces the row by id in every list that covers it, while still pending', async (_n, useHook, method) => {
+    const row = { ...b5, startsAt: '2026-01-05T14:15:00.000Z', endsAt: '2026-01-05T15:15:00.000Z', pinned: true, startedAt: '2026-01-05T14:10:00.000Z' };
+    const { Wrapper, qc } = wrap(fakeApiClient({ [method]: vi.fn(async () => row) } as never));
+    vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    qc.setQueryData(day1, [b5]);
+    qc.setQueryData(unranged, [b5]);
+    qc.setQueryData(day2, []);
+    qc.setQueryData(queryKeys.schedulePreview(), { blocks: [], unscheduled: [] });
+    let pendingWhenWritten: boolean | null = null;
+    qc.getQueryCache().subscribe((e) => {
+      if (e.type === 'updated' && pendingWhenWritten === null && JSON.stringify(e.query.queryKey) === JSON.stringify(day1)) pendingWhenWritten = qc.isMutating() > 0;
+    });
+    const { result } = renderHook(() => useHook(), { wrapper: Wrapper });
+    result.current.mutate('b5');
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(qc.getQueryData(day1)).toEqual([row]);
+    expect(qc.getQueryData(unranged)).toEqual([row]);
+    expect(qc.getQueryData(day2)).toEqual([]);
+    expect(qc.getQueryData(queryKeys.schedulePreview())).toEqual({ blocks: [], unscheduled: [] });
+    expect(pendingWhenWritten).toBe(true);
+  });
+
+  it('a row whose times moved into another list leaves the old one and joins the new one', async () => {
+    const moved = { ...b5, startsAt: '2026-01-06T09:00:00.000Z', endsAt: '2026-01-06T10:00:00.000Z', startedAt: '2026-01-06T09:00:00.000Z' };
+    const { Wrapper, qc } = wrap(fakeApiClient({ startBlock: vi.fn(async () => moved) } as never));
+    vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    qc.setQueryData(day1, [b5]);
+    qc.setQueryData(day2, []);
+    const { result } = renderHook(() => useStartBlockMutation(), { wrapper: Wrapper });
+    result.current.mutate('b5');
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(qc.getQueryData(day1)).toEqual([]);
+    expect(qc.getQueryData(day2)).toEqual([moved]);
+  });
+
+  it('an answer that is not a block row changes nothing', async () => {
+    const { Wrapper, qc } = wrap(fakeApiClient({ startBlock: vi.fn(async () => ({})) } as never));
+    vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    qc.setQueryData(day1, [b5]);
+    const { result } = renderHook(() => useStartBlockMutation(), { wrapper: Wrapper });
+    result.current.mutate('b5');
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(qc.getQueryData(day1)).toEqual([b5]);
+  });
+});
