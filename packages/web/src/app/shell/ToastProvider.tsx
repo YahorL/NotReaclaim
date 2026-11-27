@@ -8,9 +8,15 @@ export const TOAST_MS = 2400;
 
 export type ToastIcon = 'lock' | 'check' | 'warning';
 
+export interface ToastOptions {
+  icon?: ToastIcon;
+  /** How long it stays (default TOAST_MS). Longer messages (warnings) ask for more. */
+  durationMs?: number;
+}
+
 export interface ToastApi {
   /** Show `text` now, replacing any toast on screen. */
-  show: (text: string, opts?: { icon?: ToastIcon }) => void;
+  show: (text: string, opts?: ToastOptions) => void;
   /**
    * Anchor the visible pill in a caller's container (the Planner's calendar panel, P4) instead
    * of the viewport; null restores the default. Use as a ref callback. The live region stays in
@@ -27,7 +33,7 @@ export function useToast(): ToastApi {
   return useContext(ToastContext);
 }
 
-interface Current { key: number; text: string; icon: ToastIcon | null }
+interface Current { key: number; text: string; icon: ToastIcon | null; durationMs: number }
 
 /**
  * Shell-level toast: one at a time (newest replaces), auto-cleared after 2.4s, in an
@@ -40,11 +46,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const seq = useRef(0);
   const reduced = usePrefersReducedMotion();
 
-  const show = useCallback((text: string, opts?: { icon?: ToastIcon }) => {
+  const show = useCallback((text: string, opts?: ToastOptions) => {
     if (timer.current) clearTimeout(timer.current);
     seq.current += 1;
-    setCurrent({ key: seq.current, text, icon: opts?.icon ?? null });
-    timer.current = setTimeout(() => { timer.current = null; setCurrent(null); }, TOAST_MS);
+    const durationMs = opts?.durationMs ?? TOAST_MS;
+    setCurrent({ key: seq.current, text, icon: opts?.icon ?? null, durationMs });
+    timer.current = setTimeout(() => { timer.current = null; setCurrent(null); }, durationMs);
   }, []);
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
@@ -55,13 +62,17 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   // Keyed per show(), so a replacement restarts the enter animation. Under reduced motion the
   // keyframe is left off entirely: it ends at opacity 0, and the kill switch would collapse it
   // to that end state at once, hiding the text.
+  // A longer toast keeps the enter / exit speed and holds longer (`toast-long`, stretched to it).
+  const long = current !== null && current.durationMs !== TOAST_MS;
   const pill = current && (
     <span
       key={current.key}
       data-testid="toast"
       data-icon={current.icon ?? undefined}
       data-animated={!reduced}
-      className={reduced ? 'toast' : 'toast animate-toast'}
+      data-duration={current.durationMs}
+      className={reduced ? 'toast' : long ? 'toast animate-toast-long' : 'toast animate-toast'}
+      style={!reduced && long ? { animationDuration: `${current.durationMs}ms` } : undefined}
     >
       {Icon && <Icon size={15} />}
       {current.text}

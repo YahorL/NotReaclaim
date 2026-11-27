@@ -7,7 +7,11 @@ import { saveErrorText } from '../lib/saveError';
 import { useToast } from './ToastProvider';
 
 /** A block edit (move, resize, Unpin, Start, Stop) whose block a replan removed while it waited. */
-export const BLOCK_REPLANNED_TEXT = "That block was re-planned while you were editing it. Your change wasn't applied.";
+// "or removed": the web cannot tell a replan from another tab's delete or a task completed
+// elsewhere (and a running piece in automatic tracking is never re-planned at all).
+export const BLOCK_REPLANNED_TEXT = "That block was re-planned or removed while you were editing it. Your change wasn't applied.";
+/** A warning toast stays this long: these messages run to 10–15 words. */
+export const WARNING_TOAST_MS = 6000;
 /** A task dropped on the planner that was deleted meanwhile (POST /schedule answered 404). */
 export const TASK_GONE_TEXT = "That task no longer exists, so it wasn't scheduled.";
 /** An app event moved after it was deleted elsewhere. */
@@ -60,7 +64,7 @@ export function PlannerWriteFeedback(): null {
       if (!w) return;
       if (w.inlineErrors && (observed.get(e.mutation)?.size ?? 0) > 0) return;
       const text = plannerWriteErrorText(w.op, e.action.error);
-      if (text) show(text, { icon: 'warning' });
+      if (text) show(text, { icon: 'warning', durationMs: WARNING_TOAST_MS });
     });
   }, [qc, show]);
   return null;

@@ -8,13 +8,13 @@ import { fakeApiClient, gatewayError } from '../../test/fakes';
 import { useCreateScheduledBlockMutation, useDeleteScheduledBlockMutation, useStartBlockMutation, useUpdateScheduledBlockMutation, useUpdateCalendarEventMutation } from '../../api/queries';
 import { SAVE_FAILED_NO_RESPONSE } from '../lib/saveError';
 import { ToastProvider } from './ToastProvider';
-import { PlannerWriteFeedback, plannerWriteErrorText, BLOCK_REPLANNED_TEXT, TASK_GONE_TEXT, EVENT_GONE_TEXT } from './PlannerWriteFeedback';
+import { PlannerWriteFeedback, plannerWriteErrorText, BLOCK_REPLANNED_TEXT, TASK_GONE_TEXT, EVENT_GONE_TEXT, WARNING_TOAST_MS } from './PlannerWriteFeedback';
 
 const notFound = () => new ApiError(404, 'not_found', 'ScheduledBlock b1 not found');
 
 describe('plannerWriteErrorText', () => {
   it.each(['blockUpdate', 'blockStart', 'blockStop'] as const)('a 404 on %s: the block was re-planned away while the edit waited', (op) => {
-    expect(BLOCK_REPLANNED_TEXT).toBe("That block was re-planned while you were editing it. Your change wasn't applied.");
+    expect(BLOCK_REPLANNED_TEXT).toBe("That block was re-planned or removed while you were editing it. Your change wasn't applied.");
     expect(plannerWriteErrorText(op, notFound())).toBe(BLOCK_REPLANNED_TEXT);
   });
 
@@ -58,6 +58,9 @@ describe('PlannerWriteFeedback (shell toast for failed planner writes, from any 
     await waitFor(() => expect(screen.getByTestId('toast')).toHaveTextContent(BLOCK_REPLANNED_TEXT));
     expect(screen.getByTestId('toast-region')).toHaveAttribute('role', 'status');
     expect(screen.getByTestId('toast')).toHaveAttribute('data-icon', 'warning');
+    // Long enough to read a 10–15 word message (W6a).
+    expect(WARNING_TOAST_MS).toBe(6000);
+    expect(screen.getByTestId('toast')).toHaveAttribute('data-duration', '6000');
   });
 
   it('a Start that never reached the server is not silent', async () => {

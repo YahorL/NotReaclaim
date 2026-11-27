@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { act, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { focusManager } from '@tanstack/react-query';
 import type { ScheduledBlock, CalendarEvent, SchedulePreview, Task, Category, Habit } from '../../api/types';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
 import { Planner, REPLAN_MIN_SPIN_MS } from './Planner';
@@ -788,5 +789,29 @@ describe('Planner: automatic tracking (U4)', () => {
     tap(tileOf('Auto piece'));
     expect(screen.queryByTestId('detail-stop')).toBeNull();
     expect(screen.getByTestId('detail-delete')).toBeInTheDocument();
+  });
+});
+
+describe('Planner: the drop placeholder keeps its title (W6c)', () => {
+  beforeEach(() => { localStorage.removeItem('nr.plannerPanelHidden'); });
+  it('even when its task leaves the tasks list while the POST waits', async () => {
+    const t2: Task = { id: 't2', userId: 'u1', title: 'Inbox zero', priority: 2, sortOrder: 0, durationMs: 3_600_000, dueBy: '2026-01-10T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1, categoryId: null, status: 'pending', completedAt: null, createdAt: '', updatedAt: '' };
+    let tasksNow: Task[] = [t2];
+    const listTasks = vi.fn(async () => tasksNow);
+    const createScheduledBlock = vi.fn(() => new Promise(() => {}));
+    renderWithProviders(<Planner now={() => NOW} />, { api: makeApi({ createScheduledBlock, listTasks }) });
+    await waitFor(() => expect(within(screen.getByTestId('block-layer')).getAllByTestId('event-block').length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByTestId('day-col-0'));
+    fireEvent.click(screen.getByTestId('mode-task'));
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Inbox zero' })).toBeInTheDocument());
+    fireEvent.change(screen.getByTestId('task-select'), { target: { value: 't2' } });
+    fireEvent.click(screen.getByTestId('create-submit'));
+    expect(await within(screen.getByTestId('block-layer')).findByTestId('drop-placeholder')).toHaveTextContent('Inbox zero');
+    // The task is completed in another tab: the next tasks refetch no longer lists it.
+    tasksNow = [];
+    act(() => { focusManager.setFocused(false); focusManager.setFocused(true); }); // refetch on focus
+    await waitFor(() => expect(within(screen.getByTestId('planner-task-panel')).queryByText('Inbox zero')).toBeNull());
+    expect(within(screen.getByTestId('block-layer')).getByTestId('drop-placeholder')).toHaveTextContent('Inbox zero');
+    act(() => { focusManager.setFocused(undefined); });
   });
 });

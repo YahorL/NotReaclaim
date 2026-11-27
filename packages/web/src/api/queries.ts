@@ -571,7 +571,8 @@ export function useCreateCalendarEventMutation() {
 export function useCreateScheduledBlockMutation({ inlineErrors = false }: { inlineErrors?: boolean } = {}) {
   const qc = useQueryClient();
   return ignoreWhilePending(qc, 'blockCreate', useApiMutation(
-    (api, body: CreateScheduledBlockInput) => api.createScheduledBlock(body),
+    // `title`: the task's title at drop time, for the placeholder only — never sent.
+    (api, { title: _title, ...body }: CreateScheduledBlockInput & { title?: string }) => api.createScheduledBlock(body),
     [queryKeys.scheduleRoot],
     { plannerWrite: 'blockCreate', inlineErrors },
     writeBlockRow,

@@ -44,6 +44,32 @@ describe('ToastProvider', () => {
     expect(TOAST_MS).toBe(2400);
   });
 
+  it('a toast can ask to stay longer (warnings, W6a); its animation is stretched to match, others keep 2.4s', () => {
+    vi.useFakeTimers();
+    function Long() {
+      const { show } = useToast();
+      return <button type="button" onClick={() => show('Something went wrong with a long explanation', { icon: 'warning', durationMs: 6000 })}>long</button>;
+    }
+    render(<ToastProvider><Long /><Trigger text="Locked" icon="lock" /></ToastProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'long' }));
+    const toast = screen.getByTestId('toast');
+    expect(toast).toHaveAttribute('data-duration', '6000');
+    expect(toast.className).toContain('animate-toast-long');
+    expect(toast.style.animationDuration).toBe('6000ms');
+    act(() => { vi.advanceTimersByTime(5999); });
+    expect(screen.getByTestId('toast')).toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(screen.queryByTestId('toast')).toBeNull();
+    // The newest still replaces it, with its own (default) clock.
+    fireEvent.click(screen.getByRole('button', { name: 'long' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Locked' }));
+    expect(screen.getByTestId('toast')).toHaveAttribute('data-duration', String(TOAST_MS));
+    expect(screen.getByTestId('toast').className).toContain('animate-toast');
+    expect(screen.getByTestId('toast').className).not.toContain('animate-toast-long');
+    act(() => { vi.advanceTimersByTime(TOAST_MS); });
+    expect(screen.queryByTestId('toast')).toBeNull();
+  });
+
   it('shows one toast at a time: the newest replaces it and restarts the clock', () => {
     vi.useFakeTimers();
     renderToasts();

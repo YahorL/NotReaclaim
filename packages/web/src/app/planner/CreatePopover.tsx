@@ -120,7 +120,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
     } else if (mode === 'event') {
       createEventM.mutate({ title: title.trim(), startsAt: toIso(startMs), endsAt: toIso(endMs) }, { onSuccess: onClose });
     } else if (existingChosen) {
-      createBlockM.mutate({ taskId, startsAt: toIso(startMs), endsAt: toIso(endMs) }, { onSuccess: onClose });
+      createBlockM.mutate({ taskId, startsAt: toIso(startMs), endsAt: toIso(endMs), title: activeTasks.find((t) => t.id === taskId)?.title }, { onSuccess: onClose });
     } else {
       // Only the new-task branch gets here, and `canSubmit` requires both dates to convert for it.
       if (typeof dueIso !== 'string' || afterIso === undefined) return;
@@ -133,7 +133,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
           ...(notBefore !== undefined && { notBefore }),
           ...(catId !== undefined && { categoryId: catId }),
         },
-        { onSuccess: (task) => createBlockM.mutate({ taskId: task.id, startsAt: toIso(startMs), endsAt: toIso(endMs) }, { onSuccess: onClose }) },
+        { onSuccess: (task) => createBlockM.mutate({ taskId: task.id, startsAt: toIso(startMs), endsAt: toIso(endMs), title: task.title }, { onSuccess: onClose }) },
       );
     }
   };

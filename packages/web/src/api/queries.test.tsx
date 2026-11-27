@@ -648,3 +648,15 @@ describe('Start / Stop write the returned row into the cache before the refetch 
     expect(qc.getQueryData(day1)).toEqual([b5]);
   });
 });
+
+describe('useCreateScheduledBlockMutation carries the title for the placeholder only (W6c)', () => {
+  it('the title stays in the mutation variables and never reaches the request body', async () => {
+    const createScheduledBlock = vi.fn(async () => ({}));
+    const { Wrapper } = wrap(fakeApiClient({ createScheduledBlock } as never));
+    const pending = renderHook(() => usePendingPlannerWrites(), { wrapper: Wrapper });
+    const { result } = renderHook(() => useCreateScheduledBlockMutation(), { wrapper: Wrapper });
+    result.current.mutate({ taskId: 't1', startsAt: 'S', endsAt: 'E', title: 'Inbox zero' });
+    await waitFor(() => expect(createScheduledBlock).toHaveBeenCalledWith({ taskId: 't1', startsAt: 'S', endsAt: 'E' }));
+    void pending;
+  });
+});

@@ -15,7 +15,8 @@ export function pendingTileKeys(writes: readonly PendingPlannerWrite[]): string[
 /** One placeholder per task whose POST /schedule is still waiting, at the slot it was dropped on. */
 export function dropPlaceholdersFrom(writes: readonly PendingPlannerWrite[], tasks: readonly { id: string; title: string }[]): DropPlaceholder[] {
   return writes.filter((w) => w.op === 'blockCreate').map((w) => {
-    const v = w.variables as CreateScheduledBlockInput;
-    return { key: `drop:${v.taskId}`, title: tasks.find((t) => t.id === v.taskId)?.title ?? '', startMs: Date.parse(v.startsAt), endMs: Date.parse(v.endsAt) };
+    const v = w.variables as CreateScheduledBlockInput & { title?: string };
+    // The title captured at drop time wins: the task may leave the list while the POST waits.
+    return { key: `drop:${v.taskId}`, title: v.title ?? tasks.find((t) => t.id === v.taskId)?.title ?? '', startMs: Date.parse(v.startsAt), endMs: Date.parse(v.endsAt) };
   });
 }

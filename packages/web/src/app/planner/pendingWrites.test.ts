@@ -16,6 +16,11 @@ describe('pendingTileKeys', () => {
 });
 
 describe('dropPlaceholdersFrom', () => {
+  it('keeps the title captured at drop time when the task has left the list meanwhile (W6c)', () => {
+    const v = { taskId: 't1', startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T10:00:00.000Z', title: 'Inbox zero' };
+    expect(dropPlaceholdersFrom([{ op: 'blockCreate', target: 't1', variables: v }], [])[0]!.title).toBe('Inbox zero');
+  });
+
   it('one placeholder per pending create, at its slot, titled after its task', () => {
     const v = { taskId: 't1', startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T10:00:00.000Z' };
     expect(dropPlaceholdersFrom(

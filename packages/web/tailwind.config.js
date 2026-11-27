@@ -125,6 +125,13 @@ export default {
           '12%, 82%': { opacity: '1', transform: 'none' },
           '100%': { opacity: '0', transform: 'translateY(4px)' },
         },
+        // A longer toast (warnings, ~6s): the same enter / exit at about the same speed, a longer
+        // hold. Its duration is set inline from the toast's own length.
+        'toast-long': {
+          '0%': { opacity: '0', transform: 'translateY(10px) scale(.96)' },
+          '5%, 93%': { opacity: '1', transform: 'none' },
+          '100%': { opacity: '0', transform: 'translateY(4px)' },
+        },
         'pulse-dot': {
           '0%': { boxShadow: '0 0 0 0 rgb(var(--c-accent-glow) / .6)' },
           '70%': { boxShadow: '0 0 0 10px rgb(var(--c-accent-glow) / 0)' },
@@ -160,6 +167,7 @@ export default {
         land: 'land .9s cubic-bezier(.34, 1.45, .5, 1) backwards',
         shake: 'shake .45s cubic-bezier(.36, .07, .19, .97)',
         toast: 'toast var(--dur-toast) ease both',
+        'toast-long': 'toast-long 6s ease both',
         'pulse-dot': 'pulse-dot 2.2s ease-out infinite',
         'pop-check': 'pop-check .35s var(--ease-pop)',
         expand: 'expand .35s var(--ease-out) both',
