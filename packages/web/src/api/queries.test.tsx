@@ -511,3 +511,85 @@ describe('a block write answered 404: the block no longer exists (U3)', () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: queryKeys.tasksRoot });
   });
 });
+
+describe('a failed optimistic write rolls back only its own row (W4)', () => {
+  const b1 = { id: 'b1', startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T10:00:00.000Z', pinned: false };
+  const b2 = { id: 'b2', startsAt: '2026-01-05T11:00:00.000Z', endsAt: '2026-01-05T12:00:00.000Z', pinned: false };
+  const key = queryKeys.schedule('2026-01-05T00:00:00.000Z', '2026-01-06T00:00:00.000Z');
+  const ids = (qc: QueryClient) => (qc.getQueryData(key) as Array<{ id: string }>).map((b) => b.id);
+  const boom = () => new ApiError(500, 'internal_error', 'boom');
+
+  it('a block created while a move was pending survives that move failing (probe P3)', async () => {
+    let rejectMove!: (e: unknown) => void;
+    const created = { id: 'n1', taskId: 't2', startsAt: '2026-01-05T13:00:00.000Z', endsAt: '2026-01-05T14:00:00.000Z', pinned: true };
+    const { Wrapper, qc } = wrap(fakeApiClient({
+      updateScheduledBlock: vi.fn(() => new Promise((_r, j) => { rejectMove = j; })),
+      createScheduledBlock: vi.fn(async () => created),
+    } as never));
+    vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    qc.setQueryData(key, [b1]);
+    const move = renderHook(() => useUpdateScheduledBlockMutation(), { wrapper: Wrapper });
+    const create = renderHook(() => useCreateScheduledBlockMutation(), { wrapper: Wrapper });
+    move.result.current.mutate({ id: 'b1', patch: { startsAt: '2026-01-05T09:30:00.000Z', endsAt: '2026-01-05T10:30:00.000Z', pinned: true } });
+    await waitFor(() => expect((qc.getQueryData(key) as Array<{ startsAt: string }>)[0]!.startsAt).toBe('2026-01-05T09:30:00.000Z'));
+    create.result.current.mutate({ taskId: 't2', startsAt: created.startsAt, endsAt: created.endsAt });
+    await waitFor(() => expect(ids(qc)).toEqual(['b1', 'n1']));
+    rejectMove(boom());
+    await waitFor(() => expect(move.result.current.isError).toBe(true));
+    expect(qc.getQueryData(key)).toEqual([b1, created]); // b1 back where it was, the new tile kept
+  });
+
+  it('does not resurrect a row a concurrent optimistic delete removed', async () => {
+    let rejectMove!: (e: unknown) => void;
+    const { Wrapper, qc } = wrap(fakeApiClient({
+      updateScheduledBlock: vi.fn(() => new Promise((_r, j) => { rejectMove = j; })),
+      deleteScheduledBlock: vi.fn(() => new Promise(() => {})),
+    } as never));
+    qc.setQueryData(key, [b1, b2]);
+    const move = renderHook(() => useUpdateScheduledBlockMutation(), { wrapper: Wrapper });
+    const del = renderHook(() => useDeleteScheduledBlockMutation(), { wrapper: Wrapper });
+    move.result.current.mutate({ id: 'b1', patch: { pinned: true } });
+    await waitFor(() => expect((qc.getQueryData(key) as typeof b1[])[0]!.pinned).toBe(true));
+    del.result.current.mutate('b2');
+    await waitFor(() => expect(ids(qc)).toEqual(['b1']));
+    rejectMove(boom());
+    await waitFor(() => expect(move.result.current.isError).toBe(true));
+    expect(qc.getQueryData(key)).toEqual([b1]);
+  });
+
+  it('a failed delete puts its row back in place without undoing a concurrent move of another row', async () => {
+    let rejectDelete!: (e: unknown) => void;
+    const { Wrapper, qc } = wrap(fakeApiClient({
+      deleteScheduledBlock: vi.fn(() => new Promise((_r, j) => { rejectDelete = j; })),
+      updateScheduledBlock: vi.fn(() => new Promise(() => {})),
+    } as never));
+    qc.setQueryData(key, [b1, b2]);
+    const del = renderHook(() => useDeleteScheduledBlockMutation(), { wrapper: Wrapper });
+    const move = renderHook(() => useUpdateScheduledBlockMutation(), { wrapper: Wrapper });
+    del.result.current.mutate('b1');
+    await waitFor(() => expect(ids(qc)).toEqual(['b2']));
+    move.result.current.mutate({ id: 'b2', patch: { pinned: true } });
+    await waitFor(() => expect((qc.getQueryData(key) as typeof b2[])[0]!.pinned).toBe(true));
+    rejectDelete(boom());
+    await waitFor(() => expect(del.result.current.isError).toBe(true));
+    expect(qc.getQueryData(key)).toEqual([b1, { ...b2, pinned: true }]);
+  });
+
+  it('two lists: each gets only the failing row reverted; a list without that row is left alone', async () => {
+    let rejectMove!: (e: unknown) => void;
+    const other = queryKeys.schedule('2026-01-06T00:00:00.000Z', '2026-01-07T00:00:00.000Z');
+    const { Wrapper, qc } = wrap(fakeApiClient({ updateScheduledBlock: vi.fn(() => new Promise((_r, j) => { rejectMove = j; })) } as never));
+    qc.setQueryData(key, [b1, b2]);
+    qc.setQueryData(other, [b2]);
+    const move = renderHook(() => useUpdateScheduledBlockMutation(), { wrapper: Wrapper });
+    move.result.current.mutate({ id: 'b1', patch: { pinned: true } });
+    await waitFor(() => expect((qc.getQueryData(key) as typeof b1[])[0]!.pinned).toBe(true));
+    // Something else changes the other list meanwhile (e.g. a created row lands there).
+    const n2 = { ...b2, id: 'n2' };
+    qc.setQueryData(other, [b2, n2]);
+    rejectMove(boom());
+    await waitFor(() => expect(move.result.current.isError).toBe(true));
+    expect(qc.getQueryData(key)).toEqual([b1, b2]);
+    expect(qc.getQueryData(other)).toEqual([b2, n2]);
+  });
+});

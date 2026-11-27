@@ -237,6 +237,30 @@ function addCreatedBlock(qc: QueryClient, block: ScheduledBlock): void {
 }
 
 /**
+ * Undo ONE optimistic write in a cached list: only its own row (`target`) goes back to what the
+ * snapshot held; everything that changed in the list since — a block created meanwhile (written
+ * in by `addCreatedBlock`), another write's move, a concurrent optimistic delete — is kept. A
+ * whole-snapshot restore would wipe those until the next refetch.
+ *
+ * - Row still in the list: replaced by its snapshot version (or dropped on a 404, `gone`).
+ * - Row missing: put back (at its old index) only if THIS write removed it — i.e. `applied`, the
+ *   write's own change to the snapshot, lacks it (a delete). A row some other write removed stays
+ *   removed. None of the optimistic writes ADD rows (update/event update map, delete/event delete
+ *   filter), so nothing this write added can be left behind.
+ */
+function revertRow<T extends { id: string }>(current: T[], snapshot: T[], target: string, gone: boolean, applied: T[]): T[] {
+  if (gone) return current.filter((x) => x.id !== target);
+  const index = snapshot.findIndex((x) => x.id === target);
+  if (index === -1) return current; // the write never touched this list
+  const before = snapshot[index]!;
+  if (current.some((x) => x.id === target)) return current.map((x) => (x.id === target ? before : x));
+  const removedByThisWrite = !applied.some((x) => x.id === target);
+  if (!removedByThisWrite) return current;
+  const at = Math.min(index, current.length);
+  return [...current.slice(0, at), before, ...current.slice(at)];
+}
+
+/**
  * A mutation that optimistically rewrites every cached LIST under `root` with `apply`, rolls the
  * snapshots back on error, and refreshes `root` and each of `alsoInvalidate` once settled.
  * It is a planner write (SCHEDULE_WRITE_KEY): settling only records its roots as deferred; they
@@ -268,12 +292,19 @@ function useOptimisticListMutation<TVars, TResult>(
       // the previous session's data and must not be restored over the new session's cache.
       if (!qc.getMutationCache().getAll().some((m) => m.state.context === ctx)) return;
       // 404: the row is gone (a replan removed it while the edit waited, or another tab deleted
-      // it). Restoring it would flash it back until the refetch removes it again, so roll back
-      // everything else but leave it out — a failed move then vanishes, a delete stays done.
-      const gone = meta && err instanceof ApiError && err.status === 404 ? plannerWriteTarget(meta.plannerWrite, vars) : null;
-      ctx?.snapshots.forEach(([key, data]) => qc.setQueryData(key, gone !== null && Array.isArray(data)
-        ? (data as Array<{ id: string }>).filter((x) => x.id !== gone)
-        : data));
+      // it). Restoring it would flash it back until the refetch removes it again, so leave it out
+      // — a failed move then vanishes, a delete stays done.
+      const target = meta ? plannerWriteTarget(meta.plannerWrite, vars) : null;
+      const gone = target !== null && err instanceof ApiError && err.status === 404;
+      ctx?.snapshots.forEach(([key, data]) => {
+        const current = qc.getQueryData<unknown>(key);
+        if (target === null || !Array.isArray(data) || !Array.isArray(current)) {
+          // Not a list (the preview entry) or nothing to merge into: the old whole-snapshot restore.
+          qc.setQueryData(key, gone && Array.isArray(data) ? (data as Array<{ id: string }>).filter((x) => x.id !== target) : data);
+          return;
+        }
+        qc.setQueryData(key, revertRow(current as Array<{ id: string }>, data as Array<{ id: string }>, target, gone, apply(data as Array<{ id: string }>, vars) as Array<{ id: string }>));
+      });
     },
     // Record only, never refetch here: the drain runs once no planner write is pending (see
     // drainWhenIdle), i.e. after this write has left the pending state, so a write is never
