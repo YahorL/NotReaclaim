@@ -499,9 +499,13 @@ describe('Planner entrance motion', () => {
   it('tiles wait for BOTH ranged queries, then all pop in together', async () => {
     let release: (v: CalendarEvent[]) => void = () => {};
     const getCalendarEvents = vi.fn(() => new Promise<CalendarEvent[]>((r) => { release = r; }));
-    renderWithProviders(<Planner now={() => NOW} />, { api: makeApi({ getCalendarEvents }) });
+    const getSchedule = vi.fn(async () => blocks);
+    renderWithProviders(<Planner now={() => NOW} />, { api: makeApi({ getCalendarEvents, getSchedule }) });
     await waitFor(() => expect(getCalendarEvents).toHaveBeenCalled());
-    await new Promise((r) => setTimeout(r, 50)); // the schedule has landed by now
+    // The schedule has landed (both the grid's ranged query and the Next-up card's unranged one):
+    // awaited on screen rather than slept on, so every update it causes happens inside act.
+    await waitFor(() => expect(getSchedule).toHaveBeenCalledTimes(2));
+    expect(await within(screen.getByTestId('next-up-card')).findByTestId('next-task')).toHaveTextContent('Write spec');
     expect(within(screen.getByTestId('block-layer')).queryAllByTestId('event-block')).toHaveLength(0);
     release(events);
     await waitFor(() => expect(tileOf('Standup')).toHaveAttribute('data-entering', 'true'));
