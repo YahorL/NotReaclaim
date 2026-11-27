@@ -679,3 +679,83 @@ describe('event delete duplicate guard (W8)', () => {
     await waitFor(() => expect(deleteCalendarEvent).toHaveBeenCalledTimes(3));
   });
 });
+
+describe('writeBlockRow never stomps a pending optimistic edit of the same block (round 3, fix 1)', () => {
+  const key = queryKeys.schedule('2026-01-05T00:00:00.000Z', '2026-01-06T00:00:00.000Z');
+  const b5 = { id: 'b5', taskId: 't5', startsAt: '2026-01-05T15:00:00.000Z', endsAt: '2026-01-05T16:00:00.000Z', pinned: false, startedAt: null };
+  const b1 = { ...b5, id: 'b1', taskId: 't1', startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T10:00:00.000Z' };
+  const startedB5 = { ...b5, startsAt: '2026-01-05T14:15:00.000Z', endsAt: '2026-01-05T15:15:00.000Z', pinned: true, startedAt: '2026-01-05T14:10:00.000Z' };
+  const moved = { startsAt: '2026-01-05T18:00:00.000Z', endsAt: '2026-01-05T19:00:00.000Z', pinned: true };
+
+  it('(a) a pending move of the SAME block: the Start answer is not written, the dragged geometry stays', async () => {
+    const { Wrapper, qc } = wrap(fakeApiClient({ updateScheduledBlock: vi.fn(() => new Promise(() => {})), startBlock: vi.fn(async () => startedB5) } as never));
+    vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    qc.setQueryData(key, [b5]);
+    const move = renderHook(() => useUpdateScheduledBlockMutation(), { wrapper: Wrapper });
+    const start = renderHook(() => useStartBlockMutation(), { wrapper: Wrapper });
+    move.result.current.mutate({ id: 'b5', patch: moved });
+    await waitFor(() => expect(qc.getQueryData(key)).toEqual([{ ...b5, ...moved }]));
+    start.result.current.mutate('b5');
+    await waitFor(() => expect(start.result.current.isSuccess).toBe(true));
+    expect(qc.getQueryData(key)).toEqual([{ ...b5, ...moved }]);
+  });
+
+  it('(b) a pending delete of the SAME block: the Stop answer does not bring the tile back', async () => {
+    const { Wrapper, qc } = wrap(fakeApiClient({ deleteScheduledBlock: vi.fn(() => new Promise(() => {})), stopBlock: vi.fn(async () => startedB5) } as never));
+    vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    qc.setQueryData(key, [b1, b5]);
+    const del = renderHook(() => useDeleteScheduledBlockMutation(), { wrapper: Wrapper });
+    const stop = renderHook(() => useStopBlockMutation(), { wrapper: Wrapper });
+    del.result.current.mutate('b5');
+    await waitFor(() => expect(qc.getQueryData(key)).toEqual([b1]));
+    stop.result.current.mutate('b5');
+    await waitFor(() => expect(stop.result.current.isSuccess).toBe(true));
+    expect(qc.getQueryData(key)).toEqual([b1]);
+  });
+
+  it('(c) a pending write on a DIFFERENT block does not suppress the write', async () => {
+    const { Wrapper, qc } = wrap(fakeApiClient({ updateScheduledBlock: vi.fn(() => new Promise(() => {})), startBlock: vi.fn(async () => startedB5) } as never));
+    vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    qc.setQueryData(key, [b1, b5]);
+    const move = renderHook(() => useUpdateScheduledBlockMutation(), { wrapper: Wrapper });
+    const start = renderHook(() => useStartBlockMutation(), { wrapper: Wrapper });
+    move.result.current.mutate({ id: 'b1', patch: moved });
+    start.result.current.mutate('b5');
+    await waitFor(() => expect(start.result.current.isSuccess).toBe(true));
+    expect(qc.getQueryData(key)).toEqual([{ ...b1, ...moved }, startedB5]);
+  });
+
+  it('(d) nothing pending: written as before', async () => {
+    const { Wrapper, qc } = wrap(fakeApiClient({ startBlock: vi.fn(async () => startedB5) } as never));
+    vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    qc.setQueryData(key, [b1, b5]);
+    const start = renderHook(() => useStartBlockMutation(), { wrapper: Wrapper });
+    start.result.current.mutate('b5');
+    await waitFor(() => expect(start.result.current.isSuccess).toBe(true));
+    expect(qc.getQueryData(key)).toEqual([b1, startedB5]);
+  });
+
+  it('(e) the skipped answer is not lost: the schedule is refetched once the pending move settles', async () => {
+    let finishMove!: (v: unknown) => void;
+    let server: unknown[] = [b5];
+    const getSchedule = vi.fn(async () => server);
+    const { Wrapper, qc } = wrap(fakeApiClient({
+      getSchedule,
+      updateScheduledBlock: vi.fn(() => new Promise((res) => { finishMove = res; })),
+      startBlock: vi.fn(async () => { server = [startedB5]; return startedB5; }),
+    } as never));
+    const list = renderHook(() => useScheduleQuery('2026-01-05T00:00:00.000Z', '2026-01-06T00:00:00.000Z'), { wrapper: Wrapper });
+    await waitFor(() => expect(list.result.current.data).toEqual([b5]));
+    const move = renderHook(() => useUpdateScheduledBlockMutation(), { wrapper: Wrapper });
+    const start = renderHook(() => useStartBlockMutation(), { wrapper: Wrapper });
+    move.result.current.mutate({ id: 'b5', patch: moved });
+    await waitFor(() => expect(qc.getQueryData(key)).toEqual([{ ...b5, ...moved }]));
+    start.result.current.mutate('b5');
+    await waitFor(() => expect(start.result.current.isSuccess).toBe(true));
+    const callsWhilePending = getSchedule.mock.calls.length;
+    expect(qc.getQueryData(key)).toEqual([{ ...b5, ...moved }]);
+    finishMove({ ...b5, ...moved });
+    await waitFor(() => expect(getSchedule.mock.calls.length).toBeGreaterThan(callsWhilePending));
+    await waitFor(() => expect(list.result.current.data).toEqual([startedB5]));
+  });
+});

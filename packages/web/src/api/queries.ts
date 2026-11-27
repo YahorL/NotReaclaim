@@ -234,6 +234,11 @@ function scheduleListCovers(queryKey: QueryKey, block: ScheduledBlock): boolean 
  */
 function writeBlockRow(qc: QueryClient, block: ScheduledBlock): void {
   if (!block || typeof block.id !== 'string' || typeof block.startsAt !== 'string' || typeof block.endsAt !== 'string') return;
+  // The same block has an optimistic move/resize or delete still in flight: writing the server's
+  // row now would snap the tile back to its old geometry (or bring a deleted tile back) until that
+  // write settles. Skip it; the refetch this answer triggers is deferred behind that write and
+  // brings the server's truth once it settles (invalidateRoot → drainWhenIdle).
+  if (isPlannerWritePending(qc, 'blockUpdate', block.id) || isPlannerWritePending(qc, 'blockDelete', block.id)) return;
   for (const [key, data] of qc.getQueriesData<unknown>({ queryKey: queryKeys.scheduleRoot })) {
     if (!Array.isArray(data)) continue; // the preview entry
     const list = data as Array<{ id: string }>;
