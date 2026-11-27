@@ -469,6 +469,24 @@ describe('PATCH /tasks/:id taking a task out of the plan while one of its pieces
     expect(ctx.reconcileCalls).toHaveLength(1); // then the usual replan, which re-plans the freed time
   });
 
+  it('race: the first running piece vanishes before its end-update (drift outside the lock); the Started one is still ended, 200, announced, one replan', async () => {
+    const ctx = buildTestApp({ tasks: [taskRow('t1'), taskRow('t2')], blocks: blocks(), settings: settingsRow(false), now: () => NOW });
+    const repo = ctx.scheduledBlocks;
+    const update = repo.update.bind(repo);
+    repo.update = async (u, id, data) => {
+      if (id === 'running') await repo.delete(u, 'running');
+      return update(u, id, data);
+    };
+    const token = await tokenFor(ctx.app);
+    const res = await ctx.app.inject({ method: 'PATCH', url: '/tasks/t1', headers: { authorization: `Bearer ${token}` }, payload: { status: 'completed' } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ id: 't1', status: 'completed' });
+    expect(await ctx.scheduledBlocks.findById('u1', 'running')).toBeNull();
+    expect(await ctx.scheduledBlocks.findById('u1', 'started')).toMatchObject({ startsAt: iso('09:15'), endsAt: iso('09:30'), pinned: true });
+    expect(ctx.emitted).toContainEqual(expect.objectContaining({ type: 'data.changed', userId: 'u1', resources: ['schedule', 'tasks'] }));
+    expect(ctx.reconcileCalls).toHaveLength(1);
+  });
+
   it.each(['completed', 'backlog', 'archived'])('manual tracking, %s: the Started running piece ends too; an un-started one is left to the replan', async (status) => {
     const { byId } = await patch(status, true);
     expect(byId('started')).toMatchObject({ startsAt: iso('09:15'), endsAt: iso('09:30'), pinned: true });

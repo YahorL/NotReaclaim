@@ -760,6 +760,27 @@ describe('POST /schedule/:id/start ends the other running automatic pieces (you 
       expect(s.ctx.emitted).toContainEqual(expect.objectContaining({ type: 'data.changed', userId: 'u1', resources: ['schedule', 'tasks'] }));
     });
 
+    it('race with three others: the first vanishes before its update, the loop still ends the hand-placed one and removes the young Started one', async () => {
+      const s = await session([
+        started('x', 'tX', '09:00', '10:00'), // kept: ends at the hand-over — but drift removes it first
+        block({ id: 'h', taskId: 'tH', engineKey: null, pinned: true, startsAt: iso('09:05'), endsAt: iso('10:05') }), // hand-placed, never Started
+        started('q', 'tQ', '09:27', '10:27', '09:27', { googleEventId: 'g-q', googleCalendarId: 'cal-auto' }), // Started 3 minutes ago
+        planned('y', 'tY', '11:00', '12:00'),
+      ]);
+      const repo = s.ctx.scheduledBlocks;
+      const update = repo.update.bind(repo);
+      repo.update = async (u, id, data) => {
+        if (id === 'x') await repo.delete(u, 'x');
+        return update(u, id, data);
+      };
+      expect(await s.press('start', 'y', '09:30')).toMatchObject({ id: 'y', startsAt: '2026-01-05T09:30:00.000Z', startedAt: '2026-01-05T09:30:00.000Z' });
+      expect(await s.row('x')).toBeNull();
+      expect(await s.row('h')).toMatchObject({ startsAt: iso('09:05'), endsAt: iso('09:30'), pinned: true, startedAt: null });
+      expect(await s.row('q')).toBeNull();
+      expect(s.deleted).toEqual(['g-q']);
+      expect(s.ctx.emitted).toContainEqual(expect.objectContaining({ type: 'data.changed', userId: 'u1', resources: ['schedule', 'tasks'] }));
+    });
+
     it('any other error ending a block still fails the Start (500), and Y is not Started', async () => {
       const s = await session([started('x', 'tX', '09:00', '10:00'), planned('y', 'tY', '11:00', '12:00')]);
       const repo = s.ctx.scheduledBlocks;
