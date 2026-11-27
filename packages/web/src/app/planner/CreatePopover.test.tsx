@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProviders, fakeApiClient } from '../../test/fakes';
-import { CreatePopover } from './CreatePopover';
+import { CreatePopover, CREATE_BUSY_HINT } from './CreatePopover';
+import { useCreateScheduledBlockMutation } from '../../api/queries';
 import { ApiError } from '../../api/client';
 import { ToastProvider } from '../shell/ToastProvider';
 import { PlannerWriteFeedback } from '../shell/PlannerWriteFeedback';
@@ -534,5 +535,40 @@ describe('CreatePopover shows a network failure inline too (W2b)', () => {
     fireEvent.change(screen.getByTestId('create-title'), { target: { value: 'Standup' } });
     fireEvent.click(screen.getByTestId('create-submit'));
     await waitFor(() => expect(screen.getByTestId('create-error')).toHaveTextContent(SAVE_FAILED_NO_RESPONSE));
+  });
+});
+
+describe('CreatePopover while the same task is already being scheduled (W3)', () => {
+  it('disables "Schedule task" and says why, until the other drop lands', async () => {
+    let release!: (v: unknown) => void;
+    const createScheduledBlock = vi.fn(() => new Promise((res) => { release = res; }));
+    const listTasks = vi.fn(async () => [
+      { id: 't1', userId: 'u1', title: 'Existing job', priority: 2, durationMs: 3_600_000, dueBy: '2026-01-09T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1, categoryId: null, status: 'pending', createdAt: '', updatedAt: '' },
+      { id: 't2', userId: 'u1', title: 'Other job', priority: 2, durationMs: 3_600_000, dueBy: '2026-01-09T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1, categoryId: null, status: 'pending', createdAt: '', updatedAt: '' },
+    ]);
+    // The task panel's drop of t1, still waiting for the server.
+    function PanelDrop() {
+      const m = useCreateScheduledBlockMutation();
+      return <button type="button" onClick={() => m.mutate({ taskId: 't1', startsAt: 'S', endsAt: 'E' })}>drop t1</button>;
+    }
+    renderWithProviders(<><PanelDrop /><CreatePopover {...baseProps} /></>, { api: fakeApiClient({ listTasks, createScheduledBlock } as never) });
+    fireEvent.click(screen.getByText('drop t1'));
+    await waitFor(() => expect(createScheduledBlock).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByTestId('mode-task'));
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Existing job' })).toBeInTheDocument());
+    fireEvent.change(screen.getByTestId('task-select'), { target: { value: 't1' } });
+    const submit = screen.getByTestId('create-submit');
+    expect(submit).toBeDisabled();
+    const hint = screen.getByTestId('create-busy-hint');
+    expect(hint).toHaveTextContent(CREATE_BUSY_HINT);
+    expect(submit).toHaveAccessibleDescription(CREATE_BUSY_HINT);
+    // Another task is not affected.
+    fireEvent.change(screen.getByTestId('task-select'), { target: { value: 't2' } });
+    expect(screen.getByTestId('create-submit')).not.toBeDisabled();
+    expect(screen.queryByTestId('create-busy-hint')).toBeNull();
+    fireEvent.change(screen.getByTestId('task-select'), { target: { value: 't1' } });
+    release({ id: 'n1' });
+    await waitFor(() => expect(screen.getByTestId('create-submit')).not.toBeDisabled());
+    expect(screen.queryByTestId('create-busy-hint')).toBeNull();
   });
 });

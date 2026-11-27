@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { useCreateTaskMutation, useCreateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useCategoriesQuery } from '../../api/queries';
+import { useEffect, useId, useRef, useState } from 'react';
+import { useCreateTaskMutation, useCreateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useCategoriesQuery, usePendingPlannerWrites } from '../../api/queries';
 import { DurationStepper } from '../components/DurationStepper';
 import { WINDOW_END_MIN, SLOT_MIN, formatHm } from './weekModel';
 import { MS_PER_MIN, toIso } from '../lib/time';
@@ -25,6 +25,9 @@ export interface CreatePopoverProps {
 }
 
 type Mode = 'event' | 'task' | 'blocked';
+
+/** Shown under the button while another surface's pin of the chosen task is still waiting. */
+export const CREATE_BUSY_HINT = 'This task is already being scheduled. Wait a moment for it to land.';
 
 /** Blocked time is about the slot, not the label — an untitled entry just reads "Blocked". */
 const DEFAULT_BLOCKED_TITLE = 'Blocked';
@@ -53,6 +56,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
   const [afterLocal, setAfterLocal] = useState('');
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const busyHintId = useId();
   const createTaskM = useCreateTaskMutation();
   const createEventM = useCreateCalendarEventMutation();
   // Its failures already show inline (create-error), so no toast on top.
@@ -75,6 +79,11 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
 
   const endMs = startMs + durationMs;
   const pending = createTaskM.isPending || createEventM.isPending || createBlockM.isPending;
+  // The chosen task is already being pinned elsewhere (a panel drop still waiting): the duplicate
+  // guard would ignore this pin, so say so instead of a button that silently does nothing.
+  const writes = usePendingPlannerWrites();
+  const busyElsewhere = existingChosen && !createBlockM.isPending
+    && writes.some((w) => w.op === 'blockCreate' && w.target === taskId);
   const hasTitle = titleOptional || existingChosen || title.trim() !== '';
   // The popover's due date is required (a pinned new task needs one), so empty is not "no value"
   // here. Schedule after is optional: empty → none, but a typed value that does not convert in the
@@ -82,7 +91,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
   const dueIso = dateFieldToIso(dueLocal, zone);
   const afterIso = dateFieldToIso(afterLocal, zone);
   const datesOk = !showNewTaskFields || (typeof dueIso === 'string' && afterIso !== undefined);
-  const canSubmit = !pending && hasTitle && datesOk;
+  const canSubmit = !pending && !busyElsewhere && hasTitle && datesOk;
   // Any failure, not only the server's answers: a request that never got one (offline) reads
   // "Couldn't save. Check your connection…" through saveErrorText.
   const saveError = [createTaskM.error, createEventM.error, createBlockM.error].find((e) => e instanceof Error);
@@ -215,10 +224,12 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
       </div>
       <p data-testid="slot-label" className="mb-3 text-[13px] tabular-nums text-fg-2">{formatHm(startMs, zone)} – {formatHm(endMs, zone)}</p>
       {saveError && <p data-testid="create-error" className="mb-2 text-[11px] text-danger">{saveErrorText(saveError)}</p>}
+      {busyElsewhere && <p id={busyHintId} data-testid="create-busy-hint" className="mb-2 text-[11px] text-fg-2">{CREATE_BUSY_HINT}</p>}
       <button
         type="button"
         data-testid="create-submit"
         disabled={!canSubmit}
+        aria-describedby={busyElsewhere ? busyHintId : undefined}
         onClick={submit}
         className="btn-accent h-10 w-full rounded-pill text-[14px] font-semibold"
       >
