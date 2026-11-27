@@ -17,7 +17,10 @@ const span = (start: string, end: string) =>
 const H = 3_600_000;
 const M = 60_000;
 
-/** A calendar that keeps its events and lists the ones overlapping [timeMin, timeMax), like Google. */
+/** Google keeps whole seconds: milliseconds sent are dropped. */
+const toWholeSecond = (iso: string) => new Date(Math.floor(Date.parse(iso) / 1000) * 1000).toISOString();
+
+/** A calendar that keeps its events (to the whole second) and lists the ones overlapping [timeMin, timeMax), like Google. */
 class CalendarClient extends FakeGoogleClient {
   readonly events = new Map<string, GoogleEvent>();
   clock = 0;
@@ -26,7 +29,7 @@ class CalendarClient extends FakeGoogleClient {
   private store(id: string, e: GoogleEventWrite) {
     this.events.set(id, {
       id, status: 'confirmed', summary: e.summary,
-      start: { dateTime: e.startDateTime }, end: { dateTime: e.endDateTime }, updated: new Date(this.clock).toISOString(),
+      start: { dateTime: toWholeSecond(e.startDateTime) }, end: { dateTime: toWholeSecond(e.endDateTime) }, updated: new Date(this.clock).toISOString(),
     });
   }
 
@@ -274,6 +277,27 @@ describe('Start on the next piece while one runs reaches Google (automatic track
     await w.poll(at('10:40'));
     expect(w.writes().update - before.update).toBe(2); // pushed once
     expect(w.rowTimes()).toEqual(['09:15–09:17', '09:17–10:17']); // drift never pulled the old times back
+  });
+
+  it('pressed within the second the hand-placed block began (09:15:00.400): no cut, no milliseconds, no zero-length event', async () => {
+    const w = world({ requireStartToTrack: false, tasks: [task(1)] });
+    await w.store.create('u1', { taskId: 'tH', title: 'tH', startsAt: new Date(at('09:15')), endsAt: new Date(at('10:15')), pinned: true });
+    await w.poll(at('08:00'));
+    const handPlaced = w.store.rows().find((r) => r.taskId === 'tH')!;
+    const next = w.store.rows().find((r) => r.taskId === 't1')!;
+    // The route's writes at 09:15:00.400: the hand-placed block is cut only when exactStartMs gives a start.
+    const now = at('09:15') + 400;
+    w.client.clock = now;
+    const from = exactStartMs(now, [handPlaced.startsAt.getTime()]);
+    if (from != null) await w.store.update('u1', handPlaced.id, { endsAt: new Date(from), pinned: true });
+    await w.store.update('u1', next.id, startBlockPatch(next.startsAt.getTime(), next.endsAt.getTime(), now, [], from ?? undefined));
+    for (const t of [at('09:20'), at('09:25')]) {
+      await w.poll(t);
+      for (const e of w.client.events.values()) expect(e.start!.dateTime, e.id).not.toBe(e.end!.dateTime);
+      for (const r of w.store.rows()) expect([r.startsAt.getTime() % 1000, r.endsAt.getTime() % 1000], r.id).toEqual([0, 0]);
+    }
+    expect(w.rowTimes()).toEqual(['09:15–10:15', '09:15–10:15']); // H whole beside the Started block (the same-second residual)
+    expect(w.store.rows().find((r) => r.id === next.id)!.engineKey).toBe(next.engineKey); // drift never rewrote it
   });
 });
 

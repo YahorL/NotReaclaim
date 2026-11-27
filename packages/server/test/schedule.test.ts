@@ -371,6 +371,12 @@ describe('POST /schedule/:id/start ends the other running automatic pieces (you 
       expect(await row('h')).toMatchObject({ startsAt: iso('09:15'), endsAt: iso('09:15:40') });
     });
 
+    it('pressed within the SECOND H began (09:15:00.400): not triggered — Start keeps round15 and H is left whole (never milliseconds)', async () => {
+      const { res, row } = await start({ now: '09:15', ms: 400, id: 'y', blocks: [h(), y()] });
+      expect(res.json()).toMatchObject({ startsAt: '2026-01-05T09:15:00.000Z', endsAt: '2026-01-05T10:15:00.000Z', startedAt: '2026-01-05T09:15:00.400Z' });
+      expect(await row('h')).toMatchObject({ startsAt: iso('09:15'), endsAt: iso('10:15') });
+    });
+
     it('a begun Y that Start leaves where it is (round15 at or past its end) does not trigger it: Y keeps its start, H is left whole', async () => {
       // Y 08:00–09:10 running, H hand-placed 08:30–09:30 over it, Start on Y at 09:08 (round15 = 09:15 ≥ 09:10).
       // Cutting would move Y to 09:08 and drop its own 08:00–09:08 from the record (68 minutes).
@@ -401,7 +407,7 @@ describe('POST /schedule/:id/start ends the other running automatic pieces (you 
       expect(await row('h')).toMatchObject({ endsAt: iso('09:17') });
     });
 
-    it('with an un-pinned running piece too: it ends at Y\'s exact start (no gap), tracked == wall time', async () => {
+    it('with an un-pinned running piece too: it ends at Y\'s exact start (no gap); 109 tracked = every block counted once (only the user\'s own 2-minute H/a overlap twice)', async () => {
       const { row, ctx } = await start({
         now: '09:17', id: 'y',
         blocks: [h(), block({ id: 'a', taskId: 'tA', engineKey: 'task:tA:0', startsAt: iso('08:30'), endsAt: iso('10:00') }), y()],

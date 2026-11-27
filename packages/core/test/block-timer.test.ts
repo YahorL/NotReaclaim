@@ -141,17 +141,32 @@ describe('exactStartMs: where Start begins a block when a hand-placed running bl
     expect(exactStartMs(at('09:17') + 40_123, [at('09:15'), at('09:17') + 10_000])).toBe(at('09:17') + 40_000);
   });
 
-  it('pressed within the second such a block began: the raw instant', () => {
-    expect(exactStartMs(at('09:15') + 40_123, [at('09:15') + 40_000])).toBe(at('09:15') + 40_123);
-  });
-
-  it('every such block began at this very instant: null (nothing can be cut, Start keeps round15)', () => {
+  it('every such block began within the current second: null (never milliseconds: Start keeps round15, those are left whole)', () => {
+    expect(exactStartMs(at('09:15') + 40_123, [at('09:15') + 40_000])).toBeNull();
+    expect(exactStartMs(at('09:15') + 400, [at('09:15')])).toBeNull();
     expect(exactStartMs(at('09:17'), [at('09:17')])).toBeNull();
   });
 
-  it('some began at this very instant, others before: chosen for the others alone (the ones begun now are left whole)', () => {
+  it('some began within the current second, others before: chosen for the others alone (the ones begun this second are left whole)', () => {
     expect(exactStartMs(at('09:17') + 40_000, [at('09:16'), at('09:17') + 40_000])).toBe(at('09:17'));
     expect(exactStartMs(at('09:17') + 40_500, [at('09:17') + 10_000, at('09:17') + 40_500])).toBe(at('09:17') + 40_000);
+    expect(exactStartMs(at('09:17') + 40_500, [at('09:17') + 10_000, at('09:17') + 40_000])).toBe(at('09:17') + 40_000);
+  });
+
+  it('always a whole second, a whole minute whenever every cuttable block began before it, and after every one it cuts', () => {
+    let seed = 42; // deterministic LCG
+    const rand = (n: number) => { seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648; return seed % n; };
+    for (let i = 0; i < 500; i++) {
+      const now = at('09:00') + rand(3_600_000);
+      const starts = Array.from({ length: 1 + (i % 3) }, () => now - rand(120_000));
+      const r = exactStartMs(now, starts);
+      if (r == null) continue;
+      expect(r % 1_000, `${now} ${starts}`).toBe(0);
+      expect(r).toBeLessThanOrEqual(now);
+      const cut = starts.filter((s) => s < r);
+      expect(cut.length).toBeGreaterThan(0);
+      if (Math.max(...starts.filter((s) => s < Math.floor(now / 1_000) * 1_000)) < Math.floor(now / 60_000) * 60_000) expect(r % 60_000).toBe(0);
+    }
   });
 });
 
