@@ -23,7 +23,7 @@ const ACTION = 'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-pill px-3.
  * pill, which the TopBar hides on the planner route.
  */
 export function NextUpCard({ now = Date.now, className = '' }: { now?: () => number; className?: string }) {
-  const { running, nextBlock, start, stop, startPending, stopPending } = useNowNextControls(now);
+  const { running, nextBlock, start, stop, startPending, stopPending, startNextBlock, startNextLabel, startNextPending, startNext } = useNowNextControls(now);
   const scheduleQ = useScheduleQuery();
   const zone = useTimezone();
   const nowMs = now();
@@ -68,7 +68,25 @@ export function NextUpCard({ now = Date.now, className = '' }: { now?: () => num
               </button>
             )}
           </div>
-          {following && (
+          {/* Automatic tracking, while a piece runs: the next piece with a secondary Start (it
+              replaces the plain "following" line, which would usually name the same block). */}
+          {startNextBlock ? (
+            <div data-testid="next-up-start-next" className="flex items-center justify-between gap-3">
+              <span className="min-w-0 truncate text-[13px] text-fg-2">
+                Next · {relativeDayTimeLabel(Date.parse(startNextBlock.startsAt), nowMs, zone)} · <span className="font-medium text-fg">{startNextBlock.title}</span>
+              </span>
+              <button
+                type="button"
+                data-testid="start-next"
+                aria-label={startNextLabel ?? undefined}
+                onClick={startNext}
+                aria-busy={startNextPending || undefined}
+                className="btn-glass inline-flex h-8 shrink-0 items-center gap-1.5 rounded-pill px-3 text-[13px] font-medium text-fg"
+              >
+                <ActionIcon pending={startNextPending} icon={Icons.play} size={13} /> Start next
+              </button>
+            </div>
+          ) : following && (
             <span data-testid="next-up-following" className="min-w-0 truncate text-[13px] text-fg-2">
               {relativeDayTimeLabel(Date.parse(following.startsAt), nowMs, zone)} · <span className="font-medium text-fg">{following.title}</span>
             </span>

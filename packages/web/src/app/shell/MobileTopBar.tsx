@@ -21,7 +21,7 @@ const ACTION = 'inline-flex shrink-0 items-center gap-1 rounded-pill px-3 py-1.5
  */
 export function MobileTopBar({ onNewTask, now = Date.now }: MobileTopBarProps): ReactElement {
   const { pathname } = useLocation();
-  const { running, nextBlock, nextLabel, start, stop, openPlanner, startPending, stopPending } = useNowNextControls(now);
+  const { running, nextBlock, nextLabel, start, stop, openPlanner, startPending, stopPending, startNextBlock, startNextLabel, startNextPending, startNext } = useNowNextControls(now);
 
   return (
     <header
@@ -38,6 +38,18 @@ export function MobileTopBar({ onNewTask, now = Date.now }: MobileTopBarProps): 
           <button type="button" data-testid="mobile-stop-task" onClick={stop} aria-busy={stopPending || undefined} className={`btn-glass ${ACTION} text-danger`}>
             <ActionIcon pending={stopPending} icon={Icons.stop} size={13} /> Stop
           </button>
+          {startNextBlock && (
+            <button
+              type="button"
+              data-testid="mobile-start-next"
+              aria-label={startNextLabel ?? undefined}
+              onClick={startNext}
+              aria-busy={startNextPending || undefined}
+              className="btn-glass inline-flex shrink-0 items-center justify-center rounded-full p-1.5 text-fg coarse:p-2.5"
+            >
+              <ActionIcon pending={startNextPending} icon={Icons.play} size={13} />
+            </button>
+          )}
         </div>
       ) : nextBlock ? (
         <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5">

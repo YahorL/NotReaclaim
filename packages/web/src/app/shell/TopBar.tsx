@@ -25,7 +25,7 @@ const PILL_ACTION = 'inline-flex h-[34px] shrink-0 items-center gap-1.5 rounded-
 
 export function TopBar({ onNewTask, onSearch, now = Date.now, sidebarHidden, onToggleSidebar }: TopBarProps) {
   const { pathname } = useLocation();
-  const { running, nextBlock, nextTime, start, stop, openPlanner, startPending, stopPending } = useNowNextControls(now);
+  const { running, nextBlock, nextTime, start, stop, openPlanner, startPending, stopPending, startNextBlock, startNextLabel, startNextPending, startNext } = useNowNextControls(now);
   const zone = useTimezone();
   const tasksQ = useTasksQuery();
   const openTaskCount = tasksQ.data ? tasksQ.data.filter(isActiveTask).length : null;
@@ -78,6 +78,20 @@ export function TopBar({ onNewTask, onSearch, now = Date.now, sidebarHidden, onT
             <button type="button" data-testid="stop-task" onClick={stop} aria-busy={stopPending || undefined} className={`btn-glass ${PILL_ACTION} text-danger`}>
               <ActionIcon pending={stopPending} icon={Icons.stop} size={14} /> Stop
             </button>
+            {/* Automatic tracking: move on to the next piece (secondary; the label shows from xl). */}
+            {startNextBlock && (
+              <button
+                type="button"
+                data-testid="start-next"
+                aria-label={startNextLabel ?? undefined}
+                title={startNextLabel ?? undefined}
+                onClick={startNext}
+                aria-busy={startNextPending || undefined}
+                className={`btn-glass ${PILL_ACTION} text-fg`}
+              >
+                <ActionIcon pending={startNextPending} icon={Icons.play} size={14} /> <span className="hidden xl:inline">Start next</span>
+              </button>
+            )}
           </div>
         ) : nextBlock ? (
           <div data-testid="now-next-pill" className="glass-card flex h-[46px] min-w-0 items-center gap-1 rounded-pill p-1.5">

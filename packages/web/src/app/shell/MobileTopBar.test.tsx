@@ -95,6 +95,23 @@ describe('MobileTopBar', () => {
     await waitFor(() => expect(stopBlock).toHaveBeenCalledWith('auto'));
   });
 
+  it('automatic: an icon button "Start next" sits beside Stop; manual has none (W1)', async () => {
+    const startBlock = vi.fn(async () => ({} as never));
+    const running = block({ id: 'auto', title: 'Auto piece', startsAt: '2026-06-11T11:30:00Z', endsAt: '2026-06-11T12:30:00Z' });
+    const api = fakeApiClient({ getSettings: async () => ({ requireStartToTrack: false } as never), getSchedule: async () => [running, block()], startBlock });
+    const { unmount } = renderWithProviders(<MobileTopBar onNewTask={() => {}} now={nowFn} />, { api });
+    const btn = await screen.findByRole('button', { name: 'Start next: Write docs' });
+    expect(btn).toHaveAttribute('data-testid', 'mobile-start-next');
+    expect(btn.className).toContain('coarse:');
+    fireEvent.click(btn);
+    await waitFor(() => expect(startBlock).toHaveBeenCalledWith('b1'));
+    unmount();
+    const started = { ...running, startedAt: '2026-06-11T11:30:00Z' };
+    renderWithProviders(<MobileTopBar onNewTask={() => {}} now={nowFn} />, { api: fakeApiClient({ getSettings: async () => ({ requireStartToTrack: true } as never), getSchedule: async () => [started, block()] }) });
+    expect(await screen.findByTestId('mobile-stop-task')).toBeInTheDocument();
+    expect(screen.queryByTestId('mobile-start-next')).toBeNull();
+  });
+
   it('gives the + button a touch-sized target', () => {
     const api = fakeApiClient({ getSchedule: async () => [] });
     renderWithProviders(<MobileTopBar onNewTask={() => {}} now={nowFn} />, { api });

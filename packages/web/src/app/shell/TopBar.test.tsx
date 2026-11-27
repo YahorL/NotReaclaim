@@ -172,6 +172,31 @@ describe('TopBar Next-task indicator', () => {
     await waitFor(() => expect(stopBlock).toHaveBeenCalledWith('auto'));
   });
 
+  it('automatic: beside Now … Stop the pill offers "Start next" for the next piece (W1)', async () => {
+    const startBlock = vi.fn(async () => ({} as never));
+    const api = fakeApiClient({
+      getSettings: async () => ({ requireStartToTrack: false } as never),
+      getSchedule: async () => [block({ id: 'auto', title: 'Auto piece', startsAt: '2026-06-11T11:30:00Z', endsAt: '2026-06-11T12:30:00Z' }), block()],
+      startBlock,
+    });
+    renderWithProviders(<TopBar onNewTask={() => {}} now={nowFn} />, { api, initialEntries: ['/priorities'] });
+    expect(await screen.findByTestId('stop-task')).toBeInTheDocument();
+    const btn = await screen.findByRole('button', { name: 'Start next: Write docs' });
+    expect(btn).toHaveAttribute('data-testid', 'start-next');
+    fireEvent.click(btn);
+    await waitFor(() => expect(startBlock).toHaveBeenCalledWith('b1'));
+  });
+
+  it('manual: no "Start next" while a Started block runs (W1)', async () => {
+    const api = fakeApiClient({
+      getSettings: async () => ({ requireStartToTrack: true } as never),
+      getSchedule: async () => [block({ id: 'r', startsAt: '2026-06-11T11:30:00Z', endsAt: '2026-06-11T12:30:00Z', startedAt: '2026-06-11T11:30:00Z' }), block()],
+    });
+    renderWithProviders(<TopBar onNewTask={() => {}} now={nowFn} />, { api, initialEntries: ['/priorities'] });
+    expect(await screen.findByTestId('stop-task')).toBeInTheDocument();
+    expect(screen.queryByTestId('start-next')).toBeNull();
+  });
+
   it('is hidden when the schedule is empty', async () => {
     const api = fakeApiClient({
       getSchedule: async () => [],

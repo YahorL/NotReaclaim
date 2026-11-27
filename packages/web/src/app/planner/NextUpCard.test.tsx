@@ -119,6 +119,62 @@ describe('NextUpCard', () => {
     expect(startBlock).toHaveBeenCalledTimes(1);
   });
 
+  describe('Start next while a piece runs (W1)', () => {
+    const autoPiece = block({ id: 'auto', title: 'Auto piece', startsAt: '2026-01-05T13:30:00.000Z', endsAt: '2026-01-05T14:45:00.000Z' });
+    const settings = (requireStartToTrack: boolean) => vi.fn(async () => ({ requireStartToTrack } as never));
+
+    it('automatic: keeps Now … Stop and adds a "Start next" row for the next piece', async () => {
+      let release!: (v: unknown) => void;
+      const startBlock = vi.fn(() => new Promise((res) => { release = res; }));
+      const api = fakeApiClient({ getSettings: settings(false), getSchedule: vi.fn(async () => [autoPiece, block()]), startBlock } as never);
+      renderWithProviders(<NextUpCard now={() => NOW} />, { api });
+      expect(await screen.findByTestId('stop-task')).toBeInTheDocument();
+      const row = await screen.findByTestId('next-up-start-next');
+      expect(row).toHaveTextContent('Next · Today 3:29 PM · Next thing');
+      const btn = screen.getByRole('button', { name: 'Start next: Next thing' });
+      expect(btn).toHaveTextContent('Start next');
+      // It replaces the plain "following" line, which would name the same block.
+      expect(screen.queryByTestId('next-up-following')).toBeNull();
+      fireEvent.click(btn);
+      fireEvent.click(btn);
+      await waitFor(() => expect(btn).toHaveAttribute('aria-busy', 'true'));
+      expect(startBlock).toHaveBeenCalledTimes(1);
+      expect(startBlock).toHaveBeenCalledWith('nb');
+      release({});
+      await waitFor(() => expect(btn).not.toHaveAttribute('aria-busy'));
+    });
+
+    it('after "Start next" answers, the card shows the started piece as Now before any refetch', async () => {
+      let refetchHangs = false;
+      const getSchedule = vi.fn(() => (refetchHangs ? new Promise<ScheduledBlock[]>(() => {}) : Promise.resolve([autoPiece, block()])));
+      // The server moves the next piece to round15(now) and stamps it (the old piece ends there).
+      const started = block({ startsAt: '2026-01-05T14:00:00.000Z', endsAt: '2026-01-05T14:31:00.000Z', pinned: true, startedAt: '2026-01-05T14:00:00.000Z' });
+      const startBlock = vi.fn(async () => { refetchHangs = true; return started; });
+      const api = fakeApiClient({ getSettings: settings(false), getSchedule, startBlock } as never);
+      renderWithProviders(<NextUpCard now={() => NOW} />, { api });
+      fireEvent.click(await screen.findByRole('button', { name: 'Start next: Next thing' }));
+      await waitFor(() => expect(screen.getByTestId('current-task')).toHaveTextContent('Next thing'));
+      expect(screen.queryByTestId('next-up-start-next')).toBeNull();
+      expect(getSchedule.mock.calls.length).toBeGreaterThan(1); // the refetch went out (it brings the ended piece)
+    });
+
+    it('automatic with nothing next: no extra row', async () => {
+      const api = fakeApiClient({ getSettings: settings(false), getSchedule: vi.fn(async () => [autoPiece]) } as never);
+      renderWithProviders(<NextUpCard now={() => NOW} />, { api });
+      expect(await screen.findByTestId('stop-task')).toBeInTheDocument();
+      expect(screen.queryByTestId('next-up-start-next')).toBeNull();
+    });
+
+    it('manual: a Started block runs and nothing is offered (unchanged)', async () => {
+      const started = block({ id: 'r1', title: 'Doing it', startsAt: '2026-01-05T13:30:00.000Z', endsAt: '2026-01-05T14:45:00.000Z', startedAt: '2026-01-05T13:30:00.000Z' });
+      const api = fakeApiClient({ getSettings: settings(true), getSchedule: vi.fn(async () => [started, block()]) } as never);
+      renderWithProviders(<NextUpCard now={() => NOW} />, { api });
+      expect(await screen.findByTestId('stop-task')).toBeInTheDocument();
+      expect(screen.queryByTestId('next-up-start-next')).toBeNull();
+      expect(screen.queryByRole('button', { name: /start next/i })).toBeNull();
+    });
+  });
+
   it('names the block after the next one on its second line', async () => {
     const api = fakeApiClient({
       getSchedule: vi.fn(async () => [block(), block({ id: 'b2', title: 'Then this', taskId: 't2', startsAt: '2026-01-06T16:30:00.000Z', endsAt: '2026-01-06T17:00:00.000Z' })]),

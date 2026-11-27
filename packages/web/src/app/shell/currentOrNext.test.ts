@@ -129,3 +129,36 @@ describe('nextBoundaryMs', () => {
     expect(nextBoundaryMs([block({ taskId: null })], NOW)).toBeNull();
   });
 });
+
+describe('startNext: the next piece offered while one runs (W1)', () => {
+  const running = block({ id: 'run', startsAt: '2026-06-11T11:30:00Z', endsAt: '2026-06-11T12:30:00Z' });
+  const later = block({ id: 'later', startsAt: '2026-06-11T16:00:00Z', endsAt: '2026-06-11T17:00:00Z' });
+  const soon = block({ id: 'soon', startsAt: '2026-06-11T13:00:00Z', endsAt: '2026-06-11T14:00:00Z' });
+
+  it('automatic: the block the bar would show as Next if nothing ran, alongside the running one', () => {
+    const r = pickCurrentOrNext([later, running, soon], NOW, 'automatic');
+    expect(r.running?.id).toBe('run');
+    expect(r.nextBlock).toBeNull(); // the primary control stays "Now … Stop"
+    expect(r.startNext?.id).toBe('soon');
+  });
+
+  it('automatic: nothing to start next → null; a Started future block is not offered', () => {
+    expect(pickCurrentOrNext([running], NOW, 'automatic').startNext).toBeNull();
+    const startedSoon = { ...soon, startedAt: '2026-06-11T11:59:00Z' };
+    expect(pickCurrentOrNext([running, startedSoon], NOW, 'automatic').startNext).toBeNull();
+  });
+
+  it('automatic, nothing running: no startNext (the primary Start covers it)', () => {
+    const r = pickCurrentOrNext([soon], NOW, 'automatic');
+    expect(r.nextBlock?.id).toBe('soon');
+    expect(r.startNext).toBeNull();
+  });
+
+  it('manual: never offered (Start stays hidden while a Started block runs)', () => {
+    const started = block({ id: 'run', startsAt: '2026-06-11T11:30:00Z', endsAt: '2026-06-11T13:00:00Z', startedAt: '2026-06-11T11:30:00Z' });
+    const r = pickCurrentOrNext([started, soon], NOW, 'manual');
+    expect(r.running?.id).toBe('run');
+    expect(r.nextBlock).toBeNull();
+    expect(r.startNext).toBeNull();
+  });
+});

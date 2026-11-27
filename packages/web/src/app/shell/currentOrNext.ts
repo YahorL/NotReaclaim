@@ -35,6 +35,12 @@ export interface CurrentOrNext {
   running: ScheduledBlock | null;
   /** The soonest un-started future task block. Always null while something is running. */
   nextBlock: ScheduledBlock | null;
+  /**
+   * Automatic tracking only, while a piece runs: the block that would be `nextBlock` if nothing
+   * ran, offered as a secondary "Start next" (the server ends the running piece at that moment).
+   * Always null in manual tracking and while nothing runs.
+   */
+  startNext: ScheduledBlock | null;
 }
 
 /**
@@ -49,12 +55,14 @@ export function pickCurrentOrNext(blocks: readonly ScheduledBlock[], nowMs: numb
     .sort(mode === 'automatic'
       ? (a, b) => Date.parse(b.startsAt) - Date.parse(a.startsAt)
       : (a, b) => Date.parse(a.endsAt) - Date.parse(b.endsAt))[0] ?? null;
-  const nextBlock = running
-    ? null
-    : taskBlocks
-        .filter((b) => b.startedAt == null && Date.parse(b.startsAt) > nowMs)
-        .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))[0] ?? null;
-  return { running, nextBlock };
+  const upcoming = taskBlocks
+    .filter((b) => b.startedAt == null && Date.parse(b.startsAt) > nowMs)
+    .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))[0] ?? null;
+  return {
+    running,
+    nextBlock: running ? null : upcoming,
+    startNext: running && mode === 'automatic' ? upcoming : null,
+  };
 }
 
 /** The next moment after `nowMs` a task block starts or ends — when running / next can change. */
