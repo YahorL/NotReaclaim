@@ -101,14 +101,15 @@ describe('Settings page', () => {
   });
 
   it('first-time setup, then a row exists: the next switch on asks (round 3)', async () => {
-    const putSettings = vi.fn(async () => settings({ requireStartToTrack: false }));
-    const patchSettings = vi.fn(async () => settings({ requireStartToTrack: true }));
     let configured = false;
+    // The PUT creates the row: from then on GET answers with it.
+    const putSettings = vi.fn(async () => { configured = true; return settings({ requireStartToTrack: false }); });
+    const patchSettings = vi.fn(async () => settings({ requireStartToTrack: true }));
     const getSettings = vi.fn(async () => {
       if (!configured) throw new ApiError(404, 'not_found', 'Settings not configured');
       return settings({ requireStartToTrack: false });
     });
-    renderWithProviders(<SettingsPage />, { api: fakeApiClient({ getSettings, putSettings: vi.fn(async (i: unknown) => { configured = true; return putSettings(i as never); }), patchSettings } as never) });
+    renderWithProviders(<SettingsPage />, { api: fakeApiClient({ getSettings, putSettings, patchSettings } as never) });
     await waitFor(() => expect(screen.getByTestId('settings-form')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('save')); // first save creates the row (Require Start off)
     await waitFor(() => expect(putSettings).toHaveBeenCalledTimes(1));
