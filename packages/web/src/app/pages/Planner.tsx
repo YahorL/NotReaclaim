@@ -163,8 +163,8 @@ export function Planner({ now = () => Date.now() }: { now?: () => number }) {
       tasks,
     });
     endDrag();
-    // The title rides along for the placeholder (kept even if the task leaves the list meanwhile).
-    if (drop) createBlock.mutate({ ...drop, title: tasks.find((t) => t.id === drop.taskId)?.title });
+    // `drop.title` (captured by scheduleDropResult) rides along for the placeholder.
+    if (drop) createBlock.mutate(drop);
   };
 
   // Without this a screen reader hears the raw draggable id ("panel-task:cm4x8…") and dnd-kit's

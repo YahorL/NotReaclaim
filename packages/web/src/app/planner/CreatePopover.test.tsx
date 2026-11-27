@@ -572,3 +572,20 @@ describe('CreatePopover while the same task is already being scheduled (W3)', ()
     expect(screen.queryByTestId('create-busy-hint')).toBeNull();
   });
 });
+
+describe('CreatePopover busy hint is about OTHER writes only (round 3)', () => {
+  it('its own pin waiting for the server shows no "already being scheduled" hint', async () => {
+    const createScheduledBlock = vi.fn(() => new Promise(() => {}));
+    const listTasks = vi.fn(async () => [
+      { id: 't1', userId: 'u1', title: 'Existing job', priority: 2, durationMs: 3_600_000, dueBy: '2026-01-09T17:00:00.000Z', minChunkMs: 1, maxChunkMs: 1, categoryId: null, status: 'pending', createdAt: '', updatedAt: '' },
+    ]);
+    renderWithProviders(<CreatePopover {...baseProps} />, { api: fakeApiClient({ listTasks, createScheduledBlock } as never) });
+    fireEvent.click(screen.getByTestId('mode-task'));
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Existing job' })).toBeInTheDocument());
+    fireEvent.change(screen.getByTestId('task-select'), { target: { value: 't1' } });
+    fireEvent.click(screen.getByTestId('create-submit'));
+    await waitFor(() => expect(createScheduledBlock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId('create-submit')).toBeDisabled()); // its own pending state
+    expect(screen.queryByTestId('create-busy-hint')).toBeNull();
+  });
+});

@@ -759,3 +759,49 @@ describe('writeBlockRow never stomps a pending optimistic edit of the same block
     await waitFor(() => expect(list.result.current.data).toEqual([startedB5]));
   });
 });
+
+describe('round 3 test gaps (queries)', () => {
+  const key = queryKeys.schedule('2026-01-05T00:00:00.000Z', '2026-01-06T00:00:00.000Z');
+  const unranged = queryKeys.schedule(undefined, undefined);
+  const b1 = { id: 'b1', taskId: 't1', startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T10:00:00.000Z', pinned: false, startedAt: null };
+  const b2 = { ...b1, id: 'b2', startsAt: '2026-01-05T11:00:00.000Z', endsAt: '2026-01-05T12:00:00.000Z' };
+
+  it('a failed MOVE does not bring back its own block when a concurrent delete removed it meanwhile', async () => {
+    let rejectMove!: (e: unknown) => void;
+    const { Wrapper, qc } = wrap(fakeApiClient({
+      updateScheduledBlock: vi.fn(() => new Promise((_r, j) => { rejectMove = j; })),
+      deleteScheduledBlock: vi.fn(() => new Promise(() => {})),
+    } as never));
+    qc.setQueryData(key, [b1, b2]);
+    const move = renderHook(() => useUpdateScheduledBlockMutation(), { wrapper: Wrapper });
+    const del = renderHook(() => useDeleteScheduledBlockMutation(), { wrapper: Wrapper });
+    move.result.current.mutate({ id: 'b1', patch: { pinned: true } });
+    await waitFor(() => expect((qc.getQueryData(key) as typeof b1[])[0]!.pinned).toBe(true));
+    del.result.current.mutate('b1'); // the same block, deleted while its move waits
+    await waitFor(() => expect(qc.getQueryData(key)).toEqual([b2]));
+    rejectMove(new ApiError(500, 'internal_error', 'boom'));
+    await waitFor(() => expect(move.result.current.isError).toBe(true));
+    expect(qc.getQueryData(key)).toEqual([b2]);
+  });
+
+  it('an answer that is not a block row is not added to an UNRANGED list either (it covers everything)', async () => {
+    const { Wrapper, qc } = wrap(fakeApiClient({ startBlock: vi.fn(async () => ({})) } as never));
+    vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    qc.setQueryData(unranged, [b1]);
+    const { result } = renderHook(() => useStartBlockMutation(), { wrapper: Wrapper });
+    result.current.mutate('b1');
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(qc.getQueryData(unranged)).toEqual([b1]);
+  });
+
+  it('a row moving within an UNRANGED list is replaced in place, never duplicated', async () => {
+    const started = { ...b1, startsAt: '2026-01-05T08:45:00.000Z', endsAt: '2026-01-05T09:45:00.000Z', pinned: true, startedAt: '2026-01-05T08:44:00.000Z' };
+    const { Wrapper, qc } = wrap(fakeApiClient({ startBlock: vi.fn(async () => started) } as never));
+    vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
+    qc.setQueryData(unranged, [b1, b2]);
+    const { result } = renderHook(() => useStartBlockMutation(), { wrapper: Wrapper });
+    result.current.mutate('b1');
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(qc.getQueryData(unranged)).toEqual([started, b2]);
+  });
+});

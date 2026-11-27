@@ -109,8 +109,8 @@ export function scheduleDropResult({ activeData, overData, overRect, pointerY, t
   overData: unknown;
   overRect: { top: number; height: number } | null;
   pointerY: number | null;
-  tasks: readonly { id: string; durationMs: number }[];
-}): { taskId: string; startsAt: string; endsAt: string } | null {
+  tasks: readonly { id: string; durationMs: number; title?: string }[];
+}): { taskId: string; startsAt: string; endsAt: string; title?: string } | null {
   const taskId = draggedTaskId(activeData);
   if (taskId === null) return null;
   const target = dayDropFromOver({ overData, overRect, pointerY });
@@ -119,6 +119,8 @@ export function scheduleDropResult({ activeData, overData, overRect, pointerY, t
   if (!task) return null;
   return {
     taskId,
+    // Captured now, for the drop placeholder: the task may leave the list while the POST waits.
+    ...(task.title !== undefined && { title: task.title }),
     ...pinnedBlockTimes({ durationMs: task.durationMs, dayStartMs: target.dayStartMs, startMin: target.startMin }),
   };
 }

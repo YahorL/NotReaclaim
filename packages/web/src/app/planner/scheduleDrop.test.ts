@@ -105,6 +105,14 @@ describe('scheduleDropResult', () => {
     });
   });
 
+  it('captures the task title at drop time for the placeholder (round 3)', () => {
+    expect(scheduleDropResult({ ...args, tasks: [{ id: 'drag-me', durationMs: 3_600_000, title: 'Inbox zero' }] })).toEqual({
+      taskId: 'drag-me', title: 'Inbox zero',
+      startsAt: '2026-01-07T00:00:00.000Z',
+      endsAt: '2026-01-07T01:00:00.000Z',
+    });
+  });
+
   it('is null when the drag did not start on a task card', () => {
     expect(scheduleDropResult({ ...args, activeData: { type: 'sortable' } })).toBeNull();
   });

@@ -90,6 +90,35 @@ describe('Settings page', () => {
     expect((putSettings.mock.calls[0] as unknown[])[0]).toMatchObject({ requireStartToTrack: true });
   });
 
+  it('configured settings (a row exists): turning Require Start on asks first (round 3)', async () => {
+    const patchSettings = vi.fn(async () => settings({ requireStartToTrack: true }));
+    renderWithProviders(<SettingsPage />, { api: fakeApiClient({ getSettings: async () => settings({ requireStartToTrack: false }), patchSettings } as never) });
+    await waitFor(() => expect(screen.getByTestId('settings-form')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('require-start'));
+    fireEvent.click(screen.getByTestId('save'));
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    expect(patchSettings).not.toHaveBeenCalled();
+  });
+
+  it('first-time setup, then a row exists: the next switch on asks (round 3)', async () => {
+    const putSettings = vi.fn(async () => settings({ requireStartToTrack: false }));
+    const patchSettings = vi.fn(async () => settings({ requireStartToTrack: true }));
+    let configured = false;
+    const getSettings = vi.fn(async () => {
+      if (!configured) throw new ApiError(404, 'not_found', 'Settings not configured');
+      return settings({ requireStartToTrack: false });
+    });
+    renderWithProviders(<SettingsPage />, { api: fakeApiClient({ getSettings, putSettings: vi.fn(async (i: unknown) => { configured = true; return putSettings(i as never); }), patchSettings } as never) });
+    await waitFor(() => expect(screen.getByTestId('settings-form')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('save')); // first save creates the row (Require Start off)
+    await waitFor(() => expect(putSettings).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId('saved')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('require-start'));
+    fireEvent.click(screen.getByTestId('save'));
+    expect(await screen.findByRole('alertdialog')).toBeInTheDocument();
+    expect(patchSettings).not.toHaveBeenCalled();
+  });
+
   // Item 8: centered layout
   it('wraps content in a centered max-width container', async () => {
     const api = fakeApiClient({ getSettings: async () => settings() } as never);
