@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import type { Mutation } from '@tanstack/react-query';
 import { useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { plannerWriteOf, type PlannerWriteOp } from '../../api/queries';
@@ -32,18 +33,35 @@ export function plannerWriteErrorText(op: PlannerWriteOp, error: unknown): strin
 /**
  * Shell-level: every failed planner write, from whichever surface sent it (grid drag/resize/keys,
  * tile ×, detail card, top bar, mobile bar, Next-up card, panel drop), raises one shell toast
- * (`role=status`, polite). Writes whose surface shows the error inline (`inlineErrors`) are skipped.
+ * (`role=status`, polite). A write whose surface shows the error inline (`inlineErrors`) is
+ * skipped only while that surface is still mounted to show it: a create popover closed while its
+ * POST waited has no inline error left, so the toast speaks instead.
+ *
+ * "Still mounted" = the mutation still has an observer. TanStack (5.100) keeps a mutation's
+ * observers private, so they are counted from the cache's `observerAdded` / `observerRemoved`
+ * events; a `useMutation` that unmounts unsubscribes and removes itself (MutationObserver
+ * `onUnsubscribe` → `removeObserver`). Mounted in the shell, so it sees every write from its start.
  * Renders nothing.
  */
 export function PlannerWriteFeedback(): null {
   const qc = useQueryClient();
   const { show } = useToast();
-  useEffect(() => qc.getMutationCache().subscribe((e) => {
-    if (e.type !== 'updated' || e.action.type !== 'error') return;
-    const w = plannerWriteOf(e.mutation);
-    if (!w || w.inlineErrors) return;
-    const text = plannerWriteErrorText(w.op, e.action.error);
-    if (text) show(text, { icon: 'warning' });
-  }), [qc, show]);
+  useEffect(() => {
+    const observed = new WeakMap<Mutation<unknown, Error, unknown, unknown>, Set<unknown>>();
+    return qc.getMutationCache().subscribe((e) => {
+      if (e.type === 'observerAdded' || e.type === 'observerRemoved') {
+        const set = observed.get(e.mutation) ?? new Set<unknown>();
+        if (e.type === 'observerAdded') set.add(e.observer); else set.delete(e.observer);
+        observed.set(e.mutation, set);
+        return;
+      }
+      if (e.type !== 'updated' || e.action.type !== 'error') return;
+      const w = plannerWriteOf(e.mutation);
+      if (!w) return;
+      if (w.inlineErrors && (observed.get(e.mutation)?.size ?? 0) > 0) return;
+      const text = plannerWriteErrorText(w.op, e.action.error);
+      if (text) show(text, { icon: 'warning' });
+    });
+  }, [qc, show]);
   return null;
 }

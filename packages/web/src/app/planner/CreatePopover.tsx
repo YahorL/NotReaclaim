@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { ApiError } from '../../api/client';
 import { useCreateTaskMutation, useCreateCalendarEventMutation, useCreateScheduledBlockMutation, useTasksQuery, useCategoriesQuery } from '../../api/queries';
 import { DurationStepper } from '../components/DurationStepper';
 import { WINDOW_END_MIN, SLOT_MIN, formatHm } from './weekModel';
@@ -84,7 +83,9 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
   const afterIso = dateFieldToIso(afterLocal, zone);
   const datesOk = !showNewTaskFields || (typeof dueIso === 'string' && afterIso !== undefined);
   const canSubmit = !pending && hasTitle && datesOk;
-  const apiError = [createTaskM.error, createEventM.error, createBlockM.error].find((e) => e instanceof ApiError) as ApiError | undefined;
+  // Any failure, not only the server's answers: a request that never got one (offline) reads
+  // "Couldn't save. Check your connection…" through saveErrorText.
+  const saveError = [createTaskM.error, createEventM.error, createBlockM.error].find((e) => e instanceof Error);
 
   useEffect(() => {
     // Inside the compact sheet the Sheet owns dismissal (backdrop tap, ✕, Escape). A second
@@ -213,7 +214,7 @@ export function CreatePopover({ dayStartMs, startMin, topPct, onClose, align = '
         <DurationStepper label="slot" size={22} valueMs={durationMs} onChange={(ms) => setDurationMs(Math.max(SLOT_MIN * MS_PER_MIN, Math.min(ms, maxDurationMs)))} />
       </div>
       <p data-testid="slot-label" className="mb-3 text-[13px] tabular-nums text-fg-2">{formatHm(startMs, zone)} – {formatHm(endMs, zone)}</p>
-      {apiError && <p data-testid="create-error" className="mb-2 text-[11px] text-danger">{saveErrorText(apiError)}</p>}
+      {saveError && <p data-testid="create-error" className="mb-2 text-[11px] text-danger">{saveErrorText(saveError)}</p>}
       <button
         type="button"
         data-testid="create-submit"

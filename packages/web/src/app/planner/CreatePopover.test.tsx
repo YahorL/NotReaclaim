@@ -5,6 +5,7 @@ import { CreatePopover } from './CreatePopover';
 import { ApiError } from '../../api/client';
 import { ToastProvider } from '../shell/ToastProvider';
 import { PlannerWriteFeedback } from '../shell/PlannerWriteFeedback';
+import { SAVE_FAILED_NO_RESPONSE } from '../lib/saveError';
 
 const DAY = Date.parse('2026-01-05T00:00:00.000Z'); // local midnight, TZ=UTC
 // now fixed to 8 days before DAY so that localMidnight(now)+7d < DAY → due = DAY 23:59
@@ -523,5 +524,15 @@ describe('CreatePopover failures are shown once (U3)', () => {
     fireEvent.click(screen.getByTestId('create-submit'));
     await waitFor(() => expect(screen.getByTestId('create-error')).toHaveTextContent('Task t1 not found'));
     expect(screen.queryByTestId('toast')).toBeNull();
+  });
+});
+
+describe('CreatePopover shows a network failure inline too (W2b)', () => {
+  it('a POST that never reached the server reads like any failed save', async () => {
+    const createCalendarEvent = vi.fn(async () => { throw new TypeError('Failed to fetch'); });
+    renderWithProviders(<CreatePopover {...baseProps} />, { api: fakeApiClient({ createCalendarEvent } as never) });
+    fireEvent.change(screen.getByTestId('create-title'), { target: { value: 'Standup' } });
+    fireEvent.click(screen.getByTestId('create-submit'));
+    await waitFor(() => expect(screen.getByTestId('create-error')).toHaveTextContent(SAVE_FAILED_NO_RESPONSE));
   });
 });

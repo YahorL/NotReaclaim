@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { ReactNode } from 'react';
-import { render, renderHook, screen, waitFor } from '@testing-library/react';
+import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiProvider } from '../../api/ApiProvider';
 import { ApiError } from '../../api/client';
@@ -89,6 +89,29 @@ describe('PlannerWriteFeedback (shell toast for failed planner writes, from any 
     result.current.mutate({ taskId: 't1', startsAt: 'S', endsAt: 'E' });
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(screen.queryByTestId('toast')).toBeNull();
+  });
+
+  it('an inline surface that closed while its write waited no longer swallows the failure: it toasts (W2a)', async () => {
+    let reject!: (e: unknown) => void;
+    const api = fakeApiClient({ createScheduledBlock: vi.fn(() => new Promise((_r, j) => { reject = j; })) } as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    let mutate: ((v: unknown) => void) | null = null;
+    function Popover() {
+      const m = useCreateScheduledBlockMutation({ inlineErrors: true });
+      mutate = m.mutate as (v: unknown) => void;
+      return null;
+    }
+    const Tree = ({ open }: { open: boolean }) => (
+      <QueryClientProvider client={qc}><ApiProvider client={api}>
+        <ToastProvider><PlannerWriteFeedback />{open && <Popover />}</ToastProvider>
+      </ApiProvider></QueryClientProvider>
+    );
+    const r = render(<Tree open />);
+    act(() => { mutate!({ taskId: 't1', startsAt: 'S', endsAt: 'E' }); });
+    await waitFor(() => expect(api.createScheduledBlock).toHaveBeenCalledTimes(1));
+    r.rerender(<Tree open={false} />); // closed by an outside click while the POST waits
+    await act(async () => { reject(new ApiError(500, 'internal_error', 'Internal Server Error')); await Promise.resolve(); });
+    await waitFor(() => expect(screen.getByTestId('toast')).toHaveTextContent('Internal Server Error'));
   });
 
   it('a failed drop from the task panel (no inline surface) toasts', async () => {
