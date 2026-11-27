@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { ScheduledBlock, Settings } from '@notreclaim/db';
 import { GoogleApiError } from '@notreclaim/google';
-import { computeSpentMs, planLocally } from '@notreclaim/core';
+import { computeDesiredSchedule, computeSpentMs, planLocally } from '@notreclaim/core';
 import { makeReplan } from '../src/replan-router.js';
 import { buildTestApp, tokenFor } from './fakes.js';
 
@@ -598,8 +598,8 @@ describe('POST /schedule/:id/start ends the other running automatic pieces (you 
         accessToken: 'access-1', deleteEvent: async (_t, _c, googleEventId) => { deleted.push(googleEventId); },
       });
       const token = await tokenFor(ctx.app);
-      const press = async (verb: 'start' | 'stop', id: string, at: string) => {
-        clock = iso(at).getTime();
+      const press = async (verb: 'start' | 'stop', id: string, at: string, ms = 0) => {
+        clock = iso(at).getTime() + ms;
         const res = await ctx.app.inject({ method: 'POST', url: `/schedule/${id}/${verb}`, headers: { authorization: `Bearer ${token}` } });
         expect(res.statusCode, `${verb} ${id} at ${at}`).toBe(200);
         return res.json();
@@ -610,7 +610,8 @@ describe('POST /schedule/:id/start ends the other running automatic pieces (you 
         const all = await rows();
         return taskIds.reduce((sum, t) => sum + computeSpentMs(t, all, false, iso(at).getTime()), 0) / 60_000;
       };
-      return { press, row, rows, tracked, deleted, ctx };
+      const setClock = (at: string) => { clock = iso(at).getTime(); };
+      return { press, row, rows, tracked, deleted, ctx, setClock };
     }
     const planned = (id: string, taskId: string, from: string, to: string) =>
       block({ id, taskId, engineKey: `task:${taskId}:0`, startsAt: iso(from), endsAt: iso(to) });
@@ -744,6 +745,78 @@ describe('POST /schedule/:id/start ends the other running automatic pieces (you 
       const replanned = (await s.rows()).filter((r) => r.taskId === 'tX');
       expect(replanned.length).toBeGreaterThan(0);
       expect(replanned.every((r) => !r.pinned && r.startedAt == null && r.engineKey != null)).toBe(true);
+    });
+
+    it('race: a block to end at the hand-over vanishes before its update (drift outside the lock) — Start still answers 200 and Y is Started', async () => {
+      const s = await session([started('x', 'tX', '09:00', '10:00'), planned('y', 'tY', '11:00', '12:00')]);
+      const repo = s.ctx.scheduledBlocks;
+      const update = repo.update.bind(repo);
+      repo.update = async (u, id, data) => {
+        if (id === 'x') await repo.delete(u, 'x'); // drift removed X after runningTargets read it
+        return update(u, id, data);
+      };
+      expect(await s.press('start', 'y', '09:30')).toMatchObject({ id: 'y', startsAt: '2026-01-05T09:30:00.000Z', pinned: true, startedAt: '2026-01-05T09:30:00.000Z' });
+      expect(await s.row('x')).toBeNull();
+      expect(s.ctx.emitted).toContainEqual(expect.objectContaining({ type: 'data.changed', userId: 'u1', resources: ['schedule', 'tasks'] }));
+    });
+
+    it('any other error ending a block still fails the Start (500), and Y is not Started', async () => {
+      const s = await session([started('x', 'tX', '09:00', '10:00'), planned('y', 'tY', '11:00', '12:00')]);
+      const repo = s.ctx.scheduledBlocks;
+      const update = repo.update.bind(repo);
+      repo.update = async (u, id, data) => {
+        if (id === 'x') throw new Error('db down');
+        return update(u, id, data);
+      };
+      s.setClock('09:30');
+      const token = await tokenFor(s.ctx.app);
+      const res = await s.ctx.app.inject({ method: 'POST', url: '/schedule/y/start', headers: { authorization: `Bearer ${token}` } });
+      expect(res.statusCode).toBe(500);
+      expect(await s.row('y')).toMatchObject({ startsAt: iso('11:00'), startedAt: null });
+    });
+
+    it('Y itself vanishing before the Start write is still a 404', async () => {
+      const s = await session([started('x', 'tX', '09:00', '10:00'), planned('y', 'tY', '11:00', '12:00')]);
+      const repo = s.ctx.scheduledBlocks;
+      const update = repo.update.bind(repo);
+      repo.update = async (u, id, data) => {
+        if (id === 'y') await repo.delete(u, 'y');
+        return update(u, id, data);
+      };
+      s.setClock('09:30');
+      const token = await tokenFor(s.ctx.app);
+      const res = await s.ctx.app.inject({ method: 'POST', url: '/schedule/y/start', headers: { authorization: `Bearer ${token}` } });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it.each([true, false])('known limit, same second: X Started 09:07:30.4 (→ 09:15, kept), Start Y at 09:15:00.5 → X left whole, both run 09:15–10:15 (X pinned: %s)', async (pinned) => {
+      // X began ≥ 7.5 minutes before the press (beganAt 09:07:30.4), so it is kept; it began within
+      // the current second of the press, so exactStartMs gives null: nothing can cut it. Unpinned
+      // (PATCH) it is still a Started block and is left whole the same way.
+      const x = started('x', 'tX', '09:15', '10:15', '09:15', { pinned, startedAt: new Date(iso('09:07:30').getTime() + 400) });
+      const s = await session([x, planned('y', 'tY', '11:00', '12:00')]);
+      expect(await s.press('start', 'y', '09:15:00', 500)).toMatchObject({ startsAt: '2026-01-05T09:15:00.000Z', endsAt: '2026-01-05T10:15:00.000Z' });
+      expect(await s.row('x')).toMatchObject({ startsAt: iso('09:15'), endsAt: iso('10:15') });
+      expect(await s.tracked(['tX', 'tY'], '12:00')).toBe(120); // 60 minutes counted twice (pre-existing)
+    });
+
+    it("known limit: a removed block's task with an older Started block stays user-managed — not re-planned, not listed as unscheduled", async () => {
+      const s = await session([
+        started('yesterday', 'tX', '09:00', '10:00', '09:00', { startsAt: new Date('2026-01-04T09:00:00.000Z'), endsAt: new Date('2026-01-04T10:00:00.000Z'), startedAt: new Date('2026-01-04T09:00:00.000Z') }),
+        block({ id: 'x', taskId: 'tX', engineKey: null, pinned: true, startsAt: iso('09:00'), endsAt: iso('09:30') }), // hand-placed
+        planned('y', 'tY', '11:00', '12:00'),
+      ]);
+      await s.press('start', 'x', '09:00');
+      await s.press('start', 'y', '09:02');
+      expect(await s.row('x')).toBeNull(); // removed ("Remove X's block")
+      const repos = {
+        settings: s.ctx.settings, calendarEvents: s.ctx.calendarEvents, scheduledBlocks: s.ctx.scheduledBlocks,
+        tasks: { listByUser: async () => [taskRow('tX'), taskRow('tY')] }, habits: { listByUser: async () => [] }, categories: { listByUser: async () => [] },
+      };
+      await planLocally(repos, s.ctx.scheduledBlocks, 'u1', iso('09:02').getTime());
+      expect((await s.rows()).filter((r) => r.taskId === 'tX').map((r) => r.id)).toEqual(['yesterday']);
+      const preview = await computeDesiredSchedule(repos, 'u1', iso('09:02').getTime());
+      expect(preview.unscheduled.filter((u) => u.sourceId === 'tX')).toEqual([]);
     });
 
     it('Start on the running Started block itself: never ends itself; the same instant changes nothing; later it touches no other block', async () => {

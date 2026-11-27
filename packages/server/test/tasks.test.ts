@@ -508,6 +508,20 @@ describe('PATCH /tasks/:id taking a task out of the plan while one of its pieces
       expect(row).toMatchObject({ endsAt: iso('09:30'), pinned: true });
     });
 
+    it.each(['completed', 'backlog', 'archived'])('automatic tracking, %s: a hand-placed block never Started, begun 3 minutes ago, is deleted with its event (completion keeps its own short-piece rule; Start never deletes it)', async (status) => {
+      const deleted: string[] = [];
+      const ctx = buildTestApp({
+        tasks: [taskRow('t1')], settings: settingsRow(false), now: () => after(3 * 60_000), accessToken: 'access-1',
+        blocks: [blockRow({ id: 'h', pinned: true, googleEventId: 'g-h', googleCalendarId: 'cal-auto' })],
+        deleteEvent: async (_t, _c, googleEventId) => { deleted.push(googleEventId); },
+      });
+      const token = await tokenFor(ctx.app);
+      const res = await ctx.app.inject({ method: 'PATCH', url: '/tasks/t1', headers: { authorization: `Bearer ${token}` }, payload: { status } });
+      expect(res.statusCode).toBe(200);
+      expect(await ctx.scheduledBlocks.findById('u1', 'h')).toBeNull();
+      expect(deleted).toEqual(['g-h']);
+    });
+
     it.each([false, true])('a Started block whose snapped start is still ahead (Start at 09:08 → 09:15, completed at 09:10) is deleted too (manual: %s)', async (manual) => {
       const ctx = buildTestApp({
         tasks: [taskRow('t1')], settings: settingsRow(manual), now: () => after(10 * 60_000),

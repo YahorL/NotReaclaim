@@ -127,7 +127,13 @@ export async function endRunningPieces(
   if (!token && plan.some(({ b, end }) => end === 'delete' && isMirrored(b))) return 'needs-token';
   for (const { b, end } of plan) {
     if (typeof end === 'number') {
-      await deps.repos.scheduledBlocks.update(userId, b.id, { endsAt: new Date(end), pinned: true });
+      try {
+        await deps.repos.scheduledBlocks.update(userId, b.id, { endsAt: new Date(end), pinned: true });
+      } catch (err) {
+        // Gone since it was read (drift runs outside the user lock, or a cascade): nothing left to
+        // end — the same as the delete below. Any other error still propagates.
+        if (!(err instanceof NotFoundError)) throw err;
+      }
       continue;
     }
     if (token) {
