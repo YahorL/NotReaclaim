@@ -592,9 +592,10 @@ describe('POST /schedule/:id/start ends the other running automatic pieces (you 
     /** An app whose clock the test moves, for a sequence of presses. */
     async function session(blocks: ScheduledBlock[], opts: { manual?: boolean } = {}) {
       let clock = 0;
+      const deleted: string[] = [];
       const ctx = buildTestApp({
         blocks, settings: settings({ requireStartToTrack: opts.manual ?? false, horizonDays: 7 }), now: () => clock,
-        accessToken: 'access-1', deleteEvent: async () => {},
+        accessToken: 'access-1', deleteEvent: async (_t, _c, googleEventId) => { deleted.push(googleEventId); },
       });
       const token = await tokenFor(ctx.app);
       const press = async (verb: 'start' | 'stop', id: string, at: string) => {
@@ -609,7 +610,7 @@ describe('POST /schedule/:id/start ends the other running automatic pieces (you 
         const all = await rows();
         return taskIds.reduce((sum, t) => sum + computeSpentMs(t, all, false, iso(at).getTime()), 0) / 60_000;
       };
-      return { press, row, rows, tracked };
+      return { press, row, rows, tracked, deleted, ctx };
     }
     const planned = (id: string, taskId: string, from: string, to: string) =>
       block({ id, taskId, engineKey: `task:${taskId}:0`, startsAt: iso(from), endsAt: iso(to) });
@@ -623,25 +624,90 @@ describe('POST /schedule/:id/start ends the other running automatic pieces (you 
       expect(await s.tracked(['tX', 'tY'], '12:00')).toBe(90); // 09:00 → 10:30; was 120
     });
 
-    it('a chain of three (X → Y at 09:30 → Z at 09:34): one runs at a time, each ended at the hand-over, none deleted', async () => {
+    it('X Started 30 minutes ago, then quick Y (09:30), then quick Z (09:34): X ended at the hand-over and kept, Y removed, Z running', async () => {
       const s = await session([started('x', 'tX', '09:00', '10:00'), planned('y', 'tY', '11:00', '12:00'), planned('z', 'tZ', '13:00', '14:00')]);
-      await s.press('start', 'y', '09:30'); // the ordinary path: Y from round15 = 09:30
-      // Y (Started, from 09:30) begins at round15(09:34) = 09:30: the exact-minute rule, Z from 09:34.
-      expect(await s.press('start', 'z', '09:34')).toMatchObject({ startsAt: '2026-01-05T09:34:00.000Z', endsAt: '2026-01-05T10:34:00.000Z' });
-      expect(await s.row('x')).toMatchObject({ startsAt: iso('09:00'), endsAt: iso('09:30') });
-      expect(await s.row('y')).toMatchObject({ startsAt: iso('09:30'), endsAt: iso('09:34'), startedAt: iso('09:30') });
-      expect(await s.rows()).toHaveLength(3);
-      expect(await s.tracked(['tX', 'tY', 'tZ'], '12:00')).toBe(94); // 09:00 → 10:34
+      await s.press('start', 'y', '09:30'); // X ran 30 minutes: it ends at 09:30, Y from 09:30
+      // Y began 4 minutes ago: removed (it was "ended at 09:34, kept" before the owner's decision; Z was from 09:34).
+      expect(await s.press('start', 'z', '09:34')).toMatchObject({ startsAt: '2026-01-05T09:30:00.000Z', endsAt: '2026-01-05T10:30:00.000Z' });
+      expect(await s.row('x')).toMatchObject({ startsAt: iso('09:00'), endsAt: iso('09:30'), startedAt: iso('09:00') });
+      expect(await s.row('y')).toBeNull();
+      expect(await s.tracked(['tX', 'tY', 'tZ'], '12:00')).toBe(90); // 09:00 → 10:30, nothing twice
     });
 
-    it('Stop on a Started block (end rounded up to its 15-minute floor) then Start another: the stopped end is pulled back to the new start', async () => {
+    it('a quick chain X (09:00) → Y (09:02) → Z (09:04): only Z remains, nothing counted twice', async () => {
+      const s = await session([planned('x', 'tX', '09:00', '10:00'), planned('y', 'tY', '11:00', '12:00'), planned('z', 'tZ', '13:00', '14:00')]);
+      await s.press('start', 'x', '09:00');
+      await s.press('start', 'y', '09:02');
+      expect(await s.press('start', 'z', '09:04')).toMatchObject({ startsAt: '2026-01-05T09:00:00.000Z', endsAt: '2026-01-05T10:00:00.000Z' });
+      expect((await s.rows()).map((r) => r.id)).toEqual(['z']);
+      expect(await s.tracked(['tX', 'tY', 'tZ'], '12:00')).toBe(60);
+    });
+
+    it('owner decision "Remove X\'s block": a Started block whose snapped start is still ahead is removed, with its Google event (once)', async () => {
+      // Start on X at 09:38 → 09:45–10:45 (rounded up); "Start next" on Y at 09:40 → Y 09:45–10:45 and X removed.
+      const s = await session([planned('x', 'tX', '11:00', '12:00'), planned('y', 'tY', '13:00', '14:00')]);
+      await s.press('start', 'x', '09:38');
+      await s.ctx.scheduledBlocks.update('u1', 'x', { googleEventId: 'g-x', googleCalendarId: 'cal-auto' }); // mirrored meanwhile
+      expect(await s.press('start', 'y', '09:40')).toMatchObject({ startsAt: '2026-01-05T09:45:00.000Z', endsAt: '2026-01-05T10:45:00.000Z' });
+      expect(await s.row('x')).toBeNull();
+      expect(s.deleted).toEqual(['g-x']);
+      expect(await s.tracked(['tX', 'tY'], '12:00')).toBe(60); // was 120 (60 minutes twice); X's 2 minutes are not counted
+    });
+
+    it('the Stop variant: X Started 09:08 (→ 09:15), stopped 09:10 (→ 09:15–09:30), Start Y at 09:11 → X removed', async () => {
+      const s = await session([planned('x', 'tX', '11:00', '12:00'), planned('y', 'tY', '13:00', '14:00')]);
+      await s.press('start', 'x', '09:08');
+      expect(await s.press('stop', 'x', '09:10')).toMatchObject({ startsAt: '2026-01-05T09:15:00.000Z', endsAt: '2026-01-05T09:30:00.000Z' });
+      expect(await s.press('start', 'y', '09:11')).toMatchObject({ startsAt: '2026-01-05T09:15:00.000Z' });
+      expect(await s.row('x')).toBeNull();
+      expect(await s.tracked(['tX', 'tY'], '12:00')).toBe(60); // was 75 (09:15–09:30 twice)
+    });
+
+    it('the reached-start sliver: X Started 09:44 (→ 09:45), Start Y at 09:47 → X removed, and it neither forces the exact minute nor clamps Y', async () => {
+      const s = await session([planned('x', 'tX', '11:00', '12:00'), planned('y', 'tY', '13:00', '14:00')]);
+      await s.press('start', 'x', '09:44');
+      // Was: Y from 09:47 (exact minute) and X 09:45–09:47. Now Y keeps round15(09:47) = 09:45.
+      expect(await s.press('start', 'y', '09:47')).toMatchObject({ startsAt: '2026-01-05T09:45:00.000Z', endsAt: '2026-01-05T10:45:00.000Z' });
+      expect(await s.row('x')).toBeNull();
+    });
+
+    it('boundary: begun exactly 7.5 minutes ago is kept (ended at the hand-over); 7 min 29 s ago is removed', async () => {
+      const kept = await session([started('x', 'tX', '09:00', '10:00'), planned('y', 'tY', '11:00', '12:00')]);
+      expect(await kept.press('start', 'y', '09:07:30')).toMatchObject({ startsAt: '2026-01-05T09:15:00.000Z' }); // round15 rounds half up
+      expect(await kept.row('x')).toMatchObject({ startsAt: iso('09:00'), endsAt: iso('09:15'), startedAt: iso('09:00') });
+      expect(await kept.tracked(['tX', 'tY'], '12:00')).toBe(75); // 09:00 → 10:15
+      const removed = await session([started('x', 'tX', '09:00', '10:00'), planned('y', 'tY', '11:00', '12:00')]);
+      expect(await removed.press('start', 'y', '09:07:29')).toMatchObject({ startsAt: '2026-01-05T09:00:00.000Z' });
+      expect(await removed.row('x')).toBeNull();
+    });
+
+    it('whatever its origin: an unpinned (PATCH) or hand-placed-then-Started block begun under 7.5 minutes ago is removed', async () => {
+      const unpinned = await session([started('x', 'tX', '09:25', '10:25', '09:25', { pinned: false }), planned('y', 'tY', '11:00', '12:00')]);
+      await unpinned.press('start', 'y', '09:30');
+      expect(await unpinned.row('x')).toBeNull();
+      const handPlaced = await session([block({ id: 'x', taskId: 'tX', engineKey: null, pinned: true, startsAt: iso('09:25'), endsAt: iso('10:25') }), planned('y', 'tY', '11:00', '12:00')]);
+      await handPlaced.press('start', 'x', '09:26');
+      await handPlaced.press('start', 'y', '09:30');
+      expect(await handPlaced.row('x')).toBeNull();
+    });
+
+    it('Stop on a Started block (15-minute floor ahead) then Start another 3 minutes after Start: the stopped block is removed', async () => {
       const s = await session([planned('x', 'tX', '10:00', '11:00'), planned('y', 'tY', '12:00', '13:00')]);
       await s.press('start', 'x', '10:00');
       expect(await s.press('stop', 'x', '10:02')).toMatchObject({ endsAt: '2026-01-05T10:15:00.000Z' });
-      // round15(10:03) = 10:00 = X's start: the exact-minute rule, Y from 10:03 (was 10:00, overlapping 10:00–10:15).
-      expect(await s.press('start', 'y', '10:03')).toMatchObject({ startsAt: '2026-01-05T10:03:00.000Z', endsAt: '2026-01-05T11:03:00.000Z' });
-      expect(await s.row('x')).toMatchObject({ startsAt: iso('10:00'), endsAt: iso('10:03'), startedAt: iso('10:00') });
-      expect(await s.tracked(['tX', 'tY'], '12:00')).toBe(63); // 10:00 → 11:03; was 75
+      // Was: Y from 10:03 (exact minute), X 10:00–10:03 kept (63 tracked). X began 3 minutes ago: removed, Y keeps round15.
+      expect(await s.press('start', 'y', '10:03')).toMatchObject({ startsAt: '2026-01-05T10:00:00.000Z', endsAt: '2026-01-05T11:00:00.000Z' });
+      expect(await s.row('x')).toBeNull();
+      expect(await s.tracked(['tX', 'tY'], '12:00')).toBe(60);
+    });
+
+    it('Stop on a Started block begun 8 minutes ago (floor end ahead), then Start another: its end is pulled back to the exact minute', async () => {
+      const s = await session([planned('x', 'tX', '11:00', '12:00'), planned('y', 'tY', '13:00', '14:00')]);
+      await s.press('start', 'x', '09:08'); // → 09:15–10:15
+      expect(await s.press('stop', 'x', '09:16')).toMatchObject({ startsAt: '2026-01-05T09:15:00.000Z', endsAt: '2026-01-05T09:30:00.000Z' });
+      expect(await s.press('start', 'y', '09:17')).toMatchObject({ startsAt: '2026-01-05T09:17:00.000Z', endsAt: '2026-01-05T10:17:00.000Z' });
+      expect(await s.row('x')).toMatchObject({ startsAt: iso('09:15'), endsAt: iso('09:17'), startedAt: iso('09:08') });
+      expect(await s.tracked(['tX', 'tY'], '12:00')).toBe(62); // 09:15 → 10:17; X's 09:08–09:15 was never on the record (Start snapped it)
     });
 
     it('a Started block is ended at the new start when the recent-end clamp raises it above round15 (not at round15, which would drop minutes)', async () => {
@@ -651,28 +717,33 @@ describe('POST /schedule/:id/start ends the other running automatic pieces (you 
       expect(await s.row('x')).toMatchObject({ endsAt: iso('09:36') });
     });
 
-    it('a Started block begun under 7.5 minutes ago is never deleted: it ends at the new start', async () => {
-      const s = await session([started('x', 'tX', '09:25', '10:25'), planned('y', 'tY', '11:00', '12:00')]);
+    it('a Started block kept (begun 7.5 minutes ago or more) still triggers the exact minute, pinned or not', async () => {
+      for (const pinned of [true, false]) {
+        // Started at 09:08 → runs from 09:15; at 09:16 it began 8 minutes ago (beganAt = 09:08): kept.
+        const s = await session([started('x', 'tX', '09:15', '10:15', '09:08', { pinned }), planned('y', 'tY', '11:00', '12:00')]);
+        expect(await s.press('start', 'y', '09:16')).toMatchObject({ startsAt: '2026-01-05T09:16:00.000Z' });
+        expect(await s.row('x'), `pinned ${pinned}`).toMatchObject({ startsAt: iso('09:15'), endsAt: iso('09:16'), startedAt: iso('09:08') });
+      }
+    });
+
+    it('a hand-placed block that was never Started is still never deleted (it ends at the new start)', async () => {
+      const s = await session([block({ id: 'h', taskId: 'tH', engineKey: null, pinned: true, startsAt: iso('09:27'), endsAt: iso('10:27') }), planned('y', 'tY', '11:00', '12:00')]);
       await s.press('start', 'y', '09:30');
-      expect(await s.row('x')).toMatchObject({ startsAt: iso('09:25'), endsAt: iso('09:30'), startedAt: iso('09:25') });
+      expect(await s.row('h')).toMatchObject({ startsAt: iso('09:27'), endsAt: iso('09:30'), startedAt: null });
     });
 
-    it('a Started block that was unpinned since (PATCH) is still never deleted, and still triggers the exact minute', async () => {
-      const young = await session([started('x', 'tX', '09:25', '10:25', '09:25', { pinned: false }), planned('y', 'tY', '11:00', '12:00')]);
-      await young.press('start', 'y', '09:30');
-      expect(await young.row('x')).toMatchObject({ endsAt: iso('09:30'), startedAt: iso('09:25') });
-      const exact = await session([started('x', 'tX', '09:30', '10:30', '09:30', { pinned: false }), planned('y', 'tY', '11:00', '12:00')]);
-      expect(await exact.press('start', 'y', '09:32')).toMatchObject({ startsAt: '2026-01-05T09:32:00.000Z' });
-      expect(await exact.row('x')).toMatchObject({ startsAt: iso('09:30'), endsAt: iso('09:32') });
-    });
-
-    it('residual: a Started block whose snapped start is still ahead is left untouched (never deleted), and both then count', async () => {
-      // Start on X at 09:38 → 09:45–10:45 (rounded up); "Start next" on Y at 09:40 → Y 09:45–10:45 too.
+    it("after the removal the removed block's task is planned again (no Started block left)", async () => {
       const s = await session([planned('x', 'tX', '11:00', '12:00'), planned('y', 'tY', '13:00', '14:00')]);
-      expect(await s.press('start', 'x', '09:38')).toMatchObject({ startsAt: '2026-01-05T09:45:00.000Z' });
-      expect(await s.press('start', 'y', '09:40')).toMatchObject({ startsAt: '2026-01-05T09:45:00.000Z', endsAt: '2026-01-05T10:45:00.000Z' });
-      expect(await s.row('x')).toMatchObject({ startsAt: iso('09:45'), endsAt: iso('10:45'), startedAt: iso('09:38') });
-      expect(await s.tracked(['tX', 'tY'], '12:00')).toBe(120); // 60 minutes counted twice (known limit)
+      await s.press('start', 'x', '09:38');
+      await s.press('start', 'y', '09:40');
+      const repos = {
+        settings: s.ctx.settings, calendarEvents: s.ctx.calendarEvents, scheduledBlocks: s.ctx.scheduledBlocks,
+        tasks: { listByUser: async () => [taskRow('tX'), taskRow('tY')] }, habits: { listByUser: async () => [] }, categories: { listByUser: async () => [] },
+      };
+      await planLocally(repos, s.ctx.scheduledBlocks, 'u1', iso('09:40').getTime());
+      const replanned = (await s.rows()).filter((r) => r.taskId === 'tX');
+      expect(replanned.length).toBeGreaterThan(0);
+      expect(replanned.every((r) => !r.pinned && r.startedAt == null && r.engineKey != null)).toBe(true);
     });
 
     it('Start on the running Started block itself: never ends itself; the same instant changes nothing; later it touches no other block', async () => {

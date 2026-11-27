@@ -43,6 +43,16 @@ function beganAt(b: ScheduledBlock): number {
 const isShort = (b: ScheduledBlock, now: number) => now - beganAt(b) < SHORT_PIECE_MS;
 
 /**
+ * Whether Start (automatic tracking) deletes this running block instead of ending it: begun less
+ * than SHORT_PIECE_MS ago and either an auto piece never Started, or Started — whatever its
+ * origin (owner decision 2026-11-27, "Remove X's block": the user moved on within moments, so the
+ * block goes and its task returns to automatic planning; those few minutes are not counted). A
+ * hand-placed (pinned) block that was never Started is never deleted.
+ */
+export const deletedOnStart = (b: ScheduledBlock, now: number) =>
+  isShort(b, now) && (b.startedAt != null || !b.pinned);
+
+/**
  * Under the user lock: end every running task piece `isTarget` picks, as of `now` (the arrival
  * clock). See endRunningPieces.
  */
@@ -63,9 +73,10 @@ export async function endRunningPiecesUnderLock(
  * stopBlockEndMs, pinned (a Started one keeps its startedAt), so it is never re-planned, counts once it has ended, and the pinned pass
  * pushes the new end to Google even when it is already in the past. A shorter one is deleted with
  * its Google event (best effort, like DELETE /schedule/:id). With `startedBlock` (Start), a piece
- * that would run past the started block's new start ends there instead, and a hand-placed
- * (pinned) or Started block is never deleted: young or not, it ends at the started block's start,
- * or is left as it is when that would leave it with no length. A Started block always ends
+ * that would run past the started block's new start ends there instead; a hand-placed (pinned)
+ * block that was never Started is never deleted: young or not, it ends at the started block's
+ * start, or is left as it is when that would leave it with no length; a Started block is deleted
+ * when begun under SHORT_PIECE_MS ago (deletedOnStart), and otherwise ended like a hand-placed one. A Started block always ends
  * exactly at the started block's start when that lies inside it, even where Stop's arithmetic
  * would end it earlier (the recent-end clamp can raise the new start above round15(now)): it was
  * the user's explicit timer, running up to the hand-over. With `startedBlock.exact` (Start at the exact
@@ -89,10 +100,11 @@ export async function endRunningPieces(
   // What becomes of each piece: a new end, 'delete' (begun less than SHORT_PIECE_MS ago), or
   // 'keep' (a hand-placed block that Start may not shorten to nothing).
   const fate = (b: ScheduledBlock): number | 'delete' | 'keep' => {
-    // Start never deletes a hand-placed (pinned) or Started block: the user put it there, or
-    // started it explicitly (a Started block unpinned since through PATCH is still one).
+    // Start never deletes a hand-placed (pinned) block that was never Started: the user put it
+    // there. A Started block begun under SHORT_PIECE_MS ago is deleted (deletedOnStart); a longer
+    // one (pinned or unpinned since through PATCH) is ended like a hand-placed block.
     const handPlaced = startedBlock != null && (b.pinned || b.startedAt != null);
-    if (isShort(b, now) && !handPlaced) return 'delete';
+    if (startedBlock ? deletedOnStart(b, now) : isShort(b, now)) return 'delete';
     const start = b.startsAt.getTime();
     const end = stopBlockEndMs(start, b.endsAt.getTime(), now);
     if (!startedBlock) return end;

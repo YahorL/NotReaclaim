@@ -4,7 +4,7 @@ import { NotFoundError, type ScheduledBlock, type UpdateScheduledBlockInput } fr
 import type { AppDeps, AfterMutation } from './app.js';
 import { isMirrored, prefetchAccessToken, removeMirroredEventWithToken, type PrefetchedToken } from './google-writeback.js';
 import { discardUnstartedPastBlocks } from './manual-sweep.js';
-import { endRunningPieces, runningTargets, SHORT_PIECE_MS } from './running-pieces.js';
+import { deletedOnStart, endRunningPieces, runningTargets, SHORT_PIECE_MS } from './running-pieces.js';
 import { resolveRange } from './range.js';
 import { rangeQuerySchema, idParamSchema, updateScheduledBlockSchema, createScheduledBlockSchema } from './schemas.js';
 import { dataChanged } from './events.js';
@@ -110,12 +110,14 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
    * locked section and with the same arrival clock — otherwise the block the user moved on from
    * would keep running next to the Started one and both would count. Each ends where the Started
    * block begins at the latest (running-pieces.ts); an auto piece begun less than 7.5 minutes
-   * ago is deleted, a hand-placed or Started block never is. A hand-placed or Started block that begins at or after the
-   * snapped start would be left whole beside it, so then the Started block begins at the exact
-   * minute instead (exactStartMs) and every running block begun before that ends exactly there;
-   * one begun within the current second is still left whole, and so is a Started block whose
-   * snapped start is still ahead (known limit). Manual tracking: only the block itself is written. In both modes the block is never moved back over a
-   * block that has just ended and counts (see recentEnds). 404 for an unknown block, 400 for a
+   * ago is deleted, and so is a Started block begun under 7.5 minutes ago (owner decision "Remove
+   * X's block": its task returns to automatic planning); a hand-placed block never Started never
+   * is. A kept hand-placed or Started block that begins at or after the snapped start would be
+   * left whole beside it, so then the Started block begins at the exact minute instead
+   * (exactStartMs) and every running block begun before that ends exactly there; one begun within
+   * the current second is still left whole. Manual tracking: only the block itself is written. In
+   * both modes the block is never moved back over a block that has just ended and counts (see
+   * recentEnds; a block deleted here is running, never among them). 404 for an unknown block, 400 for a
    * non-task one (nothing written).
    */
   app.post('/schedule/:id/start', guard, async (request, reply) => {
@@ -146,10 +148,11 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
         // Only when Start sets the block's start: a begun block that round15 leaves where it is
         // (round15 at or past its end) keeps its start, so moving it to the exact minute would drop
         // its own elapsed time from the record (Y 08:00–09:10, H 08:30–09:30, Start at 09:08: 68
-        // minutes) — that overlap is left as before.
+        // minutes) — that overlap is left as before. A block this Start deletes needs no room.
         const snappedStart = patch.startsAt?.getTime();
         const from = snappedStart == null ? null : exactStartMs(now, targets
-          .filter((b) => (b.pinned || b.startedAt != null) && b.startsAt.getTime() >= snappedStart).map((b) => b.startsAt.getTime()));
+          .filter((b) => (b.pinned || b.startedAt != null) && !deletedOnStart(b, now) && b.startsAt.getTime() >= snappedStart)
+          .map((b) => b.startsAt.getTime()));
         const exactPatch = from == null ? null : startBlockPatch(row.startsAt.getTime(), row.endsAt.getTime(), now, recentEnds, from);
         // No startsAt: the block has already ended at that start; Start keeps round15 as before.
         const exact = exactPatch?.startsAt != null;
