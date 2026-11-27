@@ -256,6 +256,34 @@ describe('Start on the next piece while one runs reaches Google (automatic track
     expect(w.spentH(at('10:40'))).toBe(1.5);
   });
 
+  it('"Start next" on a STARTED running piece: its shortened end reaches Google once, the next one moves', async () => {
+    // Two tasks: once t1's piece is Started, t1 is user-managed (its other pieces are swept), so
+    // the next piece is t2's.
+    const w = world({ requireStartToTrack: false, tasks: [task(1), task(1, 't2', 2)] });
+    await w.poll(at('08:00'));
+    const [p0, p1] = [...w.store.rows()].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+    expect([p0!.taskId, p1!.taskId]).toEqual(['t1', 't2']);
+    // POST /schedule/<p0>/start at 09:00, then polls while it runs.
+    w.client.clock = at('09:00');
+    await w.store.update('u1', p0!.id, startBlockPatch(p0!.startsAt.getTime(), p0!.endsAt.getTime(), at('09:00')));
+    await w.poll(at('09:05'));
+    // POST /schedule/<p1>/start at 09:30: the Started p0 ends at p1's new start (keeping startedAt), p1 gets Start's write.
+    const now = at('09:30');
+    w.client.clock = now;
+    const patch = startBlockPatch(p1!.startsAt.getTime(), p1!.endsAt.getTime(), now);
+    await w.store.update('u1', p0!.id, { endsAt: patch.startsAt!, pinned: true });
+    await w.store.update('u1', p1!.id, patch);
+    const before = w.writes();
+    await w.poll(at('09:35'));
+    expect(w.writes().update - before.update).toBe(2);
+    expect(w.client.times()).toEqual(['09:00–09:30', '09:30–10:30']);
+    await w.poll(at('10:40'));
+    expect(w.writes().update - before.update).toBe(2); // pushed once
+    expect(w.store.rows().find((r) => r.id === p0!.id)).toMatchObject({ startedAt: new Date(at('09:00')), endsAt: new Date(at('09:30')) });
+    expect(w.spentH(at('10:40'))).toBe(0.5); // t1: 09:00–09:30
+    expect(computeSpentMs('t2', w.store.rows(), false, at('10:40')) / H).toBe(1); // t2: 09:30–10:30
+  });
+
   it('Start at the exact minute: the cut hand-placed block and the off-grid Started one reach Google, once', async () => {
     const w = world({ requireStartToTrack: false, tasks: [task(1)] });
     // A hand-placed block for another task, 09:15–10:15; the first poll mirrors it and plans t1 around it.

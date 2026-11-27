@@ -544,17 +544,24 @@ describe('POST /schedule/:id/start ends the other running automatic pieces (you 
     expect(started.res.json()).toMatchObject({ startsAt: '2026-01-05T12:20:00.000Z' });
   });
 
-  it("another task's running piece is ended too, a pinned (Started) one is left alone", async () => {
-    const { row } = await start({
-      now: '09:30',
-      blocks: [
-        block({ id: 'a', taskId: 'tA', engineKey: 'task:tA:0', startsAt: iso('09:00'), endsAt: iso('10:00') }),
-        block({ id: 'started', taskId: 'tC', pinned: true, startedAt: iso('09:00'), startsAt: iso('09:00'), endsAt: iso('10:00') }),
-        block({ id: 'p1', taskId: 'tB', engineKey: 'task:tB:0', startsAt: iso('11:00'), endsAt: iso('12:00') }),
-      ],
-    });
+  const startedTwoTasks = () => [
+    block({ id: 'a', taskId: 'tA', engineKey: 'task:tA:0', startsAt: iso('09:00'), endsAt: iso('10:00') }),
+    block({ id: 'started', taskId: 'tC', pinned: true, startedAt: iso('09:00'), startsAt: iso('09:00'), endsAt: iso('10:00') }),
+    block({ id: 'p1', taskId: 'tB', engineKey: 'task:tB:0', startsAt: iso('11:00'), endsAt: iso('12:00') }),
+  ];
+
+  it("another task's running piece is ended too, and so is a running Started one (it keeps its startedAt)", async () => {
+    const { row } = await start({ now: '09:30', blocks: startedTwoTasks() });
     expect(await row('a')).toMatchObject({ endsAt: iso('09:30'), pinned: true });
-    expect(await row('started')).toMatchObject({ endsAt: iso('10:00') });
+    // Was left alone (endsAt 10:00): both counted 09:30–10:00.
+    expect(await row('started')).toMatchObject({ startsAt: iso('09:00'), endsAt: iso('09:30'), pinned: true, startedAt: iso('09:00') });
+  });
+
+  it('manual tracking: a running Started block is left alone too (Start writes only the started block)', async () => {
+    const { res, row } = await start({ now: '09:30', blocks: startedTwoTasks(), manual: true });
+    expect(res.json()).toMatchObject({ id: 'p1', startsAt: '2026-01-05T09:30:00.000Z' });
+    expect(await row('started')).toMatchObject({ startsAt: iso('09:00'), endsAt: iso('10:00'), startedAt: iso('09:00') });
+    expect(await row('a')).toMatchObject({ endsAt: iso('10:00'), pinned: false });
   });
 
   it('pressed twice: the second press changes nothing else', async () => {
@@ -579,6 +586,109 @@ describe('POST /schedule/:id/start ends the other running automatic pieces (you 
     const { res, row } = await start({ now: '09:30', blocks: [...pieces(), block({ id: 'h', taskId: null, habitId: 'hab' })], id: 'h' });
     expect(res.statusCode).toBe(400);
     expect(await row('p0')).toMatchObject({ endsAt: iso('10:00'), pinned: false });
+  });
+
+  describe('automatic tracking: Start ends a running block that was Started too ("Start next")', () => {
+    /** An app whose clock the test moves, for a sequence of presses. */
+    async function session(blocks: ScheduledBlock[], opts: { manual?: boolean } = {}) {
+      let clock = 0;
+      const ctx = buildTestApp({
+        blocks, settings: settings({ requireStartToTrack: opts.manual ?? false, horizonDays: 7 }), now: () => clock,
+        accessToken: 'access-1', deleteEvent: async () => {},
+      });
+      const token = await tokenFor(ctx.app);
+      const press = async (verb: 'start' | 'stop', id: string, at: string) => {
+        clock = iso(at).getTime();
+        const res = await ctx.app.inject({ method: 'POST', url: `/schedule/${id}/${verb}`, headers: { authorization: `Bearer ${token}` } });
+        expect(res.statusCode, `${verb} ${id} at ${at}`).toBe(200);
+        return res.json();
+      };
+      const row = (id: string) => ctx.scheduledBlocks.findById('u1', id);
+      const rows = () => ctx.scheduledBlocks.listByUserInRange('u1', new Date(0), new Date(8.64e15));
+      const tracked = async (taskIds: string[], at: string) => {
+        const all = await rows();
+        return taskIds.reduce((sum, t) => sum + computeSpentMs(t, all, false, iso(at).getTime()), 0) / 60_000;
+      };
+      return { press, row, rows, tracked };
+    }
+    const planned = (id: string, taskId: string, from: string, to: string) =>
+      block({ id, taskId, engineKey: `task:${taskId}:0`, startsAt: iso(from), endsAt: iso(to) });
+    const started = (id: string, taskId: string, from: string, to: string, startedAt = from, over: Partial<ScheduledBlock> = {}) =>
+      block({ id, taskId, engineKey: null, pinned: true, startedAt: iso(startedAt), startsAt: iso(from), endsAt: iso(to), ...over });
+
+    it("the reviewer's scenario: X Started and running, Start on Y at 09:30 → X ends at 09:30, Y runs; tracked == wall time", async () => {
+      const s = await session([started('x', 'tX', '09:00', '10:00'), planned('y', 'tY', '11:00', '12:00')]);
+      expect(await s.press('start', 'y', '09:30')).toMatchObject({ startsAt: '2026-01-05T09:30:00.000Z', endsAt: '2026-01-05T10:30:00.000Z' });
+      expect(await s.row('x')).toMatchObject({ startsAt: iso('09:00'), endsAt: iso('09:30'), pinned: true, startedAt: iso('09:00') });
+      expect(await s.tracked(['tX', 'tY'], '12:00')).toBe(90); // 09:00 → 10:30; was 120
+    });
+
+    it('a chain of three (X → Y at 09:30 → Z at 09:34): one runs at a time, each ended at the hand-over, none deleted', async () => {
+      const s = await session([started('x', 'tX', '09:00', '10:00'), planned('y', 'tY', '11:00', '12:00'), planned('z', 'tZ', '13:00', '14:00')]);
+      await s.press('start', 'y', '09:30'); // the ordinary path: Y from round15 = 09:30
+      // Y (Started, from 09:30) begins at round15(09:34) = 09:30: the exact-minute rule, Z from 09:34.
+      expect(await s.press('start', 'z', '09:34')).toMatchObject({ startsAt: '2026-01-05T09:34:00.000Z', endsAt: '2026-01-05T10:34:00.000Z' });
+      expect(await s.row('x')).toMatchObject({ startsAt: iso('09:00'), endsAt: iso('09:30') });
+      expect(await s.row('y')).toMatchObject({ startsAt: iso('09:30'), endsAt: iso('09:34'), startedAt: iso('09:30') });
+      expect(await s.rows()).toHaveLength(3);
+      expect(await s.tracked(['tX', 'tY', 'tZ'], '12:00')).toBe(94); // 09:00 → 10:34
+    });
+
+    it('Stop on a Started block (end rounded up to its 15-minute floor) then Start another: the stopped end is pulled back to the new start', async () => {
+      const s = await session([planned('x', 'tX', '10:00', '11:00'), planned('y', 'tY', '12:00', '13:00')]);
+      await s.press('start', 'x', '10:00');
+      expect(await s.press('stop', 'x', '10:02')).toMatchObject({ endsAt: '2026-01-05T10:15:00.000Z' });
+      // round15(10:03) = 10:00 = X's start: the exact-minute rule, Y from 10:03 (was 10:00, overlapping 10:00–10:15).
+      expect(await s.press('start', 'y', '10:03')).toMatchObject({ startsAt: '2026-01-05T10:03:00.000Z', endsAt: '2026-01-05T11:03:00.000Z' });
+      expect(await s.row('x')).toMatchObject({ startsAt: iso('10:00'), endsAt: iso('10:03'), startedAt: iso('10:00') });
+      expect(await s.tracked(['tX', 'tY'], '12:00')).toBe(63); // 10:00 → 11:03; was 75
+    });
+
+    it('a Started block is ended at the new start when the recent-end clamp raises it above round15 (not at round15, which would drop minutes)', async () => {
+      // Another block ended at 09:36; Start Y at 09:37 → Y from 09:36 (the clamp). Stop's arithmetic alone would end X at 09:30.
+      const s = await session([started('x', 'tX', '09:00', '10:00'), planned('done', 'tD', '09:20', '09:36'), planned('y', 'tY', '11:00', '12:00')]);
+      expect(await s.press('start', 'y', '09:37')).toMatchObject({ startsAt: '2026-01-05T09:36:00.000Z' });
+      expect(await s.row('x')).toMatchObject({ endsAt: iso('09:36') });
+    });
+
+    it('a Started block begun under 7.5 minutes ago is never deleted: it ends at the new start', async () => {
+      const s = await session([started('x', 'tX', '09:25', '10:25'), planned('y', 'tY', '11:00', '12:00')]);
+      await s.press('start', 'y', '09:30');
+      expect(await s.row('x')).toMatchObject({ startsAt: iso('09:25'), endsAt: iso('09:30'), startedAt: iso('09:25') });
+    });
+
+    it('a Started block that was unpinned since (PATCH) is still never deleted, and still triggers the exact minute', async () => {
+      const young = await session([started('x', 'tX', '09:25', '10:25', '09:25', { pinned: false }), planned('y', 'tY', '11:00', '12:00')]);
+      await young.press('start', 'y', '09:30');
+      expect(await young.row('x')).toMatchObject({ endsAt: iso('09:30'), startedAt: iso('09:25') });
+      const exact = await session([started('x', 'tX', '09:30', '10:30', '09:30', { pinned: false }), planned('y', 'tY', '11:00', '12:00')]);
+      expect(await exact.press('start', 'y', '09:32')).toMatchObject({ startsAt: '2026-01-05T09:32:00.000Z' });
+      expect(await exact.row('x')).toMatchObject({ startsAt: iso('09:30'), endsAt: iso('09:32') });
+    });
+
+    it('residual: a Started block whose snapped start is still ahead is left untouched (never deleted), and both then count', async () => {
+      // Start on X at 09:38 → 09:45–10:45 (rounded up); "Start next" on Y at 09:40 → Y 09:45–10:45 too.
+      const s = await session([planned('x', 'tX', '11:00', '12:00'), planned('y', 'tY', '13:00', '14:00')]);
+      expect(await s.press('start', 'x', '09:38')).toMatchObject({ startsAt: '2026-01-05T09:45:00.000Z' });
+      expect(await s.press('start', 'y', '09:40')).toMatchObject({ startsAt: '2026-01-05T09:45:00.000Z', endsAt: '2026-01-05T10:45:00.000Z' });
+      expect(await s.row('x')).toMatchObject({ startsAt: iso('09:45'), endsAt: iso('10:45'), startedAt: iso('09:38') });
+      expect(await s.tracked(['tX', 'tY'], '12:00')).toBe(120); // 60 minutes counted twice (known limit)
+    });
+
+    it('Start on the running Started block itself: never ends itself; the same instant changes nothing; later it touches no other block', async () => {
+      const s = await session([started('x', 'tX', '09:30', '10:30'), planned('done', 'tD', '08:00', '09:00')]);
+      expect(await s.press('start', 'x', '09:30')).toMatchObject({ startsAt: '2026-01-05T09:30:00.000Z', endsAt: '2026-01-05T10:30:00.000Z', startedAt: '2026-01-05T09:30:00.000Z' });
+      // A later press pulls the start to round15(now) (the existing re-Start behaviour, §10) and keeps the end.
+      expect(await s.press('start', 'x', '09:40')).toMatchObject({ startsAt: '2026-01-05T09:45:00.000Z', endsAt: '2026-01-05T10:30:00.000Z' });
+      expect(await s.row('done')).toMatchObject({ startsAt: iso('08:00'), endsAt: iso('09:00'), pinned: false });
+      expect(await s.rows()).toHaveLength(2);
+    });
+
+    it('manual tracking: unchanged, a Started running block is left alone ("Start next" is not offered there)', async () => {
+      const s = await session([started('x', 'tX', '09:00', '10:00'), planned('y', 'tY', '11:00', '12:00')], { manual: true });
+      await s.press('start', 'y', '09:30');
+      expect(await s.row('x')).toMatchObject({ startsAt: iso('09:00'), endsAt: iso('10:00') });
+    });
   });
 });
 

@@ -60,12 +60,15 @@ export async function endRunningPiecesUnderLock(
 /**
  * Under the user lock: end the running task pieces `targets` (from runningTargets), as of `now`
  * (the arrival clock). A piece that ran at least SHORT_PIECE_MS gets Stop's write — end =
- * stopBlockEndMs, pinned, so it is never re-planned, counts once it has ended, and the pinned pass
+ * stopBlockEndMs, pinned (a Started one keeps its startedAt), so it is never re-planned, counts once it has ended, and the pinned pass
  * pushes the new end to Google even when it is already in the past. A shorter one is deleted with
  * its Google event (best effort, like DELETE /schedule/:id). With `startedBlock` (Start), a piece
  * that would run past the started block's new start ends there instead, and a hand-placed
- * (pinned) block is never deleted: young or not, it ends at the started block's start, or is left
- * as it is when that would leave it with no length. With `startedBlock.exact` (Start at the exact
+ * (pinned) or Started block is never deleted: young or not, it ends at the started block's start,
+ * or is left as it is when that would leave it with no length. A Started block always ends
+ * exactly at the started block's start when that lies inside it, even where Stop's arithmetic
+ * would end it earlier (the recent-end clamp can raise the new start above round15(now)): it was
+ * the user's explicit timer, running up to the hand-over. With `startedBlock.exact` (Start at the exact
  * minute, see exactStartMs) every piece begun before the started block's start ends exactly
  * there, even where Stop's arithmetic would end it earlier (round15(now) rounded down), so no
  * minute between the two is left uncounted. Returns how many pieces changed, or 'needs-token'
@@ -86,8 +89,9 @@ export async function endRunningPieces(
   // What becomes of each piece: a new end, 'delete' (begun less than SHORT_PIECE_MS ago), or
   // 'keep' (a hand-placed block that Start may not shorten to nothing).
   const fate = (b: ScheduledBlock): number | 'delete' | 'keep' => {
-    // Start never deletes a hand-placed (pinned) block: the user put it there.
-    const handPlaced = startedBlock != null && b.pinned;
+    // Start never deletes a hand-placed (pinned) or Started block: the user put it there, or
+    // started it explicitly (a Started block unpinned since through PATCH is still one).
+    const handPlaced = startedBlock != null && (b.pinned || b.startedAt != null);
     if (isShort(b, now) && !handPlaced) return 'delete';
     const start = b.startsAt.getTime();
     const end = stopBlockEndMs(start, b.endsAt.getTime(), now);
@@ -99,6 +103,8 @@ export async function endRunningPieces(
     // At the exact minute (at most `now`, so before the piece's end): ending at round15(now) would
     // leave a gap before it (a piece running at 09:17 would end at 09:15, the Started one 09:17).
     if (startedBlock.exact && startedBlock.start > start && startedBlock.start < b.endsAt.getTime()) return startedBlock.start;
+    // A Started block (automatic tracking, "Start next") ran up to the hand-over: it ends exactly there.
+    if (b.startedAt != null && startedBlock.start > start && startedBlock.start < b.endsAt.getTime()) return startedBlock.start;
     // A hand-placed block that begins where (or after) the Started block begins would be left
     // with no length at all: it is left as it is. An auto piece in that position (only a Started
     // block that has already ended can begin before it) keeps Stop's arithmetic.

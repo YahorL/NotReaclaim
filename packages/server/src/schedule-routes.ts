@@ -105,16 +105,16 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
   };
 
   /**
-   * Start. In automatic tracking it also ends every OTHER running task block that was never
-   * Started (any task: one thing is worked on at a time), auto-placed or hand-placed, in the same
+   * Start. In automatic tracking it also ends every OTHER running task block (any task: one thing
+   * is worked on at a time), auto-placed, hand-placed or Started earlier ("Start next"), in the same
    * locked section and with the same arrival clock — otherwise the block the user moved on from
    * would keep running next to the Started one and both would count. Each ends where the Started
    * block begins at the latest (running-pieces.ts); an auto piece begun less than 7.5 minutes
-   * ago is deleted, a hand-placed block never is. A hand-placed block that begins at or after the
+   * ago is deleted, a hand-placed or Started block never is. A hand-placed or Started block that begins at or after the
    * snapped start would be left whole beside it, so then the Started block begins at the exact
    * minute instead (exactStartMs) and every running block begun before that ends exactly there;
-   * one begun at this very instant is still left whole. Started blocks are left alone. Manual
-   * tracking: only the block itself is written. In both modes the block is never moved back over a
+   * one begun within the current second is still left whole, and so is a Started block whose
+   * snapped start is still ahead (known limit). Manual tracking: only the block itself is written. In both modes the block is never moved back over a
    * block that has just ended and counts (see recentEnds). 404 for an unknown block, 400 for a
    * non-task one (nothing written).
    */
@@ -122,9 +122,10 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
     const now = deps.now();
     const { id } = idParamSchema.parse(request.params);
     const { userId } = request;
-    // Every other running task block that was never Started, auto-placed or hand-placed: both
-    // count while they run in automatic tracking. Started ones are the user's own explicit timers.
-    const others = (b: ScheduledBlock) => b.id !== id && b.startedAt == null;
+    // Every other running task block, auto-placed, hand-placed or Started earlier: each counts while
+    // it runs in automatic tracking, so the one the user moves on from must end ("Start next").
+    // Used in automatic tracking only.
+    const others = (b: ScheduledBlock) => b.id !== id;
     const attempt = (token: PrefetchedToken | null) => deps.withUserLock(userId, async () => {
       const row = await deps.repos.scheduledBlocks.findById(userId, id);
       if (!row) throw new NotFoundError(`ScheduledBlock ${id} not found`);
@@ -139,7 +140,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
       let patch = startBlockPatch(row.startsAt.getTime(), row.endsAt.getTime(), now, recentEnds);
       if (automatic) {
         const targets = await runningTargets(deps, userId, now, others);
-        // Start at the exact minute (owner decision): a hand-placed running block that begins at or
+        // Start at the exact minute (owner decision): a hand-placed (or Started) running block that begins at or
         // after the snapped start would be left whole beside the Started block (both counting).
         // The Started block then begins at the exact minute instead, and that block ends there.
         // Only when Start sets the block's start: a begun block that round15 leaves where it is
@@ -148,7 +149,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: AppDeps, afte
         // minutes) — that overlap is left as before.
         const snappedStart = patch.startsAt?.getTime();
         const from = snappedStart == null ? null : exactStartMs(now, targets
-          .filter((b) => b.pinned && b.startsAt.getTime() >= snappedStart).map((b) => b.startsAt.getTime()));
+          .filter((b) => (b.pinned || b.startedAt != null) && b.startsAt.getTime() >= snappedStart).map((b) => b.startsAt.getTime()));
         const exactPatch = from == null ? null : startBlockPatch(row.startsAt.getTime(), row.endsAt.getTime(), now, recentEnds, from);
         // No startsAt: the block has already ended at that start; Start keeps round15 as before.
         const exact = exactPatch?.startsAt != null;
