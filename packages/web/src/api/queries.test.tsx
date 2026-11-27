@@ -660,3 +660,22 @@ describe('useCreateScheduledBlockMutation carries the title for the placeholder 
     void pending;
   });
 });
+
+describe('event delete duplicate guard (W8)', () => {
+  it('ignores a second delete of the same app event while the first is pending; another event is independent', async () => {
+    const releases: Array<() => void> = [];
+    const deleteCalendarEvent = vi.fn(() => new Promise<void>((res) => { releases.push(res); }));
+    const { Wrapper } = wrap(fakeApiClient({ deleteCalendarEvent } as never));
+    const tile = renderHook(() => useDeleteCalendarEventMutation(), { wrapper: Wrapper });
+    const drawer = renderHook(() => useDeleteCalendarEventMutation(), { wrapper: Wrapper });
+    tile.result.current.mutate('e1');
+    drawer.result.current.mutate('e1');
+    await waitFor(() => expect(deleteCalendarEvent).toHaveBeenCalledTimes(1));
+    drawer.result.current.mutate('e2');
+    await waitFor(() => expect(deleteCalendarEvent).toHaveBeenCalledTimes(2));
+    releases.forEach((r) => r());
+    await waitFor(() => expect(tile.result.current.isSuccess).toBe(true));
+    tile.result.current.mutate('e1');
+    await waitFor(() => expect(deleteCalendarEvent).toHaveBeenCalledTimes(3));
+  });
+});

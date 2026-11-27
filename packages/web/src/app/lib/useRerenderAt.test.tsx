@@ -30,3 +30,18 @@ describe('useRerenderAt', () => {
     expect(result.current).toBe(before);
   });
 });
+
+describe('useRerenderAt long waits (W8)', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('a moment hours away is approached in steps of at most an hour', () => {
+    const n = { renders: 0 };
+    renderHook(() => { n.renders += 1; useRerenderAt(1_000 + 3 * 60 * 60 * 1000, 1_000); });
+    const before = n.renders;
+    act(() => { vi.advanceTimersByTime(60 * 60 * 1000 - 1); });
+    expect(n.renders).toBe(before);
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(n.renders).toBe(before + 1);
+  });
+});

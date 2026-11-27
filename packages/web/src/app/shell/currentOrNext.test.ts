@@ -162,3 +162,19 @@ describe('startNext: the next piece offered while one runs (W1)', () => {
     expect(r.startNext).toBeNull();
   });
 });
+
+describe('pinned behaviours (W8)', () => {
+  it('isRunningBlock: a habit block is never running, in either mode, even inside its time or with startedAt', () => {
+    const habit = block({ taskId: null, habitId: 'h1', startsAt: '2026-06-11T11:30:00Z', endsAt: '2026-06-11T12:30:00Z' });
+    expect(isRunningBlock(habit, NOW, 'automatic')).toBe(false);
+    expect(isRunningBlock({ ...habit, startedAt: '2026-06-11T11:30:00Z' }, NOW, 'manual')).toBe(false);
+    expect(isRunningBlock({ ...habit, startedAt: '2026-06-11T11:30:00Z' }, NOW, 'automatic')).toBe(false);
+  });
+
+  it('manual overlaps keep today\'s order: of two Started running blocks, the one ending soonest', () => {
+    const longer = block({ id: 'longer', startsAt: '2026-06-11T11:45:00Z', endsAt: '2026-06-11T14:00:00Z', startedAt: '2026-06-11T11:45:00Z' });
+    const sooner = block({ id: 'sooner', startsAt: '2026-06-11T11:00:00Z', endsAt: '2026-06-11T12:30:00Z', startedAt: '2026-06-11T11:00:00Z' });
+    expect(pickCurrentOrNext([longer, sooner], NOW, 'manual').running?.id).toBe('sooner');
+    expect(pickCurrentOrNext([sooner, longer], NOW, 'manual').running?.id).toBe('sooner');
+  });
+});

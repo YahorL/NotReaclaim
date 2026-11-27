@@ -779,6 +779,17 @@ describe('Planner: automatic tracking (U4)', () => {
     await waitFor(() => expect(stopBlock).toHaveBeenCalledWith('p1'));
   });
 
+  it('a habit block inside its time is never "running" in automatic tracking (no accent bar) (W8)', async () => {
+    const habit: ScheduledBlock = { ...piece, id: 'h1', title: 'Morning walk', taskId: null, habitId: 'hab1' };
+    renderWithProviders(<Planner now={() => NOW} />, { api: makeApi({
+      getSettings: vi.fn(async () => ({ requireStartToTrack: false, timezone: 'UTC', dayStartMinute: 0 })),
+      getSchedule: vi.fn(async () => [piece, habit]),
+    }) });
+    await waitFor(() => expect(tileOf('Auto piece')).toHaveAttribute('data-running', 'true'));
+    expect(tileOf('Morning walk')).not.toHaveAttribute('data-running');
+    expect(within(tileOf('Morning walk')).queryByTestId('started-bar')).toBeNull();
+  });
+
   it('manual tracking: the same piece is not running (no bar, card offers Delete)', async () => {
     renderWithProviders(<Planner now={() => NOW} />, { api: makeApi({
       getSettings: vi.fn(async () => ({ requireStartToTrack: true, timezone: 'UTC', dayStartMinute: 0 })),
