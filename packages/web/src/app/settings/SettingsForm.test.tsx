@@ -154,6 +154,32 @@ describe('SettingsForm', () => {
       expect(onSave).toHaveBeenCalledTimes(1);
     });
 
+    it('first-time setup (no settings row yet): no dialog; once saved, the rule applies again (W7)', () => {
+      const onSave = vi.fn((_input: SettingsInput, onSaved: () => void) => onSaved());
+      render(<SettingsForm initial={initial({ requireStartToTrack: false })} firstTime onSave={onSave} timezones={['UTC']} />);
+      fireEvent.click(screen.getByTestId('require-start'));
+      fireEvent.click(screen.getByTestId('save'));
+      expect(screen.queryByRole('alertdialog')).toBeNull();
+      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ requireStartToTrack: true }), expect.any(Function));
+      // Saved: there is a row now. Off → save → on asks.
+      fireEvent.click(screen.getByTestId('require-start'));
+      fireEvent.click(screen.getByTestId('save'));
+      fireEvent.click(screen.getByTestId('require-start'));
+      fireEvent.click(screen.getByTestId('save'));
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+      expect(onSave).toHaveBeenCalledTimes(2);
+    });
+
+    it('a first-time save that failed is still first-time: no dialog on the retry', () => {
+      const onSave = vi.fn();
+      render(<SettingsForm initial={initial({ requireStartToTrack: false })} firstTime onSave={onSave} timezones={['UTC']} />);
+      fireEvent.click(screen.getByTestId('require-start'));
+      fireEvent.click(screen.getByTestId('save'));
+      fireEvent.click(screen.getByTestId('save'));
+      expect(screen.queryByRole('alertdialog')).toBeNull();
+      expect(onSave).toHaveBeenCalledTimes(2);
+    });
+
     it('compares with what the server holds: on → save → off → save → on asks again', () => {
       const onSave = vi.fn((_input: SettingsInput, onSaved: () => void) => onSaved());
       render(<SettingsForm initial={initial({ requireStartToTrack: false })} onSave={onSave} timezones={['UTC']} />);

@@ -29,9 +29,14 @@ export interface SettingsFormProps {
   error?: { message: string } | null;
   justSaved?: boolean;
   timezones?: string[];
+  /**
+   * No settings row yet (first-time setup; `initial` is the defaults): nothing has been tracked,
+   * so turning Require Start on asks nothing until a save has created the row.
+   */
+  firstTime?: boolean;
 }
 
-export function SettingsForm({ initial, onSave, saving = false, error = null, justSaved = false, timezones }: SettingsFormProps) {
+export function SettingsForm({ initial, onSave, saving = false, error = null, justSaved = false, timezones, firstTime = false }: SettingsFormProps) {
   const [form, setForm] = useState<SettingsFormState>(() => initial);
   const { ok, errors } = validateSettingsForm(form);
   // What the server holds: the loaded settings, then whatever a save confirmed (normalised through
@@ -39,9 +44,10 @@ export function SettingsForm({ initial, onSave, saving = false, error = null, ju
   // form still matches it — a mutation that succeeded earlier says nothing about later edits.
   const [baseline, setBaseline] = useState(() => JSON.stringify(toSettingsInput(initial)));
   const dirty = JSON.stringify(toSettingsInput(form)) !== baseline;
+  const [rowExists, setRowExists] = useState(!firstTime);
   const commit = (input: SettingsInput) => {
     const snap = JSON.stringify(input);
-    onSave(input, () => setBaseline(snap));
+    onSave(input, () => { setBaseline(snap); setRowExists(true); });
   };
   // Off → on (against what the server holds, not the form's first state) asks first.
   const [confirmOn, setConfirmOn] = useState<SettingsInput | null>(null);
@@ -51,7 +57,7 @@ export function SettingsForm({ initial, onSave, saving = false, error = null, ju
     if (!ok) return;
     const input = toSettingsInput(form);
     const savedRequireStart = (JSON.parse(baseline) as SettingsInput).requireStartToTrack === true;
-    if (input.requireStartToTrack === true && !savedRequireStart) { setConfirmOn(input); return; }
+    if (rowExists && input.requireStartToTrack === true && !savedRequireStart) { setConfirmOn(input); return; }
     commit(input);
   };
   const confirmRequireStart = () => {

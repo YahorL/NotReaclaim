@@ -51,6 +51,7 @@ export function Settings({ version }: { version?: AppVersion } = {}) {
         </div>
         <SettingsForm
           initial={initial}
+          firstTime={!settingsQ.data}
           saving={updateM.isPending}
           justSaved={updateM.isSuccess}
           error={updateM.isError ? { message: saveErrorText(updateM.error) } : null}

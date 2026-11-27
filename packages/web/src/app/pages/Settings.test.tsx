@@ -76,6 +76,20 @@ describe('Settings page', () => {
     expect(patchSettings).not.toHaveBeenCalled();
   });
 
+  it('first-time setup: turning Require Start on asks nothing (there is no tracked time yet) (W7)', async () => {
+    const putSettings = vi.fn(async () => settings());
+    const api = fakeApiClient({
+      getSettings: () => Promise.reject(new ApiError(404, 'not_found', 'Settings not configured')), putSettings,
+    } as never);
+    renderWithProviders(<SettingsPage />, { api });
+    await waitFor(() => expect(screen.getByTestId('settings-form')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('require-start'));
+    fireEvent.click(screen.getByTestId('save'));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    await waitFor(() => expect(putSettings).toHaveBeenCalledTimes(1));
+    expect((putSettings.mock.calls[0] as unknown[])[0]).toMatchObject({ requireStartToTrack: true });
+  });
+
   // Item 8: centered layout
   it('wraps content in a centered max-width container', async () => {
     const api = fakeApiClient({ getSettings: async () => settings() } as never);
